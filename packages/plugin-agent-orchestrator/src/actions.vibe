@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
+// spec/agentOrchestrator/index.md, "Story: Direct an authorized task to the intended subagent and evaluate its result"; spec/agentOrchestrator/index.md, "Only the owner directs coding agents, and a message without a session id reaches only its own room's subagents"; spec/agentOrchestrator/sessionAdmission.md, "A turn completes only when the agent itself ends it"; spec/agentOrchestrator/taskLifecycle.md, "Story: Track an orchestrated coding task from creation through verified completion"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"; spec/agentOrchestrator/lanesAndRouting.md, "Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps"
 import {
   hasOwnerAccess,
   promoteSubactionsToActions,
@@ -29,11 +29,13 @@ import {
   CodingWorkspaceService,
 } from "./workspace.vibe"
 import {
+  WAVE_SUPERVISOR_SERVICE_TYPE,
   createDeterministicLanePlan,
   laneReadiness,
   pickSubAgentName,
   validateLaneDependencyGraph,
   type LaneSpec,
+  type WaveSupervisor,
 } from "./routing.vibe"
 import {
   buildCompactSessionDigest,
@@ -311,6 +313,15 @@ async function handleCreate(
   const resolved = resolveCodingBackendLogged({ runtime, explicit: explicitBackend, tag, plannerGuess: "elizaos" })
   if (!resolved) return failResult("create", "BACKEND_NOT_ALLOWED", "No allowed coding backend matches this request; check the operator allow-list.")
   const agentType = resolved.agentType
+  const waves = runtime.getService(WAVE_SUPERVISOR_SERVICE_TYPE) as WaveSupervisor | null
+  if (!waves) return failResult("create", "WAVE_SUPERVISOR_UNAVAILABLE", "The wave supervisor service is not running.")
+  const requestedBudget = numParam(bag, "budgetCents")
+  const plannedCost = plan.lanes.reduce((sum, lane) => sum + lane.estimatedCostCents, 0)
+  const waveId = waves.openWave(doc?.task.id ?? "create", {
+    maxParallel: plan.maxParallel,
+    totalLanes: plan.lanes.length,
+    budgetCapCents: requestedBudget === undefined ? plannedCost : Math.max(0, Math.floor(requestedBudget)),
+  })
   const completedLaneIds = new Set<string>()
   const remaining = [...plan.lanes]
   const spawned: Array<{
@@ -331,12 +342,33 @@ async function handleCreate(
   while (remaining.length > 0 && waveIndex < plan.lanes.length + 1) {
     waveIndex += 1
     const waveLanes: LaneSpec[] = []
+    const overBudget: LaneSpec[] = []
     for (const candidate of remaining) {
-      if (waveLanes.length >= plan.maxParallel) break
-      if (laneReadiness(candidate, completedLaneIds, [...unfinishedLanes, ...waveLanes]) === "LaneReady") {
-        waveLanes.push(candidate)
+      if (laneReadiness(candidate, completedLaneIds, [...unfinishedLanes, ...waveLanes]) !== "LaneReady") continue
+      const launch = runSync(effect {
+        const launched = waves.stepWave(waveId, { type: "launchLane", laneCost: candidate.estimatedCostCents }) catch (refusal) => ({ refusal })
+        return launched
+      })
+      if ("refusal" in launch) {
+        const refusal = launch.refusal
+        if (refusal._tag === "WaveConcurrencyCapError") break
+        overBudget.push(candidate)
+        spawned.push({
+          laneId: candidate.id,
+          sessionId: `refused-${candidate.id}`,
+          agentType,
+          workdir,
+          status: "refused",
+          label: candidate.id,
+          ok: false,
+          code: "WAVE_BUDGET_EXCEEDED",
+          reason: `Launching ${candidate.id} would spend ${refusal.spentCents} of a ${refusal.budgetCapCents} cent budget.`,
+        })
+        continue
       }
+      waveLanes.push(candidate)
     }
+    for (const lane of overBudget) remaining.splice(remaining.indexOf(lane), 1)
     if (waveLanes.length === 0) break
     const takenLabels = acp.listSessions().map((s) => s.label)
     const explicitLabel = strParam(bag, "label")
@@ -373,8 +405,12 @@ async function handleCreate(
     }))
     for (const item of waveResults) {
       spawned.push(item)
-      if (item.ok && item.stopReason === "end_turn") completedLaneIds.add(item.laneId)
-      else {
+      if (item.ok && item.stopReason === "end_turn") {
+        completedLaneIds.add(item.laneId)
+        runSync(effect {
+          return waves.stepWave(waveId, { type: "completeLane" }) catch () => undefined
+        })
+      } else {
         const lane = waveLanes.find((l) => l.id === item.laneId)
         if (lane && item.ok) unfinishedLanes.push(lane)
       }
@@ -948,6 +984,7 @@ const COMPACT_PARAMETERS: ActionParameter[] = [
   { name: "approvalPreset", description: "Permission profile.", descriptionCompressed: "Preset.", required: false, subactions: ["create", "spawn_agent"], schema: { type: "string", enum: ["autonomous", "permissive", "readonly", "standard", "verifier"] } },
   { name: "baseBranch", description: "Base git branch.", descriptionCompressed: "Base branch.", required: false, subactions: ["provision_workspace", "submit_workspace"], schema: { type: "string" } },
   { name: "body", description: "Issue or comment body.", descriptionCompressed: "Body.", required: false, subactions: ["manage_issues"], schema: { type: "string" } },
+  { name: "budgetCents", description: "Spend ceiling in cents across a create's lanes; a lane that would exceed it is not launched.", descriptionCompressed: "Lane budget (cents).", required: false, subactions: ["create"], schema: { type: "number" } },
   { name: "commitMessage", description: "Commit message.", descriptionCompressed: "Commit msg.", required: false, subactions: ["submit_workspace"], schema: { type: "string" } },
   { name: "controlAction", description: "Lifecycle transition.", descriptionCompressed: "Control op.", required: false, subactions: ["control"], schema: { type: "string", enum: ["archive", "continue", "pause", "reopen", "resume", "stop"] } },
   { name: "dependencies", description: "Lane DAG dependency map.", descriptionCompressed: "Lane deps.", required: false, subactions: ["create"], schema: { type: "object", additionalProperties: true } },

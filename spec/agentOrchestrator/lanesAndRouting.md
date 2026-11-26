@@ -61,7 +61,7 @@ pure val allowSetValues = Set(Set(), Set(BackendPiAgent), Set(BackendElizaOs, Ba
 
 ### Multi-lane wave execution prevents scope collisions and enforces concurrency and budget caps
 
-A wave tracks active lanes, completed lanes, spent budget, and budget ceiling. A lane is ready only when all its dependencies are satisfied and its file scope does not collide with another active lane. A launched lane counts as satisfied only once its agent ended its turn itself; a lane that was queued, refused or cut off stays active for scope checks, and the lanes waiting on it are reported as not launched. Launching a lane requires available concurrency headroom and remaining budget.
+A wave tracks active lanes, completed lanes, spent budget, and budget ceiling. A lane is ready only when all its dependencies are satisfied and its file scope does not collide with another active lane. A launched lane counts as satisfied only once its agent ended its turn itself; a lane that was queued, refused or cut off stays active for scope checks, and the lanes waiting on it are reported as not launched. Launching a lane requires available concurrency headroom and remaining budget; every lane a create launches goes through the wave supervisor, whose budget is the owner's `budgetCents` when given and otherwise the plan's estimated cost, and a lane that would exceed it is reported as refused, not launched.
 
 ```quint
 type LaneReadyState = LaneReady | LaneWaitingDeps | LaneScopeCollision | LaneDoneState

@@ -383,8 +383,17 @@ export class WaveSupervisor extends Service {
     return Promise.resolve(new WaveSupervisor(runtime))
   }
 
+  private opened = 0
+
   getWaveState(waveId: string): WaveState {
     return this.waves.get(waveId) ?? initialWaveState
+  }
+
+  openWave(owner: string, limits: { readonly maxParallel: number; readonly totalLanes: number; readonly budgetCapCents: number }): string {
+    this.opened += 1
+    const waveId = `${owner}:wave-${this.opened}`
+    this.waves.set(waveId, { activeLanes: 0, completedLanes: 0, spentCents: 0, ...limits })
+    return waveId
   }
 
   effect stepWave(waveId: string, event: WaveEvent): WaveState!(WaveConcurrencyCapError | WaveBudgetBreachError) {

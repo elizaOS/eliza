@@ -632,6 +632,15 @@ it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git 
       workdir: safeActionDir,
     },
   }))
+  const budgetCreateRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("budget"), undefined, {
+    parameters: {
+      action: "create",
+      agents: "Build packages/e/src/five.ts | Build packages/f/src/six.ts",
+      budgetCents: 1,
+      maxParallel: 2,
+      workdir: safeActionDir,
+    },
+  }))
   const strangerMessage = makeMessage("list", { entityId: STRANGER_ENTITY_ID as UUID })
   const strangerList = try tryPromise(() => tasksAction.handler(runtime, strangerMessage, undefined, { parameters: { action: "list_agents" } }))
   const strangerSpawn = try tryPromise(() => tasksAction.handler(runtime, makeMessage("spawn", { entityId: STRANGER_ENTITY_ID as UUID }), undefined, { parameters: { action: "spawn_agent", task: "run rm -rf /", workdir: safeActionDir } }))
@@ -655,7 +664,7 @@ it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git 
   const cancelByTaskRes = try tryPromise(() => tasksAction.handler(runtime, makeMessage("cancel"), undefined, { parameters: { action: "cancel", taskId } }))
   const acpBlocked = new AcpService(undefined, { transport: new FakeAcpTransport() })
   acpBlocked.setDiskBackpressure(true)
-  const blockedRuntime = makeMockRuntime({ [ACP_SUBPROCESS_SERVICE_TYPE]: acpBlocked, [ORCHESTRATOR_TASK_SERVICE_TYPE]: tasks })
+  const blockedRuntime = makeMockRuntime({ [ACP_SUBPROCESS_SERVICE_TYPE]: acpBlocked, [ORCHESTRATOR_TASK_SERVICE_TYPE]: tasks, [WAVE_SUPERVISOR_SERVICE_TYPE]: new WaveSupervisor() })
   const allLanesFailedRes = try tryPromise(() => tasksAction.handler(blockedRuntime, makeMessage("fail"), undefined, {
     parameters: { action: "create", task: "blocked work", workdir: safeActionDir },
   }))
@@ -744,6 +753,8 @@ it.effect('Backend routing, Pi credential isolation, multi-lane waves, real git 
     assert.strictEqual(forbiddenWorkdirRes.error, "WORKDIR_FORBIDDEN")
     assert.strictEqual(dagCreateRes.success, true)
     assert.strictEqual((dagCreateRes.promptData as { wavesExecuted: number }).wavesExecuted, 2)
+    const budgetSessions = (budgetCreateRes.data as { sessions: { laneId: string; ok: boolean; code?: string }[] }).sessions
+    assert.deepStrictEqual(budgetSessions.map((s) => [s.laneId, s.ok, s.code ?? null]).sort(), [["lane-1", true, null], ["lane-2", false, "WAVE_BUDGET_EXCEEDED"]])
     assert.strictEqual(allLanesFailedRes.success, false)
     assert.strictEqual(allLanesFailedRes.error, "SessionCapError")
     assert.strictEqual(manageIssuesInvalidCreate.success, false)
