@@ -83,6 +83,19 @@ module node {
     }],
   }
 
+  export const lockApp: AgentPlugin = {
+    name: "lock-app", description: "A Lock that sets the owner's PIN",
+    actions: [{
+      name: "LOCK_SET", description: "Sets the owner's lock PIN.",
+      parameters: [
+        { name: "pin", required: true, description: "The PIN, as digits.", schema: { type: "number" } },
+        { name: "remember", required: true, description: "Whether to remember the PIN on this device.", schema: { type: "boolean" } },
+      ],
+      validate: async () => true,
+      handler: async () => ({ success: true, text: "Set." }),
+    }],
+  }
+
   export const privateEffectPayload = "private-fixture-effect-payload"
   export const appliedReceiptId = "private-fixture-applied-receipt"
   const fixtureEffect = (rolledBack: boolean, record: (effect: "applied" | "rolled_back") => void): Action => ({
@@ -166,7 +179,7 @@ module node {
     return reading.then(() => false, (answered: unknown) => answered === reason)
   }
 }
-import { agendaApp, appliedReceiptId, browserApp, effectApp, leftRead, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads, unheardCueTurn } from node
+import { agendaApp, appliedReceiptId, browserApp, effectApp, leftRead, lockApp, privateEffectPayload, readErrorBeforeEof, readSplit, slowAgendaReads, unheardCueTurn } from node
 
 
 effect function streamed(agent: InProcess, id: string, body: object, abortAfterChunks?: number) {
@@ -998,4 +1011,52 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
     ['{"checklist":"[\\"milk\\"]","content":"Shopping List"}'],
     undefined,
   ])
+}, 120_000)
+
+it.live(`Redact a PIN or a yes I sent by mistake, and no later turn sends it to the model as a number or yes/no argument of a recorded call (spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; ${planning}, "An earlier reply reaches the model with the host's record of the tools its turn ran and how each ended")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [lockApp.name], allowed: ["REPLY", "IGNORE", "NONE", "LOCK_SET"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[lockApp.name, lockApp]]),
+  })
+  const { id, roomId } = try conversation(agent)
+  const completions = () => cloud.calls.filter(({ path }) => path === "/api/v1/chat/completions")
+  const asked = (index: number) => (completions()[index]?.body as { messages: { role: string; content?: unknown; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }[] }).messages
+  const recordsIn = (sent: ReturnType<typeof asked>) => sent.flatMap(({ tool_calls: calls }) => (calls ?? []).filter(({ id: callId }) => callId.startsWith("history_")).map(({ function: { name, arguments: args } }) => `${name}(${args})`))
+  const turn = (said: string) => effect {
+    const before = completions().length
+    const answer = try stream(agent, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body: { text: said } })
+    return { done: summary((try read(answer.chunks, 0)).outcome), firstCall: before }
+  }
+  const pin = "602214"
+  const storedRecords = () => host("the stored replies' records", async () =>
+    (await agent.agent.runtime.getMemories({ tableName: "messages", roomId, count: 100 })).flatMap(({ content }) => content.toolRecord === undefined ? [] : [content.toolRecord]))
+
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "LOCK_SET", arguments: { pin: Number(pin), remember: true } }), text("Your lock is set.")))
+  const set = try turn(pin)
+  try Effect.sync(() => cloud.script(text("[answer] Remembered.")))
+  try turn("true")
+  try Effect.sync(() => cloud.script(text("[answer] Noted.")))
+  const beforeRedaction = recordsIn(asked((try turn("Is my lock set?")).firstCall))
+  const listed = answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` }))
+  const sent = (listed.body as { messages: readonly { id: string; role: string; text: string }[] }).messages.filter(({ role }) => role === "user")
+  const redactions = try Effect.forEach([pin, "true"], (said) => effect {
+    const message = sent.find(({ text: shown }) => shown === said)
+    return answerOf(try call(agent, { method: "POST", path: `/api/conversations/${id}/messages/${message?.id ?? ""}/redact`, body: { expectedText: said } })).status
+  })
+  const stored = try storedRecords()
+  try Effect.sync(() => cloud.script(text("[answer] You're welcome.")))
+  const afterRedaction = asked((try turn("Thanks.")).firstCall)
+
+  try Effect.try(() => assert.deepStrictEqual({
+    set: set.done, beforeRedaction, redactions, stored, afterRedaction: recordsIn(afterRedaction),
+    pinGone: !JSON.stringify(afterRedaction).includes(pin),
+  }, {
+    set: { kind: "Done", text: "Your lock is set.", failureKind: undefined, keyed: true },
+    beforeRedaction: [`LOCK_SET(${JSON.stringify({ pin: 602214, remember: true })})`],
+    redactions: [200, 200],
+    stored: [{ steps: [{ action: "LOCK_SET", args: [["pin", "[Private information removed]"], ["remember", "[Private information removed]"]], outcome: "RecordedDone" }], more: 0 }],
+    afterRedaction: [`LOCK_SET(${JSON.stringify({ pin: "[Private information removed]", remember: "[Private information removed]" })})`],
+    pinGone: true,
+  }))
 }, 120_000)

@@ -1,4 +1,4 @@
-// spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"; spec/core/actionPlanning.md, "A subaction stays within its parent's authority"
+// spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella's summarize and model class unless it sets its own"; spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"; spec/core/actionPlanning.md, "A subaction stays within its parent's authority"
 import { foreign, runDetached } from "../edge.vibe"
 import type {
   Action,

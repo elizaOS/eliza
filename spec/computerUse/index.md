@@ -13,11 +13,11 @@ This area defines the formal rules for desktop, browser, sandbox, and mobile com
 
 ### A command is scoped to one session generation, surface and authorized operation
 
-The shell binds the device, browser or approved remote connector to a session. It validates the initiating principal, screenshot and clipboard access, tab identifiers, and the requested operation before dispatching it to the bound host.
+The shell binds the device, browser or approved remote connector to a session. It validates the initiating principal, screenshot and clipboard access, tab identifiers, and the requested operation before dispatching it to the bound host. The caller supplies the session generation and surface it expects; the shell never fills them in from the session itself. The local computer-use routes carry no per-request principal, so the host principal is their only caller: every session they create is owned by the host principal and every command they send is sent as it. A session owned by another principal therefore refuses route commands.
 
 ```quint
 type ComputerSurface = LocalDesktop | BrowserSurface | MobileDevice | RemoteDesktop
-type ComputerOperation = ReadScreen | ClickTarget | TypeText | WindowControl | ClipboardRead | ClipboardWrite
+type ComputerOperation = ReadScreen | ClickTarget | TypeText | WindowControl | ClipboardRead | ClipboardWrite | FileRead | FileWrite | TerminalExecute | BrowserControl | AppControl
 type ComputerSession = { sessionId: str, ownerId: str, sessionEpoch: int, surface: ComputerSurface, operations: Set[ComputerOperation], open: bool }
 type ComputerCommand = { callerId: str, forSession: str, expectedEpoch: int, forSurface: ComputerSurface, operation: ComputerOperation }
 pure def computerCommandAllowed(session: ComputerSession, command: ComputerCommand): bool =
@@ -28,6 +28,20 @@ pure def lawClosedSessionRefusesCommands(session: ComputerSession, command: Comp
   not(session.open) implies not(computerCommandAllowed(session, command))
 pure def lawGenerationMismatchRefusesCommands(session: ComputerSession, command: ComputerCommand): bool =
   session.sessionEpoch != command.expectedEpoch implies not(computerCommandAllowed(session, command))
+```
+
+### A session grants only the operations its bound target can carry out, and each command is its own operation
+
+Reading or writing files, running terminal commands, driving a browser and acting on an application are distinct operations, never a screen click. A session on the host grants every operation. A session on any other target (sandbox, browser, remote guest) grants none, and cannot be created, until the host registers an executor and a frame provider for that target kind; it never falls through to the host's own desktop or shell. Terminal execution, file deletion and browser script execution are destructive; file and terminal reads are read-only; the other commands mutate. Before asking for approval, the shell refuses a terminal command that matches its dangerous-command filter, a file path on its deny-list, and passes child processes an environment stripped of credentials.
+
+```quint
+pure val allOperations: Set[ComputerOperation] = Set(ReadScreen, ClickTarget, TypeText, WindowControl, ClipboardRead, ClipboardWrite, FileRead, FileWrite, TerminalExecute, BrowserControl, AppControl)
+pure def grantedOperations(isHostTarget: bool, targetBound: bool): Set[ComputerOperation] =
+  if (isHostTarget or targetBound) allOperations else Set()
+pure def maySessionCarry(isHostTarget: bool, targetBound: bool, operation: ComputerOperation): bool =
+  grantedOperations(isHostTarget, targetBound).contains(operation)
+pure def lawUnboundTargetCarriesNothing(operation: ComputerOperation): bool =
+  not(maySessionCarry(false, false, operation))
 ```
 
 ### A pending operation accepts only the observation for its own identifier and session generation
@@ -44,4 +58,41 @@ pure def lawStaleOperationCannotProduceObservation(session: ComputerSession, cur
 pure val sessionValues = Set({ sessionId: "desk-1", ownerId: "owner", sessionEpoch: 2, surface: LocalDesktop, operations: Set(ReadScreen, ClickTarget), open: true }, { sessionId: "desk-1", ownerId: "owner", sessionEpoch: 3, surface: BrowserSurface, operations: Set(ReadScreen), open: false })
 pure val commandValues = Set({ callerId: "owner", forSession: "desk-1", expectedEpoch: 2, forSurface: LocalDesktop, operation: ReadScreen }, { callerId: "other", forSession: "desk-1", expectedEpoch: 1, forSurface: RemoteDesktop, operation: ClipboardRead })
 pure val observationValues = Set({ observedSession: "desk-1", observedEpoch: 2, operationId: "capture-1" }, { observedSession: "desk-1", observedEpoch: 1, operationId: "old" })
+```
+
+### Terminating an app names one exact process and never the agent itself
+
+`kill_app` takes one exact process name. A name that is empty, starts with an
+option dash, or carries a path separator or pattern character is refused, and
+so is a name the agent's own process answers to; the host then matches the
+name exactly, never as a pattern over command lines.
+
+```quint
+pure def killTargetAllowed(empty: bool, patternLike: bool, ownProcess: bool): bool =
+  not(empty) and not(patternLike) and not(ownProcess)
+pure def lawOwnProcessNeverKilled(empty: bool, patternLike: bool): bool =
+  not(killTargetAllowed(empty, patternLike, true))
+pure def lawPatternNeverKilled(empty: bool, ownProcess: bool): bool =
+  not(killTargetAllowed(empty, true, ownProcess))
+```
+
+### A window command acts on the matched window with the host's own tool, or fails
+
+Each window command maps to one host operation on the matched window, addressed
+by its identifier (or, on macOS, by its title within its application). The host
+reports a command as done only after that tool ran it; a command the tool cannot
+perform, or a move or resize without its coordinates or size, fails as
+unsupported, never as a different command or a no-op. Arranging windows has no
+host tool. `xdotool` cannot maximize or restore, and closing on Windows posts
+the window a close message.
+
+```quint
+type HostWindowAction = WindowFocus | WindowMinimize | WindowMaximize | WindowRestore | WindowClose | WindowMove | WindowSetBounds | WindowArrange
+type HostWindowTool = MacSystemEvents | LinuxWmctrl | LinuxXdotool | WindowsUser32
+pure def hostWindowActionSupported(tool: HostWindowTool, windowAction: HostWindowAction): bool =
+  if (windowAction == WindowArrange) false
+  else if (tool == LinuxXdotool) not(windowAction == WindowMaximize or windowAction == WindowRestore)
+  else true
+pure def lawArrangeIsNeverReportedDone(tool: HostWindowTool): bool =
+  not(hostWindowActionSupported(tool, WindowArrange))
 ```

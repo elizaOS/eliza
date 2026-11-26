@@ -1,7 +1,6 @@
-// spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"; spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"; spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"
+// spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"; spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/fileSession.md, "A device file follows the same read-before-overwrite rule, by content"; spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"; spec/codingTools/webGuard.md, "Story: Fetch and search the public web without leaking secrets or touching private networks"; spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy"; spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots"; spec/codingTools/fileSession.md, "Reading a file records its current revision and binds a resumable reference"
 import { assert, it } from "@effect/vitest"
-import * as NodeServices from "@effect/platform-node/NodeServices"
-import { actionToTool, type IAgentRuntime, type Memory, type Service, type State, type UUID } from "@elizaos/core"
+import { actionToTool, type Content, type IAgentRuntime, type Memory, type Service, type State, type UUID } from "@elizaos/core"
 import {
   BACKGROUND_SHELL_SERVICE,
   BackgroundShellService,
@@ -18,12 +17,11 @@ import {
   SandboxService,
   SessionCwdService,
   ShellService,
-  StaleWorkspaceFile,
-  WorkspaceDenied,
   appendCodingFeedback,
   appendCodingIteration,
   availableToolsProvider,
   classifyDestructiveCommand,
+  classifyStdinTarget,
   codingToolsPlugin,
   createCodingAgentContext,
   createWebFetchAction,
@@ -31,15 +29,12 @@ import {
   detectSecrets,
   detectTerminalSupported,
   editAction,
-  editWorkspaceFile,
   extractCompactFailureDiagnostics,
   fileAction,
   htmlToReadableText,
   isForbiddenCommand,
   parseKeylessSearchResponse,
   readAction,
-  readWorkspaceFile,
-  runWorkspaceCommand,
   shellAction,
   shellHistoryProvider,
   shellVerificationReceipt,
@@ -79,6 +74,18 @@ module node {
     await fs.symlink(target, linkPath)
   }
 
+  export async function setFileMode(filePath: string, mode: number): Promise<void> {
+    await fs.chmod(filePath, mode)
+  }
+
+  export async function fileMode(filePath: string): Promise<number> {
+    return (await fs.stat(filePath)).mode & 0o777
+  }
+
+  export async function pathExists(filePath: string): Promise<boolean> {
+    return fs.stat(filePath).then(() => true, () => false)
+  }
+
   export function initGitRepoSync(dir: string): void {
     execFileSync("git", ["init", "-q"], { cwd: dir })
     execFileSync("git", ["config", "user.email", "test@eliza.local"], { cwd: dir })
@@ -104,7 +111,7 @@ module node {
   }
 }
 
-import { createSymlink, initGitRepoSync, joinFs, makeTempWorkspace, readDiskFile, removeDir, waitBriefly, writeDiskFile } from node
+import { createSymlink, fileMode, initGitRepoSync, joinFs, makeTempWorkspace, pathExists, readDiskFile, removeDir, setFileMode, waitBriefly, writeDiskFile } from node
 
 const check = (fn: () => void) => Effect.try(fn)
 
@@ -118,6 +125,8 @@ async function createTestRuntime(settings: Record<string, string>): Promise<{
     agentId: "00000000-0000-0000-0000-000000000001" as UUID,
     getSetting: (key: string) => settings[key],
     getService: (type: string) => services.get(type) ?? null,
+    getRoom: async () => null,
+    reportError: () => undefined,
   } as unknown as IAgentRuntime
 
   services.set(SANDBOX_SERVICE, await SandboxService.start(runtime))
@@ -137,55 +146,79 @@ async function createTestRuntime(settings: Record<string, string>): Promise<{
   }
 }
 
-function makeMessage(roomId = "room-1", entityId = "owner-1", id = "msg-1"): Memory {
+function makeMessage(roomId = "room-1", entityId = "owner-1", id = "msg-1", text = "run coding tools"): Memory {
   return {
     id: id as UUID,
     roomId: roomId as UUID,
     entityId: entityId as UUID,
-    content: { text: "run coding tools" },
+    content: { text },
   }
+}
+
+function ownerChannel(): { readonly sent: string[]; readonly callback: (content: Content) => Promise<Memory[]> } {
+  const sent: string[] = []
+  return {
+    sent,
+    callback: async (content) => {
+      sent.push(content.text ?? "")
+      return []
+    },
+  }
+}
+
+function challengeFrom(text: string | undefined): string {
+  return /confirm (\S+)"/.exec(text ?? "")?.[1] ?? ""
 }
 
 const emptyState: State = { values: {}, data: {}, text: "" }
 
-it.effect('Workspace primitives read, edit with optimistic concurrency, block protected paths, and run approved commands (spec/codingTools/index.md, "Story: Read and edit my authorized project files")', effect () => {
-  provide NodeServices.layer {
-    const root = try tryPromise(() => makeTempWorkspace("ct-prim-"))
-    try Effect.ensuring(
-      effect {
-        try tryPromise(() => writeDiskFile(joinFs(root, "app.ts"), "export const x = 1\n"))
-        try tryPromise(() => writeDiskFile(joinFs(root, ".env"), "SECRET=1\n"))
-        const workspace = {
-          root,
-          access: { authorizedRoot: root, ownerConfirmed: true, canWrite: true, canRunCommands: true },
-        }
-        const read = try readWorkspaceFile(workspace, "app.ts")
-        const edited = try editWorkspaceFile(workspace, "app.ts", read.revision, "export const x = 2\n")
-        const stale = try Effect.flip(editWorkspaceFile(workspace, "app.ts", read.revision, "export const x = 3\n"))
-        const blockedEnv = try Effect.flip(readWorkspaceFile(workspace, ".env"))
-        const cmdKey = JSON.stringify([root, "node", "-e", "process.stdout.write('ok')"])
-        const out = try runWorkspaceCommand(workspace, {
-          argv: ["node", "-e", "process.stdout.write('ok')"],
-          needsApproval: true,
-          approvedKey: cmdKey,
-        })
-        const deniedCmd = try Effect.flip(runWorkspaceCommand(workspace, {
-          argv: ["node", "-e", "process.stdout.write('no')"],
-          needsApproval: true,
-          approvedKey: "wrong-key",
-        }))
-        try check(() => {
-          assert.equal(read.contents, "export const x = 1\n")
-          assert.notEqual(edited.revision, read.revision)
-          assert.equal(stale instanceof StaleWorkspaceFile, true)
-          assert.equal(blockedEnv instanceof WorkspaceDenied, true)
-          assert.equal(out, "ok")
-          assert.equal(deniedCmd instanceof WorkspaceDenied, true)
-        })
-      },
-      Effect.ignore(tryPromise(() => removeDir(root))),
-    )
-  }
+it.effect('Registered READ, EDIT, FILE and SHELL refuse to run without an authorized root, refuse protected files, refuse stale edits, and keep file modes (spec/codingTools/index.md, "Story: Read and edit my authorized project files")', effect () => {
+  const root = try tryPromise(() => makeTempWorkspace("ct-prim-"))
+  const unrooted = try tryPromise(() => createTestRuntime({}))
+  const env = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }))
+  const msg = makeMessage("room-primitives")
+  try Effect.ensuring(
+    effect {
+      const app = joinFs(root, "app.sh")
+      try tryPromise(() => writeDiskFile(app, "#!/bin/sh\necho one\n"))
+      try tryPromise(() => setFileMode(app, 0o755))
+      try tryPromise(() => writeDiskFile(joinFs(root, ".env"), "SECRET=1\n"))
+      try tryPromise(() => writeDiskFile(joinFs(root, ".git", "config"), "[core]\n"))
+
+      const noRootRead = try tryPromise(() => readAction.handler(unrooted.runtime, msg, emptyState, { file_path: app }))
+      const noRootShell = try tryPromise(() => shellAction.handler(unrooted.runtime, msg, emptyState, { command: "pwd", cwd: root }))
+      const read = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { file_path: app }))
+      const edited = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, { file_path: app, old_string: "echo one", new_string: "echo two" }))
+      const modeAfterEdit = try tryPromise(() => fileMode(app))
+      try tryPromise(() => writeDiskFile(app, "#!/bin/sh\necho three\n"))
+      const stale = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, { file_path: app, old_string: "echo three", new_string: "echo four" }))
+      const envRead = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { file_path: joinFs(root, ".env") }))
+      const envWrite = try tryPromise(() => writeAction.handler(env.runtime, msg, emptyState, { file_path: joinFs(root, ".env.local"), content: "X=1\n" }))
+      const gitGrep = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, { action: "grep", pattern: "core", path: joinFs(root, ".git") }))
+      const ran = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { command: "node -e \"process.stdout.write('ok')\"" }))
+      try check(() => {
+        assert.equal(noRootRead.success, false)
+        assert.match(noRootRead.text ?? "", /no workspace root is configured/)
+        assert.equal(noRootShell.success, false)
+        assert.equal(read.success, true)
+        assert.equal(edited.success, true)
+        assert.equal(modeAfterEdit, 0o755)
+        assert.equal(stale.success, false)
+        assert.match(stale.text ?? "", /stale_read/)
+        assert.equal(envRead.success, false)
+        assert.match(envRead.text ?? "", /protected/)
+        assert.equal(envWrite.success, false)
+        assert.equal(gitGrep.success, false)
+        assert.equal(ran.success, true)
+        assert.match(ran.text ?? "", /ok/)
+      })
+    },
+    Effect.ignore(effect {
+      try tryPromise(() => unrooted.stopAll())
+      try tryPromise(() => env.stopAll())
+      try tryPromise(() => removeDir(root))
+    }),
+  )
 })
 
 it.effect('READ, WRITE, EDIT, FILE grep/glob/ls, batch reads, multi-hunk edits, stale-read refusal, secret blocking, and sandbox confinement (spec/codingTools/fileSession.md, "Story: Protect workspace files against stale edits, accidental overwrites, and secret leaks"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs")', effect () => {
@@ -270,8 +303,39 @@ it.effect('READ, WRITE, EDIT, FILE grep/glob/ls, batch reads, multi-hunk edits, 
         action: "ls",
         path: joinFs(root, "src"),
       }))
+      try tryPromise(() => Promise.all(Array.from({ length: 5001 }, (_, i) => writeDiskFile(joinFs(root, "many", `m-${i}.txt`), ""))))
+      const cappedGlob = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, {
+        action: "glob",
+        pattern: "many/*.txt",
+        path: root,
+      }))
+      const longA = joinFs(root, "long", "a.txt")
+      const longB = joinFs(root, "long", "b.txt")
+      const longText = Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n")
+      try tryPromise(() => writeDiskFile(longA, longText))
+      try tryPromise(() => writeDiskFile(longB, longText))
+      const longBatch = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { paths: [longA, longB] }))
 
       const gammaDisk = try tryPromise(() => readDiskFile(newFile))
+
+      const deltaPath = joinFs(root, "src", "delta.ts")
+      try tryPromise(() => writeDiskFile(deltaPath, "one\ntwo\n"))
+      const deltaRead = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { file_path: deltaPath }))
+      const deltaData = deltaRead.data as Record<string, unknown>
+      try tryPromise(() => writeDiskFile(deltaPath, "one\ntwo-external\n"))
+      const staleContinue = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, {
+        reference: String(deltaData.reference),
+        expectedRevision: String(deltaData.revision),
+        offset: 1,
+      }))
+      const clobber = try tryPromise(() => writeAction.handler(env.runtime, msg, emptyState, { file_path: deltaPath, content: "x\n", overwrite: true }))
+      const deltaDisk = try tryPromise(() => readDiskFile(deltaPath))
+      const lookaround = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, {
+        action: "grep",
+        pattern: "BEGIN(?= OPENSSH)",
+        path: root,
+        output_mode: "content",
+      }))
 
       try check(() => {
         assert.equal(blockedOutside.success, false)
@@ -294,6 +358,12 @@ it.effect('READ, WRITE, EDIT, FILE grep/glob/ls, batch reads, multi-hunk edits, 
         assert.equal(overwriteRefused.success, false)
         assert.equal(overwriteAllowed.success, true)
         assert.equal(gammaDisk, "export const gamma = 43\n")
+        assert.equal(staleContinue.success, false)
+        assert.match(staleContinue.text ?? "", /stale_read/)
+        assert.equal(clobber.success, false)
+        assert.equal(deltaDisk, "one\ntwo-external\n")
+        assert.equal(lookaround.success, false)
+        assert.match(lookaround.text ?? "", /ripgrep failed/)
         assert.equal(grepRes.success, true)
         assert.match(grepRes.text ?? "", /gamma/)
         assert.match(grepRes.text ?? "", /beta/)
@@ -301,6 +371,12 @@ it.effect('READ, WRITE, EDIT, FILE grep/glob/ls, batch reads, multi-hunk edits, 
         assert.match(globRes.text ?? "", /gamma\.ts/)
         assert.equal(lsRes.success, true)
         assert.match(lsRes.text ?? "", /alpha\.ts/)
+        const cappedData = cappedGlob.data as Record<string, unknown>
+        assert.equal(cappedData.walkCapped, true)
+        assert.equal(cappedData.complete, false)
+        assert.match(cappedGlob.text ?? "", /Walk stopped after 5000 files/)
+        assert.equal((longBatch.data as Record<string, unknown>).truncated, true)
+        assert.match(longBatch.text ?? "", /Stopped at line \d+ of 300 because the batch output limit was reached/)
       })
     },
     Effect.ignore(effect {
@@ -315,6 +391,7 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
   const root = try tryPromise(() => makeTempWorkspace("ct-shell-"))
   const env = try tryPromise(() => createTestRuntime({
     CODING_TOOLS_WORKSPACE_ROOTS: root,
+    ELIZA_ADMIN_ENTITY_ID: "owner-1",
     OPENAI_API_KEY: "sk-proj-supersecretvalue1234567890",
   }))
   const msg = makeMessage("room-shell-journey", "owner-1", "msg-shell-1")
@@ -324,18 +401,50 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
       const targetDir = joinFs(root, "disposable")
       try tryPromise(() => writeDiskFile(joinFs(targetDir, "tmp.txt"), "bye"))
 
-      const needsConfirm = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { command: `rm -rf "${targetDir}"` }))
-      const challenge = String((needsConfirm.data as Record<string, unknown>).confirmation_challenge)
-      const confirmed = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+      const owner = ownerChannel()
+      const noChannel = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { command: `rm -rf "${targetDir}"` }))
+      const needsConfirm = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { command: `rm -rf "${targetDir}"` }, owner.callback))
+      const challenge = challengeFrom(owner.sent[0])
+      const selfConfirmed = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
         command: `rm -rf "${targetDir}"`,
         confirm: true,
         confirmation_challenge: challenge,
-      }))
-      const replayBlocked = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+      }, owner.callback))
+      const ownerReply = makeMessage("room-shell-journey", "owner-1", "msg-shell-2", `confirm ${challenge}`)
+      const strangerReply = makeMessage("room-shell-journey", "stranger-1", "msg-shell-3", `confirm ${challenge}`)
+      const strangerConfirmed = try tryPromise(() => shellAction.handler(env.runtime, strangerReply, emptyState, {
         command: `rm -rf "${targetDir}"`,
         confirm: true,
         confirmation_challenge: challenge,
-      }))
+      }, owner.callback))
+      const survivedSelfConfirm = try tryPromise(() => pathExists(targetDir))
+      const confirmed = try tryPromise(() => shellAction.handler(env.runtime, ownerReply, emptyState, {
+        command: `rm -rf "${targetDir}"`,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }, owner.callback))
+      const replayBlocked = try tryPromise(() => shellAction.handler(env.runtime, ownerReply, emptyState, {
+        command: `rm -rf "${targetDir}"`,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }, owner.callback))
+      const keptDir = joinFs(root, "kept")
+      try tryPromise(() => writeDiskFile(joinFs(keptDir, "k.txt"), "keep"))
+      const bypassAttempts = [
+        `true & rm -rf "${keptDir}"`,
+        `(rm -rf "${keptDir}")`,
+        `echo $(rm -rf "${keptDir}")`,
+        `sudo -n rm -rf "${keptDir}"`,
+        `find "${keptDir}" -delete`,
+        `echo "${keptDir}" | xargs rm -rf`,
+        "git push origin +main",
+      ]
+      const bypassResults: boolean[] = []
+      for (const command of bypassAttempts) {
+        const attempt = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { command }, owner.callback))
+        bypassResults.push(attempt.success === false && /needs_confirmation/.test(attempt.text ?? ""))
+      }
+      const keptSurvives = try tryPromise(() => pathExists(keptDir))
 
       const redacted = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
         command: "node -e \"process.stdout.write('token=sk-proj-supersecretvalue1234567890')\"",
@@ -355,7 +464,7 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
 
       const bgStart = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
         action: "start_background",
-        command: "node -e \"console.log('bg-ready'); process.stdin.on('data', d => { console.log('echo:' + d.toString().trim()); process.exit(0); })\"",
+        command: "head -n 1",
       }))
       const bgHandle = String((bgStart.data as Record<string, unknown>).handle)
       try tryPromise(() => waitBriefly(150))
@@ -372,6 +481,19 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
       }))
       const bgList = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "list_background" }))
       const bgKill = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "kill_background", handle: bgHandle }))
+      const bgFlood = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        action: "start_background",
+        command: "node -e \"for (let i = 1; i <= 450; i++) console.log('bg-line-' + i)\"",
+      }))
+      try tryPromise(() => waitBriefly(400))
+      const floodHandle = String((bgFlood.data as Record<string, unknown>).handle)
+      const floodFirst = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "poll_background", handle: floodHandle, stdout_offset: 0 }))
+      const floodFirstData = floodFirst.data as Record<string, unknown>
+      const floodNext = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, {
+        action: "poll_background",
+        handle: floodHandle,
+        stdout_offset: Number(floodFirstData.stdout_offset),
+      }))
 
       const historyView = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "view_history" }))
       const historyProviderRes = try tryPromise(() => shellHistoryProvider.get(env.runtime, msg, emptyState))
@@ -382,10 +504,17 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
 
       try check(() => {
         assert.equal(forbidden.success, false)
+        assert.equal(noChannel.success, false)
         assert.equal(needsConfirm.success, false)
+        assert.equal(JSON.stringify(needsConfirm).includes(challenge), false)
         assert.ok(challenge.length > 10)
+        assert.equal(selfConfirmed.success, false)
+        assert.equal(strangerConfirmed.success, false)
+        assert.equal(survivedSelfConfirm, true)
         assert.equal(confirmed.success, true)
         assert.equal(replayBlocked.success, false)
+        assert.deepEqual(bypassResults, bypassAttempts.map(() => true))
+        assert.equal(keptSurvives, true)
         assert.equal(redacted.success, true)
         assert.equal((redacted.text ?? "").includes("sk-proj-supersecretvalue1234567890"), false)
         assert.match(redacted.text ?? "", /REDACTED/)
@@ -396,7 +525,12 @@ it.effect('SHELL destructive confirmation challenge, redaction, artifact spill &
         assert.equal(bgStart.success, true)
         assert.equal(bgWrite.success, true)
         assert.equal(bgPoll.success, true)
-        assert.match(bgPoll.text ?? "", /bg-ready/)
+        assert.match(bgPoll.text ?? "", /ping/)
+        assert.equal(floodFirstData.truncated, true)
+        assert.match(floodFirst.text ?? "", /bg-line-1\n/)
+        assert.equal((floodFirst.text ?? "").includes("bg-line-450"), false)
+        assert.match(floodNext.text ?? "", /bg-line-450/)
+        assert.equal((floodNext.text ?? "").includes("bg-line-299\n"), false)
         assert.equal(bgList.success, true)
         assert.equal(bgKill.success, true)
         assert.equal(historyView.success, true)
@@ -433,6 +567,12 @@ it.effect('WORKTREE enter and exit with real git repo, dynamic sandbox roots, an
         path: wtDir,
       }))
       const activeCwd = cwdSvc.getCwd("room-wt-journey")
+      const scratch = joinFs(wtDir, "scratch.txt")
+      try tryPromise(() => writeDiskFile(scratch, "uncommitted"))
+      const dirtyExit = try tryPromise(() => worktreeAction.handler(env.runtime, msg, emptyState, { action: "exit", cleanup: true }))
+      const stillActive = cwdSvc.getCwd("room-wt-journey")
+      const scratchKept = try tryPromise(() => readDiskFile(scratch))
+      try tryPromise(() => removeDir(scratch))
       const exited = try tryPromise(() => worktreeAction.handler(env.runtime, msg, emptyState, {
         action: "exit",
         cleanup: true,
@@ -442,6 +582,9 @@ it.effect('WORKTREE enter and exit with real git repo, dynamic sandbox roots, an
       try check(() => {
         assert.equal(entered.success, true)
         assert.equal(activeCwd, wtDir)
+        assert.equal(dirtyExit.success, false)
+        assert.equal(stillActive, wtDir)
+        assert.equal(scratchKept, "uncommitted")
         assert.equal(exited.success, true)
         assert.equal(restoredCwd, repo)
       })
@@ -559,16 +702,40 @@ it.effect('WEB_FETCH / WEB_SEARCH enforce HTTPS-only SSRF rules, HTML readabilit
         offset: 0,
         limit: 999_999,
       }))
+      const deviceFiles = new Map<string, string>(Array.from({ length: 400 }, (_, i) => [`f-${i}.txt`, `content ${i}`]))
+      deviceFiles.set("big.b64", "QUJD".repeat(10_000))
+      let deviceFailing = false
       const deviceRuntime = {
         ...byteEnv.runtime,
         getService: (type: string) => type === "device_filesystem"
           ? {
-              read: async () => "ok",
-              write: async () => undefined,
-              list: async () => Array.from({ length: 400 }, (_, i) => ({ name: `f-${i}.txt`, type: "file" as const })),
+              read: async (filePath: string) => {
+                const found = deviceFiles.get(filePath)
+                if (deviceFailing || found === undefined) throw new Error(`ENOENT: ${filePath}`)
+                return found
+              },
+              write: async (filePath: string, content: string) => {
+                deviceFiles.set(filePath, content)
+              },
+              list: async () => [...deviceFiles.keys()].map((name) => ({ name, type: "file" as const })),
             }
           : byteEnv.runtime.getService(type),
       } as unknown as IAgentRuntime
+      const deviceFile = (params: Record<string, unknown>) => tryPromise(() => fileAction.handler(deviceRuntime, msg, emptyState, { target: "device", ...params }))
+      const deviceCreated = try deviceFile({ action: "write", file_path: "notes.txt", content: "first" })
+      const deviceBlindOverwrite = try deviceFile({ action: "write", file_path: "f-1.txt", content: "clobber", overwrite: true })
+      const deviceNoFlag = try deviceFile({ action: "write", file_path: "f-2.txt", content: "clobber" })
+      const afterBlindWrites = [deviceFiles.get("f-1.txt"), deviceFiles.get("f-2.txt")]
+      const deviceRead = try deviceFile({ action: "read", file_path: "f-1.txt" })
+      deviceFiles.set("f-3.txt", "before")
+      try deviceFile({ action: "read", file_path: "f-3.txt" })
+      deviceFiles.set("f-3.txt", "changed elsewhere")
+      const deviceStale = try deviceFile({ action: "write", file_path: "f-3.txt", content: "mine", overwrite: true })
+      const deviceReplaced = try deviceFile({ action: "write", file_path: "f-1.txt", content: "replaced", overwrite: true })
+      const deviceBig = try deviceFile({ action: "read", file_path: "big.b64", encoding: "base64", offset: 6 })
+      deviceFailing = true
+      const deviceBridgeError = try deviceFile({ action: "read", file_path: "f-1.txt" })
+      deviceFailing = false
       const deviceSecretRefused = try tryPromise(() => fileAction.handler(deviceRuntime, msg, emptyState, {
         action: "write",
         target: "device",
@@ -609,6 +776,26 @@ it.effect('WEB_FETCH / WEB_SEARCH enforce HTTPS-only SSRF rules, HTML readabilit
         assert.equal((byteRead.data as Record<string, unknown>).end, 50_000)
         assert.match(byteRead.text ?? "", /\[Showing bytes 0-50000 of 60000\./)
         assert.equal(deviceSecretRefused.success, false)
+        assert.equal(deviceCreated.success, true)
+        assert.equal(deviceCreated.effectReceipts?.length, 1)
+        assert.equal(deviceFiles.get("notes.txt"), "first")
+        assert.equal(deviceBlindOverwrite.success, false)
+        assert.equal(deviceNoFlag.success, false)
+        assert.deepEqual(afterBlindWrites, ["content 1", "content 2"])
+        assert.equal(deviceRead.success, true)
+        assert.equal(deviceStale.success, false)
+        assert.equal(deviceFiles.get("f-3.txt"), "changed elsewhere")
+        assert.equal(deviceReplaced.success, true)
+        assert.equal(deviceReplaced.effectReceipts?.[0]?.operation, "filesystem.write")
+        assert.equal(deviceFiles.get("f-1.txt"), "replaced")
+        const bigData = deviceBig.data as Record<string, unknown>
+        assert.equal(bigData.truncated, true)
+        assert.equal(bigData.start, 4)
+        assert.equal((bigData.end as number) % 4, 0)
+        assert.equal(bigData.nextOffset, bigData.end)
+        assert.match(deviceBig.text ?? "", /Continue with offset=/)
+        assert.equal(deviceBridgeError.success, false)
+        assert.match(deviceBridgeError.text ?? "", /device read failed/)
         assert.equal(deviceLsBounded.success, true)
         assert.equal((deviceLsBounded.data as Record<string, unknown>).truncated, true)
         assert.equal(allParamsSorted, true)
@@ -644,5 +831,193 @@ it.effect('WEB_FETCH / WEB_SEARCH enforce HTTPS-only SSRF rules, HTML readabilit
       })
     },
     Effect.ignore(tryPromise(() => env.stopAll())),
+  )
+})
+
+it.effect('The forbidden-command list matches tokens through quoting, operators, subshells and wrappers, and power commands need confirmation (spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy")', effect () => {
+  const forbiddenForms = [
+    "rm -rf /",
+    "rm -r -f /",
+    "rm --recursive --force /",
+    "\"rm\" -rf /",
+    "r\\m -fr //",
+    "rm -rf /*",
+    "echo ok; rm -rf /",
+    "true && rm -rf /",
+    "false || rm -rf /",
+    "echo hi | sudo -n rm -rf /",
+    "env FOO=1 rm -rf /",
+    "exec rm -rf /",
+    "(rm -rf /)",
+    "echo \"$(rm -rf /)\"",
+    "echo `rm -rf /`",
+    "echo ok\nshutdown -h now",
+    "sudo -u root reboot",
+    "bash -c 'poweroff'",
+    "/sbin/halt",
+    "nohup timeout 5 mkfs.ext4 /dev/sda1",
+    "env -S 'rm -rf /'",
+    "r\\\nm -rf /",
+    "eval rm -rf /",
+  ]
+  const allowedForms = ["ls /", "echo \"rm -rf /\"", "rm -rf ./build", "git status", "grep -r shutdown src"]
+  try check(() => {
+    for (const command of forbiddenForms) assert.notEqual(isForbiddenCommand(command), undefined, command)
+    for (const command of allowedForms) assert.equal(isForbiddenCommand(command), undefined, command)
+    assert.equal(isForbiddenCommand("git push origin main --force", ["git push --force"]), "git push --force")
+    assert.equal(isForbiddenCommand("git push origin main", ["git push --force"]), undefined)
+    for (const command of ["shutdown -h now", "reboot", "halt", "poweroff", "systemctl reboot", "sudo shutdown -r now"]) {
+      assert.equal(classifyDestructiveCommand(command).destructive, true, command)
+    }
+    for (const command of ["cat", "head -n 1", "wc -l", "sort -u", "grep -i needle", "jq .items", "base64 -d", "gzip -c"]) {
+      assert.equal(classifyStdinTarget(command), "StdinData", command)
+    }
+    for (const command of [
+      "sh", "bash -i", "bash 2>&1", "sh 2>/dev/null", "bash >/tmp/log 2>&1", "sh /dev/stdin", "bash /proc/self/fd/0",
+      "cat | sh", "sudo -s", "env X=1 exec bash", "X=1 cat", "/bin/cat", "./cat", "busybox cat", "env cat", "nohup cat",
+      "python3", "python3 -", "node", "node -e \"process.stdin.pipe(process.stdout)\"", "npm run dev", "bash ./serve.sh",
+      "sqlite3 app.db", "xargs rm", "tee out.txt", "grep -f patterns", "grep -rf patterns", "cat $(ls)", "cat *", "cat `x`",
+      "if true; then cat; fi", "coproc cat", "cat\nsh", "",
+    ]) {
+      assert.equal(classifyStdinTarget(command), "StdinChecked", command)
+    }
+  })
+})
+
+it.effect('SHELL write_background sends stdin to anything but a known data sink only after the command policy and the owner confirm that exact text (spec/codingTools/shellSession.md, "Background stdin reaches a command interpreter only through the command policy")', effect () => {
+  const root = try tryPromise(() => makeTempWorkspace("ct-stdin-"))
+  const env = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root, ELIZA_ADMIN_ENTITY_ID: "owner-1" }))
+  const msg = makeMessage("room-stdin", "owner-1", "msg-stdin-1")
+  try Effect.ensuring(
+    effect {
+      const victim = joinFs(root, "victim")
+      const marker = joinFs(root, "marker.txt")
+      try tryPromise(() => writeDiskFile(joinFs(victim, "keep.txt"), "keep"))
+      const owner = ownerChannel()
+      const shellStart = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "start_background", command: "sh" }))
+      const handle = String((shellStart.data as Record<string, unknown>).handle)
+      const forbidden = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: "echo ok && shutdown -h now\n" }, owner.callback))
+      const benign = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: `printf ok >> "${marker}"\n` }, owner.callback))
+      const destructive = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle, stdin: `rm -rf "${victim}"\n` }, owner.callback))
+      const challenge = challengeFrom(owner.sent[owner.sent.length - 1])
+      try tryPromise(() => waitBriefly(300))
+      const victimSurvives = try tryPromise(() => pathExists(victim))
+      const markerWritten = try tryPromise(() => pathExists(marker))
+      const ownerReply = makeMessage("room-stdin", "owner-1", "msg-stdin-2", `confirm ${challenge}`)
+      const confirmed = try tryPromise(() => shellAction.handler(env.runtime, ownerReply, emptyState, {
+        action: "write_background",
+        handle,
+        stdin: `rm -rf "${victim}"\n`,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }, owner.callback))
+      try tryPromise(() => waitBriefly(300))
+      const victimAfter = try tryPromise(() => pathExists(victim))
+      const pythonStart = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "start_background", command: "python3 -i" }))
+      const pythonHandle = String((pythonStart.data as Record<string, unknown>).handle)
+      const pythonWrite = try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "write_background", handle: pythonHandle, stdin: "print(1)\n" }))
+      try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "kill_background", handle }))
+      try tryPromise(() => shellAction.handler(env.runtime, msg, emptyState, { action: "kill_background", handle: pythonHandle }))
+      try check(() => {
+        assert.equal(shellStart.success, true)
+        assert.equal(forbidden.success, false)
+        assert.match(forbidden.text ?? "", /denied by policy: shutdown/)
+        assert.equal(benign.success, false)
+        assert.match(benign.text ?? "", /needs_confirmation/)
+        assert.equal(markerWritten, false)
+        assert.equal(destructive.success, false)
+        assert.match(destructive.text ?? "", /needs_confirmation/)
+        assert.ok(challenge.length > 10)
+        assert.equal(victimSurvives, true)
+        assert.equal(confirmed.success, true)
+        assert.equal(victimAfter, false)
+        assert.equal(pythonWrite.success, false)
+        assert.match(pythonWrite.text ?? "", /needs_confirmation/)
+      })
+    },
+    Effect.ignore(effect {
+      try tryPromise(() => env.stopAll())
+      try tryPromise(() => removeDir(root))
+    }),
+  )
+})
+
+it.effect('FILE grep reports no protected or blocked file whatever glob the search names, at any depth (spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots")', effect () => {
+  const root = try tryPromise(() => makeTempWorkspace("ct-grep-"))
+  const blocked = joinFs(root, "private")
+  const env = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root, CODING_TOOLS_BLOCKED_PATHS_ADD: blocked }))
+  const msg = makeMessage("room-grep")
+  try Effect.ensuring(
+    effect {
+      try tryPromise(() => writeDiskFile(joinFs(root, "src", "ok.ts"), "export const SECRET_MARKER_USE = 1\n"))
+      try tryPromise(() => writeDiskFile(joinFs(root, ".env"), "SECRET_MARKER=root-env\n"))
+      try tryPromise(() => writeDiskFile(joinFs(root, "pkg", "deep", ".env.local"), "SECRET_MARKER=nested-env\n"))
+      try tryPromise(() => writeDiskFile(joinFs(root, "pkg", "deep", ".git", "config"), "SECRET_MARKER=nested-git\n"))
+      try tryPromise(() => writeDiskFile(joinFs(root, ".ssh", "id"), "SECRET_MARKER=ssh\n"))
+      try tryPromise(() => writeDiskFile(joinFs(blocked, "notes.txt"), "SECRET_MARKER=blocked\n"))
+      const texts: string[] = []
+      for (const glob of ["", "*", ".env*", "**/.git/**"]) {
+        for (const outputMode of ["content", "files_with_matches", "count"]) {
+          const res = try tryPromise(() => fileAction.handler(env.runtime, msg, emptyState, {
+            action: "grep",
+            pattern: "SECRET_MARKER",
+            path: root,
+            output_mode: outputMode,
+            ...(glob ? { glob } : {}),
+          }))
+          texts.push(res.text ?? "")
+        }
+      }
+      try check(() => {
+        for (const text of texts) {
+          assert.equal(/root-env|nested-env|nested-git|=ssh|=blocked|\.env|\.git|\.ssh|private/.test(text), false, text)
+        }
+        assert.match(texts[0] ?? "", /ok\.ts:1:export const SECRET_MARKER_USE/)
+        assert.match(texts[1] ?? "", /ok\.ts/)
+        assert.match(texts[2] ?? "", /ok\.ts:1/)
+        assert.match(texts[3] ?? "", /ok\.ts:1:export const SECRET_MARKER_USE/)
+      })
+    },
+    Effect.ignore(effect {
+      try tryPromise(() => env.stopAll())
+      try tryPromise(() => removeDir(root))
+    }),
+  )
+})
+
+it.effect('A batch READ records as read only the files whose content it showed and says where each file stopped (spec/codingTools/fileSession.md, "Reading a file records its current revision and binds a resumable reference")', effect () => {
+  const root = try tryPromise(() => makeTempWorkspace("ct-batch-"))
+  const env = try tryPromise(() => createTestRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }))
+  const msg = makeMessage("room-batch")
+  try Effect.ensuring(
+    effect {
+      const files = ["one.txt", "two.txt", "three.txt"].map((name) => joinFs(root, name))
+      const body = Array.from({ length: 300 }, (_, i) => `row ${i + 1}`).join("\n")
+      for (const file of files) try tryPromise(() => writeDiskFile(file, body))
+      const batch = try tryPromise(() => readAction.handler(env.runtime, msg, emptyState, { paths: files, limit: 300 }))
+      const entries = (batch.data as { readonly files: readonly Record<string, unknown>[] }).files
+      const editShown = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, { file_path: files[0], old_string: "row 1\n", new_string: "row one\n" }))
+      const editUnseen = try tryPromise(() => editAction.handler(env.runtime, msg, emptyState, { file_path: files[1], old_string: "row 1\n", new_string: "row one\n" }))
+      try check(() => {
+        const first = entries[0] ?? {}
+        assert.equal(batch.success, true)
+        assert.equal(first.shown, true)
+        assert.equal(typeof first.stoppedAt, "number")
+        assert.ok(Number(first.end) < 300)
+        assert.match(batch.text ?? "", new RegExp(`one\\.txt \\[1\\.\\.${String(first.end)}/300 `))
+        assert.match(batch.text ?? "", new RegExp(`Stopped at line ${String(first.end)} of 300`))
+        assert.equal(entries[1]?.shown, false)
+        assert.equal(entries[2]?.shown, false)
+        assert.match(batch.text ?? "", /Not shown, and not recorded as read/)
+        assert.equal((batch.text ?? "").includes("row 300"), false)
+        assert.equal(editShown.success, true)
+        assert.equal(editUnseen.success, false)
+        assert.match(editUnseen.text ?? "", /must be read in this conversation/)
+      })
+    },
+    Effect.ignore(effect {
+      try tryPromise(() => env.stopAll())
+      try tryPromise(() => removeDir(root))
+    }),
   )
 })

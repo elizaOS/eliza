@@ -39,6 +39,7 @@ export type KeylessWebSearchFailureReason =
   | "malformed_response"
 
 module node {
+  import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core"
   import { canDispatchPublicFetch } from "../gen/webSearch__edge.ts"
   import type {
     KeylessWebFetchOptions,
@@ -369,18 +370,20 @@ module node {
     if (urls.length < 1 || urls.length > 2 || distinctCount !== urls.length) {
       throw new Error("One or two distinct public article URLs are required")
     }
+    let allCanonicalPublic = true
     for (const value of urls) {
       const url = new URL(value)
       if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.href !== value) {
         throw new Error("Canonical public article URL is required")
       }
+      if (isBlockedHostname(url.hostname) || isPrivateIpAddress(url.hostname)) allCanonicalPublic = false
     }
     const objective = options.objective ?? DEFAULT_FETCH_OBJECTIVE
     if (
       !canDispatchPublicFetch({
         urlCount: urls.length,
         distinctCount,
-        allCanonicalPublic: true,
+        allCanonicalPublic,
         objectiveLen: objective.length,
         aborted: options.signal?.aborted === true,
       })

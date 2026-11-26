@@ -1,6 +1,7 @@
-// spec/pty/index.md, "A terminal binds one owner and one process generation"
+// spec/pty/policy.md, "Sessions respect capacity, unique ids, and safe stop semantics"
 
 module node {
+  import { ElizaError } from "@elizaos/core"
   import type { PtyHandle, PtySpawn } from "./types.vibe"
 
   interface BunLike {
@@ -74,12 +75,12 @@ module node {
       kill: (signal?: string) => {
         try {
           proc.kill(signal)
-        } catch {
-          try {
-            proc.kill()
-          } catch {
-            void 0
-          }
+        } catch (cause) {
+          throw new ElizaError(`Unable to signal PTY process ${proc.pid}.`, {
+            code: "PTY_KILL_FAILED",
+            cause,
+            context: { pid: proc.pid, signal: signal ?? "default" },
+          })
         }
       },
       onData: (listener) => {

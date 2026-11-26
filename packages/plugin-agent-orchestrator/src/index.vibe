@@ -4,9 +4,8 @@ import {
   AcpService,
   ACP_SUBPROCESS_SERVICE_TYPE,
   ChildAgentSessions,
-  FileSessionStore,
   InMemorySessionStore,
-  InProcessAcpTransport,
+  answerAcpPermission,
   NativeStdioAcpTransport,
   isSessionPromptable,
   isSessionTerminal,
@@ -33,7 +32,6 @@ import {
   subtractChangeSetBaseline,
 } from "./workspace.vibe"
 import {
-  SubAgentInbox,
   SubAgentRouter,
   SUB_AGENT_ROUTER_SERVICE_TYPE,
   SwarmCoordinatorService,
@@ -45,10 +43,8 @@ import {
   WaveSupervisor,
   WAVE_SUPERVISOR_SERVICE_TYPE,
   STALL_GRILL_PROMPT,
-  PARENT_AGENT_DIRECTIVE_MARKER,
   composeRoomDigest,
   createDeterministicLanePlan,
-  decideInterruption,
   detectStalledSessions,
   extractScopePaths,
   laneReadiness,
@@ -56,8 +52,6 @@ import {
   sanitizeLaneBranchName,
   scopeSetsOverlap,
   statusEmoji,
-  stepParentDirectiveBuffer,
-  takeParentAgentDirective,
   validateLaneDependencyGraph,
 } from "./routing.vibe"
 import {
@@ -104,15 +98,6 @@ import {
   taskAgentExamplesProvider,
   verifiedUrlsExcludingDead,
 } from "./providers.vibe"
-import {
-  AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS,
-  CODING_AGENT_ROUTE_PATHS,
-  ORCHESTRATOR_CAPABILITY_AUTHORITY,
-  ORCHESTRATOR_VIEW_DECLARATIONS,
-  createCodingAgentRouteHandler,
-  createTaskAgentRouteHandler,
-  handleCodingAgentRoutes,
-} from "./routes.vibe"
 import {
   detectOrchestratorTerminalSupport,
   buildOrchestratorDeviceSupportMatrix,
@@ -176,7 +161,6 @@ import {
   buildGoalPrompt,
   buildIndependentVerifierPrompt,
   buildSubAgentIdentityMd,
-  collectCompletionResiduals,
   collectFsObservedFiles,
   defaultAuditLogPath,
   deleteBuiltApp,
@@ -195,7 +179,6 @@ import {
   runIndependentVerification,
   staticAcceptanceCriteria,
   summarizeEnvelope,
-  verifyClaimedFiles,
   writeWorkspaceIdentity,
 } from "./verification.vibe"
 import {
@@ -212,7 +195,6 @@ import {
   classifyIpLiteral,
   createCredentialBridgeToken,
   createSubscriptionExecutionAuthorization,
-  decideSpendAuthorization,
   detectLandlockAvailability,
   ensureTaskWorkdir,
   extractRepositoryUrlFromText,
@@ -225,7 +207,6 @@ import {
   matchesCredentialBridgeToken,
   normalizeCodexSandboxMode,
   normalizeRepositoryInput,
-  requireTaskAgentAccess,
   resolveAllowedWorkdir,
   resolveCodexSandboxApprovalPair,
   resolveModelGatewayConfig,
@@ -309,13 +290,9 @@ export function createAgentOrchestratorPlugin(opts?: {
       subAgentCompletionResponseEvaluator,
       subAgentFailureResponseEvaluator,
     ],
-    widgets: [...AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS],
-    views: [...ORCHESTRATOR_VIEW_DECLARATIONS],
     init: async (_config, runtime: IAgentRuntime) => {
       runtime.contexts.tryRegister(orchestratorContext)
       const cleanups: Array<() => void> = []
-      const inbox = new SubAgentInbox()
-      cleanups.push(() => inbox.clearAll())
       const auditPath = typeof runtime.getSetting === "function"
         ? (typeof runtime.getSetting("ACP_AUDIT_LOG_PATH") === "string" ? String(runtime.getSetting("ACP_AUDIT_LOG_PATH")) : defaultAuditLogPath())
         : defaultAuditLogPath()
@@ -325,23 +302,32 @@ export function createAgentOrchestratorPlugin(opts?: {
       if (typeof rtEvents.registerEvent === "function") {
         rtEvents.registerEvent(TASK_AUDIT_EVENT, async (payload: unknown) => {
           const rec = typeof payload === "object" && payload !== null ? payload as Record<string, unknown> : {}
-          await runPromise(appendAuditLine(auditPath, {
-            action: typeof rec.action === "string" ? rec.action : "audit",
-            taskId: typeof rec.taskId === "string" ? rec.taskId : undefined,
-            sessionId: typeof rec.sessionId === "string" ? rec.sessionId : undefined,
-            actor: typeof rec.actor === "string" ? rec.actor : undefined,
-            outcome: typeof rec.outcome === "string" ? rec.outcome : "ok",
-            timestamp: typeof rec.timestamp === "string" ? rec.timestamp : new Date().toISOString(),
-          }))
+          await runPromise(effect {
+            return appendAuditLine(auditPath, {
+              action: typeof rec.action === "string" ? rec.action : "audit",
+              taskId: typeof rec.taskId === "string" ? rec.taskId : undefined,
+              sessionId: typeof rec.sessionId === "string" ? rec.sessionId : undefined,
+              actor: typeof rec.actor === "string" ? rec.actor : undefined,
+              outcome: typeof rec.outcome === "string" ? rec.outcome : "ok",
+              timestamp: typeof rec.timestamp === "string" ? rec.timestamp : new Date().toISOString(),
+            }) catch (failure) => runtime.reportError("agentOrchestrator.audit", failure, { filePath: failure.filePath })
+          })
         })
       }
       const acpSvc: unknown = runtime.getService(ACP_SUBPROCESS_SERVICE_TYPE)
       if (acpSvc instanceof AcpService) {
-        const unsub = acpSvc.onSessionEvent((sessionId, event) => {
-          if (event === "task_complete" || event === "ready" || event === "reconnected") {
-            const queued = inbox.drain(sessionId)
-            for (const msg of queued) {
-              void acpSvc.sendToSession(sessionId, msg)
+        const unsub = acpSvc.onSessionEvent((_sessionId, event, data) => {
+          if (event === "promoted" && typeof data.sessionId === "string" && typeof data.taskId === "string") {
+            const tasks = runtime.getService(ORCHESTRATOR_TASK_SERVICE_TYPE)
+            const promoted = acpSvc.getSession(data.sessionId)
+            if (tasks instanceof OrchestratorTaskService && promoted) {
+              tasks.attachSession(data.taskId, {
+                id: promoted.id,
+                agentType: promoted.agentType,
+                label: promoted.label,
+                status: promoted.status,
+                workdir: promoted.workdir,
+              })
             }
           }
         })
@@ -379,10 +365,8 @@ export default agentOrchestratorPlugin
 
 export {
   ACP_SUBPROCESS_SERVICE_TYPE,
-  AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS,
   AcpService,
   AdmissionQueueFullError,
-  CODING_AGENT_ROUTE_PATHS,
   CODING_WORKSPACE_SERVICE_TYPE,
   COMPLETION_ENVELOPE_INSTRUCTION,
   CREDENTIAL_BRIDGE_TOKEN_ENV,
@@ -393,22 +377,17 @@ export {
   CuratedCodingMemoryStore,
   DEFAULT_CRITERIA_TEMPLATES,
   DiffGateBlockedError,
-  FileSessionStore,
   FileTaskStore,
   IN_FLIGHT_TASK_STATUSES,
   InMemorySessionStore,
   InMemoryTaskStore,
-  InProcessAcpTransport,
   KNOWN_ADAPTER_TYPES,
   MAX_SESSION_RETRY_ATTEMPTS,
   MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
   NativeStdioAcpTransport,
-  ORCHESTRATOR_CAPABILITY_AUTHORITY,
   ORCHESTRATOR_TASK_SERVICE_TYPE,
-  ORCHESTRATOR_VIEW_DECLARATIONS,
   ORDERED_ADAPTER_IDS,
   OrchestratorTaskService,
-  PARENT_AGENT_DIRECTIVE_MARKER,
   PI_PROVIDER_CREDENTIAL_ENVS,
   PI_PROVIDER_ROUTES,
   RecoveryConflictError,
@@ -424,7 +403,6 @@ export {
   SWARM_COORDINATOR_SERVICE_TYPE,
   SessionCapError,
   SsrfBlockedError,
-  SubAgentInbox,
   SubAgentRouter,
   SubscriptionCodingAdapterError,
   SwarmCoordinatorService,
@@ -447,6 +425,7 @@ export {
   WorkspaceOperationError,
   WorkspaceRegistry,
   acpAvailableAgentsProvider,
+  answerAcpPermission,
   activeSubAgentsProvider,
   activeWorkspaceContextProvider,
   appendAuditLine,
@@ -476,21 +455,16 @@ export {
   cleanForChat,
   codingAgentExamplesProvider,
   codingSessionChangesProvider,
-  collectCompletionResiduals,
   collectFsObservedFiles,
   compactContextWindow,
   compactProgressText,
   completionHasFailureMarkerWithoutPositiveEvidence,
   composeRoomDigest,
-  createCodingAgentRouteHandler,
   createCredentialBridgeToken,
   createDeterministicLanePlan,
   createSubscriptionExecutionAuthorization,
   createTaskAction,
-  createTaskAgentRouteHandler,
   createTerminalUnsupportedTasksAction,
-  decideInterruption,
-  decideSpendAuthorization,
   defaultAuditLogPath,
   deleteBuiltApp,
   detectLandlockAvailability,
@@ -512,7 +486,6 @@ export {
   forwardableSubAgentEnv,
   generateDefaultAcceptanceCriteria,
   getAcpService,
-  handleCodingAgentRoutes,
   hashCredentialBridgeToken,
   isCloudKeyForwardingOptIn,
   isDeniedSubAgentEnvKey,
@@ -548,7 +521,6 @@ export {
   redactCodingMemoryText,
   registerBuiltApp,
   reopenCodingTaskAction,
-  requireTaskAgentAccess,
   resolveAdapterCommand,
   resolveAllowedWorkdir,
   resolveCodingBackend,
@@ -576,7 +548,6 @@ export {
   startCodingTaskAction,
   staticAcceptanceCriteria,
   statusEmoji,
-  stepParentDirectiveBuffer,
   stopAgentAction,
   stopTaskAgentAction,
   storeOutputArtifact,
@@ -592,7 +563,6 @@ export {
   subtractChangeSetBaseline,
   summarizeEnvelope,
   summarizeUsageRows,
-  takeParentAgentDirective,
   taskAgentExamplesProvider,
   taskControlAction,
   taskHistoryAction,
@@ -606,7 +576,6 @@ export {
   validateLaneDependencyGraph,
   verifiedUrlsExcludingDead,
   verifyChildTask,
-  verifyClaimedFiles,
   verifySessionBridgeToken,
   writeWorkspaceIdentity,
 }

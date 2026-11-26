@@ -21,6 +21,7 @@ public final class KeyGenParameterSpec implements java.security.spec.AlgorithmPa
     public Builder setBlockModes(String... modes) { return this; }
     public Builder setEncryptionPaddings(String... paddings) { return this; }
     public Builder setKeySize(int bits) { return this; }
+    public Builder setIsStrongBoxBacked(boolean backed) { return this; }
     public KeyGenParameterSpec build() { return new KeyGenParameterSpec(alias); }
   }
 }

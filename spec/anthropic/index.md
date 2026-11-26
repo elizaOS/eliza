@@ -193,3 +193,18 @@ pure def sometimesAnthropicTruncatedReportsUsage(s: AnthropicRun): bool =
   s.phase == AnthropicFailed and s.reportedUsage
 pure val eval_witness_sometimesAnthropicTruncatedReportsUsage = (("beginAnthropic", AnthropicApi, { hasNativeMessages: false, hasTools: false, hasToolChoice: false, hasSchema: false, wantsStream: false, streamingAllowed: true }, 5, AutoCap), ("finishAnthropic", EndLimit, false, true))
 ```
+
+### Reported usage carries the cache read and cache write tokens the provider reports
+
+A response's usage reports input, output and total tokens, plus the
+`cache_read_input_tokens` and `cache_creation_input_tokens` the provider
+reports, as cache reads and cache writes.
+
+```quint
+type CacheUsage = { reads: int, writes: int }
+pure def reportedCacheUsage(reads: int, writes: int): CacheUsage = { reads: reads, writes: writes }
+pure def lawCacheCountsKept(reads: int, writes: int): bool =
+  reportedCacheUsage(reads, writes).reads == reads and reportedCacheUsage(reads, writes).writes == writes
+pure val readsValues = Set(0, 1800)
+pure val writesValues = Set(0, 200)
+```

@@ -17,6 +17,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -96,6 +101,8 @@ public final class GoogleBrokerJourney {
     List<String> forwarded = new CopyOnWriteArrayList<>();
     List<String> reported = new CopyOnWriteArrayList<>();
     List<String> seen = new ArrayList<>();
+    AtomicBoolean holdReads = new AtomicBoolean();
+    CountDownLatch readsInFlight = new CountDownLatch(4), releaseReads = new CountDownLatch(1);
     GoogleBrokerHost.MailReads reads = new GoogleBrokerHost.MailReads() {
       @Override public GoogleBrokerHost.Standing standing() {
         Account account = signedIn.get();
@@ -105,6 +112,11 @@ public final class GoogleBrokerJourney {
         RuntimeException failure = custodyFailure.get();
         if (failure != null) throw failure;
         forwarded.add(target + (OWNER_LEASE.equals(expected) ? " as owner" : " as " + expected));
+        if (holdReads.get()) {
+          readsInFlight.countDown();
+          try { releaseReads.await(); }
+          catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }
+        }
         return answer.get();
       }
     };
@@ -204,14 +216,31 @@ public final class GoogleBrokerJourney {
         seen.add(take("closedBrokerHandedToALaunch", GoogleBroker.forLaunch(true, OWNER, broker, failed -> unavailable.add(failed.getClass().getSimpleName())) + " " + unavailable));
         GoogleBroker.Endpoint next = opened(service);
         seen.add(take("nextLaunchReadsThroughReplacement", read(next, ACCOUNTS)));
-        service.revoke();
-        List<Socket> waiting = connections(next, 8);
-        Thread.sleep(500);
-        launches.install(third);
-        long closing = System.nanoTime();
-        for (Socket queued : waiting.subList(4, 8)) closedAfterMs(queued);
-        seen.add(take("queuedClosedWithAnUnheldReplacedBroker", (System.nanoTime() - closing) / 1_000_000 < 2_000 && "closed".equals(listening(next))));
-        for (Socket held : waiting) held.close();
+        try (var clients = Executors.newVirtualThreadPerTaskExecutor()) {
+          holdReads.set(true);
+          try {
+            for (int at = 0; at < 4; at++) clients.submit(() -> read(next, ACCOUNTS));
+            if (!readsInFlight.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("The broker did not start all four reads");
+            service.revoke();
+            List<Socket> waiting = connections(next, 5);
+            try {
+              var closed = new ExecutorCompletionService<Long>(clients);
+              for (Socket queued : waiting) closed.submit(() -> closedAfterMs(queued));
+              var overflow = closed.poll(10, TimeUnit.SECONDS);
+              if (overflow == null) throw new IllegalStateException("The broker did not reject an excess connection");
+              overflow.get();
+              if (closed.poll() != null) throw new IllegalStateException("The broker rejected a connection that should be queued");
+              long closing = System.nanoTime();
+              launches.install(third);
+              for (int at = 0; at < 4; at++) closed.take().get();
+              seen.add(take("queuedClosedWithAnUnheldReplacedBroker", (System.nanoTime() - closing) / 1_000_000 < 2_000 && "closed".equals(listening(next))));
+            } finally {
+              for (Socket queued : waiting) queued.close();
+            }
+          } finally {
+            releaseReads.countDown();
+          }
+        }
         seen.add(take("relaunchesAsked", relaunches.get()));
         seen.add(take("unclosed", String.join(",", unclosed)));
       }

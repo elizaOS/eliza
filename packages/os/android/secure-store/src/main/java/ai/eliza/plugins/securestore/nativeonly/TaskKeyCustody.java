@@ -42,7 +42,7 @@ public final class TaskKeyCustody {
     private static final long serialVersionUID = 1L;
     public final Refusal refusal;
 
-    ReleaseRefused(Refusal refusal, Throwable cause) {
+    public ReleaseRefused(Refusal refusal, Throwable cause) {
       super("Task key release refused: " + refusal, cause);
       this.refusal = refusal;
     }

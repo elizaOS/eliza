@@ -408,7 +408,7 @@ pure def sometimesNativeBackupProven(a: GoogleAttempt): bool =
 > sign in to Google a second time, while a code for another Google account
 > can never connect to mine.
 
-### A native connect stores tokens only for the signed-in account's own Google identity and only the scopes Google granted
+### A native connect stores tokens only for the signed-in account's own Google identity and only the selected scopes Google granted
 
 The device sends Google's one-use `serverAuthCode` for the account it
 signed in with, and the cloud redeems it. After a second factor the request
@@ -416,9 +416,16 @@ uses the device's acknowledged key, and the cloud finds its native app
 registration from that key. The connection is stored only when
 Google returned a refresh token and Google's verified subject is the Google
 sign-in subject of the account, which an account without a Google sign-in
-lacks. A stored connection has reading mail exactly when Google granted it
-and reading the calendar exactly when Google granted it, sending or trashing
-mail only with reading mail, and changing the calendar only with reading it.
+lacks. On the Grace Google mount ([deployment](../deployment.md)) a
+request may name the five permissions the owner selected; a request that
+names none of them selects every permission, and one that names only some
+of them is refused `400 invalid_request` before the attempt counts or a code
+reaches Google. The server table's native connect names no permissions and
+selects every one. A stored connection has reading
+mail exactly when it was selected and Google granted it, and reading the
+calendar exactly when it was selected and Google granted it. It never holds
+a permission the request did not select, even one Google granted. Sending or
+trashing mail needs reading mail, and changing the calendar needs reading it.
 A connect that would store nothing stores no scope at all. A signed-in
 account can submit six native connect attempts in the ten minutes following
 its first attempt. Excess attempts are refused before a code reaches Google.
@@ -428,23 +435,49 @@ type NativeGoogleScopes = { readMail: bool, sendMail: bool, trashMail: bool, rea
 pure val nativeConnectAttempts = 6
 pure val nativeConnectWindowSeconds = 600
 pure val noNativeGoogleScopes: NativeGoogleScopes = { readMail: false, sendMail: false, trashMail: false, readCalendar: false, writeCalendar: false }
-pure def nativeConnectStores(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): NativeGoogleScopes =
+pure val everyNativeGoogleScope: NativeGoogleScopes = { readMail: true, sendMail: true, trashMail: true, readCalendar: true, writeCalendar: true }
+pure def nativeConnectStores(signedInSubject: str, grantedSubject: str, refreshIssued: bool, selected: NativeGoogleScopes, granted: NativeGoogleScopes): NativeGoogleScopes = {
+  val readMail = selected.readMail and granted.readMail
+  val readCalendar = selected.readCalendar and granted.readCalendar
   if (signedInSubject == "" or signedInSubject != grantedSubject or not(refreshIssued)) noNativeGoogleScopes
-  else { readMail: granted.readMail, sendMail: granted.readMail and granted.sendMail, trashMail: granted.readMail and granted.trashMail,
-         readCalendar: granted.readCalendar, writeCalendar: granted.readCalendar and granted.writeCalendar }
+  else { readMail: readMail, sendMail: readMail and selected.sendMail and granted.sendMail, trashMail: readMail and selected.trashMail and granted.trashMail,
+         readCalendar: readCalendar, writeCalendar: readCalendar and selected.writeCalendar and granted.writeCalendar }
+}
+pure val nativeSelectionFields = 5
+pure def nativeConnectSelectionNamed(namedFields: int): bool = namedFields == 0 or namedFields == nativeSelectionFields
+pure def nativeConnectSelection(namedFields: int, named: NativeGoogleScopes): NativeGoogleScopes =
+  if (namedFields == nativeSelectionFields) named else everyNativeGoogleScope
 pure def nativeConnectStoresAny(stored: NativeGoogleScopes): bool = stored.readMail or stored.readCalendar
 pure val grantedValues: Set[NativeGoogleScopes] = tuples(Set(true, false), Set(true, false), Set(true, false), Set(true, false), Set(true, false))
   .map(g => { readMail: g._1, sendMail: g._2, trashMail: g._3, readCalendar: g._4, writeCalendar: g._5 })
+pure val selectedValues: Set[NativeGoogleScopes] = grantedValues
+pure val namedValues: Set[NativeGoogleScopes] = grantedValues
+pure val namedFieldsValues = 0.to(nativeSelectionFields)
 pure val signedInSubjectValues = Set("", "sub1", "sub2")
 pure val grantedSubjectValues = Set("", "sub1", "sub2")
-pure def lawANativeConnectStoresOnlyTheSignedInAccountsGrantedScopes(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): bool = {
-  val stored = nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, granted)
+pure def lawANativeConnectStoresOnlyTheSignedInAccountsGrantedScopes(signedInSubject: str, grantedSubject: str, refreshIssued: bool, selected: NativeGoogleScopes, granted: NativeGoogleScopes): bool = {
+  val stored = nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, selected, granted)
   (nativeConnectStoresAny(stored) implies (signedInSubject != "" and signedInSubject == grantedSubject and refreshIssued))
   and (stored.readMail implies granted.readMail) and (stored.sendMail implies (granted.sendMail and stored.readMail))
   and (stored.trashMail implies (granted.trashMail and stored.readMail)) and (stored.readCalendar implies granted.readCalendar)
   and (stored.writeCalendar implies (granted.writeCalendar and stored.readCalendar))
   and (not(nativeConnectStoresAny(stored)) implies stored == noNativeGoogleScopes)
   and ((signedInSubject != "" and signedInSubject == grantedSubject and refreshIssued)
-    implies (stored.readMail == granted.readMail and stored.readCalendar == granted.readCalendar))
+    implies (stored.readMail == (selected.readMail and granted.readMail) and stored.readCalendar == (selected.readCalendar and granted.readCalendar)))
+}
+pure def lawANativeConnectNeverStoresAnUnselectedScope(signedInSubject: str, grantedSubject: str, refreshIssued: bool, selected: NativeGoogleScopes, granted: NativeGoogleScopes): bool = {
+  val stored = nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, selected, granted)
+  (stored.readMail implies selected.readMail) and (stored.sendMail implies selected.sendMail) and (stored.trashMail implies selected.trashMail)
+  and (stored.readCalendar implies selected.readCalendar) and (stored.writeCalendar implies selected.writeCalendar)
+}
+pure def lawARequestNamingNoSelectionSelectsEveryScope(namedFields: int, named: NativeGoogleScopes): bool =
+  (nativeConnectSelectionNamed(namedFields) iff (namedFields == 0 or namedFields == nativeSelectionFields))
+  and (namedFields == 0 implies nativeConnectSelection(namedFields, named) == everyNativeGoogleScope)
+  and (namedFields == nativeSelectionFields implies nativeConnectSelection(namedFields, named) == named)
+pure def lawSelectingEveryScopeStoresWhatGoogleGranted(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): bool = {
+  val stored = nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, everyNativeGoogleScope, granted)
+  (signedInSubject != "" and signedInSubject == grantedSubject and refreshIssued) implies
+    stored == { readMail: granted.readMail, sendMail: granted.readMail and granted.sendMail, trashMail: granted.readMail and granted.trashMail,
+                readCalendar: granted.readCalendar, writeCalendar: granted.readCalendar and granted.writeCalendar }
 }
 ```

@@ -8,7 +8,7 @@ Tracks per-conversation optimistic concurrency for a workspace file: initial and
 
 ### Reading a file records its current revision and binds a resumable reference
 
-A file session tracks the current file revision, whether the conversation has read the file, the last read revision, whether the file exists, and whether an opaque read reference is bound to a revision.
+A file session tracks the current file revision, whether the conversation has read the file, the last read revision, whether the file exists, and whether an opaque read reference is bound to a revision. A file counts as read only when some of its content reached the model. A batch read shares one output limit across its files: each file's header names the range actually shown, a file cut short says the line or byte where it stopped with a reference to resume from there, and a file whose content did not fit at all is listed as not shown and is not recorded as read.
 
 ```quint
 type FileSession = {
@@ -112,6 +112,26 @@ pure def deleteExternally(s: FileSession): FileSession = {
 }
 pure val matchCountValues = Set(0, 1, 2)
 pure val expectedRevValues = Set(0, 1, 2, 3)
+```
+
+### A device file follows the same read-before-overwrite rule, by content
+
+A file on the paired device's filesystem has no inode or modification time, so
+its revision is the hash of its content. Creating a device file needs no prior
+read; overwriting one needs `overwrite = true` and a read in this conversation
+whose revision is still the file's current content. A write is done only once
+reading the file back returns the written content, and it returns an effect
+receipt. A read returns at most one output window of the file, says where it
+stopped and the offset to continue from, and never cuts base64 content mid
+quantum. A device bridge failure is a typed failure, never an empty result.
+
+```quint
+pure def deviceWriteAllowed(fileThere: bool, overwrite: bool, readMatchesCurrent: bool, hasSecret: bool): bool =
+  not(hasSecret) and (not(fileThere) or (overwrite and readMatchesCurrent))
+pure def lawDeviceOverwriteNeedsFreshRead(overwrite: bool, hasSecret: bool): bool =
+  not(deviceWriteAllowed(true, overwrite, false, hasSecret))
+pure def lawDeviceOverwriteNeedsFlag(readMatchesCurrent: bool, hasSecret: bool): bool =
+  not(deviceWriteAllowed(true, false, readMatchesCurrent, hasSecret))
 ```
 
 ### File session invariants and reachability

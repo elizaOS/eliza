@@ -1,9 +1,18 @@
-// spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"
+// spec/computerUse/sessions.md, "Story: Manage leased computer-use sessions with fresh observations"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+import { ElizaError } from "@elizaos/core"
 import type { LocalRoute, RouteInput } from "@elizaos/agent-host"
 import { isApprovalMode } from "./approvals.vibe"
 import { currentPlatform } from "./platform.vibe"
 import type { ComputerUseService } from "./service.vibe"
-import type { ComputerUseSessionAction, CreateComputerUseSessionInput } from "./sessions.vibe"
+import { LOCAL_HOST_PRINCIPAL, type ComputerUseSessionAction, type CreateComputerUseSessionInput } from "./sessions.vibe"
+
+const SURFACES = new Set(["LocalDesktop", "BrowserSurface", "MobileDevice", "RemoteDesktop"])
+
+function failureAnswer(err: unknown, fallbackStatus: number): Answer {
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof ElizaError && err.code === "approval_denied") return { status: 403, body: { error: message } }
+  return { status: fallbackStatus, body: { error: message } }
+}
 
 export type ComputerUseRouteTarget = () => ComputerUseService | undefined
 
@@ -30,34 +39,41 @@ function routeOver(target: ComputerUseRouteTarget) {
 export function computerUseRoutes(target: ComputerUseRouteTarget): LocalRoute[] {
   const route = routeOver(target)
   return [
-    route("GET", "/api/computer-use/apps", async (_input, service) => ({
-      status: 200,
-      body: { apps: await service.listApps(), readiness: service.getAppControlReadiness() },
-    })),
+    route("GET", "/api/computer-use/apps", async (input, service) => {
+      try {
+        return { status: 200, body: { apps: await service.listApps(input.signal), readiness: service.getAppControlReadiness() } }
+      } catch (err) {
+        return failureAnswer(err, 500)
+      }
+    }),
     route("GET", "/api/computer-use/apps/state", async (input, service) => {
       const app = input.query.get("app") ?? ""
       if (!app) return { status: 400, body: { error: "Missing app query parameter" } }
       try {
-        const state = await service.getAppState(app, { disableDiff: input.query.get("disableDiff") === "true" })
+        const state = await service.getAppState(app, { disableDiff: input.query.get("disableDiff") === "true" }, input.signal)
         return { status: 200, body: { state } }
       } catch (err) {
-        return { status: 404, body: { error: err instanceof Error ? err.message : String(err) } }
+        return failureAnswer(err, 404)
       }
     }),
     route("GET", "/api/computer-use/sessions", (_input, service) => ({
       status: 200,
       body: { sessions: service.listSessions(), approvals: service.getApprovalSnapshot() },
     })),
-    route("POST", "/api/computer-use/sessions", (input, service) => {
+    route("POST", "/api/computer-use/sessions", async (input, service) => {
       const body = (input.body && typeof input.body === "object" ? input.body : {}) as Partial<CreateComputerUseSessionInput>
       const targetSpec = body.target ?? { kind: "host" }
-      const created = service.createSession({
-        ...(body.ownerId ? { ownerId: body.ownerId } : {}),
-        ...(body.label ? { label: body.label } : {}),
-        ...(body.leaseTtlMs !== undefined ? { leaseTtlMs: body.leaseTtlMs } : {}),
-        target: targetSpec,
-      })
-      return { status: 201, body: { session: created } }
+      try {
+        const created = await service.createSession({
+          ownerId: LOCAL_HOST_PRINCIPAL,
+          ...(body.label ? { label: body.label } : {}),
+          ...(body.leaseTtlMs !== undefined ? { leaseTtlMs: body.leaseTtlMs } : {}),
+          target: targetSpec,
+        })
+        return { status: 201, body: { session: created } }
+      } catch (err) {
+        return failureAnswer(err, 400)
+      }
     }),
     route("GET", "/api/computer-use/sessions/{id}", (input, service) => {
       const session = service.getSession(param(input, "id"))
@@ -69,14 +85,20 @@ export function computerUseRoutes(target: ComputerUseRouteTarget): LocalRoute[] 
     }),
     route("POST", "/api/computer-use/sessions/{id}/actions", async (input, service) => {
       const body = (input.body && typeof input.body === "object" ? input.body : {}) as Partial<ComputerUseSessionAction>
-      if (!body.actionId || !body.command || typeof body.expectedSequence !== "number") {
-        return { status: 400, body: { error: "actionId, command, and expectedSequence are required" } }
+      if (
+        !body.actionId || !body.command || typeof body.expectedSequence !== "number" ||
+        typeof body.expectedEpoch !== "number" || typeof body.surface !== "string" || !SURFACES.has(body.surface)
+      ) {
+        return { status: 400, body: { error: "actionId, command, expectedSequence, expectedEpoch and surface are required" } }
       }
       try {
         const outcome = await service.executeSessionAction(param(input, "id"), {
           actionId: body.actionId,
           command: body.command,
           expectedSequence: body.expectedSequence,
+          callerId: LOCAL_HOST_PRINCIPAL,
+          expectedEpoch: body.expectedEpoch,
+          surface: body.surface,
           ...(body.parameters ? { parameters: body.parameters } : {}),
           ...(body.observationId ? { observationId: body.observationId } : {}),
           ...(body.observationSequence !== undefined ? { observationSequence: body.observationSequence } : {}),
@@ -105,10 +127,10 @@ export function computerUseRoutes(target: ComputerUseRouteTarget): LocalRoute[] 
     }),
     route("GET", "/api/computer-use/sessions/{id}/frame", async (input, service) => {
       try {
-        const frame = await service.captureSessionFrame(param(input, "id"))
+        const frame = await service.captureSessionFrame(param(input, "id"), input.signal)
         return { status: 200, body: { frame } }
       } catch (err) {
-        return { status: 409, body: { error: err instanceof Error ? err.message : String(err) } }
+        return failureAnswer(err, 409)
       }
     }),
     route("GET", "/api/computer-use/approvals", (_input, service) => ({

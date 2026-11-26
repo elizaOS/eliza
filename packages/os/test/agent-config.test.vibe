@@ -1,7 +1,8 @@
-// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "Story: Keep the credential out of every file and reply"
+// spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/agent/host/launch.md, "Story: Keep the credential out of every file and reply"; spec/os/android/taskKeys.md, "Story: Keep each account's tasks under its own key"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { decodeLaunchDocument, decodeLaunchFrame } from "@elizaos/agent"
+import { parseLaunch, startAgent, tasksModuleName } from "@elizaos/agent-host"
 import { ownKeyMaxUnits } from "../gen/agent__host__launch.ts"
 import { AGENT_ASSETS, AgentConfigRefused, admitAgentBytes, admitAgentData, type AgentFile } from "../src/build/agent-config.vibe"
 import { peerTrusted } from "../gen/os__agentService__channel.effect.vibe"
@@ -9,12 +10,51 @@ import { scratch, writeTree } from "./support/scratch.vibe"
 
 module node {
   import { execFileSync, spawnSync } from "node:child_process"
-  import { existsSync } from "node:fs"
+  import { existsSync, readdirSync } from "node:fs"
   import path from "node:path"
-  import { compileAdapter } from "./drivers/jvm-adapter.ts"
+  import { compileAdapter, orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts"
 
   const MAIN = "ai.eliza.os.agent.LaunchProjection"
   const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", "java") : "java"
+  const TASK_KEY_JOURNEY = "ai.eliza.plugins.signin.TaskKeyJourney"
+  const TASK_KEY_SOURCES = ["android/agent-service/src/main/java", "android/secure-store/src/main/java", "android/sign-in/src/main/java",
+    "test/fixtures/cloud-account", "test/drivers/java/media-checks/android-stubs"]
+
+  export interface TaskKeyWalk {
+    readonly first: string
+    readonly relaunch: string
+    readonly second: string
+    readonly signedInAgain: string
+    readonly afterRestart: string
+    readonly wrappingKeyLost: string
+    readonly retiredBeforeFramed: string
+    readonly unnamedAccount: string
+    readonly signedOutHasNoCredential: boolean
+    readonly sameEpochAskedAgain: boolean
+    readonly anotherAccountAsked: boolean
+    readonly retiredBySignOut: boolean
+    readonly askedAfterSignOut: boolean
+    readonly signOutDuringVerify: boolean
+    readonly refusals: readonly string[]
+  }
+
+  export async function walkTaskKeys(): Promise<TaskKeyWalk> {
+    const classpath = await orgJsonAdapterClasspath(TASK_KEY_JOURNEY, TASK_KEY_SOURCES)
+    return JSON.parse(execFileSync(java, ["-cp", classpath, TASK_KEY_JOURNEY], { encoding: "utf8", timeout: 120_000 })) as TaskKeyWalk
+  }
+
+  /** @throws {Error} */
+  export function framed(wire: string): { readonly epoch: number; readonly credentialVersion: number | undefined; readonly keyBytes: number; readonly key: string | undefined } {
+    const frame = JSON.parse(wire) as { readonly epoch: number; readonly credential?: { readonly version: number }; readonly storageKey?: string }
+    const key = frame.storageKey
+    return { epoch: frame.epoch, credentialVersion: frame.credential?.version, keyBytes: key === undefined ? 0 : Buffer.from(key, "base64").length, key }
+  }
+
+  /** @throws {Error} */
+  export function taskStoreFiles(state: string): string[] {
+    const tasks = path.join(state, "tasks")
+    return existsSync(tasks) ? readdirSync(tasks).sort() : []
+  }
 
   export interface Ask {
     readonly host: string
@@ -101,7 +141,7 @@ module node {
     return { exit: child.status, stateCreated: existsSync(state) }
   }
 }
-import { launchOutcome, lifecycle, patternFlags, peerAnswers, project, type Answer, type Ask } from node
+import { framed, launchOutcome, lifecycle, patternFlags, peerAnswers, project, taskStoreFiles, walkTaskKeys, type Answer, type Ask } from node
 
 type Files = Readonly<Record<AgentFile, string>>
 
@@ -342,6 +382,41 @@ it.effect('Only a cloud launch whose broker opened is handed the mail broker, by
   }
   assert.isTrue(cases.some(({ broker }, index) => broker === "open" && answers[index]?.kind === "admitted" && (answers[index]?.broker ?? []).length === 2))
 }, 180_000)
+
+effect function taskStoreAfterBoot(name: string, document: string, frame: string) {
+  const state = try scratch(name)
+  const parsed = try parseLaunch(document, frame.trimEnd())
+  const agent = try startAgent({ ...parsed, stateDirectory: state, binding: { kind: "socket", path: `${state}/agent.sock` } })
+  const exit = try Effect.promise(() => agent.stop())
+  return { exit, files: try Effect.try(() => taskStoreFiles(state)) }
+}
+
+it.effect('A signed-in launch is framed with its account\'s 32-byte task key for one newer epoch, and the agent opens its task store only under that key; a key retired before its frame is written, or an account custody cannot name, frames the launch without one, and a sign-out during a launch\'s verify leaves no key readable (spec/os/agentService/lifecycle.md, "A child is spawned only after the stale child is reaped, a key is held and every check passed"; spec/os/android/taskKeys.md, "The current account\'s key is released only as the storage key of a launch newer than every earlier one"; spec/os/android/taskKeys.md, "Each account has at most one task key, and a stored key is never replaced"; spec/os/android/taskKeys.md, "An account change, a sign-out or a reset retires the release"; spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account")', effect () => {
+  provide NodeServices.layer {
+    const seen = try Effect.promise(() => walkTaskKeys())
+    const [first, relaunch, second, signedInAgain, afterRestart, wrappingKeyLost] = try Effect.try(() =>
+      [seen.first, seen.relaunch, seen.second, seen.signedInAgain, seen.afterRestart, seen.wrappingKeyLost].map(framed))
+    assert.deepStrictEqual(
+      [first, relaunch, second, signedInAgain, afterRestart, wrappingKeyLost].map((frame) => [frame?.epoch, frame?.credentialVersion, frame?.keyBytes]),
+      [[1, 1, 32], [2, 1, 32], [4, 2, 32], [5, 3, 32], [6, 3, 32], [7, 3, 0]])
+    assert.deepStrictEqual([relaunch?.key, signedInAgain?.key, afterRestart?.key], [first?.key, first?.key, first?.key])
+    assert.notStrictEqual(second?.key, first?.key)
+    assert.deepStrictEqual(
+      [seen.signedOutHasNoCredential, seen.sameEpochAskedAgain, seen.anotherAccountAsked, seen.retiredBySignOut, seen.askedAfterSignOut, seen.signOutDuringVerify],
+      [true, true, true, true, true, true])
+    const [retiredBeforeFramed, unnamedAccount] = try Effect.try(() => [seen.retiredBeforeFramed, seen.unnamedAccount].map(framed))
+    assert.deepStrictEqual([retiredBeforeFramed, unnamedAccount].map((frame) => [frame?.epoch, frame?.keyBytes]), [[3, 0], [8, 0]])
+    assert.deepStrictEqual(seen.refusals, ["StaleEpoch", "NotVerifiedAccount", "NotVerifiedAccount", "KeyUnavailable", "NotVerifiedAccount"])
+
+    const [launch] = try Effect.try(() => project([{
+      ...files({ ...HOST, model: { backend: "none" }, callerRole: "owner" }, CHARACTER, { ...POLICY, plugins: { load: [tasksModuleName] } }),
+      account: ACCOUNT,
+    }]))
+    const document = (try admittedAnswer(launch)).document
+    assert.deepStrictEqual(try taskStoreAfterBoot("task-key-framed", document, seen.first), { exit: 0, files: ["tasks.sqlite"] })
+    assert.deepStrictEqual(try taskStoreAfterBoot("task-key-refused", document, seen.wrappingKeyLost), { exit: 0, files: [] })
+  }
+}, 240_000)
 
 const UNICODE_CHARACTER_CLASS = 0x100
 const INLINE_UNICODE_CHARACTER_CLASS = /(?:^|[^\\])(?:\\\\)*\(\?[a-zA-Z-]*U[a-zA-Z-]*[:)]/

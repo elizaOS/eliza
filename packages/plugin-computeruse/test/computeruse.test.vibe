@@ -5,6 +5,7 @@ import { base64ToBytes, makeTempFilePath, makeTestPngBase64 } from "./support/pn
 import {
   AppControlCoordinator,
   BoundComputerHost,
+  buildApprovalPromptContent,
   Brain,
   ComputerOperationRefused,
   ComputerUseService,
@@ -67,6 +68,7 @@ import {
   type ComputerUseHostDriver,
   type SandboxBackend,
 } from "../src/index.vibe"
+import { killHostApp, performHostWindowControl } from "../src/platform.vibe"
 
 function makeFakeDriver(pngBase64: string, log: string[]): ComputerUseHostDriver {
   let clip = "initial-clipboard"
@@ -216,7 +218,9 @@ describe("plugin-computeruse journeys", () => {
         now: () => nowMs,
       })
 
-      const created = service.createSession({ ownerId: "owner-1", label: "Primary Desk", target: { kind: "host" }, leaseTtlMs: 30_000 })
+      const created = try promise(() => service.createSession({ ownerId: "owner-1", label: "Primary Desk", target: { kind: "host" }, leaseTtlMs: 30_000 }))
+      const unboundSandbox = try exit(promise(() => service.createSession({ target: { kind: "sandbox" } })))
+      try Effect.try(() => assert.strictEqual(Exit.isFailure(unboundSandbox), true))
       try Effect.try(() => {
         assert.strictEqual(created.status, "idle")
         assert.strictEqual(created.generation, 1)
@@ -237,8 +241,45 @@ describe("plugin-computeruse journeys", () => {
           command: "click",
           parameters: { coordinate: [100, 120] },
           observationId: frame.provenance.observationId,
+          callerId: "owner-1",
+          expectedEpoch: created.generation,
+          surface: "LocalDesktop",
         }),
       )
+      const staleEpoch = try exit(promise(() =>
+        service.executeSessionAction(created.id, {
+          actionId: "act-stale",
+          expectedSequence: execRes.snapshot.sequence,
+          command: "click",
+          parameters: { coordinate: [100, 120] },
+          observationId: frame.provenance.observationId,
+          callerId: "owner-1",
+          expectedEpoch: created.generation + 1,
+          surface: "LocalDesktop",
+        }),
+      ))
+      try Effect.try(() => assert.strictEqual(Exit.isFailure(staleEpoch), true))
+      const routeAction = computerUseRoutes(() => service).find((r) => r.method === "POST" && r.path === "/api/computer-use/sessions/{id}/actions")
+      const routeOnOtherOwner = try promise(async () => routeAction?.handler({
+        parameters: new Map([["id", created.id]]),
+        query: new Map(),
+        headers: new Map(),
+        body: {
+          actionId: "act-route",
+          command: "click",
+          parameters: { coordinate: [1, 1] },
+          observationId: frame.provenance.observationId,
+          expectedSequence: execRes.snapshot.sequence,
+          expectedEpoch: created.generation,
+          surface: "LocalDesktop",
+        },
+        signal: new AbortController().signal,
+      }))
+      try Effect.try(() => {
+        const answer = routeOnOtherOwner as { readonly status: number; readonly body: { readonly error?: string } }
+        assert.strictEqual(answer.status, 409)
+        assert.match(answer.body.error ?? "", /not authorized/)
+      })
       try Effect.try(() => {
         assert.strictEqual(execRes.result.success, true)
         assert.strictEqual(execRes.snapshot.lastActionId, "act-1")
@@ -282,6 +323,15 @@ describe("plugin-computeruse journeys", () => {
         assert.strictEqual(snap.pendingCount, 1)
       })
       const pendingId = snap.pendingApprovals[0]?.id ?? ""
+      const promptText = snap.pendingApprovals[0] ? buildApprovalPromptContent(snap.pendingApprovals[0]).text ?? "" : ""
+      const selfApproval = try promise(() =>
+        useComputerAction.handler(runtime, makeMessage("click the approve button"), {} as State, { parameters: { action: "resolve_approval", approvalId: pendingId, approved: true } }),
+      )
+      try Effect.try(() => {
+        assert.include(promptText, "coordinate: [20,30]")
+        assert.strictEqual(service.getApprovalSnapshot().pendingCount, 1)
+        assert.strictEqual(selfApproval.success, false)
+      })
 
       const missingOwner = try promise(() =>
         useComputerAction.handler(runtime, makeMessage(`cua:${pendingId}:approve:uowner-A`, {}), {} as State),
@@ -313,6 +363,34 @@ describe("plugin-computeruse journeys", () => {
         assert.strictEqual(offSnap.pendingCount, 0)
         assert.strictEqual(secondResult.success, false)
       })
+      const offSession = try promise(() => service.createSession({ target: { kind: "host" } }))
+      const offFrame = try exit(promise(() => service.captureSessionFrame(offSession.id)))
+      const offApps = try exit(promise(() => service.listApps()))
+      const offScene = try exit(promise(() => service.refreshScene("agent-turn")))
+      const offAppState = try promise(() => service.executeCommand("get_app_state", { app: "Notes" }))
+      const offProvider = try promise(() => sceneProvider.get(runtime, makeMessage(""), {} as State))
+      const offAgent = try promise(() => runComputerUseAgentLoop(runtime, { goal: "open notes" }, service))
+      try Effect.try(() => {
+        assert.strictEqual(Exit.isFailure(offFrame), true)
+        assert.strictEqual(Exit.isFailure(offApps), true)
+        assert.strictEqual(Exit.isFailure(offScene), true)
+        assert.strictEqual(offAppState.errorCode, "approval_denied")
+        assert.strictEqual(offProvider.text, "")
+        assert.strictEqual(offAgent.reason, "approval_denied")
+        assert.strictEqual(offAgent.finished, false)
+        assert.strictEqual(windowAction.roleGate?.minRole, "OWNER")
+        assert.strictEqual(clipboardAction.roleGate?.minRole, "OWNER")
+      })
+      service.setApprovalMode("smart_approve")
+      const pendingClipboard = fork promise(() => service.executeCommand("clipboard_read"))
+      try yieldNow
+      const clipboardQueued = service.getApprovalSnapshot().pendingApprovals.map((a) => a.command)
+      service.setApprovalMode("off")
+      const clipboardResult = join pendingClipboard
+      try Effect.try(() => {
+        assert.deepStrictEqual(clipboardQueued, ["clipboard_read"])
+        assert.strictEqual(clipboardResult.success, false)
+      })
     },
   )
 
@@ -325,6 +403,12 @@ describe("plugin-computeruse journeys", () => {
         driver: makeFakeDriver(png, log),
       })
       const runtime = makeFakeRuntime(service)
+      const ocrMissing = try promise(() => service.executeDesktopAction({ action: "ocr" }))
+      const openInjected = try promise(() => service.executeDesktopAction({ action: "open", target: "https://x.test/&calc" }))
+      try Effect.try(() => {
+        assert.strictEqual(ocrMissing.errorCode, "ocr_unavailable")
+        assert.strictEqual(openInjected.errorCode, "invalid_target")
+      })
 
       const batchSteps: Array<Record<string, string | number[]>> = [
         { action: "click", coordinate: [50, 60] },
@@ -520,8 +604,28 @@ describe("plugin-computeruse journeys", () => {
     },
   )
 
-  it.effect("Security guards, real file/terminal ops, AppControl, MCP, routes, sandbox, mobile, providers, and parity matrix", () =>
+  it.effect("Security guards, real file/terminal ops, AppControl, MCP, routes, sandbox, mobile, providers, and parity matrix (spec/computerUse/index.md, \"Terminating an app names one exact process and never the agent itself\"; spec/computerUse/index.md, \"A window command acts on the matched window with the host's own tool, or fails\")", () =>
     effect {
+      const killSelf = try Effect.flip(killHostApp("node"))
+      const killPattern = try Effect.flip(killHostApp(".*"))
+      const killOption = try Effect.flip(killHostApp("-9"))
+      try Effect.try(() => {
+        assert.strictEqual(killSelf._tag, "KillAppRefused")
+        assert.ok(killSelf.reason.includes("own process"))
+        assert.strictEqual(killPattern._tag, "KillAppRefused")
+        assert.strictEqual(killOption._tag, "KillAppRefused")
+      })
+      const someWindow = { id: "0x01", title: "Editor", app: "editor" }
+      const arrangeRefused = try Effect.flip(performHostWindowControl("arrange", someWindow, {}))
+      const moveWithoutPoint = try Effect.flip(performHostWindowControl("move", someWindow, {}))
+      const boundsWithoutSize = try Effect.flip(performHostWindowControl("set_bounds", someWindow, { x: 1, y: 2 }))
+      const closeWithoutWindow = try Effect.flip(performHostWindowControl("close", undefined, {}))
+      try Effect.try(() => {
+        for (const refused of [arrangeRefused, moveWithoutPoint, boundsWithoutSize, closeWithoutWindow]) {
+          assert.strictEqual(refused._tag, "WindowControlUnsupported")
+        }
+        assert.ok(moveWithoutPoint._tag === "WindowControlUnsupported" && moveWithoutPoint.reason.includes("x and y"))
+      })
       const log: string[] = []
       const png = try Effect.orDie(Effect.try({ try: () => makeTestPngBase64(32, 32, "gradient"), catch: (e) => e }))
       const cdpLog: string[] = []
@@ -631,6 +735,7 @@ describe("plugin-computeruse journeys", () => {
 
       let elemValue = "draft"
       const coordinator = new AppControlCoordinator({
+        readiness: () => ({ accessibility: true, screenRecording: true }),
         listApps: async () => [{ appId: "app-notes", name: "Notes", pid: 55, windowCount: 1 }],
         captureElements: async () => ({
           elements: [{ element_index: 0, locator: [0, 1], role: "AXTextField", label: "Body", value: elemValue, bounds: { x: 10, y: 10, width: 200, height: 40 }, actions: ["set_value"], enabled: true, secure: false }],
@@ -678,6 +783,12 @@ describe("plugin-computeruse journeys", () => {
       const sceneProv = try promise(() => sceneProvider.get(runtime, makeMessage(""), {} as State))
       const visionSvc = new VisionContextProvider(runtime)
       const visionCtx = try promise(() => visionSvc.getContext())
+      const sceneCachedBeforeOff = service.getCurrentScene() !== null
+      service.setApprovalMode("off")
+      const visionOff = try promise(() => visionSvc.getContext())
+      service.setApprovalMode("approve_all")
+      const visionAskFirst = try promise(() => visionSvc.getContext())
+      service.setApprovalMode("full_control")
 
       _resetOcrProvidersForTests()
       setAndroidBridge(null)
@@ -697,6 +808,11 @@ describe("plugin-computeruse journeys", () => {
         assert.ok((stateProv.discoveryText ?? "").includes("Screen"))
         assert.ok((sceneProv.discoveryText ?? "").includes("Scene"))
         assert.strictEqual(visionCtx.currentTaskGoal, "Save edited file")
+        assert.strictEqual(sceneCachedBeforeOff, true)
+        assert.deepStrictEqual(visionOff.openApps, [])
+        assert.strictEqual(visionOff.focusedWindow, null)
+        assert.deepStrictEqual(visionAskFirst.openApps, [])
+        assert.strictEqual(visionAskFirst.focusedWindow, null)
         assert.strictEqual(androidFeatureCheck().available, false)
         assert.strictEqual(iosFeatureCheck().intentCount >= 4, true)
         assert.strictEqual(findIosAppIntent("com.apple.shortcuts.run")?.bundleId, "com.apple.shortcuts")

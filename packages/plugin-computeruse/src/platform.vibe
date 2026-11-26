@@ -1,4 +1,6 @@
-// spec/computerUse/observation.md, "Change detection, image attachment policy, pixel budgets, and coordinate bounds obey pure safety laws"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+// spec/computerUse/index.md, "Terminating an app names one exact process and never the agent itself"; spec/computerUse/index.md, "A window command acts on the matched window with the host's own tool, or fails"; spec/computerUse/observation.md, "Change detection, image attachment policy, pixel budgets, and coordinate bounds obey pure safety laws"; spec/computerUse/index.md, "A command is scoped to one session generation, surface and authorized operation"
+import { hostWindowActionSupported, killTargetAllowed } from "../gen/computerUse.effect.vibe"
+import type { HostWindowAction, HostWindowTool } from "../gen/computerUse.ts"
 import { clampCoord, pointInDisplayBounds } from "../gen/computerUse__observation.effect.vibe"
 import {
   base64ToBytes,
@@ -11,6 +13,7 @@ import {
   isHeadfulGuiAvailable,
   isWaylandSession,
   makeTempFilePath,
+  ownProcessNames,
   parseJsonSafe,
   readFileBytesAndRemove,
   runNativeCommand,
@@ -1219,76 +1222,157 @@ export effect function performDesktopKeyHold(key: string, direction: "down" | "u
   throw new PermissionDeniedError({ permissionType: "accessibility", reason: `key_${direction} requires native driver support on ${platform}` })
 }
 
+export error WindowControlUnsupported { action: string; reason: string }
+
+type HostWindowCommand = "focus" | "switch" | "arrange" | "move" | "minimize" | "maximize" | "restore" | "close" | "set_bounds"
+
+function toHostWindowAction(action: HostWindowCommand): HostWindowAction {
+  switch (action) {
+    case "focus":
+    case "switch":
+      return "WindowFocus"
+    case "minimize":
+      return "WindowMinimize"
+    case "maximize":
+      return "WindowMaximize"
+    case "restore":
+      return "WindowRestore"
+    case "close":
+      return "WindowClose"
+    case "move":
+      return "WindowMove"
+    case "set_bounds":
+      return "WindowSetBounds"
+    case "arrange":
+      return "WindowArrange"
+  }
+}
+
+function windowPoint(params: { readonly x?: number; readonly y?: number }): { readonly x: number; readonly y: number } | undefined {
+  return typeof params.x === "number" && Number.isFinite(params.x) && typeof params.y === "number" && Number.isFinite(params.y)
+    ? { x: Math.round(params.x), y: Math.round(params.y) }
+    : undefined
+}
+
+function windowSize(params: { readonly width?: number; readonly height?: number }): { readonly width: number; readonly height: number } | undefined {
+  return typeof params.width === "number" && params.width >= 1 && typeof params.height === "number" && params.height >= 1
+    ? { width: Math.round(params.width), height: Math.round(params.height) }
+    : undefined
+}
+
 export effect function performHostWindowControl(
-  action: "focus" | "switch" | "arrange" | "move" | "minimize" | "maximize" | "restore" | "close" | "set_bounds",
+  action: HostWindowCommand,
   target: WindowInfo | undefined,
   params: { readonly arrangement?: string; readonly x?: number; readonly y?: number; readonly width?: number; readonly height?: number },
-): boolean!PermissionDeniedError {
+): boolean!(PermissionDeniedError | WindowControlUnsupported) {
+  const wanted = toHostWindowAction(action)
+  if (wanted === "WindowArrange") throw new WindowControlUnsupported({ action, reason: "Arranging windows has no host tool." })
+  if (!target) throw new WindowControlUnsupported({ action, reason: `Window ${action} needs a matched window.` })
+  const point = windowPoint(params)
+  const size = windowSize(params)
+  if ((action === "move" || action === "set_bounds") && !point) {
+    throw new WindowControlUnsupported({ action, reason: `Window ${action} needs numeric x and y.` })
+  }
+  if (action === "set_bounds" && !size) {
+    throw new WindowControlUnsupported({ action, reason: "Window set_bounds needs a width and height of at least 1." })
+  }
   const platform = try nativePlatform()
   const env = try nativeCleanEnv()
+  let tool: HostWindowTool = "WindowsUser32"
   if (platform === "darwin") {
-    if (action === "arrange") {
-      const script = "tell application \"System Events\" to set frontmost of first application process whose visible is true to true"
-      try runCheckedInputTool("osascript", ["-e", script], { env, failLabel: "osascript arrange", darwinClassify: true })
-      return true
+    tool = "MacSystemEvents"
+  } else if (platform !== "win32") {
+    if (try nativeHasCommand("wmctrl")) {
+      tool = "LinuxWmctrl"
+    } else if (try nativeHasCommand("xdotool")) {
+      tool = "LinuxXdotool"
+    } else {
+      throw new PermissionDeniedError({ permissionType: "accessibility", reason: "wmctrl or xdotool is required for Linux window control" })
     }
-    if (!target) return false
+  }
+  if (!hostWindowActionSupported(tool, wanted)) {
+    throw new WindowControlUnsupported({ action, reason: `Window ${action} is not supported by ${tool}.` })
+  }
+  if (tool === "MacSystemEvents") {
     const appEsc = escapeAppleScript(target.app)
+    const win = `(first window whose name is "${escapeAppleScript(target.title)}")`
+    const inProcess = (body: string) => `tell application "System Events" to tell process "${appEsc}" to ${body}`
     const script = action === "focus" || action === "switch"
-      ? `tell application "${appEsc}" to activate`
+      ? `tell application "${appEsc}" to activate\n${inProcess(`perform action "AXRaise" of ${win}`)}`
       : action === "minimize"
-        ? `tell application "System Events" to tell process "${appEsc}" to set value of attribute "AXMinimized" of window 1 to true`
+        ? inProcess(`set value of attribute "AXMinimized" of ${win} to true`)
         : action === "restore"
-          ? `tell application "System Events" to tell process "${appEsc}" to set value of attribute "AXMinimized" of window 1 to false`
+          ? inProcess(`set value of attribute "AXMinimized" of ${win} to false`)
           : action === "maximize"
-            ? `tell application "System Events" to tell process "${appEsc}" to click (first button of window 1 whose subrole is "AXFullScreenButton")`
+            ? inProcess(`click (first button of ${win} whose subrole is "AXFullScreenButton")`)
             : action === "close"
-              ? `tell application "System Events" to tell process "${appEsc}" to click (first button of window 1 whose subrole is "AXCloseButton")`
+              ? inProcess(`click (first button of ${win} whose subrole is "AXCloseButton")`)
               : action === "move"
-                ? `tell application "System Events" to tell process "${appEsc}" to set position of window 1 to {${Math.round(params.x ?? 0)}, ${Math.round(params.y ?? 0)}}`
-                : `tell application "System Events" to tell process "${appEsc}" to set {position, size} of window 1 to {{${Math.round(params.x ?? 0)}, ${Math.round(params.y ?? 0)}}, {${Math.max(1, Math.round(params.width ?? 800))}, ${Math.max(1, Math.round(params.height ?? 600))}}}`
+                ? inProcess(`set position of ${win} to {${point?.x}, ${point?.y}}`)
+                : inProcess(`set {position, size} of ${win} to {{${point?.x}, ${point?.y}}, {${size?.width}, ${size?.height}}}`)
     try runCheckedInputTool("osascript", ["-e", script], { env, failLabel: `osascript window ${action}`, darwinClassify: true })
     return true
   }
-  if (platform === "linux") {
-    if (try nativeHasCommand("wmctrl")) {
-      if (action === "arrange") return true
-      if (!target) return false
-      const args = action === "focus" || action === "switch"
-        ? ["-ia", target.id]
-        : action === "close"
-          ? ["-ic", target.id]
-          : action === "maximize"
-            ? ["-ir", target.id, "-b", "add,maximized_vert,maximized_horz"]
-            : action === "restore"
-              ? ["-ir", target.id, "-b", "remove,maximized_vert,maximized_horz"]
-              : action === "minimize"
-                ? ["-ir", target.id, "-b", "add,hidden"]
-                : ["-ir", target.id, "-e", `0,${Math.round(params.x ?? 0)},${Math.round(params.y ?? 0)},${Math.round(params.width ?? -1)},${Math.round(params.height ?? -1)}`]
-      try runCheckedInputTool("wmctrl", args, { env, failLabel: `wmctrl ${action}` })
-      return true
-    }
-    if (try nativeHasCommand("xdotool")) {
-      if (!target) return action === "arrange"
-      const args = action === "focus" || action === "switch"
-        ? ["windowactivate", target.id]
-        : action === "minimize"
-          ? ["windowminimize", target.id]
-          : action === "close"
-            ? ["windowclose", target.id]
-            : ["windowmove", target.id, String(Math.round(params.x ?? 0)), String(Math.round(params.y ?? 0))]
-      try runCheckedInputTool("xdotool", args, { env, failLabel: `xdotool ${action}` })
-      return true
-    }
-    throw new PermissionDeniedError({ permissionType: "accessibility", reason: "wmctrl or xdotool is required for Linux window control" })
+  if (tool === "LinuxWmctrl") {
+    const args = action === "focus" || action === "switch"
+      ? ["-ia", target.id]
+      : action === "close"
+        ? ["-ic", target.id]
+        : action === "maximize"
+          ? ["-ir", target.id, "-b", "add,maximized_vert,maximized_horz"]
+          : action === "restore"
+            ? ["-ir", target.id, "-b", "remove,maximized_vert,maximized_horz,hidden"]
+            : action === "minimize"
+              ? ["-ir", target.id, "-b", "add,hidden"]
+              : action === "move"
+                ? ["-ir", target.id, "-e", `0,${point?.x},${point?.y},-1,-1`]
+                : ["-ir", target.id, "-e", `0,${point?.x},${point?.y},${size?.width},${size?.height}`]
+    try runCheckedInputTool("wmctrl", args, { env, failLabel: `wmctrl ${action}` })
+    return true
   }
-  if (!target) return action === "arrange"
+  if (tool === "LinuxXdotool") {
+    const commands = action === "focus" || action === "switch"
+      ? [["windowactivate", target.id]]
+      : action === "minimize"
+        ? [["windowminimize", target.id]]
+        : action === "close"
+          ? [["windowclose", target.id]]
+          : action === "move"
+            ? [["windowmove", target.id, String(point?.x), String(point?.y)]]
+            : [["windowmove", target.id, String(point?.x), String(point?.y)], ["windowsize", target.id, String(size?.width), String(size?.height)]]
+    for (const args of commands) {
+      try runCheckedInputTool("xdotool", args, { env, failLabel: `xdotool ${action}` })
+    }
+    return true
+  }
   const handle = Number(target.id)
-  if (!Number.isSafeInteger(handle)) return false
-  const cmdCode = action === "minimize" ? 6 : action === "maximize" ? 3 : action === "restore" ? 9 : 5
-  const ps = action === "move" || action === "set_bounds"
-    ? `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);' -Name U32W -Namespace Cua; [Cua.U32W]::MoveWindow([IntPtr]${handle},${Math.round(params.x ?? 0)},${Math.round(params.y ?? 0)},${Math.max(1, Math.round(params.width ?? 800))},${Math.max(1, Math.round(params.height ?? 600))},$true)`
-    : `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int c); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);' -Name U32W -Namespace Cua; [Cua.U32W]::ShowWindow([IntPtr]${handle},${cmdCode}); [Cua.U32W]::SetForegroundWindow([IntPtr]${handle})`
+  if (!Number.isSafeInteger(handle)) throw new WindowControlUnsupported({ action, reason: `Window id ${target.id} is not a Windows handle.` })
+  const user32 = (signature: string, call: string) =>
+    `Add-Type -MemberDefinition '${signature}' -Name U32W -Namespace Cua; if (-not (${call})) { exit 1 }`
+  const ps = action === "focus" || action === "switch"
+    ? user32(
+        '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int c); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+        `[void][Cua.U32W]::ShowWindow([IntPtr]${handle},5); [Cua.U32W]::SetForegroundWindow([IntPtr]${handle})`,
+      )
+    : action === "minimize" || action === "maximize" || action === "restore"
+      ? user32(
+          '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h,int c);',
+          `[Cua.U32W]::ShowWindowAsync([IntPtr]${handle},${action === "minimize" ? 6 : action === "maximize" ? 3 : 9})`,
+        )
+      : action === "close"
+        ? user32(
+            '[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,uint m,IntPtr w,IntPtr l);',
+            `[Cua.U32W]::PostMessage([IntPtr]${handle},0x0010,[IntPtr]::Zero,[IntPtr]::Zero)`,
+          )
+        : action === "move"
+          ? user32(
+              '[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr a,int x,int y,int w,int ht,uint f);',
+              `[Cua.U32W]::SetWindowPos([IntPtr]${handle},[IntPtr]::Zero,${point?.x},${point?.y},0,0,0x0005)`,
+            )
+          : user32(
+              '[DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);',
+              `[Cua.U32W]::MoveWindow([IntPtr]${handle},${point?.x},${point?.y},${size?.width},${size?.height},$true)`,
+            )
   try runCheckedInputTool("powershell.exe", ["-NoProfile", "-Command", ps], { env, failLabel: `PowerShell window ${action}`, timeoutMs: 6000 })
   return true
 }
@@ -1324,23 +1408,33 @@ export function launchHostApp(app: string, appArgs: readonly string[] = []): { r
 export effect function openHostTarget(target: string): boolean!! {
   const env = try nativeCleanEnv()
   const platform = try nativePlatform()
-  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "cmd" : "xdg-open"
-  const args = platform === "win32" ? ["/c", "start", "", target] : [target]
+  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "rundll32" : "xdg-open"
+  const args = platform === "win32" ? ["url.dll,FileProtocolHandler", target] : [target]
   const res = try promise(() => runNativeCommand(cmd, args, { timeoutMs: 5000, env }))
   return res.exitCode === 0
 }
 
-export effect function killHostApp(app: string): boolean!! {
+export error KillAppRefused { app: string; reason: string }
+
+export effect function killHostApp(app: string): boolean!KillAppRefused {
+  const name = app.trim()
+  const own = try Effect.orDie(Effect.try({ try: () => ownProcessNames(), catch: (e) => e }))
+  const patternLike = name.startsWith("-") || /[\\/*?[\]^$|()+{}]/u.test(name)
+  const ownProcess = own.includes(name.toLowerCase().replace(/\.exe$/u, ""))
+  if (!killTargetAllowed(name === "", patternLike, ownProcess)) {
+    throw new KillAppRefused({
+      app,
+      reason: ownProcess
+        ? `${name} is the agent's own process name; it would terminate the agent.`
+        : "kill_app takes one exact process name, not a path, pattern or option.",
+    })
+  }
   const env = try nativeCleanEnv()
   const platform = try nativePlatform()
-  if (platform === "darwin") {
-    const res = try promise(() => runNativeCommand("pkill", ["-x", app], { timeoutMs: 4000, env }))
-    return res.exitCode === 0
-  }
   if (platform === "win32") {
-    const res = try promise(() => runNativeCommand("taskkill", ["/IM", app, "/F"], { timeoutMs: 4000, env }))
+    const res = try promise(() => runNativeCommand("taskkill", ["/IM", name, "/F"], { timeoutMs: 4000, env }))
     return res.exitCode === 0
   }
-  const res = try promise(() => runNativeCommand("pkill", ["-f", app], { timeoutMs: 4000, env }))
+  const res = try promise(() => runNativeCommand("pkill", ["-x", "--", name], { timeoutMs: 4000, env }))
   return res.exitCode === 0
 }

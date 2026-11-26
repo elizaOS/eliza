@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import * as client from "../gen/cloud__client.ts";
 import * as spec from "../gen/os__signIn__cloudRequests.ts";
-import { compileAdapter } from "./drivers/jvm-adapter.ts";
+import { compileAdapter, orgJsonAdapterClasspath } from "./drivers/jvm-adapter.ts";
 import { expectCasesAgree, javaTool, type Case } from "./support/law-cases.ts";
 
 interface Origins { readonly fn: "originOf"; readonly accepted: Readonly<Record<string, boolean>> }
@@ -42,9 +42,9 @@ describe("Reach my account's cloud services without holding my key", () => {
     for (const c of sent) expect(c.args[4]).not.toContain("Authorization");
   });
 
-  it("asks a device with an old key to sign in once and sends mail only with the lease after a lost rotation reply", () => {
+  it('asks a device with an old key to sign in once and sends mail only with the lease after a lost rotation reply (spec/os/signIn/credential.md, "A mail lease upgrade can only replace the active key for the same account")', async () => {
     const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
-    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "cloud"], { encoding: "utf8", timeout: 120_000 })) as unknown;
+    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", await orgJsonAdapterClasspath(main), main, "cloud"], { encoding: "utf8", timeout: 120_000 })) as unknown;
     expect(seen).toEqual({
       mailSignedOut: "SIGN_IN_REQUIRED",
       keyOnlySignIn: "SIGNED_IN",
@@ -59,6 +59,7 @@ describe("Reach my account's cloud services without holding my key", () => {
       refusalsKeptOldKey: true,
       restartRetiredPendingUpgrade: true,
       failedUpgradeAcknowledgements: 0,
+      nativeGoogleUpgradeBoundToOwner: true,
       leasedSignIn: "SIGNED_IN",
       upgradeStayedWithOwner: true,
       mailAfterLostRotation: "NETWORK",
@@ -87,9 +88,9 @@ describe("Reach my account's cloud services without holding my key", () => {
     });
   });
 
-  it("uses only the named credential’s billing session and ignores an old rejection", () => {
+  it("uses only the named credential’s billing session and ignores an old rejection", async () => {
     const main = "ai.eliza.plugins.signin.DeviceKeyJourney";
-    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", compileAdapter(main), main, "billing"], { encoding: "utf8", timeout: 120_000 })) as unknown;
+    const seen = JSON.parse(execFileSync(javaTool("java"), ["-cp", await orgJsonAdapterClasspath(main), main, "billing"], { encoding: "utf8", timeout: 120_000 })) as unknown;
     expect(seen).toEqual({
       billingWithoutSession: "REAUTH_REQUIRED",
       billingWithStaleCredential: "SIGN_IN_REQUIRED",
@@ -174,7 +175,7 @@ describe("Let my agent read my mail without holding a mail credential", () => {
       forwarded: [
         "/api/v1/eliza/google/accounts?side=owner as owner",
         "/api/v1/eliza/google/gmail/search?side=owner&grantId=g1&query=in%3Ainbox&maxResults=25 as owner",
-        ...Array.from({ length: 10 }, () => "/api/v1/eliza/google/accounts?side=owner as owner"),
+        ...Array.from({ length: 14 }, () => "/api/v1/eliza/google/accounts?side=owner as owner"),
       ].join(","),
     });
   });

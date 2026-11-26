@@ -108,6 +108,9 @@ export const sceneProvider: Provider = {
   get: async (runtime: IAgentRuntime): Promise<ProviderResult> => {
     const service = getComputerUseService(runtime)
     if (!service) return { text: "" }
+    if (!service.observationAutoApproved()) {
+      return { text: "", discoveryText: `Scene withheld: approval mode ${service.getApprovalSnapshot().mode} does not auto-approve screen reads.` }
+    }
     const scene = await service.refreshScene("agent-turn")
     const serialized = serializeSceneForPrompt(scene, {
       compact: true,
