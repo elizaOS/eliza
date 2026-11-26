@@ -791,7 +791,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     return [answer.text, calls]
   }
   const reporting = (said: string) => `[answer] ${said}\n[reported: "${said}"]`
-  const toldInItsWords = try secondAnswer("Done!", reporting("7 divided by 0 has no answer, so I couldn't work it out."))
+  const toldInItsWords = try secondAnswer("Done!", reporting("7 divided by 0 has no answer (a divide-by-zero), so I couldn't work it out."))
   const cuedAgain = try secondAnswer("Done!", "One sec.")
   const stoodBy = try secondAnswer("You can't divide 7 by 0.", `You can't divide 7 by 0.\n[reported: "You can't divide 7 by 0."]`)
   const doneTwice = try secondAnswer("Done!", "Done!")
@@ -989,7 +989,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     ],
     failed: [true, 3, "Done!", true],
     notFinal: {
-      toldInItsWords: ["7 divided by 0 has no answer, so I couldn't work it out.", 3], cuedAgain: [noAnswer, 3], stoodBy: ["You can't divide 7 by 0.", 3],
+      toldInItsWords: ["7 divided by 0 has no answer (a divide-by-zero), so I couldn't work it out.", 3], cuedAgain: [noAnswer, 3], stoodBy: ["You can't divide 7 by 0.", 3],
       doneTwice: [noAnswer, 3], keptSuccess: [noAnswer, 3], misquoted: [noAnswer, 3], curlyQuoted: ["7 divided by 0 doesn’t work, so there’s no answer.", 3], fragmentQuoted: [noAnswer, 3], repeatedQuoted: [noAnswer, 3],
       blankAgain: [noAnswer, 6], dayRevised: ["7 divided by 0 has no answer.", 3], ownersReport: true, fencedReport: true,
     },

@@ -110,7 +110,7 @@ const closers = `[*_"'”’)\\]]*`
 const opensASentence = `(?<=(?:^|${sentenceEnd}${closers}\\s+|\\n[ \\t]*(?:[-*•][ \\t]+|\\d+[.)][ \\t]+)?)[*_"“]*)`
 const closesASentence = `(?:${sentenceEnd}+(?=${closers}(?:\\s|$))|(?=${closers}[ \\t]*(?:\\n|$)))`
 const asWritten = (word: string) => [...word].map((char) =>
-  /['‘’]/u.test(char) ? "['‘’]" : /["“”]/u.test(char) ? `["“”]` : char.replace(/[.*+?^${}()|[\]\\/-]/gu, "\\$&")).join("")
+  /['‘’]/u.test(char) ? "['‘’]" : /["“”]/u.test(char) ? `["“”]` : char.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("")
 
 export interface Report {
   readonly span: QuoteSpan
