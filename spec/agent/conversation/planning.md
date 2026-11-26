@@ -72,6 +72,16 @@ pure def lawPlanningStopsAtTheBound(taken: int, calls: int, terminal: bool): boo
 pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool = not(keepsPlanning(taken, 0, terminal))
 ```
 
+### Every offered action's parameters name the fields the action reads
+
+The runtime checks a call's arguments against each parameter's schema, and
+an object parameter that names no fields accepts no keys at all. So every
+object an action's parameters hold, at any depth, names the fields the
+action's own code reads, or says it takes any keys (a workflow's run input,
+keyed by that workflow's own input names). An action with no parameters
+takes none. A representative argument of every declared action passes the
+runtime's check.
+
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 
 The system prompt is the character's: its system text, bio, style and
