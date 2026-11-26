@@ -167,7 +167,6 @@ jobs:
             RetiredDurableObject as AuthenticationState,
             RetiredDurableObject as DoorDashCheckoutGate,
             RetiredDurableObject as HfEgressState,
-            RetiredDurableObject as InferenceAdmissionGate,
             RetiredDurableObject as InferenceRateLimitV2RollbackFloor,
             RetiredDurableObject as OnboardingSessionCoordinator,
             RetiredDurableObject as PersonalDeliveryProjection,
@@ -188,10 +187,26 @@ jobs:
             }
           }
           JS
-          jq -e --arg account "$CLOUDFLARE_ACCOUNT_ID" --arg worker "$WORKER" --arg entry "$entry" --arg pages "$worker_dir/dist/pages" '
+          if [[ $CLOUD_ENVIRONMENT == production ]]; then
+            printf '\n%s\n' 'export { RetiredDurableObject as InferenceAdmissionGate }' >> "$entry"
+          fi
+          jq -e --arg account "$CLOUDFLARE_ACCOUNT_ID" --arg worker "$WORKER" --arg environment "$CLOUD_ENVIRONMENT" \
+            --arg entry "$entry" --arg pages "$worker_dir/dist/pages" '
+            def durable_exports:
+              [
+                "A2ATaskState", "AnonymousChatGate", "AuthenticationState", "DoorDashCheckoutGate",
+                "HfEgressState", "InferenceAdmissionGate", "InferenceRateLimitV2RollbackFloor",
+                "OnboardingSessionCoordinator", "PersonalDeliveryProjection", "PersonalTelegramDelivery",
+                "RateLimitState", "SharedRuntimeConversation", "SpeechRelayCoordinator",
+                "TwitterOAuthRefreshCoordinator", "VoiceUsageState"
+              ]
+              | map(select($environment == "production" or . != "InferenceAdmissionGate"))
+              | map({key: ., value: {type: "durable-object", storage: "sqlite"}})
+              | from_entries;
             select(type == "object" and ((.name // $worker) == $worker))
             | select((has("env") or has("route") or has("routes") or has("triggers") or has("migrations") or ((.vars // {}) | has("CLOUD_PROFILE"))) | not)
-            | . + {account_id: $account, name: $worker, main: $entry, keep_vars: false, assets: {directory: $pages, binding: "ASSETS", run_worker_first: true}}
+            | . + {account_id: $account, name: $worker, main: $entry, keep_vars: false, exports: durable_exports,
+                   assets: {directory: $pages, binding: "ASSETS", run_worker_first: true}}
           ' <<< "$WORKER_CONFIG" > "$config" || {
             echo "::error::Provide v4 Worker bindings without route or Durable Object migration changes. Use the bundled profile input for CLOUD_PROFILE"
             exit 1
