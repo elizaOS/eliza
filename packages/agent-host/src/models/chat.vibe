@@ -1,7 +1,7 @@
 // spec/agent/models/binding.md, "A planner warm-up is sent only while the account is not blocked, and neither its answer nor its refusal changes the account state"
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call for its turn to re-send once"; spec/agent/models/binding.md, "A tool call the provider could not parse, or a streamed answer silent for a minute, ends the call without a retry"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/models/binding.md, "A tool call, a structured answer and the token use reach the caller as one result"; spec/agent/models/binding.md, "A call sends an output cap only when its caller names one, and a thinking hint sets the reasoning effort only on a model that documents it"; spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route sends the prompt cache key its caller names, and no call invents one"; spec/agent/models/binding.md, "A rate limit holds the account for the provider's whole retry time, and for at most 4 s on a Cerebras own-key endpoint"; spec/agent/conversation/turns.md, "A failed reply names the owner's fix, and only a live rate limit carries its wait"; spec/agent/models/binding.md, "A cloud refusal that names spent credits or a spent allowance carries Cloud's own code, and no other refusal carries one"; spec/agent/models/binding.md, "A rate limit names whether the model provider or Cloud set it, and no other refusal names one"; spec/agent/models/binding.md, "A Qwen call on a Cerebras route reads a tool call the model wrote as text as that call, when it names an offered tool"
 import { readCloudError, type CloudFailure } from "@elizaos/cloud"
-import type { GenerateTextParams, GenerateTextResult, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback, TokenUsage, ToolCall } from "@elizaos/core"
+import { isModelOutputLimitFinishReason, type GenerateTextParams, type GenerateTextResult, type IAgentRuntime, type ModelRegistrationMetadata, type StreamChunkCallback, type TokenUsage, type ToolCall } from "@elizaos/core"
 import { runSquashed } from "./run-squashed.vibe"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import {
@@ -27,7 +27,7 @@ export interface Endpoint {
 interface Sink {
   readonly stream?: boolean
   readonly onStreamChunk?: StreamChunkCallback
-  readonly onToolCallStart?: (text: string, firstToolName: string) => void | Promise<void>
+  readonly onToolCalls?: (text: string, calls: readonly ToolCall[]) => void | Promise<void>
 }
 
 interface Reply {
@@ -517,7 +517,6 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   let finishReason: string | undefined
   let usage: TokenUsage | undefined
   const calls: { id: string; name: string; arguments: string }[] = []
-  let toolCallNotified = false
   const silent = () => Stream.fail(new ShellRefused({ refusal: "SilentStream" }))
   const lines = Stream.timeoutOrElse(result.stream, { duration: Duration.seconds(streamIdleSeconds), orElse: silent }).pipe(Stream.decodeText(), Stream.splitLines)
   const ended = (line: string) => line.startsWith("data:") && line.slice(5).trim() === "[DONE]"
@@ -544,11 +543,6 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
       call.name += piece.function?.name ?? ""
       call.arguments += piece.function?.arguments ?? ""
     }
-    if (!toolCallNotified && calls[0] !== undefined && calls[0].name !== "" && sink.onToolCallStart !== undefined) {
-      toolCallNotified = true
-      const firstToolName = calls[0].name
-      try tryPromise({ try: async () => sink.onToolCallStart?.(text, firstToolName), catch: (cause) => new StreamConsumerFailed({ cause }) })
-    }
     const delta = choice.delta?.content
     if (!delta) return
     text += delta
@@ -560,7 +554,10 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
   }
   if (!terminal) throw providerIssue()
   const toolCalls = calls.map((call): ToolCall => ({ id: call.id, name: call.name, arguments: parsedArguments(call.arguments) }))
-  return try answered({ text, toolCalls, finishReason, usage, reasoning }, ask)
+  const answer = try answered({ text, toolCalls, finishReason, usage, reasoning }, ask)
+  const whole = toolCalls.length > 0 && toolCalls.every(({ arguments: given }) => typeof given === "object") && !isModelOutputLimitFinishReason(finishReason)
+  if (whole && sink.onToolCalls !== undefined) try tryPromise({ try: async () => sink.onToolCalls?.(text, toolCalls), catch: (cause) => new StreamConsumerFailed({ cause }) })
+  return answer
 }
 
 effect function send(endpoint: Endpoint, credential: Redacted.Redacted<string>, callKey: CallKey, body: object | undefined, sink: Sink, ask: ChatAsk) {
@@ -729,10 +726,10 @@ function returned(answer: Answer): string | GenerateTextResult {
 
 function sinkOf(params: GenerateTextParams): Sink {
   const eliza = params.providerOptions?.eliza
-  const onToolCallStart = typeof eliza === "object" && eliza !== null && typeof (eliza as { onToolCallStart?: unknown }).onToolCallStart === "function"
-    ? (eliza as { onToolCallStart: Sink["onToolCallStart"] }).onToolCallStart
+  const onToolCalls = typeof eliza === "object" && eliza !== null && typeof (eliza as { onToolCalls?: unknown }).onToolCalls === "function"
+    ? (eliza as { onToolCalls: Sink["onToolCalls"] }).onToolCalls
     : undefined
-  return onToolCallStart === undefined ? params : { stream: params.stream, onStreamChunk: params.onStreamChunk, onToolCallStart }
+  return onToolCalls === undefined ? params : { stream: params.stream, onStreamChunk: params.onStreamChunk, onToolCalls }
 }
 
 function readingWritten(endpoint: Endpoint, handler: ChatHandler, params: GenerateTextParams): (answer: Answer) => Answer {

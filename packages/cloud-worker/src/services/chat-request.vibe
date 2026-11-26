@@ -1,5 +1,5 @@
 // spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
-import { acceptedFields, heldOutput, ingressLimit, outputLimit, quoteCounts, wireOutputCap, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
+import { acceptedFields, heldOutput, ingressLimit, outputLimit, quoteCounts, type TokenAsk } from "../../gen/cloud__services__inference.effect.vibe"
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
@@ -10,7 +10,7 @@ export type { ChatRequest }
 export interface Quote {
   readonly counts: TokenCounts
   readonly outputCap: number
-  readonly wireCap: number | undefined
+  readonly capped: boolean
   readonly micros: number
 }
 
@@ -86,6 +86,5 @@ export effect function quote(body: ChatRequest, model: Model): Quote!Refused {
   const capped = body.max_completion_tokens !== undefined || body.max_tokens !== undefined
   const counts = quoteCounts(chars, heldOutput(capped, limit.tokens))
   if (!countsInBound(counts) || !countsInBound(quoteCounts(0, limit.tokens))) throw refused("InvalidRequest")
-  const forwarded = wireOutputCap(capped, limit.tokens)
-  return { counts, outputCap: limit.tokens, wireCap: forwarded.tag === "AskFor" ? forwarded.tokens : undefined, micros: callCost(model, counts) }
+  return { counts, outputCap: limit.tokens, capped, micros: callCost(model, counts) }
 }

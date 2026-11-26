@@ -2,7 +2,7 @@
 // spec/agent/conversation/planning.md, "Text that repeats the agent host's notes is never delivered or streamed, and is asked again once as a blank"
 // spec/agent/conversation/replyStream.md, "Story: See a reply as it is written"; spec/agent/client/turns.md, "Story: Get the reply to my message even when the stream drops"
 import { assert, describe, it } from "@effect/vitest"
-import { insufficientCredits, partial, text, toolCalls } from "./support/cloud-fake.ts"
+import { cutToolCalls, insufficientCredits, partial, text, toolCalls } from "./support/cloud-fake.ts"
 import { basicActionsModuleName } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { answerOf, call, cloudFake, deviceKey, host, startInProcess, stream, type InProcess } from "./support/kernel.vibe"
@@ -359,6 +359,10 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
   const cueBesideWrittenCall = try turn("What is on my agenda?")
   try Effect.sync(() => cloud.script(toolCalls("[promise] Let me open Maps.", agenda), text("The nearest coffee is on Main Street.")))
   const openAsPart = try turn("Open Maps and find coffee nearby")
+  try Effect.sync(() => cloud.script(cutToolCalls("[promise] Checking your agenda.", agenda)))
+  const cutBeforeTheEnd = try turn("What is on my agenda today?")
+  try Effect.sync(() => cloud.script(toolCalls("[promise] Let me look.", agenda, { name: "REPLY", arguments: { text: "Nothing booked." } }, { name: "IGNORE", arguments: {} }), toolCalls("[promise] One sec.", agenda), text("Nothing booked.")))
+  const twoDecisions = try turn("What is on my agenda tomorrow?")
   try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Maps is open.")))
   const navigationOnly = try turn("Open Maps.")
   try Effect.sync(() => cloud.script(toolCalls("", agenda), text("Opened your calendar.")))
@@ -400,7 +404,7 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     ruleInEverySystemPrompt: system.length > 0 && system.every((content) => content.includes(cueRule)),
   }, { exemptionInRule: [true, true, true, true, false, true], ruleInEverySystemPrompt: true }))
   try Effect.try(() => assert.deepStrictEqual({
-    instruction, question, politeAsk, answer, assentWithoutWork, promiseWithoutWork, workAfterPromise, promisedTwice, cueBesideWrittenCall, openAsPart, navigationOnly, calendarOnly, sharedNamedInWords, sharedBothNamedInWords, sharedUnnamed, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
+    instruction, question, politeAsk, answer, assentWithoutWork, promiseWithoutWork, workAfterPromise, promisedTwice, cueBesideWrittenCall, openAsPart, cutBeforeTheEnd, twoDecisions, navigationOnly, calendarOnly, sharedNamedInWords, sharedBothNamedInWords, sharedUnnamed, coached, directFast, directSlow, directQuiet, directStopped, modelQuiet,
   }, {
     instruction: {
       done: done("Sent."), asked: 3, acknowledgments: ["acknowledgment:Sure."], tools: ["tool:AGENDA_READ:Using Agenda", "tool:CALCULATE:Working"],
@@ -433,6 +437,14 @@ it.live(`Hear that the agent heard me once while work is pending, and see which 
     directStopped: { acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"] },
     openAsPart: {
       done: done("The nearest coffee is on Main Street."), asked: 2, acknowledgments: ["acknowledgment:Let me open Maps."], tools: ["tool:AGENDA_READ:Using Agenda"],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    cutBeforeTheEnd: {
+      done: { kind: "Done", text: "Checking your agenda.", failureKind: "provider_issue", keyed: true }, asked: 1, acknowledgments: [], tools: [],
+      acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
+    },
+    twoDecisions: {
+      done: done("Nothing booked."), asked: 3, acknowledgments: ["acknowledgment:One sec."], tools: ["tool:AGENDA_READ:Using Agenda"],
       acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true,
     },
     navigationOnly: { done: done("Maps is open."), asked: 2, acknowledgments: [], tools: ["tool:AGENDA_READ:Using Agenda"], acknowledgedBeforeTools: true, cueLeftTheText: true, sameWhenSplit: true },
