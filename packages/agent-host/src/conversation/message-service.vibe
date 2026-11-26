@@ -343,7 +343,7 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
     ? await planned.reask([...unreported, ...(wrong === undefined ? [] : [wrong.note])])
     : { revised: undefined, stoodBy: false }
   const source = replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)
-  const answered = answersForIt(source === "RevisedReply", stoodBy, wrong !== undefined)
+  const answered = answersForIt(source === "RevisedReply", stoodBy, source === "FixedWords" && wrong !== undefined)
   const ownersWords = planned.notices
     .filter((notice) => reachesTheOwner(notice.owner !== undefined, followsTheReply(answered, asked.includes(notice), notice.safetyCopy)))
     .flatMap(({ owner }) => owner ?? [])

@@ -777,6 +777,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const stoodBy = try secondAnswer("You can't divide 7 by 0.", "You can't divide 7 by 0.")
   const blankAgain = try secondAnswer("Done!", "", "", "", "")
   const quotedNote = reasked().note
+  try Effect.sync(() => cloud.script(toolCalls("", dividing), text(`It's ${localDay("UTC", 3).weekday}.`), text("[answer] 7 divided by 0 has no answer.")))
+  const { answer: dayRevised, calls: dayRevisedCalls } = try callsFor({ text: "What day is it?" })
   try Effect.sync(() => cloud.script(toolCalls("", dividing), text(`It returned: ${noAnswer}`)))
   const { answer: quoted, calls: quotedCalls } = try callsFor({ text: "Divide 7 by 0." })
   try Effect.sync(() => cloud.script(toolCalls("", dividing), cutOff("A long answer that")))
@@ -922,7 +924,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     actions: solved.actionResults.map(({ action }) => action),
     unrendered: [unrendered.text, unrenderedCalls, unrenderedAsked.toolChoice, unrenderedAsked.said, unrenderedAsked.note],
     failed: [failed.text === "I couldn't add two plus two: the calculator didn't take it.", failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
-    notFinal: { toldInItsWords, cuedAgain, stoodBy, blankAgain, ownersReport: quotedNote.includes(JSON.stringify(noAnswer)), fencedReport: failedAsked.note.includes(wrapExternalContent(unparsed, { source: "unknown" })) },
+    notFinal: { toldInItsWords, cuedAgain, stoodBy, blankAgain, dayRevised: [dayRevised.text, dayRevisedCalls], ownersReport:quotedNote.includes(JSON.stringify(noAnswer)), fencedReport: failedAsked.note.includes(wrapExternalContent(unparsed, { source: "unknown" })) },
     quoted: [quoted.text, quotedCalls],
     cutAfterFailure: [cutAfterFailure.text, cutAfterFailureCalls],
     separate: [separate.text, separateCalls],
@@ -963,7 +965,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     failed: [true, 3, "Done!", true],
     notFinal: {
       toldInItsWords: ["7 divided by 0 has no answer, so I couldn't work it out.", 3], cuedAgain: [`Done!\n\n${noAnswer}`, 3], stoodBy: ["You can't divide 7 by 0.", 3],
-      blankAgain: [`Done!\n\n${noAnswer}`, 6], ownersReport: true, fencedReport: true,
+      blankAgain: [`Done!\n\n${noAnswer}`, 6], dayRevised: ["7 divided by 0 has no answer.", 3], ownersReport: true, fencedReport: true,
     },
     quoted: [`It returned: ${noAnswer}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${noAnswer}`, 2],
