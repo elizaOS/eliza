@@ -120,18 +120,27 @@ refuses that key on its mail routes (`spec/cloud/identity/requestAuth.md`,
 `MailRoute`), and the device never sends it there. The mail routes are the
 device routes the cloud's client lists as `Mail` (`spec/cloud/client.md`):
 Google status, accounts, connect, disconnect, Gmail triage, search, read,
-thread, capabilities, drafts, draft, attachment and operations, and the
-calendar list, feed, event reads and event writes. They carry the lease's
+history, thread, capabilities, drafts, draft, attachment and operations, and
+the calendar list, feed, event reads and event writes. They carry the lease's
 access token after one shared refresh when necessary (`./credential.md`).
 A device with an active key and no lease gets `MailLeaseUpgradeRequired`.
 The native bridge returns `mail-lease-upgrade-required` before it sends the
 request. The host can offer the user a one-time sign-in to the same account.
 
-For a host reading Google connection status, an inbox page, a message, or a
-calendar window, the native package offers a read-only request bound to the
-owner and current credential identity. The request refuses unknown paths or
-query fields, and drops its reply if that identity changes. The host receives
-the reply and a non-secret scope, while lease credentials stay native.
+For a host reading Google connection status, the owner's Google accounts,
+an inbox page, a message, the inbox's change history or a calendar window,
+the native package offers a read-only `GET` bound to the owner and current
+credential identity. It admits only the reads of `hostMailReads`, each a
+`Mail` device route under `/api/v1/eliza/google/`, with at most the query
+fields listed for it: `status` with none; `accounts` with `side`;
+`gmail/triage` with `maxResults`, `folder`, `q`, `counts`, `pageToken` and
+`grantId`; `gmail/read` with `messageId` and `grantId`;
+`gmail/inbox-v1/history` with `grantId`, `startHistoryId`, `pageToken`,
+`maxResults` and `side`; and `calendar/feed` with `timeMin`, `timeMax`,
+`pageToken` and `grantId`. Any other path or query field is refused before a
+request leaves the device, and the reply is dropped if that identity changes.
+The host receives the reply and a non-secret scope, while lease credentials
+stay native.
 The existing key stays available for its usual routes while the user decides
 or cancels. The page sends a new request after the sign-in. A device without
 a live key or lease gets `SignInRequired`. If a refresh ends the lease, the
@@ -148,6 +157,22 @@ pure def lawTheLeaseGoesOnlyToAMailRoute(h: Holding, d: DeviceRoute): bool = sen
 pure def lawOnlyAMailRouteOnAnExistingKeyWithoutALeaseNeedsTheUpgrade(h: Holding, d: DeviceRoute): bool =
   (attachFor(h, d) == Refuse({ why: MailLeaseUpgradeRequired })) iff
     (mailRoute(d) and h.key >= 1 and not(h.leaseHeld or h.leaseLive))
+type HostMailRead = { under: List[str], fields: Set[str] }
+pure val hostMailReads: List[HostMailRead] = List(
+  { under: List("status"), fields: Set() },
+  { under: List("accounts"), fields: Set("side") },
+  { under: List("gmail", "triage"), fields: Set("maxResults", "folder", "q", "counts", "pageToken", "grantId") },
+  { under: List("gmail", "read"), fields: Set("messageId", "grantId") },
+  { under: List("gmail", "inbox-v1", "history"), fields: Set("grantId", "startHistoryId", "pageToken", "maxResults", "side") },
+  { under: List("calendar", "feed"), fields: Set("timeMin", "timeMax", "pageToken", "grantId") })
+pure def hostMailReadAdmitted(readPath: List[str], readFields: List[str]): bool =
+  hostMailReads.some(r => r.under == readPath and readFields.every(f => r.fields.contains(f)))
+pure val readPathValues = Set(List(), List("status"), List("accounts"), List("gmail", "inbox-v1", "history"), List("gmail", "history"),
+  List("gmail", "search"), List("gmail", "operations"), List("calendar", "feed"))
+pure val readFieldsValues = Set(List(), List("side"), List("grantId", "startHistoryId", "pageToken", "maxResults", "side"),
+  List("messageId", "grantId"), List("timeMin", "q"))
+pure def lawAHostMailReadIsAMailRouteRead(readPath: List[str], readFields: List[str]): bool =
+  hostMailReadAdmitted(readPath, readFields) implies deviceRoutes.some(d => d.method == Get and mailRoute(d) and d.path == google(readPath))
 ```
 
 ### A request is sent only to the deployment origin, admitted by the gate, with headers its route admits

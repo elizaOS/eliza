@@ -152,8 +152,10 @@ function answer(mailbox: ReadableMailbox, request: FakeRequest, rest: string): F
     return { status: 200, body: { id: threadPath[1], historyId, messages: messages.map((message) => shown(message, format)) } };
   }
   if (rest === "/drafts") {
-    const listed = page([...mailbox.drafts.keys()], query);
-    return { status: 200, body: { drafts: listed.rows.map((id) => ({ id })), ...(listed.nextPageToken === undefined ? {} : { nextPageToken: listed.nextPageToken }) } };
+    const wanted = query.get("q");
+    const drafts = [...mailbox.drafts.values()].filter(({ raw }) => wanted === null || wanted === `rfc822msgid:${rawParts(raw).headers["Message-ID"]?.replace(/^<|>$/g, "")}`);
+    const listed = page(drafts, query);
+    return { status: 200, body: { drafts: listed.rows.map(({ id, messageId }) => ({ id, message: { id: messageId } })), ...(listed.nextPageToken === undefined ? {} : { nextPageToken: listed.nextPageToken }) } };
   }
   const draftPath = /^\/drafts\/([A-Za-z0-9_-]+)$/.exec(rest);
   if (draftPath !== null) {

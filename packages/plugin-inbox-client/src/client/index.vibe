@@ -56,6 +56,7 @@ effect function messageOf(card: typeof MailCardWire.Type): GmailMessage!MailProt
     threadId: try present(card.threadId),
     subject: card.subject,
     from: card.from,
+    ...(card.replyTo === undefined ? {} : { replyTo: card.replyTo }),
     fromEmail: senderEmail(card.from),
     to: card.to,
     cc: card.cc,
