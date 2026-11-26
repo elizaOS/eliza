@@ -1032,7 +1032,11 @@ nothing else, or one call line and nothing else:
   host's notes and the page they carry, every note of the turn, each tool
   result of this turn, and every string inside a message, note or result
   that is itself JSON, so a call quoted in a page, a tool result or an
-  earlier message is a copy.
+  earlier message is a copy. A response that names an offered tool also
+  copies when that text holds a call of the same tool in any written form
+  (the tool's name as an `action`, `tool`, `name` or `type` field, as an
+  object's key, or before `call:`, spacing and letter case ignored), so a
+  call reworded or reordered from a page is still a copy.
 
 The tag decides first and provenance next; the shell never reads the
 structure or the words of the person's message to choose. A response
