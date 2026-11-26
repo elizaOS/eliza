@@ -391,10 +391,12 @@ mail unreachable. A failure to accept a connection, other than the broker
 closing, is reported in the app's log once until a connection is accepted
 again, and the broker keeps accepting on the same port. Closing the broker
 returns only once its port refuses connections: the connections held
-waiting are closed unanswered, a request already being served is checked
-against no launch and refused, and the thread that accepts is waited for,
-since a listener another thread is still accepting on keeps completing
-connections after it is closed. A broker whose port has not stopped
+waiting are closed unanswered, a request being served whose head arrives
+after the close is checked against no launch and refused, and the thread
+that accepts is waited for, since a listener another thread is still
+accepting on keeps completing connections after it is closed. A request
+already checked against a launch is not waited for and still finishes its
+reply. A broker whose port has not stopped
 accepting within five seconds fails to close, and the failure is reported.
 
 ```quint
