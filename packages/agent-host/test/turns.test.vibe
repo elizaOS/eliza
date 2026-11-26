@@ -29,7 +29,7 @@ interface Reply {
 module node {
   import { randomUUID } from "node:crypto"
   import { Effect } from "effect"
-  import { ChannelType, conversationClientUserMemoryId, EventType, hashStableJson, OWNER_EXCLUSIVE_DISCLOSURE_GATE, stringToUuid, systemNoticeText, type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type Memory, type RunEventPayload, type UUID } from "@elizaos/core"
+  import { ChannelType, conversationClientUserMemoryId, EventType, hashStableJson, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sleepWithAbort, stringToUuid, systemNoticeText, type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type Memory, type RunEventPayload, type UUID } from "@elizaos/core"
   import type { CloudFake } from "./support/cloud-fake.ts"
   import type { AgentPlugin, ModuleFactory } from "../src/host/module.vibe"
   import { builtinModuleFactories } from "../src/plugins/profile.vibe"
@@ -82,6 +82,41 @@ module node {
               success: false, text: "The phone did not take this operation. No device proposal was created.", userFacingText: phoneWords[operation] ?? phoneWords.open_dialer, verifiedUserFacing: true,
               data: { code: "DEVICE_CAPABILITY_UNAVAILABLE", proposalCreated: false, executed: false, retryable: false, executionStatus: "not_started" },
             }
+          },
+        }],
+      },
+    }))
+    return new Map([...builtinModuleFactories, [name, factory]])
+  }
+
+  export const briefs = { hidden: [] as string[], running: 0, together: 0, said: [] as string[] }
+
+  /** @throws {never} */
+  export function briefProbe(name: string): ReadonlyMap<string, ModuleFactory<never>> {
+    const factory: ModuleFactory<never> = () => Effect.sync(() => ({
+      name,
+      plugin: {
+        name, description: "The owner's brief, which composes from what it reads and hides the sections the owner asked to leave out",
+        actions: [{
+          name: "BRIEF", description: "Owner brief. compose_* writes one; recalibrate hides a section.", similes: [],
+          tags: ["domain:briefing", "capability:read", "capability:compose"],
+          parameters: [
+            { name: "action", required: false, description: "Brief op.", schema: { type: "string", enum: ["compose_morning", "recalibrate"] } },
+            { name: "section", required: false, description: "recalibrate: section to hide.", schema: { type: "string" } },
+          ],
+          validate: async () => true,
+          handler: async (_runtime, _message, _state, options) => {
+            const given = (options as { readonly parameters?: { readonly action?: unknown; readonly section?: unknown } } | undefined)?.parameters ?? {}
+            briefs.running += 1
+            briefs.together = Math.max(briefs.together, briefs.running)
+            const read = [...briefs.hidden]
+            await sleepWithAbort(40)
+            briefs.running -= 1
+            if (given.action !== "recalibrate") return { success: true, text: `Your brief leaves out ${read.join(", ") || "nothing"}.` }
+            briefs.hidden = [...new Set([...read, String(given.section)])]
+            const text = `Your briefs leave out ${briefs.hidden.join(" and ")}.`
+            briefs.said.push(text)
+            return { success: true, text, data: { hidden: briefs.hidden } }
           },
         }],
       },
@@ -357,7 +392,7 @@ module node {
     return text
   }
 }
-import { namedTools, calendarProbe, completions, notMoved, phoneWords, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
+import { namedTools, briefProbe, briefs, calendarProbe, completions, notMoved, phoneWords, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -631,6 +666,27 @@ it.live(`An explicit calculator command is planned by the model, and nothing run
     assert.include(lastTurnPrompt(cloud), "408")
   })
 }, 120_000)
+
+it.live(`Two brief changes in one response run one after the other and each reports what it saved, while two brief reads still run together (${planning}, "Calls of one response run together only when each one only reads, and otherwise one at a time in the model's order")`, effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const agent = try startInProcess({
+    launch: { backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner", load: [basicActionsModuleName], allowed: ["REPLY", "IGNORE", "NONE", "BRIEF"] },
+    frame: { credential: { version: 1, value: deviceKey } }, modules: briefProbe(basicActionsModuleName),
+  })
+  const { id } = try conversation(agent)
+  const hide = (section: string) => ({ name: "BRIEF", arguments: { action: "recalibrate", section } })
+  try Effect.sync(() => cloud.script(toolCalls("", hide("goals"), hide("routines")), text("Your briefs leave out goals and routines.")))
+  const changed = replyOf(try send(agent, id, { text: "Leave goals and routines out of my briefs" }))
+  const changes = { hidden: briefs.hidden, said: briefs.said, together: briefs.together }
+  briefs.together = 0
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "BRIEF", arguments: { action: "compose_morning" } }, { name: "BRIEF", arguments: {} }), text("Here is your brief.")))
+  const read = replyOf(try send(agent, id, { text: "Brief me, and give me my morning brief" }))
+  try Effect.try(() => assert.deepStrictEqual({ changed: changed.text, changes, read: read.text, readsTogether: briefs.together }, {
+    changed: "Your briefs leave out goals and routines.",
+    changes: { hidden: ["goals", "routines"], said: ["Your briefs leave out goals.", "Your briefs leave out goals and routines."], together: 1 },
+    read: "Here is your brief.", readsTogether: 2,
+  }))
+})
 
 it.live(`Competing terminal decisions run no sibling tool and get one repair round (${planning}, "A response with competing terminal decisions runs no sibling action and can be repaired once")`, effect () => {
   const cloud = try cloudFake(deviceKey)

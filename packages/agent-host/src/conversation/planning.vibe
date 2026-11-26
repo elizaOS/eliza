@@ -1,6 +1,6 @@
 // spec/agent/conversation/turns.md, "A re-send the binding refuses for the limit its turn met keeps who set that limit"
 // spec/agent/conversation/planning.md, "A planner can restore the turn's deferred history once and runs no sibling action from that response"; spec/agent/conversation/planning.md, "A tool call the model wrote as text never reaches the owner, and its step is asked again once"; spec/agent/conversation/planning.md, "When nothing ran in a turn, the answer it asks for is told so"; spec/agent/conversation/planning.md, "Every planner call asks the model at temperature zero, unless the model takes only its default"
-// spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"
+// spec/agent/conversation/planning.md, "An identical call runs at most once per model response, and a settled effect is never repeated in the turn"; spec/agent/conversation/planning.md, "Calls of one response run together only when each one only reads, and otherwise one at a time in the model's order"
 // spec/agent/conversation/planning.md, "Story: Ask the agent to do something and hear what happened"; spec/agent/conversation/planning.md, "A turn offers the model only registered actions the launch allows, and plans at most eight steps"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"; spec/agent/conversation/planning.md, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; spec/agent/conversation/planning.md, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; spec/agent/conversation/planning.md, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; spec/agent/conversation/planning.md, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results"; spec/agent/conversation/planning.md, "Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history"; spec/agent/conversation/planning.md, "A model call is sent again at most once, after a temporary rate limit or a tool call the provider could not parse"; spec/agent/conversation/planning.md, "A call that stopped at the model's own output limit ends planning"; spec/agent/conversation/planning.md, "A coaching response stays in the planner transcript"
 // spec/agent/conversation/planning.md, "A response with competing terminal decisions runs no sibling action and can be repaired once"
 // spec/agent/conversation/planning.md, "A delivered cue is told to the model as already said, so the reply never repeats it or takes it as evidence"
@@ -12,7 +12,7 @@ import {
   buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, tagsMayProduceEffects, wrapExternalContent,
 } from "@elizaos/core"
 import {
-  actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenCue, toolActivity,
+  actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, callRunOf, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenCue, toolActivity,
   admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
@@ -470,11 +470,12 @@ export function plannerTools(runtime: AgentRuntime, message: Memory, actions: re
 }
 
 const readOnlyActionNames = new Set([
-  "NOTES_LIST", "NOTES_GET", "INBOX_READ", "BRIEF",
+  "NOTES_LIST", "NOTES_GET", "INBOX_READ",
   "MAPS_WHERE_AM_I", "MAPS_PLACE", "MAPS_ROUTE", "MAPS_COVERAGE", "MAPS_SAVED",
 ])
 
-const readOnlyOpsByAction: Readonly<Record<string, { readonly field: string; readonly values: ReadonlySet<string> }>> = {
+const readOnlyOpsByAction: Readonly<Record<string, { readonly field: string; readonly values: ReadonlySet<string | undefined> }>> = {
+  BRIEF: { field: "action", values: new Set([undefined, "compose_morning", "compose_evening", "compose_weekly"]) },
   CLOCK_ALARM: { field: "action", values: new Set(["list"]) },
   CLOCK_TIMER: { field: "action", values: new Set(["list"]) },
   CLOCK_WORLD: { field: "action", values: new Set(["list", "time_in"]) },
@@ -488,26 +489,18 @@ const readOnlyOpsByAction: Readonly<Record<string, { readonly field: string; rea
 
 function isSafeParallelReadCall(action: Action | undefined, params: Record<string, unknown>): boolean {
   if (action === undefined || tagsMayProduceEffects(action.tags)) return false
-  if (action.tags?.some((tag) => tag.trim().toLowerCase() === "capability:read") === true) return true
-  if (readOnlyActionNames.has(action.name)) return true
   const spec = readOnlyOpsByAction[action.name]
-  if (spec === undefined) return false
-  const value = params[spec.field]
-  return typeof value === "string" && spec.values.has(value.trim().toLowerCase())
+  if (spec !== undefined) {
+    const value = params[spec.field]
+    return value === undefined ? spec.values.has(undefined) : typeof value === "string" && spec.values.has(value.trim().toLowerCase())
+  }
+  return readOnlyActionNames.has(action.name) || action.tags?.some((tag) => tag.trim().toLowerCase() === "capability:read") === true
 }
 
 function canRunBatchInParallel(work: readonly ToolCall[], named: ReadonlyMap<string, Action>): boolean {
-  if (work.length < 2) return false
-  const batchIds = new Set<string>()
-  for (const call of work) {
-    const params = paramsOf(call)
-    const name = isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name
-    const identity = `${name}\u0000${canonical(params)}`
-    if (batchIds.has(identity)) return false
-    batchIds.add(identity)
-    if (!isSafeParallelReadCall(named.get(call.name), params)) return false
-  }
-  return true
+  const identities = new Set(work.map((call) => `${isDiscoveryActionName(call.name) ? DISCOVER_ACTIONS_NAME : call.name}\u0000${canonical(paramsOf(call))}`))
+  const allRead = identities.size === work.length && work.every((call) => isSafeParallelReadCall(named.get(call.name), paramsOf(call)))
+  return callRunOf(work.length, allRead) === "RunTogether"
 }
 
 type AdmittedCall =
@@ -612,15 +605,18 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     streamed = ""
     let earlyAck: { readonly cue: string; readonly delivered: boolean } | undefined
     const onStreamChunk = input.onStreamChunk
-    const onToolCallStart = steps.length === 0 && input.onPlanningAcknowledgment !== undefined
-      ? async (accumulatedText: string, firstToolName: string) => {
-        if (firstToolName === restoreContext.name || messageServiceActions.has(firstToolName)) return
-        const unwritten = writtenCallFree(accumulatedText)
+    const onToolCalls = steps.length === 0 && input.onPlanningAcknowledgment !== undefined
+      ? async (wholeText: string, calls: readonly ToolCall[]) => {
+        const restores = calls.filter(({ name }) => name === restoreContext.name).length
+        const dispositions = calls.filter(({ name }) => messageServiceActions.has(name)).length
+        const work = calls.length - restores - dispositions
+        if (earlyAck !== undefined || work === 0 || !admitsPlannerWork(restores) || terminalAnswerOf(dispositions, terminalCorrectionSent, taken + 1 < maxPlanSteps) !== "AdmitTerminalAnswer") return
+        const unwritten = writtenCallFree(wholeText)
         const { declared, text: earlyWords } = declaredOf(unwritten.prose)
-        const earlyDraft = draftOf(earlyWords, 1, offeredNames, false, declared, input.hostNotes)
+        const earlyDraft = draftOf(earlyWords, work, offeredNames, false, declared, input.hostNotes)
         const earlyCue = withoutWrittenCalls(earlyWords.trim())
-        if (!spokenCue(earlyDraft, 1, steps.length, declared)) return
-        const delivered = cueDelivered(earlyDraft, 1, steps.length, (await input.onPlanningAcknowledgment?.(earlyCue)) === true)
+        if (!spokenCue(earlyDraft, work, steps.length, declared)) return
+        const delivered = cueDelivered(earlyDraft, work, steps.length, (await input.onPlanningAcknowledgment?.(earlyCue)) === true)
         earlyAck = { cue: earlyCue, delivered }
         if (streamed.length > 0) {
           input.onReplyRestart?.("")
@@ -633,7 +629,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     try {
       said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
         system: input.system, messages: conversation, reasoning: "off", temperature: plannerTemperature, signal,
-        providerOptions: onToolCallStart === undefined ? agentCache(runtime, "planner") : { ...agentCache(runtime, "planner"), eliza: { onToolCallStart } },
+        providerOptions: onToolCalls === undefined ? agentCache(runtime, "planner") : { ...agentCache(runtime, "planner"), eliza: { onToolCalls } },
         ...(tools.length === 0 ? {} : { tools, toolChoice: taken === maxPlanSteps - 1 ? "none" as const : "auto" as const }),
         ...(onStreamChunk === undefined ? {} : {
           stream: true,

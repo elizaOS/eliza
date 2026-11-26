@@ -471,6 +471,26 @@ pure def lawOnlyOpenCallsRunAcrossResponses(previousSettlement: ToolSettlement):
   (toolDispatch(false, previousSettlement) == FreshCall) == (previousSettlement == ToolOpen)
 ```
 
+### Calls of one response run together only when each one only reads, and otherwise one at a time in the model's order
+
+Two or more calls of one response run together only when every one of them
+only reads: an action that declares no effect and only reads, or the reading
+operation of an action that can also change something, such as composing a
+brief. Whether an operation only reads is decided by the operation the call
+names, never by the action's tags alone, so hiding a brief section or setting
+check-in times is never run beside another call. A response with any call
+that may change something runs its calls one at a time in the model's order,
+so each call reads what the one before it wrote and reports its own result.
+Either way, the steps are recorded in call order.
+
+```quint
+type CallRun = RunTogether | RunInOrder
+pure def callRunOf(responseCalls: int, allRead: bool): CallRun = if (responseCalls >= 2 and allRead) RunTogether else RunInOrder
+pure val responseCallsValues = Set(0, 1, 2, 3)
+pure def lawACallThatMayChangeSomethingNeverRunsBesideAnother(responseCalls: int): bool = callRunOf(responseCalls, false) == RunInOrder
+pure def lawOnlySeveralReadsRunTogether(responseCalls: int, allRead: bool): bool = (callRunOf(responseCalls, allRead) == RunTogether) iff (responseCalls >= 2 and allRead)
+```
+
 ### A call that stopped at the model's own output limit ends planning
 
 When the step's own call stops there, the turn answers that the reply was
@@ -901,7 +921,11 @@ heard the request or will do something. Text with tool calls that has no
 tag or is tagged `[answer]`, such as a claim that the work is done before
 it ran (`Sent.`, `Maps is open.`), is dropped with the step's text and
 never spoken, whatever its form; the tag never makes text that is not
-cue-shaped, or a later step's text, an acknowledgment.
+cue-shaped, or a later step's text, an acknowledgment. The cue is spoken
+only once the response that carries it has arrived whole, its calls complete
+and admitted to run: a response cut off before its end, one stopped at the
+model's output limit, one that restores context and one with competing
+terminal decisions run no work, so none of them speaks a cue.
 
 ```quint
 type DraftShape = Blank | CueShaped | CueBesideCall | CueBesideObject | OtherText | HostText
