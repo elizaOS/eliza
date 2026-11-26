@@ -363,6 +363,10 @@ as it made it: the order of a call's arguments changes how it reads its
 earlier work, so a record never reorders them (a record stored before records
 kept that order gives them by name). A reply whose turn ran no step, a
 reply stored before replies kept a record, and a redacted reply carry none.
+Redacting a message ([conversations](./conversations.md)) puts the notice
+in place of each copy of its text in every other reply's record, in a text
+argument or in the JSON form of a number or yes/no argument, which is then
+kept as text, so no later turn sends the text to the model again.
 The record is read only from what was stored with the reply, so the
 history stays the same bytes from turn to turn. It reaches the model only:
 it is never part of the reply's text, so it is never delivered, streamed,
