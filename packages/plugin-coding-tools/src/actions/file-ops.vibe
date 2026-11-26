@@ -36,6 +36,7 @@ import {
   pathRelative,
 } from "../lib/security.vibe"
 import {
+  fileRevision,
   resolveInputPath,
   statPathNode,
   type FileStateService,
@@ -66,10 +67,25 @@ module node {
   export async function writeAtomicUtf8Node(filePath: string, content: string): Promise<number> {
     const dir = path.dirname(filePath)
     await fs.mkdir(dir, { recursive: true })
+    const existing = await fs.stat(filePath).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") return undefined
+      throw err
+    })
     const tmp = path.join(dir, `.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     const bytes = Buffer.from(content, "utf8")
-    await fs.writeFile(tmp, bytes)
-    await fs.rename(tmp, filePath)
+    try {
+      await fs.writeFile(tmp, bytes, existing ? { mode: existing.mode & 0o7777 } : {})
+      if (existing) {
+        await fs.chmod(tmp, existing.mode & 0o7777)
+        await fs.chown(tmp, existing.uid, existing.gid).catch((err: NodeJS.ErrnoException) => {
+          if (err.code !== "EPERM") throw err
+        })
+      }
+      await fs.rename(tmp, filePath)
+    } catch (err) {
+      await fs.rm(tmp, { force: true })
+      throw err
+    }
     return bytes.byteLength
   }
 
@@ -261,11 +277,11 @@ async function performSingleRead(params: {
     return { ok: false, result: failureToActionResult({ reason: "io_error", message: `file not found or not a regular file: ${resolved}` }, { path: resolved }) }
   }
 
-  const meta = await params.fileState.recordRead(params.conversationId, resolved, stat)
-  if (params.expectedRevision && params.expectedRevision !== meta.revision) {
+  const statRevision = fileRevision(stat)
+  if (params.expectedRevision && params.expectedRevision !== statRevision) {
     return {
       ok: false,
-      result: failureToActionResult({ reason: "stale_read", message: `file revision changed (${params.expectedRevision} != ${meta.revision})` }, { path: resolved }),
+      result: failureToActionResult({ reason: "stale_read", message: `file revision changed (${params.expectedRevision} != ${statRevision})` }, { path: resolved }),
     }
   }
 
@@ -276,6 +292,11 @@ async function performSingleRead(params: {
   } catch (err) {
     return { ok: false, result: failureToActionResult({ reason: "io_error", message: err instanceof Error ? err.message : String(err) }, { path: resolved }) }
   }
+  const afterRead = await statPathNode(resolved)
+  if (fileRevision(afterRead) !== statRevision) {
+    return { ok: false, result: failureToActionResult({ reason: "stale_read", message: `file changed while it was being read; read ${resolved} again` }, { path: resolved }) }
+  }
+  const meta = await params.fileState.recordRead(params.conversationId, resolved, stat)
 
   const reference = publishFileReadReference({ conversationId: params.conversationId, filePath: resolved, revision: meta.revision })
 
@@ -391,6 +412,9 @@ async function prepareWritableTarget(
       result: failureToActionResult({ reason: gate.reason === "stale_read" ? "stale_read" : "invalid_param", message: gate.message }, { path: resolved }),
     }
   }
+  if (gate.exists && !core.sandbox.mayEdit(validated.root, resolved, gate.currentRevision, gate.readRevision)) {
+    return { ok: false, result: failureToActionResult({ reason: "stale_read", message: `re-read ${resolved} before editing it` }, { path: resolved }) }
+  }
   return { ok: true, conversationId: core.conversationId, fileState: core.fileState, resolved, exists: gate.exists }
 }
 
@@ -493,8 +517,15 @@ export async function readFileHandler(runtime: IAgentRuntime, message: Memory, _
         })
       }
     }
-    const text = truncateHead(chunks.join("\n\n"), DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES).text
-    return successActionResult(text, { files: entries }, { count: entries.length, files: entries })
+    const combined = truncateHead(chunks.join("\n\n"), DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+    const text = combined.truncated
+      ? `${combined.text}\n[Batch output truncated: ${combined.shownLines}/${combined.totalLines} lines, ${combined.shownBytes}/${combined.totalBytes} bytes shown. The ranges listed per file were read but not all are shown; read fewer paths or use reference+expectedRevision per file.]`
+      : combined.text
+    return successActionResult(
+      text,
+      { files: entries, truncated: combined.truncated },
+      { count: entries.length, files: entries, truncated: combined.truncated },
+    )
   }
 
   const single = await performSingleRead({
@@ -698,7 +729,12 @@ export async function grepHandler(runtime: IAgentRuntime, message: Memory, _stat
         headLimit,
       },
       mode,
+      {
+        blockedPaths: root.sandbox.getBlockedPaths(),
+        admit: async (filePath) => (await root.sandbox.validatePath(root.conversationId, filePath)).ok,
+      },
     )
+    if (!res.ok) return failureToActionResult({ reason: res.reason, message: res.message }, { path: root.resolved, pattern: pat })
     if (res.exitCode === 0 && res.stdout.trim().length > 0) {
       anyMatches = true
       blocks.push(searchPatterns.length > 1 ? `=== /${pat}/ ===\n${res.stdout.trimEnd()}` : res.stdout.trimEnd())

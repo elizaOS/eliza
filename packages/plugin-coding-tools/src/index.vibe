@@ -1,10 +1,6 @@
 // spec/codingTools/index.md, "Story: Read and edit my authorized project files"; spec/codingTools/index.md, "Story: Enforce sandbox confinement and bounded tool outputs"
-import { FileSystem } from "effect/FileSystem"
-import { Path } from "effect/Path"
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
-import * as ChildProcess from "effect/process/ChildProcess"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
-import { mayEditFile, mayReadFile, mayRunCommand, type WorkspaceAccess } from "../gen/codingTools.effect.vibe"
+import type { WorkspaceAccess } from "../gen/codingTools.effect.vibe"
 import {
   editAction,
   editFileHandler,
@@ -153,8 +149,6 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
   SHELL_SERVICE,
-  StaleWorkspaceFile,
-  WorkspaceDenied,
   appendCodingFeedback,
   appendCodingIteration,
   createCodingAgentContext,
@@ -176,7 +170,6 @@ import {
   type ToolFailure,
   type ToolFailureReason,
   type ToolResult,
-  type WorkspaceDirectory,
 } from "./types.vibe"
 
 export {
@@ -205,8 +198,6 @@ export {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
   SHELL_SERVICE,
-  StaleWorkspaceFile,
-  WorkspaceDenied,
   BackgroundShellService,
   ExecApprovalService,
   FileStateService,
@@ -340,76 +331,7 @@ export type {
   WebFetchReader,
   WorkspaceAccess,
   WorkspaceDeltaSummary,
-  WorkspaceDirectory,
   WritableGate,
-}
-
-export effect function readWorkspaceFile(workspace: WorkspaceDirectory, relativePath: string) {
-  const file = try resolveWorkspaceFile(workspace, relativePath)
-  const fs = try FileSystem
-  const details = try fs.stat(file)
-  if (details.type !== "File") throw new WorkspaceDenied({ target: relativePath })
-  const contents = try fs.readFileString(file)
-  const afterRead = try fs.stat(file)
-  const revision = versionOf(details)
-  if (revision !== versionOf(afterRead)) throw new StaleWorkspaceFile({ target: relativePath })
-  return { contents, revision }
-}
-
-export effect function runWorkspaceCommand(workspace: WorkspaceDirectory, request: {
-  readonly argv: readonly [string, ...string[]]
-  readonly needsApproval: boolean
-  readonly approvedKey: string
-}) {
-  const fs = try FileSystem
-  const root = try fs.realPath(workspace.root)
-  const commandKey = JSON.stringify([root, ...request.argv])
-  if (!mayRunCommand(workspace.access, { inWorkspace: root, commandKey, needsApproval: request.needsApproval }, request.approvedKey)) {
-    throw new WorkspaceDenied({ target: root })
-  }
-  const [executable, ...args] = request.argv
-  const runner = try ChildProcessSpawner
-  return try runner.string(ChildProcess.make(executable, args, { cwd: root, shell: false }))
-}
-
-export effect function editWorkspaceFile(workspace: WorkspaceDirectory, relativePath: string, revision: string, replacement: string) {
-  const fs = try FileSystem
-  const file = try resolveWorkspaceFile(workspace, relativePath)
-  const root = try fs.realPath(workspace.root)
-  const details = try fs.stat(file)
-  if (details.type !== "File" || !mayEditFile(workspace.access, { workspaceKey: root, fileKey: file, revision: versionOf(details), protectedPath: false }, revision)) {
-    throw new StaleWorkspaceFile({ target: relativePath })
-  }
-  const path = try Path
-  return try scoped(effect {
-    const staged = try fs.makeTempFileScoped({ directory: path.dirname(file) })
-    try fs.writeFileString(staged, replacement)
-    try fs.chmod(staged, details.mode)
-    const current = try fs.stat(file)
-    if (versionOf(current) !== revision) throw new StaleWorkspaceFile({ target: relativePath })
-    try fs.rename(staged, file)
-    return { revision: versionOf(try fs.stat(file)) }
-  })
-}
-
-effect function resolveWorkspaceFile(workspace: WorkspaceDirectory, relativePath: string) {
-  const fs = try FileSystem
-  const path = try Path
-  const root = try fs.realPath(workspace.root)
-  if (relativePath === "" || path.isAbsolute(relativePath)) throw new WorkspaceDenied({ target: relativePath })
-  const absolute = try fs.realPath(path.resolve(root, relativePath))
-  const relative = path.relative(root, absolute)
-  const protectedPath = relative === "" || path.isAbsolute(relative) || relative.split(path.sep).some(
-    (part) => part === ".." || part === ".git" || part === ".ssh" || part === ".env" || part.startsWith(".env."),
-  )
-  if (!mayReadFile(workspace.access, { workspaceKey: root, fileKey: absolute, revision: "", protectedPath })) {
-    throw new WorkspaceDenied({ target: relativePath })
-  }
-  return absolute
-}
-
-function versionOf(file: FileSystem.File.Info) {
-  return String(file.ino) + ":" + String(file.size) + ":" + (Option.isSome(file.mtime) ? String(file.mtime.value.getTime()) : "")
 }
 
 function isFeatureFlagEnabled(feature: unknown): boolean {

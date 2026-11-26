@@ -1,13 +1,15 @@
 // spec/codingTools/shellSession.md, "Story: Gate destructive shell commands, manage background jobs, and page spilled output artifacts"; spec/codingTools/worktree.md, "Story: Enter and exit git worktrees without losing the previous working directory"
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  ProviderDataRecord,
-  State,
+import {
+  hasOwnerAccess,
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type ProviderDataRecord,
+  type State,
 } from "@elizaos/core"
+import { mayRunCommand } from "../../gen/codingTools.effect.vibe"
 import {
   beginLocalWorkspaceDeltaObservation,
   finishLocalWorkspaceDeltaObservation,
@@ -30,6 +32,7 @@ import {
 } from "../lib/format.vibe"
 import {
   classifyDestructiveCommand,
+  destructiveCommandDigest,
   extractCompactFailureDiagnostics,
   isForbiddenCommand,
   issueDestructiveChallenge,
@@ -42,6 +45,7 @@ import {
   resolveInputPath,
   runGitCommand,
   runShellProcessNode,
+  workspaceAccess,
   type BackgroundShellService,
   type SandboxService,
   type SessionCwdService,
@@ -126,7 +130,7 @@ async function resolveValidatedCwd(
   runtime: IAgentRuntime,
   conversationId: string,
   requestedCwd: string | undefined,
-): Promise<{ readonly ok: true; readonly cwd: string } | { readonly ok: false; readonly result: ActionResult }> {
+): Promise<{ readonly ok: true; readonly cwd: string; readonly root: string } | { readonly ok: false; readonly result: ActionResult }> {
   const sandbox = runtime.getService(SANDBOX_SERVICE) as SandboxService | null
   const session = runtime.getService(SESSION_CWD_SERVICE) as SessionCwdService | null
   if (!sandbox || !session) {
@@ -147,7 +151,60 @@ async function resolveValidatedCwd(
       result: failureToActionResult({ reason: check.reason === "blocked" ? "path_blocked" : "invalid_param", message: check.message }),
     }
   }
-  return { ok: true, cwd: check.resolved }
+  return { ok: true, cwd: check.resolved, root: check.root }
+}
+
+async function requireOwnerConfirmation(params: {
+  readonly runtime: IAgentRuntime
+  readonly message: Memory
+  readonly options: unknown
+  readonly callback: HandlerCallback | undefined
+  readonly command: string
+  readonly cwd: string
+  readonly reason: string
+}): Promise<{ readonly ok: true } | { readonly ok: false; readonly result: ActionResult }> {
+  const challenge = readStringParam(params.options, "confirmation_challenge")
+  if (readBoolParam(params.options, "confirm") !== true || !challenge) {
+    if (!params.callback) {
+      return {
+        ok: false,
+        result: failureToActionResult({
+          reason: "needs_confirmation",
+          message: `destructive command (${params.reason}) needs owner confirmation, but no user-facing channel is available to deliver the challenge`,
+        }),
+      }
+    }
+    const token = issueDestructiveChallenge({ runtime: params.runtime, command: params.command, executionDirectory: params.cwd, message: params.message })
+    if (!token) {
+      return { ok: false, result: failureToActionResult({ reason: "needs_confirmation", message: "cannot bind a confirmation challenge without message, room and entity ids" }) }
+    }
+    await params.callback({
+      text: `Confirm destructive command (${params.reason}) in ${redactShellText(params.runtime, params.cwd)}:\n$ ${redactShellText(params.runtime, params.command)}\nReply with "confirm ${token}" within 5 minutes to run it.`,
+      source: "coding-tools",
+    })
+    return {
+      ok: false,
+      result: failureToActionResult(
+        {
+          reason: "needs_confirmation",
+          message: `destructive command (${params.reason}) needs owner confirmation; a one-time challenge was sent to the owner. Run it again with confirm=true and the challenge from the owner's reply.`,
+        },
+        { reason: params.reason, cwd: params.cwd },
+        { reason: params.reason },
+      ),
+    }
+  }
+  if (!(await hasOwnerAccess(params.runtime, params.message))) {
+    return { ok: false, result: failureToActionResult({ reason: "needs_confirmation", message: "only the owner can confirm a destructive command" }) }
+  }
+  const verified = verifyAndConsumeDestructiveChallenge({
+    runtime: params.runtime,
+    token: challenge,
+    command: params.command,
+    executionDirectory: params.cwd,
+    message: params.message,
+  })
+  return verified.ok ? { ok: true } : { ok: false, result: failureToActionResult({ reason: "needs_confirmation", message: verified.message }) }
 }
 
 export const shellAction: Action = {
@@ -189,7 +246,7 @@ export const shellAction: Action = {
     const code = data?.exit_code
     return cmd ? `${cmd}${typeof code === "number" ? ` [exit ${code}]` : ""}` : undefined
   },
-  handler: async (runtime, message, _state, options, _callback): Promise<ActionResult> => {
+  handler: async (runtime, message, _state, options, callback): Promise<ActionResult> => {
     const conversationId = conversationIdOf(message)
     if (!conversationId) return failureToActionResult({ reason: "missing_param", message: "no roomId" })
 
@@ -263,17 +320,25 @@ export const shellAction: Action = {
       })
       if (!polled.ok) return failureToActionResult({ reason: "invalid_param", message: polled.message })
       const res = polled.result
-      const outTail = truncateTail(res.stdout, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
-      const errTail = truncateTail(res.stderr, 80, 4096)
-      const parts = [`[${res.snapshot.handle} ${res.snapshot.status}${res.snapshot.exitCode !== null ? ` exit=${res.snapshot.exitCode}` : ""}]`]
-      if (outTail.text) parts.push(outTail.text)
-      if (errTail.text) parts.push(`[stderr]\n${errTail.text}`)
+      const snap = res.snapshot
+      const parts = [`[${snap.handle} ${snap.status}${snap.exitCode !== null ? ` exit=${snap.exitCode}` : ""}]`]
+      if (res.stdout.text) parts.push(res.stdout.text)
+      if (res.stderr.text) parts.push(`[stderr]\n${res.stderr.text}`)
+      if (res.stdout.hasMore || res.stderr.hasMore) {
+        parts.push(`[More output: stdout ${res.stdout.nextOffset}/${res.stdout.totalChars}, stderr ${res.stderr.nextOffset}/${res.stderr.totalChars} chars. Poll again with stdout_offset=${res.stdout.nextOffset} stderr_offset=${res.stderr.nextOffset}]`)
+      }
+      if (snap.stdoutDroppedChars > 0 || snap.stderrDroppedChars > 0) {
+        parts.push(`[Dropped after the 1000000-char session buffer filled: stdout ${snap.stdoutDroppedChars} chars, stderr ${snap.stderrDroppedChars} chars]`)
+      }
       const summary: ProviderDataRecord = {
-        handle: res.snapshot.handle,
-        status: res.snapshot.status,
-        exit_code: res.snapshot.exitCode,
-        stdout_offset: res.nextStdoutOffset,
-        stderr_offset: res.nextStderrOffset,
+        handle: snap.handle,
+        status: snap.status,
+        exit_code: snap.exitCode,
+        stdout_offset: res.stdout.nextOffset,
+        stderr_offset: res.stderr.nextOffset,
+        truncated: res.stdout.hasMore || res.stderr.hasMore,
+        stdout_dropped_chars: snap.stdoutDroppedChars,
+        stderr_dropped_chars: snap.stderrDroppedChars,
       }
       return successActionResult(parts.join("\n"), { ...summary, snapshot: res.snapshot }, summary)
     }
@@ -318,23 +383,13 @@ export const shellAction: Action = {
 
     const verdict = classifyDestructiveCommand(command, platformShellDialect())
     if (verdict.destructive) {
-      const challenge = readStringParam(options, "confirmation_challenge")
-      const confirmed = readBoolParam(options, "confirm") === true
-      if (!confirmed || !challenge) {
-        const token = issueDestructiveChallenge({ runtime, command, executionDirectory: cwd, message })
-        return failureToActionResult(
-          {
-            reason: "needs_confirmation",
-            message: `destructive command (${verdict.reason ?? "high risk"}) requires confirm=true and confirmation_challenge`,
-          },
-          { confirmation_challenge: token, reason: verdict.reason ?? "destructive", cwd },
-          { confirmation_challenge: token, reason: verdict.reason ?? "destructive" },
-        )
-      }
-      const verified = verifyAndConsumeDestructiveChallenge({ runtime, token: challenge, command, executionDirectory: cwd, message })
-      if (!verified.ok) {
-        return failureToActionResult({ reason: "needs_confirmation", message: verified.message })
-      }
+      const confirmation = await requireOwnerConfirmation({ runtime, message, options, callback, command, cwd, reason: verdict.reason ?? "high risk" })
+      if (!confirmation.ok) return confirmation.result
+    }
+    const commandKey = destructiveCommandDigest(command)
+    const access = workspaceAccess(cwdRes.root, verdict.destructive)
+    if (!mayRunCommand(access, { inWorkspace: cwdRes.root, commandKey, needsApproval: verdict.destructive }, verdict.destructive ? commandKey : "")) {
+      return failureToActionResult({ reason: "path_blocked", message: "command is not authorized in this workspace" })
     }
 
     if (subaction === "start_background") {
@@ -411,6 +466,12 @@ export const shellAction: Action = {
       ...(deltaCount > 0 ? { delta_counts: { created: delta.created.length, modified: delta.modified.length, deleted: delta.deleted.length } } : {}),
     }
 
+    if (proc.outcome === "spawn_failed" || proc.outcome === "output_overflow") {
+      const failureMessage = proc.outcome === "output_overflow"
+        ? "command output exceeded the 16 MiB capture buffer"
+        : `shell could not start (${proc.errorCode ?? "unknown"})`
+      return failureToActionResult({ reason: "io_error", message: failureMessage }, fullData, promptData)
+    }
     if (proc.timedOut) {
       return {
         ...(verification ? { verification } : {}),
@@ -484,27 +545,43 @@ export async function exitWorktreeHandler(
   message: Memory,
   _state?: State,
   options?: unknown,
+  callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const ctx = resolveWorktreeContext(runtime, message)
   if (!ctx.ok) return ctx.result
   const { conversationId, sandbox, session } = ctx
 
   const cleanup = readBoolParam(options, "cleanup") ?? false
-  const popped = session.popWorktree(conversationId, cleanup)
-  if (!popped) return failureToActionResult({ reason: "invalid_param", message: "no active worktree to exit" })
+  const force = readBoolParam(options, "force") ?? false
+  const active = session.peekWorktree(conversationId)
+  if (!active) return failureToActionResult({ reason: "invalid_param", message: "no active worktree to exit" })
 
-  sandbox.removeRoot(conversationId, popped.entered)
-  let cleaned = false
   if (cleanup) {
-    const gitRes = await runGitCommand({ cwd: popped.previousCwd, gitArgs: ["worktree", "remove", "--force", popped.entered] })
-    if (gitRes.exitCode !== 0) {
+    if (force) {
+      const confirmation = await requireOwnerConfirmation({
+        runtime,
+        message,
+        options,
+        callback,
+        command: `git worktree remove --force ${active.entered}`,
+        cwd: active.previousCwd,
+        reason: "git worktree remove --force deletes uncommitted work",
+      })
+      if (!confirmation.ok) return confirmation.result
+    }
+    const gitArgs = force ? ["worktree", "remove", "--force", active.entered] : ["worktree", "remove", active.entered]
+    const gitRes = await runGitCommand({ cwd: active.previousCwd, gitArgs })
+    if (gitRes.outcome !== "exited" || gitRes.exitCode !== 0) {
       return failureToActionResult(
-        { reason: "io_error", message: `git worktree remove failed: ${gitRes.stderr.trim()}` },
-        { exited: popped.entered, restoredTo: popped.previousCwd, cleaned: false },
+        { reason: "io_error", message: `git worktree remove failed; the worktree is still active: ${gitRes.stderr.trim()}` },
+        { active: active.entered, cleaned: false },
       )
     }
-    cleaned = true
   }
+  const popped = session.popWorktree(conversationId, cleanup)
+  if (!popped) return failureToActionResult({ reason: "invalid_param", message: "no active worktree to exit" })
+  sandbox.removeRoot(conversationId, popped.entered)
+  const cleaned = cleanup
   const text = cleaned
     ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
     : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
@@ -521,12 +598,15 @@ export const worktreeAction: Action = {
   cacheScope: "agent",
   toolSchemaStrict: true,
   description: "Enter or exit a git worktree on the per-conversation directory stack.",
-  descriptionCompressed: "WORKTREE: enter (branch, path, base?) or exit (cleanup?).",
+  descriptionCompressed: "WORKTREE: enter (branch, path, base?) or exit (cleanup?, force?).",
   parameters: [
     { name: "action", description: "enter or exit.", descriptionCompressed: "enter|exit", required: true, schema: { type: "string", enum: ["enter", "exit"] } },
     { name: "base", description: "Base git ref (default HEAD).", descriptionCompressed: "Base ref", required: false, schema: { type: "string" } },
     { name: "branch", description: "New branch name for enter.", descriptionCompressed: "Branch", required: false, schema: { type: "string" } },
-    { name: "cleanup", description: "Remove worktree dir on exit.", descriptionCompressed: "Remove on exit", required: false, schema: { type: "boolean" } },
+    { name: "cleanup", description: "Remove worktree dir on exit (refused when it has uncommitted changes).", descriptionCompressed: "Remove on exit", required: false, schema: { type: "boolean" } },
+    { name: "confirm", description: "Confirm a forced removal.", descriptionCompressed: "Confirm", required: false, schema: { type: "boolean" } },
+    { name: "confirmation_challenge", description: "Challenge from the owner's reply.", descriptionCompressed: "Challenge token", required: false, schema: { type: "string" } },
+    { name: "force", description: "Force cleanup of a dirty worktree; needs owner confirmation.", descriptionCompressed: "Force cleanup", required: false, schema: { type: "boolean" } },
     { name: "path", description: "Absolute worktree path.", descriptionCompressed: "Path", required: false, schema: { type: "string" } },
   ],
   validate: async () => true,
@@ -534,7 +614,7 @@ export const worktreeAction: Action = {
   handler: async (runtime, message, state, options, callback) => {
     const op = (readStringParam(options, "action") ?? "").trim().toLowerCase()
     if (op === "enter") return enterWorktreeHandler(runtime, message, state, options, callback)
-    if (op === "exit") return exitWorktreeHandler(runtime, message, state, options)
+    if (op === "exit") return exitWorktreeHandler(runtime, message, state, options, callback)
     return failureToActionResult({ reason: "missing_param", message: "WORKTREE requires action=enter|exit" })
   },
 }

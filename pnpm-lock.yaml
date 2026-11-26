@@ -1032,6 +1032,9 @@ importers:
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core
+      '@elizaos/core-node':
+        specifier: workspace:*
+        version: link:../core-node
       effect:
         specifier: 4.1.1
         version: 4.1.1

@@ -8,7 +8,7 @@ Models destructive shell command one-time confirmation challenges, background sh
 
 ### Destructive commands require a bound, unexpired, single-use confirmation challenge
 
-Issuing a challenge binds a command digest, canonical working directory, requester identity, and expiration time. Executing the destructive command requires a matching unexpired challenge and consumes it immediately so it cannot be replayed.
+Issuing a challenge binds a command digest, canonical working directory, requester identity, the message that asked for the command, and expiration time. The challenge token goes to the owner through a user-facing channel and never into model-visible results. Executing the destructive command requires a matching unexpired challenge redeemed by a later owner message, never the message that issued it, and consumes it immediately so it cannot be replayed.
 
 ```quint
 type BgStatus = BgNone | BgRunning | BgExited | BgKilled
@@ -18,6 +18,7 @@ type ShellSession = {
   challengeDigest: str,
   challengeCwd: str,
   challengeIssuer: str,
+  challengeMessage: str,
   challengeExpiresAt: int,
   destructiveRuns: int,
   bgStatus: BgStatus,
@@ -35,6 +36,7 @@ pure val initial: ShellSession = {
   challengeDigest: "",
   challengeCwd: "",
   challengeIssuer: "",
+  challengeMessage: "",
   challengeExpiresAt: 0,
   destructiveRuns: 0,
   bgStatus: BgNone,
@@ -46,25 +48,28 @@ pure val initial: ShellSession = {
   artifactExpiresAt: 0,
   artifactReads: 0
 }
-pure def canIssueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): bool =
-  digest != "" and cwd != "" and issuer != ""
-pure def issueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): ShellSession = {
+pure def canIssueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): bool =
+  digest != "" and cwd != "" and issuer != "" and messageId != ""
+pure def issueChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): ShellSession = {
   ...s,
   challengeActive: true,
   challengeDigest: digest,
   challengeCwd: cwd,
   challengeIssuer: issuer,
+  challengeMessage: messageId,
   challengeExpiresAt: s.clock + 5
 }
-pure def canConsumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): bool =
+pure def canConsumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): bool =
   s.challengeActive and s.clock < s.challengeExpiresAt and
-  digest == s.challengeDigest and cwd == s.challengeCwd and issuer == s.challengeIssuer
-pure def consumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str): ShellSession = {
+  digest == s.challengeDigest and cwd == s.challengeCwd and issuer == s.challengeIssuer and
+  messageId != "" and messageId != s.challengeMessage
+pure def consumeChallenge(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): ShellSession = {
   ...s,
   challengeActive: false,
   challengeDigest: "",
   challengeCwd: "",
   challengeIssuer: "",
+  challengeMessage: "",
   challengeExpiresAt: 0,
   destructiveRuns: s.destructiveRuns + 1
 }
@@ -141,6 +146,7 @@ pure def readArtifactPage(s: ShellSession, offset: int, limit: int): ShellSessio
 pure val digestValues = Set("d1", "d2", "")
 pure val cwdValues = Set("/work", "/other")
 pure val issuerValues = Set("owner", "guest")
+pure val messageIdValues = Set("m1", "m2", "")
 pure val deltaValues = Set(0, 1, 6)
 pure val bytesValues = Set(10, 50)
 pure val offsetValues = Set(0, 10, 50)
@@ -150,7 +156,7 @@ pure val limitValues = Set(50, 1000)
 
 ### Shell session invariants and reachability
 
-Active background counts stay within bounds, output cursors never exceed produced bytes, challenges are consumed on use, and each workflow is reachable.
+Active background counts stay within bounds, output cursors never exceed produced bytes, challenges are consumed on use and never by the message that issued them, and each workflow is reachable.
 
 ```quint
 pure def alwaysShellSessionValid(s: ShellSession): bool =
@@ -165,6 +171,8 @@ pure def stepChallengeConsumedOnce(before: ShellSession, via: str, after: ShellS
   via == "consumeChallenge" implies (
     before.challengeActive and not(after.challengeActive) and after.destructiveRuns == before.destructiveRuns + 1
   )
+pure def lawIssuingMessageCannotConfirm(s: ShellSession, digest: str, cwd: str, issuer: str, messageId: str): bool =
+  messageId == s.challengeMessage implies not(canConsumeChallenge(s, digest, cwd, issuer, messageId))
 pure def stepBgCursorMonotone(before: ShellSession, via: str, after: ShellSession): bool =
   via == "pollBackground" implies after.bgStdoutCursor >= before.bgStdoutCursor
 pure def sometimesDestructiveConfirmed(s: ShellSession): bool = s.destructiveRuns > 0
