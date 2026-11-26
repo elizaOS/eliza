@@ -3,7 +3,7 @@
 The owner's Google grant, held by the cloud. Sources: develop
 `agent-google-connector/shared.ts`, `oauth/{oauth2.ts,token-cache.ts}`,
 `api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (device
-key or session): `POST connect/initiate {side, capabilities, redirectUrl?}`,
+key or session): `POST connect/initiate {side, capabilities, redirectUrl?, emailBinding?}`,
 `POST connect/native {serverAuthCode}`, `GET status`, `GET accounts` (every
 connection's status), `POST disconnect {side, connectionId?}`; Google calls
 `GET /api/v1/oauth/google/callback`. One instance is one connection row; the
@@ -63,6 +63,13 @@ The shell strips the one `state` query parameter (`[A-Za-z0-9_-]{43}`) from
 `redirectUrl` and passes what `N::returnsAt` finds for the rest. An admitted
 initiate answers `{authUrl}`, with `appReturn: 2` when it has a
 `redirectUrl`; a refused one stores nothing.
+
+Clients that require consent for a specific mailbox send `emailBinding`.
+The shell takes the address from the signed-in account when it has one.
+The client supplies `emailBinding.address` for a phone-only account. A
+supplied address that differs from the account address is refused. The
+shell keeps a keyed digest of the case-normalized address with the attempt
+and clears it on consumption.
 
 ```quint
 type Side = OwnerSide | OtherSide
@@ -147,6 +154,9 @@ subject or access lifetime. When the organization already
 holds that subject (`subjectHeld`), the grant goes to that row by
 `receiveGrant` and this attempt row stays `Pending`; otherwise this row
 becomes the subject's connection. A row's subject, once set, never changes.
+For a browser attempt bound to an address, the shell reports the exchange as
+failed unless Google's verified email matches the address held for that
+attempt. The shell saves no grant from a failed exchange.
 
 ```quint
 pure def canProviderResult(c: Connection, success: bool, hasAccount: bool, subject: str, lifetime: Millis): bool = O::canProviderResult(c.flow) and hasAccount and (not(success) or (subject != "" and lifetime > 0))

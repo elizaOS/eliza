@@ -1,8 +1,8 @@
-// spec/workflow/notices.md, "A notice opens only its own run, at its own version, of a workflow still present"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"
-import { openNotice, resumesApprovalNotice } from "../../gen/workflow__notices.effect.vibe"
+// spec/workflow/notices.md, "A notice opens only its own run, at its own version, of a workflow still present"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/notices.md, "A finished result is offered only for its own run, while its owner is current, under one identity per scope, run and version"; spec/workflow/approvals.md, "Device steps require the exact reviewed scope and enrolled device"
+import { openNotice, resultDecision, resultIdentity, resumesApprovalNotice } from "../../gen/workflow__notices.effect.vibe"
 import { workflowSha } from "../contract/phone.vibe"
 import type { WorkflowPhoneReview } from "../contract/device.vibe"
-import type { WorkflowApproval, WorkflowClient, WorkflowClientError, WorkflowRun } from "./workflow-client.vibe"
+import { type WorkflowApproval, type WorkflowApprovalReceipt, type WorkflowClient, type WorkflowClientError, type WorkflowRequest, type WorkflowRun, workflowHttpError } from "./workflow-client.vibe"
 
 export interface WorkflowNoticeRoute {
   readonly scope: string
@@ -13,6 +13,79 @@ export interface WorkflowNoticeRoute {
   readonly runId: string
   readonly versionId: string
 }
+const NoticeRouteId = Schema.NonEmptyString.check(Schema.isMaxLength(128))
+const NoticeProposalId = Schema.NonEmptyString.check(Schema.isMaxLength(256))
+const NoticeDeadline = Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER))
+
+export interface WorkflowApprovalOffer extends Pick<WorkflowNoticeRoute, "workflowId" | "runId" | "versionId"> {
+  readonly kind: "approval"
+  readonly proposalId: string
+  readonly expiresAt: number
+}
+
+export interface WorkflowResultOffer extends Pick<WorkflowNoticeRoute, "workflowId" | "runId" | "versionId"> {
+  readonly title: string
+  readonly body: string
+}
+
+export interface WorkflowNoticeOffers {
+  readonly approvals: readonly WorkflowApprovalOffer[]
+  readonly results: readonly WorkflowResultOffer[]
+}
+
+const RouteFields = { workflowId: NoticeRouteId, runId: NoticeRouteId, versionId: NoticeRouteId }
+const WorkflowRow = Schema.Union([
+  Schema.Struct({
+    category: Schema.Literal("workflow"), expiresAt: NoticeDeadline,
+    data: Schema.Struct({ kind: Schema.Literal("approval"), ...RouteFields, proposalId: NoticeProposalId }),
+  }),
+  Schema.Struct({
+    category: Schema.Literal("workflow"), title: Schema.String.check(Schema.isMaxLength(512)), body: Schema.String.check(Schema.isMaxLength(4096)),
+    data: Schema.Struct({ kind: Schema.Literal("result"), ...RouteFields }),
+  }),
+])
+const readWorkflowRow = Schema.decodeUnknownOption(WorkflowRow)
+const NoticeCoordinate = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER))
+const NoticePage = Schema.Struct({
+  serviceStatus: Schema.Literal("ready"), nativeEpoch: Schema.NonEmptyString, throughSequence: NoticeCoordinate, nextSequence: NoticeCoordinate,
+  complete: Schema.Boolean, notifications: Schema.Array(Schema.Unknown),
+})
+const readNoticePage = Schema.decodeUnknownOption(NoticePage)
+const NATIVE_NOTICE_PAGE = "/api/notifications?nativeTransport=true"
+
+const noticeInboxInvalid = () => workflowHttpError(502, { code: "WORKFLOW_NOTICE_INBOX_INVALID", error: "Workflow notices could not be read" })
+
+effect function noticePage(request: WorkflowRequest, path: string): typeof NoticePage.Type!WorkflowClientError {
+  const page = Option.getOrUndefined(readNoticePage(try request(path, undefined)))
+  if (page === undefined) throw noticeInboxInvalid()
+  return page
+}
+
+// spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/notices.md, "A finished result is offered only for its own run, while its owner is current, under one identity per scope, run and version"; spec/agent/notifications.md, "A list query asks for the native page, with each parameter given once and well formed"; spec/core/notifications/cursor.md, "A scan captures its epoch and upper append coordinate"
+export effect function workflowNoticeOffers(request: WorkflowRequest): WorkflowNoticeOffers!WorkflowClientError {
+  const approvals: WorkflowApprovalOffer[] = []
+  const results: WorkflowResultOffer[] = []
+  const collect = (page: typeof NoticePage.Type) => {
+    for (const entry of page.notifications) {
+      const row = Option.getOrUndefined(readWorkflowRow(entry))
+      if (row === undefined) continue
+      const { workflowId, runId, versionId } = row.data
+      if ("expiresAt" in row) approvals.push({ kind: "approval", workflowId, runId, versionId, proposalId: row.data.proposalId, expiresAt: row.expiresAt })
+      else results.push({ workflowId, runId, versionId, title: row.title, body: row.body })
+    }
+  }
+  const first = try noticePage(request, NATIVE_NOTICE_PAGE)
+  collect(first)
+  let page = first
+  while (!page.complete) {
+    const after = page.nextSequence
+    page = try noticePage(request, `${NATIVE_NOTICE_PAGE}&nativeEpoch=${encodeURIComponent(first.nativeEpoch)}&afterSequence=${after}&throughSequence=${first.throughSequence}`)
+    if (page.nativeEpoch !== first.nativeEpoch || page.throughSequence !== first.throughSequence || (!page.complete && page.nextSequence <= after)) throw noticeInboxInvalid()
+    collect(page)
+  }
+  return { approvals, results }
+}
+
 export interface WorkflowApprovalNoticeIdentity { readonly id: string; readonly bindingHash: string }
 export type WorkflowNoticeTarget =
   | { readonly kind: "run"; readonly route: WorkflowNoticeRoute; readonly run: WorkflowRun; readonly pending: readonly WorkflowApproval[]; readonly review?: WorkflowPhoneReview }
@@ -22,6 +95,16 @@ export effect function workflowApprovalNoticeIdentity(route: WorkflowNoticeRoute
   return {
     id: `approval-${try workflowSha(["workflow-approval-notice", route.scope, route.runId, proposalId])}`,
     bindingHash: try workflowSha(["workflow-approval-route", route.scope, route.origin, route.ownerId, route.agentId, route.workflowId, route.runId, route.versionId, proposalId]),
+  }
+}
+
+export interface WorkflowResultNoticeIdentity { readonly id: string; readonly bindingHash: string }
+
+export effect function workflowResultNoticeIdentity(route: WorkflowNoticeRoute): WorkflowResultNoticeIdentity!! {
+  const identity = resultIdentity(route)
+  return {
+    id: `result-${try workflowSha(["workflow-result-notice", identity.scope, identity.runId, identity.versionId])}`,
+    bindingHash: try workflowSha(["workflow-result-route", route.scope, route.origin, route.ownerId, route.agentId, route.workflowId, route.runId, route.versionId]),
   }
 }
 
@@ -47,20 +130,14 @@ export effect function openWorkflowNotice(client: WorkflowClient, route: Workflo
 export interface WorkflowNoticeReads {
   detail(workflowId: string): { readonly versionId: string; readonly removed: boolean }!WorkflowClientError
   receipt(runId: string, workflowId: string): WorkflowRun!WorkflowClientError
-  phoneReview(run: WorkflowRun): WorkflowPhoneReview!WorkflowClientError
-  pending(review: WorkflowPhoneReview, run: WorkflowRun): readonly { readonly id: string; readonly expiresAt: number; readonly title: string }[]!WorkflowClientError
+  approvals(run: WorkflowRun): (WorkflowApprovalReceipt | null)!WorkflowClientError
 }
 
 export function workflowNoticeReads(client: WorkflowClient): WorkflowNoticeReads {
   return {
     detail: (workflowId) => map(client.detail(workflowId), (found) => ({ versionId: found.versionId, removed: found.removed })),
     receipt: (runId, workflowId) => client.receipt(runId, workflowId),
-    phoneReview: (run) => client.phoneReview(run),
-    effect pending(_review, run) {
-      const receipt = try client.approvals(run)
-      return (receipt?.approvals ?? []).flatMap((approval) => approval.status === "pending" && approval.expiresAt !== undefined
-        ? [{ id: workflowApprovalProposalId(approval), expiresAt: approval.expiresAt, title: approval.title }] : [])
-    },
+    approvals: (run) => client.approvals(run),
   }
 }
 
@@ -84,17 +161,35 @@ export effect function revalidateWorkflowApprovalNotice(notice: SuspendedWorkflo
   if (current.removed || current.versionId !== route.versionId || notice.expiresAt <= at) return "withdraw"
   const run = try reads.receipt(route.runId, route.workflowId)
   if (!valid()) return "stale"
-  const review = run.versionId === route.versionId && !run.finished ? try reads.phoneReview(run) : undefined
+  if (run.versionId !== route.versionId || run.finished) return "withdraw"
+  const receipt = try reads.approvals(run)
   if (!valid()) return "stale"
-  const pending = review === undefined ? [] : try reads.pending(review, run)
+  if (receipt === null) throw workflowHttpError(503, { code: "WORKFLOW_APPROVAL_RECEIPT_UNAVAILABLE", error: "Workflow approval receipt was unavailable" })
   let same = false
-  for (const step of pending) {
-    const bound = try workflowApprovalNoticeIdentity(route, step.id)
-    if (bound.id === notice.id && bound.bindingHash === notice.bindingHash && step.expiresAt === notice.expiresAt) same = true
+  for (const approval of receipt.approvals) {
+    if (approval.status !== "pending" || approval.expiresAt !== notice.expiresAt) continue
+    const bound = try workflowApprovalNoticeIdentity(route, workflowApprovalProposalId(approval))
+    if (bound.id === notice.id && bound.bindingHash === notice.bindingHash) same = true
   }
   if (!valid()) return "stale"
+  const settledAt = try Clock.currentTimeMillis
   return resumesApprovalNotice({
-    runFinished: run.finished || (review?.finished ?? true), cancellationRequested: review?.cancellationRequestedAt !== null && review !== undefined,
-    versionMatches: run.versionId === route.versionId, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= at,
+    runFinished: receipt.finished, cancellationRequested: receipt.cancellationRequested,
+    versionMatches: true, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= settledAt,
   }) ? "resume" : "withdraw"
+}
+
+const RESULT_DECISION = { OfferResult: "offer", WithdrawResult: "withdraw", StaleResult: "stale" } as const
+
+// spec/workflow/notices.md, "A finished result is offered only for its own run, while its owner is current, under one identity per scope, run and version"
+export effect function revalidateWorkflowResultNotice(route: WorkflowNoticeRoute, reads: WorkflowNoticeReads, valid: () => boolean): ("offer" | "withdraw" | "stale")!WorkflowClientError {
+  if (!valid()) return "stale"
+  const definition = try reads.detail(route.workflowId)
+  if (!valid()) return "stale"
+  const run = definition.removed ? undefined : try reads.receipt(route.runId, route.workflowId)
+  return RESULT_DECISION[resultDecision(route, {
+    ownerCurrent: valid(),
+    read: { definitionPresent: true, definitionRemoved: definition.removed, runPresent: run !== undefined, runWorkflow: run?.workflowId ?? "", runVersion: run?.versionId ?? "" },
+    runFinished: run?.finished ?? false,
+  })]
 }

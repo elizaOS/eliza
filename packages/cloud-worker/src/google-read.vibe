@@ -40,6 +40,13 @@ const gmail = "https://gmail.googleapis.com/gmail/v1/users/me"
 const calendar = "https://www.googleapis.com/calendar/v3/calendars"
 const attachments = /^[a-zA-Z0-9_-]{1,1024}$/
 export const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
+export const composeAddress = /^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/
+const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@"]*)\s*<([^<>]+)>$/
+
+export function composeMailboxAddress(entry: string): string | undefined {
+  const address = (mailbox.exec(entry)?.[1] ?? entry).trim()
+  return address.length <= 254 && composeAddress.test(address) ? address : undefined
+}
 export const hasControlCharacter = (text: string) => [...text].some((character) => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f)
 const rfcMessageId = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+>$/
 const history = /^[0-9]+$/

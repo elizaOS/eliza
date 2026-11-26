@@ -25,13 +25,13 @@ export function shownPhoto(observation: Observation | undefined, negotiation: Ne
   }
 }
 
-export const returnedIdsGuidance = "Use only library ids and revisions the phone returned; never guess them."
+export const returnedIdsGuidance = "Use only phone-returned library ids/revisions; never guess."
 
 export function photosViewGuidance(negotiation: Negotiation): readonly string[] {
   if (!negotiatedHas(negotiation, "PhotosLibraryV1") || !negotiatedHas(negotiation, "PhotosViewV1")) return []
-  const base = "photos_filter narrows the phone Photos grid behind a clearable chip and returns only how many items it shows; photos_open opens one item in the Photos viewer; both run directly only when the owner's current message asked for them. photos_album_create and photos_share are reviewed by the owner in Photos; a share then opens Android's share sheet, and review_opened proves neither a created album nor a share."
+  const base = "photos_filter filters Photos grid (returns count only); photos_open opens one item (both direct only if asked). photos_album_create/photos_share open Photos review (share then opens Android sheet); review_opened proves neither."
   return negotiatedHas(negotiation, "PhotosViewSelectedV1")
-    ? [base, "photos_album_create and photos_share with selected true use the one item the owner has open in the Photos viewer instead of ids. Use it when the owner says this photo, this video or the open one; the phone shows that item in the review.", returnedIdsGuidance]
+    ? [base, "photos_album_create/photos_share with selected:true use the one item the owner has open in the Photos viewer instead of ids (for 'this photo/video/open one').", returnedIdsGuidance]
     : [base, returnedIdsGuidance]
 }
 

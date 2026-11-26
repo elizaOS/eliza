@@ -1,10 +1,10 @@
 # Native phone
 
-The [Android phone](../os/android/phone.md) and [voicemail](../os/android/voicemail.md) specifications own system dialer effects. The native package exposes a phone surface, checked read/write results, and the iOS Phone Companion session-mirror boundary.
+The [Android phone](../os/android/phone.md) and [voicemail](../os/android/voicemail.md) specifications own system dialer effects. The native package exposes a phone surface and checked read/write results.
 
 ## Story: Check calls and use the dialer without mistaking a handoff for a call
 
-> As the owner, I want status and complete history to reflect Telecom and provider evidence, and an iOS companion to remain tied to its paired session.
+> As the owner, I want status and complete history to reflect Telecom and provider evidence.
 
 ### Opening the dialer and placing a call require different authority
 
@@ -21,23 +21,8 @@ pure def mayUseNativePhone(authority: PhoneAuthority, operation: PhoneOperation)
     else authority.historyGrant))
 pure def lawCallNeedsTelecom(authority: PhoneAuthority): bool =
   mayUseNativePhone(authority, PlaceNativeCall) implies authority.telecomAvailable and authority.callGrant
-```
-
-### Companion reads are scoped to the exact live pairing and remote session
-
-```quint
-type CompanionLink = { ownerId: str, pairingId: str, sessionId: str }
-pure def mayUseCompanionMirror(reviewed: CompanionLink, active: CompanionLink, paired: bool): bool =
-  paired and reviewed == active and active.ownerId != "" and active.pairingId != "" and active.sessionId != ""
-pure def lawPriorCompanionSessionCannotPublish(reviewed: CompanionLink, active: CompanionLink, paired: bool): bool =
-  reviewed.sessionId != active.sessionId implies not(mayUseCompanionMirror(reviewed, active, paired))
 pure val authorityValues = Set(
   { supported: true, dialerAvailable: true, telecomAvailable: true, callGrant: true, historyGrant: true, owner: true },
   { supported: true, dialerAvailable: true, telecomAvailable: false, callGrant: true, historyGrant: true, owner: true },
   { supported: true, dialerAvailable: true, telecomAvailable: true, callGrant: false, historyGrant: true, owner: true })
-pure val reviewedValues = Set({ ownerId: "owner", pairingId: "iphone", sessionId: "session1" })
-pure val activeValues = Set(
-  { ownerId: "owner", pairingId: "iphone", sessionId: "session1" },
-  { ownerId: "owner", pairingId: "iphone", sessionId: "session2" },
-  { ownerId: "owner", pairingId: "tablet", sessionId: "session1" })
 ```

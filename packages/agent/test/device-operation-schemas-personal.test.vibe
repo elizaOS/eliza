@@ -107,7 +107,7 @@ it('A proposal outside its owning bounds has no valid shape (spec/agent/deviceAc
   for (const op of invalid) assert.isUndefined(classified(op), JSON.stringify(op))
 })
 
-it('Each calendar, reminder and Clock field is admitted up to its stated bound and refused one past it (spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check")', () => {
+it('Each calendar, reminder, Clock and notes filter field is admitted up to its stated bound and refused one past it (spec/agent/deviceActions/operations.md, "Story: Propose only operations the device can check")', () => {
   const day = 86_400_000
   const after = (start: string, ms: number) => new Date(Date.parse(start) + ms).toISOString()
   const event = (changed: Partial<typeof fields>): Wire => ({ type: "calendar_create_local", fields: { ...fields, ...changed } })
@@ -130,6 +130,7 @@ it('Each calendar, reminder and Clock field is admitted up to its stated bound a
     [set({ hour: 0, minute: 59 }), set({ hour: 0, minute: 60 })],
     [set({ label: "w".repeat(200) }), set({ label: "w".repeat(201) })],
     [{ type: "clock_handoff", action: "snooze", snoozeMinutes: 60 }, { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 }],
+    [{ type: "notes_list_filter", text: "g".repeat(200) }, { type: "notes_list_filter", text: "g".repeat(200) + " " }],
   ]
   for (const [within, beyond] of bounded) {
     assert.isDefined(classified(within), JSON.stringify(within).slice(0, 120))

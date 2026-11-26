@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/lifecycle.md, "Story: See a failed agent even when I silence its status"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent after checking its payload"; spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Restart a crashed or unhealthy agent until it stays up"; spec/os/agentService/lifecycle.md, "Story: Recover my agent's records after a storage failure"; spec/os/agentService/lifecycle.md, "Story: Hold the agent for an app update"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/health.md, "Story: Tell a busy agent from an absent one"; spec/os/agentService/lifecycle.md, "Story: See a failed agent even when I silence its status"; spec/os/agentService/lifecycle.md, "A failed agent's notice is on the alerts channel with the failure words, and a starting, running or stopping agent's on the status channel"; spec/os/agentService/config.md, "Story: Start my agent with my character, policy and model"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/agentService/channel.md, "Only the device headers and client id the runtime client carries cross the channel"; spec/os/agentService/config.md, "Only a cloud launch is handed the mail broker, by its address and a bearer for that launch, never a credential"
 package ai.eliza.os.agent;
 
 import ai.eliza.os.agent.AgentPolicy.Effect;
@@ -86,6 +86,7 @@ public class AgentService extends Service {
   private static volatile AgentService live;
   private static volatile AgentConfig loaded;
   private static volatile AgentCredentials registered = AgentCredentials.NONE;
+  private static final BrokerLaunches BROKERS = new BrokerLaunches(failed -> Log.w(TAG, "A replaced mail broker could not be closed", failed));
 
   public record Review(String token, int retainedCount) {}
 
@@ -109,6 +110,7 @@ public class AgentService extends Service {
   private ChildJournal journal;
   private UpdateHoldFile hold;
   private AgentSupervisor.Child child;
+  private final BrokerLaunches.Launch brokerLaunch = BROKERS.launch(this::brokerReplaced);
   private AgentPolicy.Check checkAfterReap;
   private String token;
   private Path socket;
@@ -118,6 +120,8 @@ public class AgentService extends Service {
   private AgentPolicy.UpdateTarget pendingHold;
 
   public static void useCredentials(AgentCredentials source) { registered = Objects.requireNonNull(source); }
+
+  public static void useGoogleBroker(GoogleBroker broker) { BROKERS.install(broker); }
 
   protected AgentCredentials credentials() { return registered; }
 
@@ -379,6 +383,7 @@ public class AgentService extends Service {
         child.kill();
         child = null;
       }
+      brokerLaunch.end();
     });
     effects.shutdown();
     work.shutdown();
@@ -636,17 +641,20 @@ public class AgentService extends Service {
       Path launch = writeLaunch(document);
       Path agentSocket = directories.prepareSocket();
       byte[] frame = readyFrame.encode();
-      AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
-        directories.runtime().resolve("agent.log"));
       synchronized (EPOCH_LOCK) {
         if (live != this) return;
-        spawned = AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
-          readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
-          new AgentSupervisor.Listener() {
-            @Override public void ready(long readyEpoch) { later(() -> settled(() -> ready(readyEpoch))); }
-            @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
-            @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> exited(exitedEpoch, code))); }
-          });
+        spawned = brokerLaunch.spawn(config.needsAccount(), active.account(), unavailable ->
+          Log.w(TAG, "The mail broker could not open, so the agent starts without it", unavailable), handed -> {
+          AgentSupervisor.Command command = new AgentSupervisor.Command(prepared.node(), prepared.bundleDir(), launch, stateDir, agentSocket,
+            directories.runtime().resolve("agent.log"), handed == null ? Map.of() : handed.environment());
+          return AgentSupervisor.spawn(epoch, command, frame, (spawnedEpoch, pid) -> journal.record(Math.toIntExact(pid), spawnedEpoch),
+            readyEpoch -> HealthPolicy.classify(probe(agentSocket, launchToken, () -> true), readyEpoch) == HealthPolicy.Probe.OK,
+            new AgentSupervisor.Listener() {
+              @Override public void ready(long readyEpoch) { later(() -> settled(() -> AgentService.this.ready(readyEpoch))); }
+              @Override public void readinessTimedOut(long timedOut) { later(() -> settled(() -> { if (owns(timedOut)) step(new AgentPolicy.ReadyTimeout()); })); }
+              @Override public void exited(long exitedEpoch, int code) { later(() -> settled(() -> AgentService.this.exited(exitedEpoch, code))); }
+            });
+        });
       }
       socket = agentSocket;
     } catch (IOException | RuntimeException failed) {
@@ -659,6 +667,12 @@ public class AgentService extends Service {
   }
 
   private boolean owns(long launchEpoch) { return child != null && child.epoch == launchEpoch; }
+
+  private void brokerReplaced() {
+    later(() -> settled(() -> {
+      if (brokerLaunch.replaced()) step(new AgentPolicy.BrokerReplaced());
+    }));
+  }
 
   private void ready(long launchEpoch) {
     if (!owns(launchEpoch) || policy.state().phase() != Phase.SPAWNED) return;
@@ -678,6 +692,7 @@ public class AgentService extends Service {
     if (!owns(launchEpoch)) return;
     child = null;
     token = null;
+    brokerLaunch.revoke();
     cancelTimers();
     CHANNEL.retire(launchEpoch);
     boolean stale = policy.state().staleEpoch() == launchEpoch;

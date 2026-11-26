@@ -1,4 +1,4 @@
-// spec/os/voice/microphone.md, "Story: Share the microphone between live capture and dictation"; spec/os/voice/microphone.md, "Story: Dictate a draft while live capture was running"
+// spec/os/voice/microphone.md, "Story: Share the microphone between live capture and dictation"; spec/os/voice/microphone.md, "Story: Dictate a draft while live capture was running"; spec/os/voice/liveCapture.md, "A routed capture sends its segments only to the owner's agent, in order and bounded, and a stop cuts them off"
 // Copied from eliza-develop plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java
 package ai.eliza.voice;
 
@@ -12,6 +12,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
@@ -26,9 +28,10 @@ import org.json.JSONObject;
  * <ul>
  *   <li>{@link #reserve} takes the per-capture admission before the permission prompt, so a Stop,
  *       pause or replacement during the prompt or native startup cancels it without waiting.
- *   <li>{@link #start} (on the capture worker) replaces any running capture, warms the agent's ASR
- *       session before the microphone opens, publishes cancellation before native startup and
- *       re-checks the host's gate after it.
+ *   <li>{@link #start} (on the capture worker) replaces any running capture, opens the microphone
+ *       while the agent's ASR session warms (the pipe holds what is heard until then, and a session
+ *       not ready within {@code PIPE_READY_MS} fails as {@code TRANSPORT}), publishes cancellation
+ *       before native startup and re-checks the host's gate after it.
  *   <li>Frames, transcripts and end events reach the host only while the capture's admission and
  *       the host's {@link Host#open} gate for its epoch both hold. Piped frames are never handed to
  *       the host (the host receives an empty frame list with the VAD edges and level).
@@ -73,6 +76,8 @@ public final class LiveCaptureController {
   interface Sink {void result(JSONObject value);void failed(String code);}
   boolean start(Executor executor);
   CompletableFuture<Boolean> ready();
+  /** The warm-up deadline passed: fail once as {@code TRANSPORT} unless {@link #ready} already succeeded or the pipe was cancelled or finished. */
+  void expire();
   boolean offer(JSONArray frames,JSONArray vad);
   void cutoff(double atMs);
   CompletableFuture<Boolean> close(boolean discard,double atMs);
@@ -114,13 +119,20 @@ public final class LiveCaptureController {
  // being refused as busy. A second waiting task is still refused rather than queued without bound.
  private final ExecutorService stopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
  private final ExecutorService pipeWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
+ private final ScheduledThreadPoolExecutor readyTimer=new ScheduledThreadPoolExecutor(1);
+ private final long pipeReadyMs;
  private final LiveCaptureAdmission admission=new LiveCaptureAdmission();
  private final Map<String,Pipe> pipes=new ConcurrentHashMap<>();
  private Capture live; // Confined to worker.
  private volatile Capture current; // The running capture, for interruption off worker.
  private volatile String interrupted; // A call or pause since this host's last capture: an automatic reopen is refused.
 
- public LiveCaptureController(Host host){this.host=host;}
+ public LiveCaptureController(Host host){this(host,PIPE_READY_MS);}
+ /** As above, with the agent session's warm-up deadline (tests shorten it). */
+ LiveCaptureController(Host host,long pipeReadyMs){
+  if(pipeReadyMs<=0)throw new IllegalArgumentException("Invalid warm-up deadline");
+  this.host=host;this.pipeReadyMs=pipeReadyMs;readyTimer.setRemoveOnCancelPolicy(true);
+ }
 
  /** Reserves the admission for {@code id} at the host's {@code epoch}, cancelling any earlier one. */
  public LiveCaptureAdmission.Ticket reserve(String id,long epoch){return admission.begin(id,epoch);}
@@ -148,24 +160,26 @@ public final class LiveCaptureController {
    try{if(live!=null){String old=live.captureId();live.stopAndWait();live=null;current=null;closePipe(old,true,now());}}
    catch(RuntimeException unconfirmed){result.refused("Microphone release is unconfirmed",CAPTURE);return;}
    final Pipe pipe;
+   final Pipe.Sink pipeSink=new Pipe.Sink(){
+    public void result(JSONObject value){if(host.open(epoch)&&admission.events(ticket))host.transcript(id,value,null);}
+    public void failed(String code){
+     if(!admission.events(ticket))return;
+     boolean asr="ASR_FAILED".equals(code);
+     if(!asr&&startup.hold(code))return;
+     if(!asr)admission.stop(id);host.transcript(id,null,code);
+    }
+   };
    try{
-    pipe=route==null?null:route.open(new Pipe.Sink(){
-     public void result(JSONObject value){if(host.open(epoch)&&admission.events(ticket))host.transcript(id,value,null);}
-     public void failed(String code){
-      if(!admission.events(ticket))return;
-      boolean asr="ASR_FAILED".equals(code);
-      if(!asr&&startup.hold(code))return;
-      if(!asr)admission.stop(id);host.transcript(id,null,code);
-     }
-    },id,roomId);
+    pipe=route==null?null:route.open(pipeSink,id,roomId);
     if(pipe!=null){
      pipes.put(id,pipe);
      if(!pipe.start(pipeWorker)){pipes.remove(id,pipe);result.refused("Native voice transport busy",null);return;}
-     // An interrupt before the pipe was published could not close it: stop waiting for the agent.
      if(!admission.current(ticket))throw new IllegalStateException(CANCELLED);
-     if(!pipe.ready().get(PIPE_READY_MS,TimeUnit.MILLISECONDS))throw new IllegalStateException("Agent voice session unavailable");
+     // The pipe decides the deadline against its own warm-up and reports a TRANSPORT failure at most once.
+     ScheduledFuture<?> late=readyTimer.schedule(pipe::expire,pipeReadyMs,TimeUnit.MILLISECONDS);
+     pipe.ready().whenComplete((ready,error)->late.cancel(false));
     }
-   }catch(Exception unavailable){
+   }catch(Exception|Error unavailable){
     closePipe(id,true,now());
     // A Stop, pause or replacement while the agent session warmed is a cancellation, not an enrollment failure.
     if(startup.failure()==null&&host.canStart(epoch)&&admission.current(ticket))result.refused("Native voice enrollment unavailable",null);
@@ -212,7 +226,7 @@ public final class LiveCaptureController {
   // Cancelling transport can immediately wake the startup worker. Publish Stop first so that
   // worker observes cancellation when classifying an interrupted warm-up.
   admission.stop(id,discard);
-  if(pipe!=null&&(discard||!pipe.ready().isDone()))pipe.close(true,cutoff);
+  if(pipe!=null&&discard)pipe.close(true,cutoff);
   submit(worker,()->{
    long duration=0;
    if(live!=null&&live.captureId().equals(id)){
@@ -273,7 +287,7 @@ public final class LiveCaptureController {
  public void onWorker(Runnable work,Runnable refused){submit(worker,work,refused);}
 
  /** Terminal: cancels everything and stops the workers after their queued cleanup. */
- public void shutdown(){end(Collections.emptySet(),false);worker.shutdown();stopWorker.shutdown();pipeWorker.shutdown();}
+ public void shutdown(){end(Collections.emptySet(),false);worker.shutdown();stopWorker.shutdown();pipeWorker.shutdown();readyTimer.shutdownNow();}
 
  /** A refused start: interrupted (its reason), failed in the pipe (its code) or cancelled. */
  private void refuse(LiveCaptureAdmission.Ticket ticket,Startup startup,Started result){

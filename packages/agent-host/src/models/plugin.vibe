@@ -1,4 +1,4 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"; spec/agent/models/binding.md, "A call sends its caller's temperature only to a model that takes one"
 import type { IAgentRuntime } from "@elizaos/core"
 import { cloudLinkPlugin } from "../../gen/agent__plugins__profile.effect.vibe"
 import type { LaunchDocument } from "@elizaos/agent"
@@ -13,7 +13,7 @@ function registerModels(runtime: IAgentRuntime, model: LaunchDocument["model"], 
     case "cloud":
       return registerCloudModels(runtime, bound, { baseUrl: model.cloudBaseUrl, small: model.smallModel, large: model.largeModel, image: model.imageModel })
     case "own-key":
-      return registerOwnKeyModels(runtime, bound, { baseUrl: model.ownKeyBaseUrl, small: model.ownKeySmall, large: model.ownKeyLarge })
+      return registerOwnKeyModels(runtime, bound, { baseUrl: model.ownKeyBaseUrl, small: model.ownKeySmall, large: model.ownKeyLarge, ...(model.ownKeySampling === undefined ? {} : { sampling: model.ownKeySampling }) })
     case "none":
       return
   }

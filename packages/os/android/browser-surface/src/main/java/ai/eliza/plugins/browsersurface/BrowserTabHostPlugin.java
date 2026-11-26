@@ -191,7 +191,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  /** Kept separate from dispatch so resolver changes cannot bypass page/owner checks. */
  private java.util.function.Function<Intent,java.util.List<android.content.pm.ResolveInfo>> externalBrowserResolver =
   intent->getContext().getPackageManager().queryIntentActivities(intent,android.content.pm.PackageManager.MATCH_DEFAULT_ONLY|android.content.pm.PackageManager.GET_RESOLVED_FILTER);
- private static class Tab { BrowserReadingWorld readingWorld; BrowserBlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; OccludingSurfaceLayout frame; TextView message; /** Engine-attested login fields (null when the WebView cannot attest field origins). */ BrowserLoginFields fields; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserBlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; OccludingSurfaceLayout frame; TextView message; /** Engine-attested login fields (null when the WebView cannot attest field origins). */ BrowserLoginFields fields; boolean priv, handedOff, loading, dead, committed, documentStarted, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
@@ -296,8 +296,9 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   return "https://"+host.toLowerCase(java.util.Locale.ROOT)+(port==-1||port==443?"":":"+port);
  }
  private void clearTimeout(Tab t) { if(t.timeout!=null) navigationHandler.removeCallbacks(t.timeout); t.timeout=null; }
- private void loading(Tab t) { loading(t,false); }
- private void loading(Tab t,boolean startedCallback) {
+ private void loading(Tab t) { loading(t,false,false); }
+ private void loading(Tab t,boolean startedCallback) { loading(t,startedCallback,false); }
+ private void loading(Tab t,boolean startedCallback,boolean keepReading) {
   if(reading!=null)reading.cancelFor(t.id);
   if(startedCallback&&t.autofillEnabled&&!paused&&Objects.equals(presentedId,t.id))commitAutofill(t);
   else disableAutofill(t);
@@ -308,9 +309,9 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(siteDialogTab==t&&!(startedCallback&&t.authSaveOrigin!=null))dismissSiteDialogs();
   if(fullscreenTab==t)exitFullscreen(true);
   if(!startedCallback)t.authAttempts=0;
-  if(t.readingWorld!=null&&!startedCallback)t.readingWorld.invalidate();
+  if(t.readingWorld!=null&&!startedCallback&&!keepReading)t.readingWorld.invalidate();
   t.navigation++;if(fileTab==t)cancelFile();
-  clearTimeout(t); t.loading=true; t.committed=false; t.error=""; t.httpStatus=0; t.finishedUrl="";
+  clearTimeout(t); t.loading=true; t.committed=false; t.documentStarted=startedCallback; t.error=""; t.httpStatus=0; t.finishedUrl="";
   t.web.setVisibility(View.INVISIBLE); t.message.setText("Loading website…"); t.message.setVisibility(View.VISIBLE);
   t.timeout=()->{if(t.loading&&!t.dead)fail(t,"This page is taking too long. Check your connection, then reload from the menu.");};
   navigationHandler.postDelayed(t.timeout,30000);
@@ -818,7 +819,11 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(fresh){t.handedOff=true;if(!Objects.equals(presentedId,t.id)&&!Objects.equals(presentedId,opener.id)){closePopup(t);return;}}
   else{
    if(!Objects.equals(presentedId,t.id))return;
-   if(!gesture){notice(t,"Blocked a link to another app that opened without a tap.");return;}
+   if(!gesture){
+    if(!((t.committed||t.documentStarted)&&t.error.isEmpty()&&!BrowserExternalLinkPolicy.external(raw)))
+     notice(t,"Blocked a link to another app that opened without a tap.");
+    return;
+   }
   }
   Intent intent=BrowserExternalHandoff.intentFor(raw,getContext().getPackageName(),config());
   if(intent==null||(!BrowserExternalLinkPolicy.systemLink(raw)&&ownsRoute(intent))){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
@@ -835,7 +840,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  /** Close a pop-up after its callback returns; a WebView is not destroyed inside its own callback. */
  private void closePopup(Tab t){navigationHandler.post(()->{if(tabs.get(t.id)!=t)return;tabs.remove(t.id);dispose(t);tabClosed(t.id);});}
  @PluginMethod public void navigate(PluginCall call) { String url=call.getString("url"); if (url==null || !safe(url)) { call.reject("Enter an HTTP or HTTPS address without credentials"); return; } run(call,t -> { t.url=url; loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(url); t.web.loadUrl(url); }); }
- @PluginMethod public void command(PluginCall call) { run(call,t -> { String expected=call.getString("navigation");if(expected!=null&&(paused||!getActivity().hasWindowFocus()||siteDialog!=null||!expected.equals(String.valueOf(t.navigation))))throw new IllegalStateException("Browser foreground or document changed"); String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.web.getUrl());t.web.reload();} else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
+ @PluginMethod public void command(PluginCall call) { run(call,t -> { String expected=call.getString("navigation");if(expected!=null&&(paused||!getActivity().hasWindowFocus()||siteDialog!=null||!expected.equals(String.valueOf(t.navigation))))throw new IllegalStateException("Browser foreground or document changed"); String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t,false,true);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t,false,true);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.web.getUrl());t.web.reload();} else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
  private BelowHostInputRouter tabInputRouter;
  /** Below-host tabs use the same gesture router as BrowserSurfacePlugin. */
  private BelowHostInputRouter ensureTabInputRouter() {

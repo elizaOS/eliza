@@ -73,7 +73,7 @@ export error InvalidKeyMaterial { message: string }
 
 const HASH_ALGORITHMS = new Set(["md5", "ripemd160", "sha1", "sha224", "sha256", "sha384", "sha512"])
 
-export effect function createHash(algorithm: string) {
+effect function createHash(algorithm: string) {
   if (!HASH_ALGORITHMS.has(algorithm.toLowerCase())) {
     throw new UnsupportedAlgorithm({ message: `Unsupported algorithm: ${algorithm}. Supported: ${[...HASH_ALGORITHMS].join(", ")}` })
   }

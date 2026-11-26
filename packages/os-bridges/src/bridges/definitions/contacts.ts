@@ -1,5 +1,4 @@
 // spec/os/android/contacts.md, "Story: Read my contacts only while I am looking at them"; spec/os/android/contacts.md, "Story: Change only the contact I reviewed"; spec/os/android/contacts.md, "Story: Name the numbers I am already looking at"; spec/os/android/paging.md, "Story: Page my records without repeats or gaps"
-import type { PermissionState } from "@capacitor/core";
 import type { HandoffOutcome, ReadKind } from "../../../gen/os__android__bridge.ts";
 import type { ContactsInstall, ContactsState } from "../../../gen/os__android__contacts.ts";
 import type { ActionJournalPlugin, StagedDeletion } from "./action-journal.ts";
@@ -160,7 +159,7 @@ export interface AddressBookNativePlugin {
 
 export interface AddressBookClientOptions {
   install: ContactsInstall;
-  plugin?: AddressBookNativePlugin;
+  plugin: AddressBookNativePlugin;
   journal?: ActionJournalPlugin;
 }
 
@@ -183,29 +182,4 @@ export interface AddressBookClient {
 export interface ContactNamesClient {
   resolve(screen: NameScreen): Promise<readonly ContactName[]>;
   close(surface: NameSurface): Promise<void>;
-}
-
-export interface ContactSummary {
-  id: string;
-  lookupKey: string;
-  displayName: string;
-  phoneNumbers: string[];
-  emailAddresses: string[];
-  photoUri?: string;
-  starred: boolean;
-}
-
-export interface ContactsPermissionStatus {
-  contacts: PermissionState;
-}
-
-export interface ListContactsOptions {
-  query?: string;
-  limit?: number;
-}
-
-export interface ContactsPlugin {
-  listContacts(options: ListContactsOptions): Promise<{ contacts: ContactSummary[] }>;
-  checkPermissions(): Promise<ContactsPermissionStatus>;
-  requestPermissions(): Promise<ContactsPermissionStatus>;
 }

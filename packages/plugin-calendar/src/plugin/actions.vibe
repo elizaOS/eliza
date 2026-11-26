@@ -243,6 +243,8 @@ const ledgerDown = "The calendar's change records couldn't be read, so I can't c
 const rangeUnreadable = "That time range isn't one I can read: it must run forward and span at most 370 days."
 const failed = (subaction: Subaction, text: string, extra: Record<string, unknown> = {}): ActionResult =>
   ({ success: false, text, data: { subaction, ...extra } })
+const notDone = (subaction: Subaction, text: string, extra: Record<string, unknown> = {}, owner = text): ActionResult =>
+  ({ ...failed(subaction, text, extra), userFacingText: owner, verifiedUserFacing: true })
 
 function timesRefused(subaction: Subaction, kind: "unreal" | "unresolved"): ActionResult {
   return kind === "unreal"
@@ -312,6 +314,14 @@ function changeText(outcome: CalendarMutationOutcome, done: string): string {
   }
 }
 
+function changeOwnerText(outcome: Exclude<CalendarMutationOutcome, { readonly kind: "succeeded" | "confirmed" }>): string {
+  switch (outcome.kind) {
+    case "retryable": return "The calendar did not take the change."
+    case "invalidated": return "That calendar change can't be made."
+    case "blocked": return changeText(outcome, "")
+  }
+}
+
 const nobodyNotified = " The built-in calendar can't email attendees, so nobody was notified."
 const overlapsUnchecked = " Another calendar could not be read, so overlaps there were not checked."
 
@@ -330,16 +340,17 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
       answer_scope: "An invitation is answered for this event or the whole series, not this and following.",
       deletes_unsupported: "That calendar can't delete events from here. Delete it in the Calendar app.",
     }[result.reason]
-    return failed(subaction, text, { refusal: result.reason })
+    return result.reason === "foreign_account" || result.reason === "answer_scope" ? failed(subaction, text, { refusal: result.reason }) : notDone(subaction, text, { refusal: result.reason })
   }
   if (result.kind === "conflict") {
     const made = subaction === "create_event" ? "created" : "changed"
     if (result.reason === "unread") {
-      return failed(subaction, `Nothing was ${made}: the calendar it goes on could not be read, so I can't tell whether that time is free.`, { code: "CALENDAR_WRITE_SLOT_UNREAD" })
+      return notDone(subaction, `Nothing was ${made}: the calendar it goes on could not be read, so I can't tell whether that time is free.`, { code: "CALENDAR_WRITE_SLOT_UNREAD" })
     }
     const held = result.conflicts.slice(0, 5)
-    return failed(subaction, `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}. Tell me another time, or move that first.`,
-      { code: "CALENDAR_WRITE_CONFLICT", requiresInput: true, missing: ["available time"], conflicts: held.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt, endAt: event.endAt })) })
+    const overlap = `Nothing was ${made}: that time overlaps ${held.map((event) => line(event, zone)).join("; ")}.`
+    return notDone(subaction, `${overlap} Tell me another time, or move that first.`,
+      { code: "CALENDAR_WRITE_CONFLICT", requiresInput: true, missing: ["available time"], conflicts: held.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt, endAt: event.endAt })) }, overlap)
   }
   const unchecked = result.overlapsUnchecked ? overlapsUnchecked : ""
   if (result.kind === "queued") {
@@ -347,7 +358,8 @@ function changeResult(subaction: Subaction, result: CalendarChangeResult, zone: 
     return { success: true, text: `I've asked for your approval before changing that calendar.${silent}${unchecked}`, data: { subaction, approvalRequestId: result.approvalId, change: result.request.payload } }
   }
   const { outcome, request } = result
-  if (outcome.kind !== "succeeded") return failed(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id })
+  if (outcome.kind === "confirmed") return failed(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id })
+  if (outcome.kind !== "succeeded") return notDone(subaction, changeText(outcome, ""), { outcome: outcome.kind, requestId: request.id }, changeOwnerText(outcome))
   const receipt = outcome.receipt
   const effectReceipts = [calendarEffectReceipt(request, receipt, outcome.replayed)]
   const note = `${result.notice === "CannotNotify" ? nobodyNotified : ""}${unchecked}`
@@ -592,11 +604,11 @@ effect function residentDelete(host: CalendarHost, ask: CalendarAsk, found: Cale
         { requiresInput: true, missing: ["delete confirmation"], eventId: event.id, recurrenceScope: scope, targetEvent: event })
     }
     case "PickInCalendar":
-      return failed(subaction, `Nothing was deleted. From chat I can delete only one occurrence of “${event.title}”. To delete more of the series, choose it in Calendar.`, { eventId: event.id, recurrenceScope: scope })
+      return notDone(subaction, `Nothing was deleted. From chat I can delete only one occurrence of “${event.title}”. To delete more of the series, choose it in Calendar.`, { eventId: event.id, recurrenceScope: scope })
     case "DeleteNow": {
       const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, askedBy: ask.by, askId: `${ask.id}:${subaction}` }) catch () => undefined
       if (question !== undefined && result?.kind === "ran") try host.settleDeleteQuestion(conversation)
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+      return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }
 }
@@ -682,11 +694,11 @@ effect function freeTime(host: CalendarHost, parameters: Parameters, zone: strin
       { code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD" })
   }
   const found = try host.search({ timeMin: Math.max(0, begin - day), timeMax: finish + day, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-  if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+  if (found === undefined) return notDone(subaction, "No calendar account is active right now.")
   const asked = { begin, finish }
   const busy = blockingSpans(found.events, zone)?.filter((span) => positiveOverlap(asked, span))
   if (busy === undefined || freeTimeRead(windowValid, durationValid, found.complete) !== "AvailabilityKnown") {
-    return failed(subaction, "Some calendars could not be read completely, so I can't tell whether that time is free.", { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
+    return notDone(subaction, "Some calendars could not be read completely, so I can't tell whether that time is free.", { code: "CALENDAR_AVAILABILITY_INCOMPLETE", availability: "unknown" })
   }
   const range = { windowStart: new Date(begin).toISOString(), windowEnd: new Date(finish).toISOString(), timeZone: zone, accountId: found.account.accountId, connection: connectionWire[found.connection] }
   const note = freeTimeNote(parameters, begin, finish, zone, text, now)
@@ -734,7 +746,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const span = days.kind === "days" ? { timeMin: days.timeMin, timeMax: days.timeMax } : window(parameters, now, subaction === "next_event" ? 30 * day : 7 * day)
       if (span === undefined) return failed(subaction, rangeUnreadable)
       const found = try host.search({ ...span, ...(parameters.query === undefined ? {} : { query: parameters.query }), ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-      if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+      if (found === undefined) return notDone(subaction, "No calendar account is active right now.")
       const events = subaction === "next_event" ? found.events.filter((event) => Date.parse(event.endAt) > now).slice(0, 1) : found.events
       return readResult(subaction, found, events, zone, subaction === "next_event" ? "Nothing is on your calendar in the next 30 days." : "No events match in that range.")
     }
@@ -744,7 +756,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const span = window(parameters, now, 60 * day)
       if (span === undefined) return failed(subaction, rangeUnreadable)
       const found = try host.search({ ...span, ...(parameters.calendarId === undefined ? {} : { calendarId: parameters.calendarId }) })
-      if (found === undefined) return failed(subaction, "No calendar account is active right now.")
+      if (found === undefined) return notDone(subaction, "No calendar account is active right now.")
       const trip = tripEvents(found.events, place)
       const result = readResult(subaction, found, trip, zone, `I couldn't find a trip to ${place} in your calendar in that range.`)
       return { ...result, data: { ...result.data, location: place } }
@@ -794,9 +806,9 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
         return failed(subaction, "That start time has already passed. Should I still create it?", { needsConfirmation: "past_start", fields: asked })
       }
       const source = try host.writeTarget(sentEvent.calendarId)
-      if (source === undefined) return failed(subaction, "There's no calendar this account can write to.")
+      if (source === undefined) return notDone(subaction, "There's no calendar this account can write to.")
       const result = host.change({ kind: "create", source, fields: asked, recurrence: recurrence.value, reviewFirst: chatCreateReviewed(sentEvent.reviewBeforeCreate === false && sentEvent.reviewBeforeSaving !== true), slotZone: createZone, askedBy, askId }) catch () => undefined
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, createZone)
+      return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, createZone)
     }
     case "update_event":
     case "delete_event": {
@@ -808,7 +820,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
           { requiresInput: true, missing: ["eventId"], candidates: shown.map((event) => ({ id: event.id, title: event.title, startAt: event.startAt })) })
       }
       if (lookup.kind === "unread") {
-        return failed(subaction, "Some calendars could not be read, so I can't tell whether that event is there. Nothing was changed.", { code: "CALENDAR_TARGET_UNREAD" })
+        return notDone(subaction, "Some calendars could not be read, so I can't tell whether that event is there. Nothing was changed.", { code: "CALENDAR_TARGET_UNREAD" })
       }
       if (lookup.kind === "missing") return failed(subaction, "I couldn't find that event in this account's calendars.", { code: "CALENDAR_TARGET_NOT_FOUND" })
       const found = lookup.found
@@ -826,7 +838,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       if (deletingResident) return try residentDelete(host, ask, found, scope, ownerAnswerOf(parameters), notifyAttendees, now, zone)
       if (subaction === "delete_event") {
         const result = host.change({ kind: "delete", target: found, scope, notifyAttendees, askedBy, askId }) catch () => undefined
-        return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+        return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, zone)
       }
       const guests = changedGuests(found.event, parameters, text)
       if (guests.kind === "refused") return failed(subaction, guests.text, { code: "CALENDAR_GUEST_NOT_GROUNDED" })
@@ -839,7 +851,7 @@ effect function handle(host: CalendarHost, ask: CalendarAsk, sent: Parameters): 
       const fields = updatedFields(found, timed.parameters, zone, guests.attendees)
       if (Option.isNone(decodeFields(fields)) || !fieldsSpanValid(fields)) return failed(subaction, "The changed event needs a title and a start before its end.")
       const result = host.change({ kind: "update", target: found, scope, fields, notifyAttendees, slotZone: zone, askedBy, askId }) catch () => undefined
-      return result === undefined ? failed(subaction, ledgerDown) : changeResult(subaction, result, zone)
+      return result === undefined ? notDone(subaction, ledgerDown) : changeResult(subaction, result, zone)
     }
   }
 }
@@ -867,49 +879,49 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
 
 export const calendarAction: Action = {
   name: calendarActionName,
-  description: "The owner's calendar. search_events lists events in a time range (optionally matching a query against titles, notes, places and guests); next_event finds the next upcoming event; trip_window shows everything on the calendar while the owner is at the place in query (for example what's on while I'm in Denver); check_availability says whether the whole timeMin to timeMax window is free; propose_times finds up to two openings of durationMinutes inside that window, for a shorter slot within a longer period such as 20 minutes tomorrow morning (keep the window to the period asked: a morning ends by noon, an afternoon runs from noon to 5 PM, and a window the owner names, such as between noon and five, is that window); neither books anything; create_event, update_event and delete_event change one event, or for a repeating event this one, this and following, or all (deleting an event you were invited to declines it), with connected provider changes requiring the owner's approval. An event the owner asks to put on the phone's own calendar goes to the phone's calendar proposal when the phone offers one, not create_event. A create_event or update_event with a new startAt, and a check_availability or propose_times window, carries statedClock: start or range for a clock time the owner said, none for a time you chose. Chat creates are reviewed unless the owner plainly asked to save now; a delete on the agent's own calendar removes one occurrence at most and runs at once only when you send ownerAnswer yes and the owner's words hold the whole title of one event, or it is the event selected on screen; otherwise nothing is deleted and the reply asks the owner, and after the owner answers call delete_event again with the eventId it returned and ownerAnswer.",
+  description: "Owner's calendar. Reads: search_events, next_event, trip_window (events during trip at query place), check_availability (window free?), propose_times (<=2 openings of durationMinutes; neither books). Writes: create_event, update_event, delete_event (declines invites); connected providers require approval; native phone calendar uses PROPOSE_DEVICE_ACTION when offered. Set statedClock on new startAt/availability windows. Chat creates review unless owner asked to save now. Built-in delete removes <=1 occurrence; runs at once only with ownerAnswer=yes + unique exact title or selected event; else asks, then re-call with eventId+ownerAnswer.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_TRIP_WINDOW", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
   parameters: [
-    { name: "subaction", required: true, description: "What to do.", schema: { type: "string", enum: [...subactions] } },
-    { name: "query", required: false, description: "Words of the event to look for: its title, notes, place or a guest. For trip_window, the place.", schema: { type: "string" } },
-    { name: "timeMin", required: false, description: "Start of the range to read: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00), read in the request's zone. Required for check_availability and propose_times, where the window starts no earlier than now: for the rest of a day or period already under way, start it at now.", schema: { type: "string" } },
-    { name: "timeMax", required: false, description: "End of the range to read, written like timeMin. Required for check_availability and propose_times; a morning-only request ends no later than noon, and an afternoon-only request runs from noon to no later than 5 PM, in the request's zone.", schema: { type: "string" } },
-    { name: "date", required: false, description: "For search_events over whole days: the first local day, YYYY-MM-DD. Code finds the midnights in the request's zone. Leave out timeMin and timeMax.", schema: { type: "string" } },
-    { name: "endDate", required: false, description: "For search_events over several whole days: the last day included, YYYY-MM-DD. Needs date.", schema: { type: "string" } },
-    { name: "eventId", required: false, description: "The id of the event to change, from an earlier result.", schema: { type: "string" } },
-    { name: "calendarId", required: false, description: "The calendar to read or write.", schema: { type: "string" } },
-    { name: "title", required: false, description: "The event title, exactly as it should be saved.", schema: { type: "string" } },
-    { name: "description", required: false, description: "The event notes, exactly as they should be saved.", schema: { type: "string" } },
-    { name: "location", required: false, description: "The event location, exactly as it should be saved.", schema: { type: "string" } },
-    { name: "startAt", required: false, description: "The event start: ISO 8601 with an offset, or wall time without one (2030-03-04T09:00). Wall time is read in the owner's zone for a new event, in the request's zone for a change, and as the date itself for an all-day event (2030-03-04T00:00).", schema: { type: "string" } },
-    { name: "endAt", required: false, description: "The event end, written like startAt. Left out, a new event lasts durationMinutes, else one hour, or one day when all-day, and a changed start keeps the event's length.", schema: { type: "string" } },
-    { name: "isAllDay", required: false, description: "Whether the event lasts whole days.", schema: { type: "boolean" } },
-    { name: "timeZone", required: false, description: "The IANA zone the owner named for this request. Send it with a new event's wall time only when the owner's words name that zone; otherwise leave it out.", schema: { type: "string" } },
-    { name: "durationMinutes", required: false, description: "For propose_times: the exact number of minutes each opening needs, from 5 to 480 (\"a free hour\" is 60). For create_event without endAt: the event's length in whole minutes. Do not guess a missing length.", schema: { type: "integer", minimum: 1, maximum: 44640 } },
-    { name: "confirmedPastStart", required: false, description: "The owner confirmed creating an event whose start has passed.", schema: { type: "boolean" } },
-    { name: "reviewBeforeCreate", required: false, description: "For a new event: false only when the owner plainly asked to save it now; true, or left out, puts it up for the owner's review first.", schema: { type: "boolean" } },
-    { name: "reviewBeforeSaving", required: false, description: "For a new event: true when the owner asked to preview, review or confirm it before it is saved, or to prepare it without saving yet; it then waits for the owner's approval instead of a chat summary. Keep it when the owner adds missing details to that event. An explicit request to review takes priority.", schema: { type: "boolean" } },
-    { name: "repeat", required: false, description: "For a new repeating event: daily, weekdays or weekly.", schema: { type: "string", enum: ["daily", "weekdays", "weekly"] } },
-    { name: "repeatUntil", required: false, description: "For a new repeating event: the last start it may have, ISO 8601 with an offset.", schema: { type: "string" } },
-    { name: "skipStarts", required: false, description: "For a new repeating event: starts it skips, ISO 8601 with an offset.", schema: { type: "array", items: { type: "string" } } },
-    { name: "attendees", required: false, description: "For create_event: the email address of each guest to invite, exactly as the owner wrote it. Never guess or look up an address.", schema: { type: "array", items: { type: "string" } } },
-    { name: "addGuests", required: false, description: "For update_event: the email address of each guest to add, exactly as the owner wrote it.", schema: { type: "array", items: { type: "string" } } },
-    { name: "removeGuests", required: false, description: "For update_event: each guest to remove, by the address or name the owner used.", schema: { type: "array", items: { type: "string" } } },
-    { name: "notifyAttendees", required: false, description: "For update_event and delete_event: true only when the owner asked to let the event's attendees know (\"let Sam know\", \"notify the guests\"); left out when they did not, or said not to.", schema: { type: "boolean" } },
-    { name: "recurrenceScope", required: false, description: "For a repeating event: instance (this event), this_and_following, or series (all). Send it whenever the owner's request says which (\"just this one\", \"only this time\", \"this and all following\", \"the whole series\"); left out for a repeating event, nothing changes and you ask the owner in your own words. After the owner answers, send it with the eventId the result returned.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
-    { name: "statedClock", required: false, description: "With a new startAt or endAt, or a free-time window's timeMin and timeMax: start when the owner's words give the start's clock time (\"at 3pm\", \"one ten PM\", \"noon\", \"to 4\"), range when they give a start and an end (\"from 3pm to 3:45pm\", \"between noon and five\", \"from one ten PM to two PM\"), none when they give no clock time and you chose the time (\"tomorrow afternoon\", \"push it back an hour\", \"move it to Friday\"). A stated start or end must be the clock time the owner said; a time you chose takes none.", schema: { type: "string", enum: ["start", "range", "none"] } },
-    { name: "phoneCalendar", required: false, description: "For create_event: true only when the owner asked to put the event on the phone's own native calendar (\"on my phone calendar\", \"in my Samsung calendar\"), in any language. Left out for the agent's own built-in Eliza calendar and for a connected account.", schema: { type: "boolean" } },
-    { name: "morningOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about a morning (\"tomorrow morning\"); the window then ends by that day's noon.", schema: { type: "boolean" } },
-    { name: "afternoonOnly", required: false, description: "For check_availability and propose_times: true when the owner asked only about an afternoon (\"tomorrow afternoon\", \"30 minutes tomorrow afternoon\"), also when an errand explains the time, before or after the afternoon (\"tomorrow when I can pick up groceries in the afternoon\", \"tomorrow afternoon where I can pick up these groceries\"); the window then runs from that day's noon to no later than 5 PM, or from or to a clock time the owner said outside it (\"tomorrow afternoon until 5:30\", \"tomorrow afternoon from 1 to 6\").", schema: { type: "boolean" } },
-    { name: "ownerAnswer", required: false, description: "For delete_event on the agent's own calendar, in the owner's request or their answer to your question: yes when the owner asks to delete the event or agrees to it (\"delete Dentist\", \"yes, delete it\", \"sí, bórralo\"), no when the owner turns the delete down (\"don't delete Dentist\", \"keep Dentist\", \"no, keep it\"), which keeps the event. Leave it out when the owner did neither.", schema: { type: "string", enum: ["yes", "no"] } },
+    { name: "subaction", required: true, description: "Op.", schema: { type: "string", enum: [...subactions] } },
+    { name: "query", required: false, description: "Match title/notes/location/guest; place for trip_window.", schema: { type: "string" } },
+    { name: "timeMin", required: false, description: "Range start: ISO-8601 w/ offset or wall time (2030-03-04T09:00, request zone). Req for availability/propose_times; start no earlier than now.", schema: { type: "string" } },
+    { name: "timeMax", required: false, description: "Range end (same format). Req for availability/propose_times; morning<=12:00, afternoon 12:00-17:00 (request zone).", schema: { type: "string" } },
+    { name: "date", required: false, description: "search_events whole-day start (YYYY-MM-DD, request zone); omit timeMin/timeMax.", schema: { type: "string" } },
+    { name: "endDate", required: false, description: "search_events whole-day inclusive end (YYYY-MM-DD); needs date.", schema: { type: "string" } },
+    { name: "eventId", required: false, description: "Event id from a prior result.", schema: { type: "string" } },
+    { name: "calendarId", required: false, description: "Calendar id.", schema: { type: "string" } },
+    { name: "title", required: false, description: "Exact title.", schema: { type: "string" } },
+    { name: "description", required: false, description: "Exact notes.", schema: { type: "string" } },
+    { name: "location", required: false, description: "Exact location.", schema: { type: "string" } },
+    { name: "startAt", required: false, description: "Start: ISO-8601 w/ offset or wall time (2030-03-04T09:00; owner zone on create, request zone on update, YYYY-MM-DDT00:00 if all-day).", schema: { type: "string" } },
+    { name: "endAt", required: false, description: "End (like startAt). Default: durationMinutes, else 1h (1d all-day); update keeps length.", schema: { type: "string" } },
+    { name: "isAllDay", required: false, description: "All-day.", schema: { type: "boolean" } },
+    { name: "timeZone", required: false, description: "IANA zone; with create wall time, set only if owner named it.", schema: { type: "string" } },
+    { name: "durationMinutes", required: false, description: "propose_times slot min (5-480; 'a free hour'=60); create_event min if no endAt. Don't guess.", schema: { type: "integer", minimum: 1, maximum: 44640 } },
+    { name: "confirmedPastStart", required: false, description: "Owner confirmed past start.", schema: { type: "boolean" } },
+    { name: "reviewBeforeCreate", required: false, description: "create_event: false only if owner asked to save now; else reviews first.", schema: { type: "boolean" } },
+    { name: "reviewBeforeSaving", required: false, description: "create_event: true if owner asked to preview/review first (takes priority; keep on follow-ups).", schema: { type: "boolean" } },
+    { name: "repeat", required: false, description: "create_event recurrence.", schema: { type: "string", enum: ["daily", "weekdays", "weekly"] } },
+    { name: "repeatUntil", required: false, description: "create_event last start (ISO-8601 w/ offset).", schema: { type: "string" } },
+    { name: "skipStarts", required: false, description: "create_event skipped starts (ISO-8601 w/ offset).", schema: { type: "array", items: { type: "string" } } },
+    { name: "attendees", required: false, description: "create_event: exact guest emails owner wrote; never guess/lookup.", schema: { type: "array", items: { type: "string" } } },
+    { name: "addGuests", required: false, description: "update_event: exact guest emails owner wrote.", schema: { type: "array", items: { type: "string" } } },
+    { name: "removeGuests", required: false, description: "update_event: guest emails/names owner used.", schema: { type: "array", items: { type: "string" } } },
+    { name: "notifyAttendees", required: false, description: "update/delete: true only if owner asked to notify guests.", schema: { type: "boolean" } },
+    { name: "recurrenceScope", required: false, description: "Repeating scope (instance=this, series=all). Set if stated; else asks, then re-call w/ eventId.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
+    { name: "statedClock", required: false, description: "New startAt/endAt or free-time window: start=owner gave start clock ('at 3pm', 'noon', 'to 4'), range=start+end ('between noon and five', 'from one ten PM to two PM'), none=you chose time ('tomorrow afternoon', 'move it to Friday'). Unstated clock requires none.", schema: { type: "string", enum: ["start", "range", "none"] } },
+    { name: "phoneCalendar", required: false, description: "create_event: true only for phone's native calendar (any language); omit for Eliza/connected.", schema: { type: "boolean" } },
+    { name: "morningOnly", required: false, description: "Availability: true if morning-only; the window then ends by that day's noon.", schema: { type: "boolean" } },
+    { name: "afternoonOnly", required: false, description: "Availability: true if afternoon-only (incl. errand-framed: 'tomorrow when I can pick up groceries in the afternoon', 'tomorrow afternoon where I can pick up these groceries'); window 12:00-17:00 or stated outer clock.", schema: { type: "boolean" } },
+    { name: "ownerAnswer", required: false, description: "Built-in delete_event: yes if owner asked/agreed, no if declined/keep; omit else.", schema: { type: "string", enum: ["yes", "no"] } },
   ],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   validate: async (runtime) => serviceOf(runtime) !== undefined,
   handler: async (runtime, message, _state, options) => {
     const host = serviceOf(runtime)
-    if (host === undefined) return { success: false, text: "The calendar isn't running." }
+    if (host === undefined) return { success: false, text: "The calendar isn't running.", userFacingText: "The calendar isn't running.", verifiedUserFacing: true }
     const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
     const phoneCalendar = phoneCalendarOffered(runtime, message)
     return runPromise(runCalendarAction(host, { ...calendarAsk(message, await ownerZone(runtime)), ...(phoneCalendar ? { phoneCalendar } : {}) }, input, message))

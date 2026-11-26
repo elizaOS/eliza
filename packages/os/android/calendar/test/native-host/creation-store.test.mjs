@@ -14,7 +14,7 @@ const cache = join(
   ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
 );
 const json =
-  process.env.ALPHA_JSON_JAR ||
+  process.env.ELIZA_ORG_JSON_JAR ||
   (existsSync(cache) &&
     readdirSync(cache).flatMap((hash) =>
       readdirSync(join(cache, hash))

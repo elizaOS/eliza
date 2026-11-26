@@ -61,6 +61,15 @@ function committed(operation: string, kind: string, id: string, version: string,
   }
 }
 
+const unchanged: Readonly<Record<WorkflowOp, string>> = {
+  list: "Workflows couldn't be read just now.", search: "Workflows couldn't be read just now.", get: "Workflows couldn't be read just now.",
+  executions: "Workflows couldn't be read just now.", revisions: "Workflows couldn't be read just now.", eval_samples: "Workflows couldn't be read just now.",
+  create: "The workflow was not created.", modify: "The workflow was not changed.", rename: "The workflow was not renamed.",
+  activate: "The workflow was not switched on.", deactivate: "The workflow was not switched off.", remove: "The workflow was not removed.",
+  restore_removed: "The workflow was not restored.", restore: "The workflow was not restored.", run: "The workflow did not run.",
+  dossier: "The dossier was not started.", cancel_run: "The run was not cancelled.",
+}
+
 function notApplied(code: string, textForPlanner: string, userFacingText?: string, data: Bag = {}): ActionResult {
   return {
     success: false, text: textForPlanner, ...(userFacingText === undefined ? {} : { userFacingText, verifiedUserFacing: true }), error: code,
@@ -330,7 +339,7 @@ export const workflowAction: Action = {
   cacheStable: true,
   cacheScope: "agent",
   similes: ["AUTOMATION", "AUTOMATIONS", "CREATE_AUTOMATION", "EDIT_AUTOMATION", "RUN_AUTOMATION", "CREATE_WORKFLOW", "WORKFLOW_CREATE", "EDIT_WORKFLOW", "UPDATE_WORKFLOW", "RUN_WORKFLOW", "LIST_WORKFLOWS", "DEACTIVATE_WORKFLOW", "WORKFLOW_EXECUTIONS"],
-  description: "Create, edit, rename, inspect, run, pause, cancel, remove and restore workflows. modify changes what a chat-created workflow does and turns it off until the owner reviews the change. rename changes only the name. remove takes a workflow out of the list and stops its schedule; restore_removed brings a removed workflow back, turned off. A workflow built in the Workflows view is edited there, and its schedule is turned on there. revisions lists earlier versions; restore returns a workflow to one of them, turned off; eval_samples collects recent runs as evaluation samples. For an explicit on-demand current-day dossier from the owner’s reviewed phone sources, use dossier. A chat-created workflow cannot message, notify or remind the owner: its output appears only in its run history. " + `Provide action=${WORKFLOW_OPS.join("|")}.`,
+  description: "Manage workflows. modify edits chat-created workflows (turns off until reviewed); view-built workflows are edited & schedules turned on in Workflows view. remove archives & stops schedule; restore_removed & restore leave workflow off. dossier runs on-demand today briefing from reviewed phone sources. Chat workflows cannot notify/message/remind (run history only).",
   descriptionCompressed: "Manage workflows (list|search|get|create|modify|rename|deactivate|remove|restore_removed|run|dossier|cancel_run|executions|revisions|restore|eval_samples). Chat-created workflows cannot notify/remind; view-built edits and activations happen in Workflows view.",
   summarize: (result, params) => {
     const op = typeof params.action === "string" ? params.action : "op"
@@ -339,17 +348,17 @@ export const workflowAction: Action = {
     return `WORKFLOW ${op}${target === "" ? "" : ` ${target}`} [${status}]`
   },
   parameters: [
-    { name: "action", required: true, description: "Workflow operation.", descriptionCompressed: "Operation", schema: { type: "string", enum: [...WORKFLOW_OPS] } },
-    { name: "executionId", required: false, description: "The run to cancel.", descriptionCompressed: "Run ID to cancel", schema: { type: "string" } },
-    { name: "input", required: false, description: "Run input.", descriptionCompressed: "Run input JSON", schema: { type: "object", additionalProperties: true } },
-    { name: "instruction", required: false, description: "What a created or modified workflow does.", descriptionCompressed: "Workflow spec prompt", schema: { type: "string" } },
-    { name: "limit", required: false, description: "How many workflows list or search shows (at most 50), runs executions lists, or revisions lists.", descriptionCompressed: "Max items", schema: { type: "number" } },
-    { name: "name", required: false, description: "The new name for rename, or the name of a created workflow.", descriptionCompressed: "New or created name", schema: { type: "string" } },
-    { name: "query", required: false, description: "Words to search workflow names and descriptions for.", descriptionCompressed: "Search terms", schema: { type: "string" } },
-    { name: "sourceId", required: false, description: "The reviewed phone source for dossier, when the owner chose one of several.", descriptionCompressed: "Dossier source ID", schema: { type: "string" } },
-    { name: "versionId", required: false, description: "Revision version id. Required for restore. For deactivate, the change applies only if this is still the current version.", descriptionCompressed: "Revision/expected version", schema: { type: "string" } },
-    { name: "workflowId", required: false, description: "The workflow's ID.", descriptionCompressed: "Workflow ID", schema: { type: "string" } },
-    { name: "workflowName", required: false, description: "The workflow's exact name when no ID is known.", descriptionCompressed: "Exact workflow name", schema: { type: "string" } },
+    { name: "action", required: true, description: "", descriptionCompressed: "Operation", schema: { type: "string", enum: [...WORKFLOW_OPS] } },
+    { name: "executionId", required: false, description: "Run ID (cancel_run).", descriptionCompressed: "Run ID to cancel", schema: { type: "string" } },
+    { name: "input", required: false, description: "", descriptionCompressed: "Run input JSON", schema: { type: "object", additionalProperties: true } },
+    { name: "instruction", required: false, description: "Behavior (create/modify).", descriptionCompressed: "Workflow spec prompt", schema: { type: "string" } },
+    { name: "limit", required: false, description: "Max items: list/search (<=50), executions, revisions.", descriptionCompressed: "Max items", schema: { type: "number" } },
+    { name: "name", required: false, description: "New name (create/rename).", descriptionCompressed: "New or created name", schema: { type: "string" } },
+    { name: "query", required: false, description: "Search words (name/desc).", descriptionCompressed: "Search terms", schema: { type: "string" } },
+    { name: "sourceId", required: false, description: "Reviewed phone source ID (dossier, when choosing).", descriptionCompressed: "Dossier source ID", schema: { type: "string" } },
+    { name: "versionId", required: false, description: "Version ID (required: restore; optional current-version guard: deactivate).", descriptionCompressed: "Revision/expected version", schema: { type: "string" } },
+    { name: "workflowId", required: false, description: "", descriptionCompressed: "Workflow ID", schema: { type: "string" } },
+    { name: "workflowName", required: false, description: "Exact name if ID unknown.", descriptionCompressed: "Exact workflow name", schema: { type: "string" } },
   ],
   validate: async (runtime) => workflowInstances.has(runtime),
   handler: async (runtime, message, _state, options) => {
@@ -370,9 +379,9 @@ export const workflowAction: Action = {
     const retryable = retryAllowed(report)
     switch (report) {
       case "ReadFailed":
-        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, undefined, { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_READ_FAILED", refused.message, refused.status === 400 ? undefined : "Workflows couldn't be read just now.", { status: refused.status, retryable }))
       case "NothingChanged":
-        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, undefined, { status: refused.status, retryable }))
+        return respond(notApplied(refused.code ?? "WORKFLOW_NOT_APPLIED", `${refused.message} Nothing was changed.`, refused.status === 400 ? undefined : unchanged[op], { status: refused.status, retryable }))
       case "ReconcileFirst":
         return respond(notApplied("WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY",
           `${refused.message} The change may have gone through. Check the workflow's current state before trying again, and never retry it automatically.`,

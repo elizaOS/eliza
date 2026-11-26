@@ -68,6 +68,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
  protected abstract HostNoticePoster.Config posterConfig();
  /** The host's cross-app mirror, or null when the host offers no notification access. */
  protected NotificationMirror mirror(){return null;}
+ /** Hosts with a native account store may require its current authority before changing workflow notices. */
+ protected void requireWorkflowNoticeOwner(JSONObject owner)throws Exception{}
  /**
   * The kind of one of the host's own notices, from its channel. The default recognizes the
   * workflow channels; hosts add their own (reminders, navigation, results). Unknown is "other".
@@ -190,6 +192,42 @@ public abstract class NotificationsHostPlugin extends Plugin {
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
 
+ // spec/os/android/noticeRoutes.md, "The owner fence is published once for each change of the signed-in account"
+ @PluginMethod public void noticeOwner(PluginCall call){noticeWork(call,"Workflow notification ownership could not be confirmed.",()->{
+  Object input=call.getData().get("owner");
+  if(input!=JSONObject.NULL&&!(input instanceof JSONObject))throw new IllegalArgumentException("Expected a notice owner or sign-out");
+  JSONObject owner=NoticeOwner.identity(input==JSONObject.NULL?null:(JSONObject)input);
+  requireWorkflowNoticeOwner(owner);
+  long now=System.currentTimeMillis();
+  int withdrawn=coordinator().withdrawOtherOwners(owner,now);
+  JSONArray suspended=routes().suspendedApprovals(owner,now);
+  requireNoticeForeground();
+  JSObject result=new JSObject();result.put("withdrawn",withdrawn);result.put("suspended",new JSArray(suspended.toString()));call.resolve(result);
+ });}
+
+ // spec/os/android/noticeRoutes.md, "An approval notice is offered or kept only while its approval is pending"
+ @PluginMethod public void postWorkflowApproval(PluginCall call){workflowApproval(call,false);}
+ @PluginMethod public void resumeWorkflowApproval(PluginCall call){workflowApproval(call,true);}
+ @PluginMethod public void withdrawWorkflowApproval(PluginCall call){noticeWork(call,"Approval notification could not be withdrawn.",()->{
+  coordinator().withdrawApproval(call.getString("id"),System.currentTimeMillis());
+  call.resolve();
+ });}
+
+ private void workflowApproval(PluginCall call,boolean resume){noticeWork(call,"Approval notification could not be confirmed.",()->{
+  Object expiry=call.getData().get("expiresAt");
+  if(!(expiry instanceof Integer||expiry instanceof Long))throw new IllegalArgumentException("Expected an approval expiry");
+  long expiresAt=((Number)expiry).longValue(),now=System.currentTimeMillis();
+  String id=call.getString("id"),binding=call.getString("bindingHash");
+  JSONObject route=call.getObject("route");
+  NoticeCoordinator notices=coordinator();
+  JSONObject owner=NoticeOwner.fromRoute(route);
+  NoticeCoordinator.Check allowed=()->{requireWorkflowNoticeOwner(owner);requireNoticeForeground();};
+  String status=resume?notices.resumeApproval(id,binding,route,null,expiresAt,now,allowed)
+   :notices.postApproval(id,binding,route,null,expiresAt,now,allowed);
+  requireNoticeForeground();
+  JSObject result=new JSObject();result.put("status",status);call.resolve(result);
+ });}
+
  private static String identity(StatusBarNotification row){return row.getKey()+"\n"+row.getPostTime();}
  private StatusBarNotification resolve(String id){if(id==null||id.isEmpty())return null;for(StatusBarNotification row:manager().getActiveNotifications())if(ids.names(id,identity(row)))return row;return null;}
  private static String interruption(int filter){
@@ -222,11 +260,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
  @PluginMethod public void notificationApps(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("apps",new JSArray(requireMirror().apps(getContext()).toString()));call.resolve(out);}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification app choices are unavailable");}}
  @PluginMethod public void setNotificationPolicy(PluginCall call){try{foreground();call.resolve(new JSObject(requireMirror().update(getContext(),call.getData()).toString()));}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification settings changed or could not be saved. Refresh Settings.");}}
  @PluginMethod public void resumeCrossApp(PluginCall call){try{
-  foreground();NotificationMirror mirror=requireMirror();
-  synchronized(mirror.lock){
-   if(!mirror.status(getContext()).getString("revision").equals(call.getString("expectedRevision")))throw new IllegalStateException();
-   mirror.pause(getContext(),false);call.resolve(new JSObject(mirror.status(getContext()).toString()));
-  }
+  foreground();call.resolve(new JSObject(requireMirror().resumeAt(getContext(),call.getString("expectedRevision")).toString()));
  }catch(Exception failure){call.reject("Notification collection could not be resumed");}}
  @PluginMethod public void openNotificationAccess(PluginCall call){try{
   foreground();NotificationMirror mirror=requireMirror();
@@ -235,7 +269,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   JSObject out=new JSObject();out.put("status","opened");call.resolve(out);
  }catch(Exception failure){call.reject("Android notification access settings are unavailable");}}
  @PluginMethod public void notificationHistory(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("items",new JSArray(requireMirror().history(getContext()).toString()));call.resolve(out);}catch(Exception failure){call.reject("Local notification history is unavailable");}}
- @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();requireMirror().clearHistoryBoundary(getContext());call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
+ @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();requireMirror().clearHistoryBoundary(getContext(),call.getString("expectedRevision"));call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
 
  /** Own rows (newest first), then the newest allowed cross-app rows. A mirror failure leaves only own rows. */
  @PluginMethod public void list(PluginCall call){try{

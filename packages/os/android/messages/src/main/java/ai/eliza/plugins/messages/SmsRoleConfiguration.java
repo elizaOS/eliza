@@ -4,9 +4,9 @@ import android.app.Activity;
 import android.content.BroadcastReceiver;
 
 /**
- * Host identity of the default-SMS-app components. A host that can hold the SMS role declares thin
- * subclasses of {@link SmsDeliverReceiver}, {@link MmsWapPushReceiver}, {@link MmsResultReceiver},
- * {@link RespondViaMessageService} and {@link SmsComposeActivity}, plus {@link MmsFileProvider} under
+ * Host identity of the default-SMS-app components. A host that can hold the SMS role declares its own
+ * SMS deliver receiver, respond-via-message service and compose activity, thin subclasses of
+ * {@link MmsWapPushReceiver} and {@link MmsResultReceiver}, plus {@link MmsFileProvider} under
  * {@link #mmsFileAuthority}. The channel ID, actions and authority are installed identity.
  */
 public final class SmsRoleConfiguration {
@@ -25,7 +25,7 @@ public final class SmsRoleConfiguration {
  /**
   * @param openActivity what a new-message notification opens (for example the host's main activity).
   *     The intent carries {@link #EXTRA_THREAD_ID} so the host can show that conversation.
-  * @param composeActivity the host's {@link SmsComposeActivity} subclass, which reviews every send.
+  * @param composeActivity the host's compose activity, which reviews every send.
   */
  public SmsRoleConfiguration(SmsTelephonyConfiguration telephony, String channelId, String channelName, int notificationIcon,
    String mmsDownloadedAction, String mmsResponseSentAction, String mmsFileAuthority,

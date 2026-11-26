@@ -133,6 +133,7 @@ export const routesByName = {
   gmailSearch: on("Get", `${google}/gmail/search`),
   gmailRead: on("Get", `${google}/gmail/read`),
   inboxCapabilities: on("Get", `${inbox}/capabilities`),
+  inboxHistory: on("Get", `${inbox}/history`),
   inboxThread: on("Get", `${inbox}/thread`),
   inboxAttachment: on("Get", `${inbox}/attachment`),
   inboxDrafts: on("Get", `${inbox}/drafts`),

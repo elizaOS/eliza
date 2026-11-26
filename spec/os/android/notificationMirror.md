@@ -19,20 +19,28 @@ text, intents and Android keys stay in the shell.
 Opening Android's notification-access settings confers no grant; the shell
 observes the grant on each call. A revoked grant, a pause and a resume each
 cut the collection generation and drop every row; a revoked grant or a pause
-also deletes history.
+also deletes history. A reviewed resume needs the exact current policy
+revision and takes a fresh one after history cleanup.
 
 ```quint
 import bridge.* from "./bridge"
 type ListenerSlot = Unbound | Bound({ instance: int })
+type MirrorScope = DeviceScope | UnknownScope | AccountScope({ ownerKey: str })
 type RowHandle = { key: str, handle: int, postedAt: int }
 type Callback = { instance: int, generation: int, key: str, app: str, postedAt: int, removal: bool }
 type HistoryRecord = { app: str, at: int }
 type HistoryFile = NoFile | KeptFile({ rows: List[HistoryRecord] }) | UndeletedFile
 type MirrorState = { revision: int, ownerEnabled: bool, historyConsent: bool, paused: bool, granted: bool, selected: Set[str], changedSigners: Set[str],
-  listener: ListenerSlot, nextInstance: int, generation: int, queue: List[Callback], handles: List[RowHandle], nextHandle: int, historyFile: HistoryFile }
+  listener: ListenerSlot, nextInstance: int, generation: int, queue: List[Callback], handles: List[RowHandle], nextHandle: int, historyFile: HistoryFile, scope: MirrorScope, boundOwner: str }
 pure val initial: MirrorState = { revision: 0, ownerEnabled: false, historyConsent: false, paused: false, granted: false, selected: Set(), changedSigners: Set(),
-  listener: Unbound, nextInstance: 1, generation: 0, queue: List(), handles: List(), nextHandle: 1, historyFile: NoFile }
-pure def collecting(s: MirrorState): bool = s.granted and s.ownerEnabled and not(s.paused)
+  listener: Unbound, nextInstance: 1, generation: 0, queue: List(), handles: List(), nextHandle: 1, historyFile: NoFile, scope: DeviceScope, boundOwner: "" }
+pure def mirrorOwner(s: MirrorState): str =
+  val scope = s.scope
+  match scope { | AccountScope(account) => account.ownerKey | _ => "" }
+pure def admitted(s: MirrorState): bool =
+  s.scope == DeviceScope or (s.boundOwner != "" and mirrorOwner(s) == s.boundOwner)
+pure def policyCollects(s: MirrorState): bool = s.granted and s.ownerEnabled and not(s.paused)
+pure def collecting(s: MirrorState): bool = admitted(s) and policyCollects(s)
 pure def keepsHistory(s: MirrorState): bool = collecting(s) and s.historyConsent
 pure def afterDeletion(file: HistoryFile, deleted: bool): HistoryFile = if (deleted or file == NoFile) NoFile else UndeletedFile
 pure def purged(deleted: bool, s: MirrorState): MirrorState =
@@ -43,8 +51,11 @@ pure def observeAccess(s: MirrorState, granted: bool, deleted: bool): MirrorStat
 pure val weight_observeAccess = 4
 pure def canPause(s: MirrorState): bool = not(s.paused)
 pure def pause(s: MirrorState, deleted: bool): MirrorState = { ...purged(deleted, s), paused: true }
-pure def canResume(s: MirrorState): bool = s.paused
-pure def resume(s: MirrorState): MirrorState = { ...s, paused: false, generation: s.generation + 1, handles: List() }
+pure def canResume(s: MirrorState, expectedRevision: int, facts: HostFacts): bool =
+  admitted(s) and s.paused and expectedRevision == s.revision and meetsNeed(WithFocus, facts)
+pure def resume(s: MirrorState, expectedRevision: int, facts: HostFacts, deleted: bool, committed: bool): MirrorState =
+  val cleared = purged(deleted, s)
+  if (deleted and committed) { ...cleared, paused: false, revision: s.revision + 1 } else cleared
 ```
 
 ### A selection holds at most twenty visible apps, and an app whose signer changed must be removed before it is chosen again
@@ -55,7 +66,7 @@ is pinned to its signing digest; a signer change marks it until dropped.
 ```quint
 pure val maxSelectedApps = 20
 pure def canChooseApps(s: MirrorState, expectedRevision: int, requested: Set[str], visible: Set[str], facts: HostFacts): bool =
-  meetsNeed(WithFocus, facts) and expectedRevision == s.revision and requested.size() <= maxSelectedApps and
+  admitted(s) and meetsNeed(WithFocus, facts) and expectedRevision == s.revision and requested.size() <= maxSelectedApps and
   requested.subseteq(visible) and requested.intersect(s.changedSigners).size() == 0
 pure def chooseApps(s: MirrorState, expectedRevision: int, requested: Set[str], visible: Set[str], facts: HostFacts, deleted: bool, committed: bool): MirrorState =
   if (deleted and committed) { ...purged(deleted, s), selected: requested, changedSigners: Set(), revision: s.revision + 1 } else purged(deleted, s)
@@ -76,7 +87,7 @@ The purge cuts the generation, so callbacks queued under the old settings
 cannot act; a failed deletion or a failed commit saves nothing.
 
 ```quint
-pure def canSaveSettings(s: MirrorState, expectedRevision: int, facts: HostFacts): bool = meetsNeed(WithFocus, facts) and expectedRevision == s.revision
+pure def canSaveSettings(s: MirrorState, expectedRevision: int, facts: HostFacts): bool = admitted(s) and meetsNeed(WithFocus, facts) and expectedRevision == s.revision
 pure def saveSettings(s: MirrorState, expectedRevision: int, ownerEnabled: bool, historyConsent: bool, facts: HostFacts, deleted: bool, committed: bool): MirrorState =
   if (deleted and committed) { ...purged(deleted, s), ownerEnabled: ownerEnabled, historyConsent: historyConsent, revision: s.revision + 1 } else purged(deleted, s)
 pure val weight_saveSettings = 8
@@ -137,8 +148,9 @@ pure def sometimesLiveRow(s: MirrorState): bool = s.handles.length() > 0
 
 ### A queued callback acts only for its own listener and the generation it was queued in
 
-Callbacks run one at a time from a queue of 64; queuing captures the
-generation and drops the key's row. A refused submission (full queue or
+Callbacks run one at a time from a queue of 64. Only the current admitted
+listener can queue a callback, which captures the generation and drops
+the key's row. A refused submission (full queue or
 shut-down executor) also drops the queue; a new listener, a disconnect,
 screen off and a host pause cut the generation. A post makes a row only on
 an unlocked, interactive device; a failed history append drops every row.
@@ -146,13 +158,15 @@ an unlocked, interactive device; a failed history append drops every row.
 ```quint
 pure val maxQueuedCallbacks = 64
 pure val noCallback: Callback = { instance: 0, generation: -1, key: "", app: "", postedAt: 0, removal: false }
+pure def canConnectListener(s: MirrorState): bool = admitted(s)
 pure def connectListener(s: MirrorState): MirrorState =
   { ...s, listener: Bound({ instance: s.nextInstance }), nextInstance: s.nextInstance + 1, generation: s.generation + 1, handles: List() }
 pure def canDisconnectListener(s: MirrorState, instance: int): bool = boundTo(s, instance)
 pure def disconnectListener(s: MirrorState, instance: int): MirrorState =
   { ...s, listener: Unbound, generation: s.generation + 1, handles: List(), queue: s.queue.select(c => c.instance != instance) }
 pure def redactRows(s: MirrorState): MirrorState = { ...s, generation: s.generation + 1, handles: List() }
-pure def canEnqueueCallback(s: MirrorState, instance: int): bool = instance >= 1 and instance < s.nextInstance and s.queue.length() < maxQueuedCallbacks
+pure def canEnqueueCallback(s: MirrorState, instance: int): bool =
+  admitted(s) and boundTo(s, instance) and instance >= 1 and instance < s.nextInstance and s.queue.length() < maxQueuedCallbacks
 pure def enqueueCallback(s: MirrorState, instance: int, key: str, app: str, postedAt: int, removal: bool): MirrorState =
   { ...s, queue: s.queue.append({ instance: instance, generation: s.generation, key: key, app: app, postedAt: postedAt, removal: removal }), handles: s.handles.select(h => h.key != key) }
 pure def refuseCallback(s: MirrorState): MirrorState = { ...s, generation: s.generation + 1, handles: List(), queue: List() }
@@ -221,14 +235,15 @@ pure def isKept(file: HistoryFile): bool = match file { | KeptFile(_) => true | 
 pure def withRecord(rows: List[HistoryRecord], r: HistoryRecord): List[HistoryRecord] =
   if (rows.length() < maxHistoryRecords) List(r).concat(rows) else List(r).concat(rows.removeAt(rows.length() - 1))
 pure def alwaysKeptHistoryHasConsent(s: MirrorState): bool =
-  isKept(s.historyFile) implies (keepsHistory(s) and keptRows(s.historyFile).length() <= maxHistoryRecords and keptRows(s.historyFile).every(r => s.selected.contains(r.app)))
+  isKept(s.historyFile) implies (policyCollects(s) and s.historyConsent and keptRows(s.historyFile).length() <= maxHistoryRecords and keptRows(s.historyFile).every(r => s.selected.contains(r.app)))
 pure def sometimesHistoryKept(s: MirrorState): bool = keptRows(s.historyFile).length() > 0
 ```
 
 ### A failed deletion is never reported as cleared and blocks history until a deletion succeeds
 
-The owner's Clear cuts the generation, so queued callbacks cannot refill
-history. A file that should be gone but is not is never read or appended
+The owner's Clear applies only to the reviewed revision. It cuts the
+generation, so queued callbacks cannot refill history, and a successful
+clear takes a fresh revision. A file that should be gone but is not is never read or appended
 to; each later status call retries the deletion.
 
 ```quint
@@ -237,10 +252,13 @@ type RowAction = OpenRow | DismissRow
 type MirrorReport = ActionRequested({ handle: int, rowAction: RowAction, confirmation: Confirmation }) | ActionRefused
   | HistoryCleared | HistoryNotCleared | HistoryShown({ now: int, rows: List[HistoryRecord] }) | HistoryWithheld
 type MirrorStep = { state: MirrorState, out: List[MirrorReport] }
-pure def canClearHistory(s: MirrorState, facts: HostFacts): bool = meetsNeed(WithFocus, facts)
-pure def clearHistory(s: MirrorState, facts: HostFacts, deleted: bool): MirrorStep = {
+pure def canClearHistory(s: MirrorState, expectedRevision: int, facts: HostFacts): bool =
+  admitted(s) and expectedRevision == s.revision and meetsNeed(WithFocus, facts)
+pure def clearHistory(s: MirrorState, expectedRevision: int, facts: HostFacts, deleted: bool, committed: bool): MirrorStep = {
   val cleared = purged(deleted, s)
-  { state: cleared, out: List(if (cleared.historyFile == NoFile) HistoryCleared else HistoryNotCleared) }
+  if (cleared.historyFile == NoFile and committed)
+    { state: { ...cleared, revision: s.revision + 1 }, out: List(HistoryCleared) }
+  else { state: cleared, out: List(HistoryNotCleared) }
 }
 pure def canRetryHistoryDeletion(s: MirrorState): bool = s.historyFile == UndeletedFile
 pure def retryHistoryDeletion(s: MirrorState, deleted: bool): MirrorState = { ...s, historyFile: afterDeletion(s.historyFile, deleted) }
@@ -255,14 +273,14 @@ pure def sometimesDeletionOwed(s: MirrorState): bool = s.historyFile == Undelete
 
 ### History opens only on my focused, unlocked request and shows only current-signer records from the last day
 
-Reading prunes records older than a day, from the future, or of an app whose
+An unresolved owner leaves encrypted history withheld. Reading prunes records older than a day, from the future, or of an app whose
 signer changed; the bridge returns only ID, app label, recorded time and
 state.
 
 ```quint
 pure val historyRetentionMs = 86400000
 pure def retained(at: int, now: int): bool = at <= now and at > now - historyRetentionMs
-pure def canShowHistory(s: MirrorState, facts: HostFacts): bool = meetsNeed(WithFocus, facts)
+pure def canShowHistory(s: MirrorState, facts: HostFacts): bool = admitted(s) and meetsNeed(WithFocus, facts)
 pure def showHistory(s: MirrorState, facts: HostFacts, now: int): MirrorStep = {
   val rows = keptRows(s.historyFile).select(r => retained(r.at, now) and not(s.changedSigners.contains(r.app)))
   if (keepsHistory(s) and isKept(s.historyFile)) { state: { ...s, historyFile: KeptFile({ rows: rows }) }, out: List(HistoryShown({ now: now, rows: rows })) }
@@ -304,4 +322,42 @@ pure val rowValues = Set(RowGone, CurrentRow({ look: PublicNotice, intent: Posti
 pure def stepActionLeavesRowsInPlace(before: MirrorState, via: str, after: MirrorState, out: List[MirrorReport]): bool =
   via == "requestAction" implies (after.handles == before.handles and
     out.every(o => match o { | ActionRequested(a) => collecting(before) and isBound(before) and before.handles.some(h => h.handle == a.handle) | _ => true }))
+```
+
+### A host with account custody activates collection only for the native owner bound to its policy
+
+A host whose scope is the Android user needs no account binding. An
+account-bound host with unresolved custody withholds its policy and
+history, unbinds its listener, and invalidates queued work. A return of
+the same verified owner keeps the policy and history. Retiring a
+different or signed-out owner first durably removes admission. Only
+when old history is actually deleted does retirement store a fresh off
+policy, and only then can a verified owner be bound again. A legacy
+policy with no account binding needs fresh consent.
+
+```quint
+pure val scopeValues = Set(DeviceScope, UnknownScope, AccountScope({ ownerKey: "first" }), AccountScope({ ownerKey: "second" }))
+
+pure def canObserveMirrorScope(s: MirrorState, scope: MirrorScope): bool = scope != s.scope
+
+pure def observeMirrorScope(s: MirrorState, scope: MirrorScope): MirrorState =
+  { ...s, scope: scope, listener: Unbound, generation: s.generation + 1, handles: List() }
+
+pure def canRetireMirrorOwner(s: MirrorState): bool = s.scope != DeviceScope
+
+pure def retireMirrorOwner(s: MirrorState, deleted: bool, committed: bool): MirrorState =
+  val retired = purged(deleted, { ...s, boundOwner: "", listener: Unbound, paused: true })
+  if (deleted and committed) { ...retired, ownerEnabled: false, historyConsent: false, paused: true,
+    selected: Set(), changedSigners: Set(), revision: s.revision + 1 } else retired
+
+pure def canBindMirrorOwner(s: MirrorState): bool =
+  val owner = mirrorOwner(s)
+  owner != "" and s.boundOwner == "" and not(s.ownerEnabled) and not(s.historyConsent)
+    and s.selected.size() == 0 and s.historyFile == NoFile
+
+pure def bindMirrorOwner(s: MirrorState): MirrorState =
+  { ...s, boundOwner: mirrorOwner(s), paused: false }
+
+pure def alwaysUnadmittedMirrorHasNoHandles(s: MirrorState): bool =
+  not(admitted(s)) implies s.handles.length() == 0
 ```

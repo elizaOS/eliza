@@ -19,7 +19,6 @@ module android {
         if (!link.bridge) throw rejection("Network policy is turned off in this app", "DISABLED")
         return link.reply as MeteredHint
       },
-      getPathHints: async () => ({ isExpensive: true, isConstrained: true, source: "nw-path-monitor" }),
     }
   }
 }
@@ -38,11 +37,10 @@ it.live("Read the active link's cost only as Android answered it, and read every
   link.bridge = false
   const turnedOff = try promise(() => policy.getMeteredHint())
   const absent = try promise(() => networkPolicyClient(networkPolicyPlugin("DeviceNetworkPolicy"), "DeviceNetworkPolicy").getMeteredHint())
-  const path = try promise(() => policy.getPathHints())
 
   const unknown = { metered: null, source: "android-os" }
   try Effect.try(() => assert.deepStrictEqual(
-    { unmetered, metered, noNetwork, outOfShape, turnedOff, absent, path },
+    { unmetered, metered, noNetwork, outOfShape, turnedOff, absent },
     {
       unmetered: { metered: false, source: "android-os" },
       metered: { metered: true, source: "android-os" },
@@ -50,7 +48,6 @@ it.live("Read the active link's cost only as Android answered it, and read every
       outOfShape: unknown,
       turnedOff: unknown,
       absent: unknown,
-      path: { isExpensive: null, isConstrained: null, source: "nw-path-monitor" },
     },
   ))
 })

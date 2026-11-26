@@ -4,7 +4,7 @@ import { type AgentRuntime, logger, ModelType } from "@elizaos/core"
 import { admitsSession, keptAfter, liveSessionExpired, maxLiveSessions } from "../../gen/agent__voice__clientAudio.ts"
 import type { LocalRoute } from "@elizaos/agent"
 import { publishEventServiceType, type PublishEventService } from "../conversation/events.vibe"
-import { encodeMonoPcm16WavChunks } from "@elizaos/agent"
+import { encodeMonoPcm16BytesWav } from "@elizaos/agent"
 import { VOICE_TRANSCRIPT_STREAM } from "@elizaos/agent"
 
 export const liveAsrPath = "/api/asr/local-inference/live"
@@ -20,7 +20,7 @@ type Answer = { readonly status: number; readonly body: object }
 
 interface Segment {
   readonly turnId: string
-  readonly chunks: Float32Array[]
+  readonly chunks: Uint8Array[]
   kept: number
 }
 
@@ -53,17 +53,14 @@ const decodeBody = Schema.decodeUnknownOption(Schema.Struct({
 
 const refused = (status: number, error: string, code?: string): Answer => ({ status, body: { error, ...(code === undefined ? {} : { code }) } })
 
-function pcmOf(frame: Frame): Float32Array | string {
+function pcmOf(frame: Frame): Uint8Array | string {
   if (frame.channels !== 1) return `expected mono (channels=1); got channels=${frame.channels}`
   if (frame.sampleRate !== sampleRate) return `expected ${sampleRate} Hz; got ${frame.sampleRate} Hz`
   const decoded = Base64.decode(frame.pcm16)
   if (Result.isFailure(decoded)) return "pcm16 must be base64"
   const bytes = decoded.success
   if (bytes.length % 2 !== 0) return `PCM byte length ${bytes.length} is odd`
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const samples = new Float32Array(bytes.length / 2)
-  for (let index = 0; index < samples.length; index += 1) samples[index] = view.getInt16(index * 2, true) / 32_768
-  return samples
+  return bytes
 }
 
 function localTranscriber(runtime: AgentRuntime): string | undefined {
@@ -90,7 +87,7 @@ export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.no
   async function recognise(sessionId: string, segment: Segment, endedAt: number, signal: AbortSignal): Promise<Final> {
     const provider = localTranscriber(runtime)
     if (provider === undefined) throw new Error("No local transcription model is registered")
-    const audio = encodeMonoPcm16WavChunks(segment.chunks, sampleRate)
+    const audio = encodeMonoPcm16BytesWav(segment.chunks, sampleRate)
     const wav = await runPromise(audio)
     const text = await runtime.useModel(ModelType.TRANSCRIPTION, { audioUrl: "", audio: wav, mimeType: "audio/wav", signal, transcriptionPurpose: "final" }, provider)
     const final: Final = { turnId: segment.turnId, text: String(text).trim(), mode: "batch", asrFinalFromSpeechEndMs: Math.max(0, now() - endedAt) }
@@ -98,18 +95,18 @@ export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.no
     return final
   }
 
-  async function apply(sessionId: string, session: LiveSession, edges: readonly Edge[], pcm: readonly Float32Array[], closing: boolean, signal: AbortSignal): Promise<Answer> {
+  async function apply(sessionId: string, session: LiveSession, edges: readonly Edge[], pcm: readonly Uint8Array[], closing: boolean, signal: AbortSignal): Promise<Answer> {
     if (edges.includes("speech-start") && session.segment === undefined) {
       turns += 1
       session.segment = { turnId: `turn-${turns}-${now()}`, chunks: [], kept: 0 }
       publish(sessionId, { phase: "speech-start", turnId: session.segment.turnId })
     }
-    for (const samples of pcm) {
+    for (const bytes of pcm) {
       session.framesReceived += 1
       const segment = session.segment
       if (segment === undefined) continue
-      const kept = keptAfter(segment.kept, samples.length)
-      if (kept > segment.kept) segment.chunks.push(samples.subarray(0, kept - segment.kept))
+      const kept = keptAfter(segment.kept, bytes.length / 2)
+      if (kept > segment.kept) segment.chunks.push(bytes.subarray(0, (kept - segment.kept) * 2))
       segment.kept = kept
     }
     const ended = edges.includes("speech-end")
@@ -146,11 +143,11 @@ export function liveAsrRoutes(runtime: AgentRuntime, now: () => number = Date.no
         if (input === undefined) return refused(400, "The body must be {sessionId, roomId?, frames?, vad?, close?}")
         const sessionId = input.sessionId.trim()
         if (!sessionId || sessionId.length > maxSessionIdCharacters) return refused(400, "sessionId must be a non-empty string of at most 128 characters")
-        const pcm: Float32Array[] = []
+        const pcm: Uint8Array[] = []
         for (const frame of input.frames ?? []) {
-          const samples = pcmOf(frame)
-          if (typeof samples === "string") return refused(400, samples)
-          pcm.push(samples)
+          const bytes = pcmOf(frame)
+          if (typeof bytes === "string") return refused(400, bytes)
+          pcm.push(bytes)
         }
         const edges: Edge[] = (input.vad ?? []).map(({ type }) => type)
         const closing = input.close === true

@@ -1,4 +1,4 @@
-// spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"
+// spec/inbox/managedRead.md, "Only a bounded read is dispatched; any other request fails without a call"; spec/inbox/managedRead.md, "A read returns mail only for the current owner while permission holds"; spec/inbox/grants.md, "An approved change is prepared only under the capability it needs, and otherwise offers the upgrade"; spec/inbox/managedRead.md, "The agent reads managed mail through the device's broker when the host names one, and otherwise through its cloud link"
 import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult, type ContextDefinition, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { enabled, initial, machineOver, type Event, type ManagedInboxRead, type ManagedReadKind } from "../../gen/inbox__managedRead.effect.vibe"
 import { type ManagedGmailClient, classifyGmailFailure, type GmailFailureKind, type MailFailure, type GmailMessage } from "@elizaos/plugin-inbox-client"
@@ -120,10 +120,18 @@ function line(message: GmailMessage): string {
   return `${message.unread ? "[unread] " : ""}${message.from} — ${message.subject || "(no subject)"} (${message.receivedAt}) [id ${message.id}]`
 }
 
+const toldOwner = (text: string): Pick<ActionResult, "userFacingText" | "verifiedUserFacing"> => ({ userFacingText: text, verifiedUserFacing: true })
+const refusalUnread: Readonly<Record<keyof typeof refusalText, boolean>> = {
+  "missing-limit": false, "account-override": false, "missed-only": false, "not-connected": true, "several-accounts": true, "owner-changed": true,
+}
+
 function resultOf(answer: ManagedReadAnswer): ActionResult {
   switch (answer.kind) {
-    case "refused": return { success: false, text: refusalText[answer.reason], data: { refusal: answer.reason } }
-    case "failed": return { success: false, text: failureText[answer.failure], data: { failure: answer.failure } }
+    case "refused": {
+      const text = refusalText[answer.reason]
+      return { success: false, text, ...(refusalUnread[answer.reason] ? toldOwner(text) : {}), data: { refusal: answer.reason } }
+    }
+    case "failed": return { success: false, text: failureText[answer.failure], ...(answer.failure === "rejected" ? {} : toldOwner(failureText[answer.failure])), data: { failure: answer.failure } }
     case "mail": return {
       success: true,
       text: answer.messages.length === 0 ? "No messages match." : answer.messages.map(line).join("\n"),
@@ -138,21 +146,21 @@ function resultOf(answer: ManagedReadAnswer): ActionResult {
 }
 
 async function handle(runtime: IAgentRuntime, _message: Memory, options: unknown): Promise<ActionResult> {
-  const client = agentGmailClient(runtime)
-  if (client === undefined) return { success: false, text: "Gmail is available only when this agent uses the cloud.", data: { refusal: "no-cloud" } }
+  const client = await runPromise(agentGmailClient(runtime))
+  if (client === undefined) return { success: false, text: "Gmail is available only when this agent uses the cloud.", ...toldOwner("Gmail is available only when this agent uses the cloud."), data: { refusal: "no-cloud" } }
   return resultOf(await runPromise(managedInboxRead(client, parameters(options))))
 }
 
 export const inboxReadAction: Action = {
   name: inboxReadActionName,
-  description: "Read or search the owner's connected Gmail mailbox: a fresh, bounded list of messages (sender, subject, time, unread) for the connected account only. Never sends or changes mail.",
+  description: "Fresh bounded read/search of owner's connected Gmail (sender, subject, time, unread); connected account only. Read-only.",
   similes: ["READ_EMAIL", "CHECK_EMAIL", "SEARCH_EMAIL", "LIST_INBOX"],
   parameters: [
-    { name: "limit", required: true, schema: { type: "number" }, description: "How many messages to read, from 1 to 50." },
-    { name: "query", required: false, schema: { type: "string" }, description: 'A Gmail search such as "in:inbox", "in:sent", "is:unread" or "from:ana@example.com". Defaults to the Inbox.' },
+    { name: "limit", required: true, schema: { type: "number" }, description: "Max messages (1-50)." },
+    { name: "query", required: false, schema: { type: "string" }, description: "Gmail search (e.g. in:sent, is:unread, from:a@b.com); default in:inbox." },
   ],
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  validate: async (runtime) => agentGmailClient(runtime) !== undefined,
+  validate: async (runtime) => (await runPromise(agentGmailClient(runtime))) !== undefined,
   handler: async (runtime, message, _state, options) => handle(runtime, message, options),
 }

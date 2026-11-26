@@ -36,7 +36,8 @@ public final class NoticeCoordinator {
   * An unreadable or uncertain receipt keeps its route, and cleanup never replaces the publication error. */
  public String postApproval(String id,String binding,JSONObject route,long expiresAt,long now)throws Exception{return postApproval(id,binding,route,null,expiresAt,now);}
  /** postApproval with this approval's own title (null: the configured title); see NoticeDelivery.publishApproval. */
- public String postApproval(String id,String binding,JSONObject route,String title,long expiresAt,long now)throws Exception{return delivery.exclusive(()->{
+ public String postApproval(String id,String binding,JSONObject route,String title,long expiresAt,long now)throws Exception{return postApproval(id,binding,route,title,expiresAt,now,()->{});}
+ public String postApproval(String id,String binding,JSONObject route,String title,long expiresAt,long now,Check ready)throws Exception{return delivery.exclusive(()->{
   if(!NoticeDelivery.approvalId(id)||route==null)throw new IllegalArgumentException("Invalid approval notice identity");
   delivery.approvalTitle(title); // An invalid title is refused before any route is prepared.
   for(String expired:delivery.expireApprovals(now))routes.forget(expired);
@@ -45,7 +46,7 @@ public final class NoticeCoordinator {
   routes.retire(id,route,delivery::shown);
   routes.prepare(id,binding,route);
   String status;
-  try{status=delivery.publishApproval(id,binding,title,expiresAt,now);}
+  try{ready.run();status=delivery.publishApproval(id,binding,title,expiresAt,now);}
   catch(Exception refused){
    try{
     String retained=delivery.approvalStatus(id,binding,title,expiresAt);
@@ -71,13 +72,15 @@ public final class NoticeCoordinator {
  /** Caller revalidated the exact pending approval without authorizing it. Rotate its tap before quiet dispatch. */
  public String resumeApproval(String id,String binding,JSONObject route,long expiresAt,long now)throws Exception{return resumeApproval(id,binding,route,null,expiresAt,now);}
  /** resumeApproval of an approval posted with its own title (null: the configured title). */
- public String resumeApproval(String id,String binding,JSONObject route,String title,long expiresAt,long now)throws Exception{return delivery.exclusive(()->{
+ public String resumeApproval(String id,String binding,JSONObject route,String title,long expiresAt,long now)throws Exception{return resumeApproval(id,binding,route,title,expiresAt,now,()->{});}
+ public String resumeApproval(String id,String binding,JSONObject route,String title,long expiresAt,long now,Check ready)throws Exception{return delivery.exclusive(()->{
   delivery.approvalTitle(title);
   if(!routes.ownerMatches(route))return "owner-changed";
   boolean suspended=false;JSONArray retained=routes.suspendedApprovals(NoticeOwner.fromRoute(route),now);
   for(int i=0;i<retained.length();i++)if(id.equals(retained.getJSONObject(i).getString("id")))suspended=true;
   if(!suspended)return "not-suspended";
-  routes.prepare(id,binding,route);routes.fresh(id);
+  if(!"suspended".equals(delivery.approvalStatus(id,binding,title,expiresAt)))return "not-suspended";
+  ready.run();routes.prepare(id,binding,route);routes.fresh(id);ready.run();
   return delivery.resumeApproval(id,binding,title,expiresAt,now);
  });}
 }

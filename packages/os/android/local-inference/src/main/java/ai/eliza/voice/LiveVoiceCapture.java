@@ -51,7 +51,7 @@ public final class LiveVoiceCapture implements LiveCaptureController.Capture {
 
  /** Silero VAD is usable in this process: the bridge loads, VAD is compiled in and the bundle has its model. */
  public static boolean vadAvailable(InferenceSession inference){
-  try{InferenceSession.Vad vad=inference.openVad();vad.close();return true;}catch(Exception|Error unavailable){return false;}
+  try{return inference.vadAvailable();}catch(Exception|Error unavailable){return false;}
  }
 
  /**

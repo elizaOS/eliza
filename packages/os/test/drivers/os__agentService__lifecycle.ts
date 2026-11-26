@@ -11,7 +11,7 @@ type Cause = "Payload" | "Storage" | "Config" | "Credential" | "Agent" | "Runtim
 type RecoveryToken = { readonly epoch: number; readonly nonce: string };
 
 export type LifecycleEvent =
-  | { readonly type: "start" | "stop" | "reapStale" | "spawn" | "spawnFailed" | "timeout" | "failUnclassified" | "restartUnhealthy" | "stableReset" | "signedOut" | "credentialExpired" }
+  | { readonly type: "start" | "stop" | "reapStale" | "spawn" | "spawnFailed" | "timeout" | "failUnclassified" | "restartUnhealthy" | "stableReset" | "signedOut" | "credentialExpired" | "brokerReplaced" }
   | { readonly type: "launchHook"; readonly refused: boolean }
   | { readonly type: "refuse"; readonly cause: Cause }
   | { readonly type: "observeReady"; readonly epoch: number }

@@ -1,14 +1,20 @@
-// spec/os/voice/liveCapture.md, "Only a speech segment and its short pre-roll leave the capture, and nothing is stored"; spec/os/voice/liveCapture.md, "A routed capture sends its segments only to the owner's agent, in order and bounded, and a stop cuts them off"
+// spec/os/voice/liveCapture.md, "Only a speech segment and its short pre-roll leave the capture, and nothing is stored"; spec/os/voice/liveCapture.md, "A routed capture sends its segments only to the owner's agent, in order and bounded, and a stop cuts them off"; spec/os/voice/liveCapture.md, "An availability probe keeps at most one idle detector, which the next capture takes"
 package ai.eliza.voice;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -75,5 +81,233 @@ public final class LiveCaptureTest {
     }, "00000000-0000-4000-8000-000000000002", null);
     assertFalse(overloaded.offer(frames(LiveSegmentPipe.MAX_QUEUED_FRAMES + 1, 0), new JSONArray()));
     assertEquals(List.of("BACKPRESSURE"), failures);
+  }
+
+  @Test public void aRoutedCaptureListensWhileTheAgentSessionWarmsAndSendsWhatItHeardOnceReady() throws Exception {
+    routedCaptureWhileWarming(false);
+  }
+
+  @Test public void aStopThatKeepsTheTailWhileTheAgentSessionWarmsStillSendsWhatItHeard() throws Exception {
+    routedCaptureWhileWarming(true);
+  }
+
+  private static void routedCaptureWhileWarming(boolean stopBeforeReady) throws Exception {
+    CountDownLatch warming = new CountDownLatch(1), warmed = new CountDownLatch(1), started = new CountDownLatch(1), stopped = new CountDownLatch(1);
+    List<JSONObject> posted = Collections.synchronizedList(new ArrayList<>());
+    LiveSegmentPipe.Transport agent = new LiveSegmentPipe.Transport() {
+      @Override public void check() {}
+      @Override public JSONObject post(JSONObject body) throws Exception {
+        if (posted.isEmpty()) {
+          warming.countDown();
+          if (!warmed.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("never warmed");
+        }
+        posted.add(body);
+        JSONObject reply = body.optBoolean("close") ? new JSONObject().put("closed", true) : new JSONObject();
+        return new JSONObject().put("status", 200).put("body", reply.toString());
+      }
+    };
+    AtomicReference<LiveCaptureController.Sink> capture = new AtomicReference<>();
+    AtomicReference<LiveCaptureController.Pipe> route = new AtomicReference<>();
+    List<String> transcripts = Collections.synchronizedList(new ArrayList<>());
+    LiveCaptureController controller = new LiveCaptureController(new LiveCaptureController.Host() {
+      @Override public boolean open(long epoch) { return true; }
+      @Override public LiveCaptureController.Capture capture(String id, LiveCaptureController.Sink sink, LiveCaptureOptions options) {
+        capture.set(sink);
+        return new LiveCaptureController.Capture() {
+          @Override public String captureId() { return id; }
+          @Override public boolean echoCancelled() { return true; }
+          @Override public void start() {}
+          @Override public long stopAndWait() { return 0; }
+          @Override public void cancelPending() {}
+          @Override public void requestStop() {}
+          @Override public void interrupt(String reason) {}
+        };
+      }
+      @Override public void frames(String id, JSONArray frames, JSONArray vad, float peak) {}
+      @Override public void ended(String id, String error) {}
+      @Override public void transcript(String id, JSONObject value, String error) { if (error != null) transcripts.add(error); }
+    });
+    try {
+      String id = "00000000-0000-4000-8000-000000000003";
+      List<String> refusals = new ArrayList<>();
+      AtomicReference<Boolean> serverClosed = new AtomicReference<>();
+      controller.start(controller.reserve(id, 1L), true, (sink, captureId, room) -> {
+        LiveSegmentPipe pipe = new LiveSegmentPipe(agent, sink, captureId, room);
+        route.set(pipe);
+        return pipe;
+      }, "room-1", false, new LiveCaptureController.Started() {
+        @Override public void started(String captureId, int sampleRate, boolean echoCancelled, boolean piped) { started.countDown(); }
+        @Override public void refused(String message, String code) { refusals.add(message); }
+      });
+      assertTrue(started.await(2, TimeUnit.SECONDS));
+      assertTrue(warming.await(2, TimeUnit.SECONDS));
+      capture.get().frames(id, frames(2, 1_000), new JSONArray().put(new JSONObject().put("type", "speech-start").put("timestampMs", 1_000)), 0.5f);
+      LiveCaptureController.Stopped done = (captureId, durationMs, closed) -> { serverClosed.set(closed); stopped.countDown(); };
+      if (stopBeforeReady) {
+        controller.stop(id, false, 2_000, done);
+        assertFalse(route.get().ready().isDone());
+        warmed.countDown();
+      } else {
+        warmed.countDown();
+        assertTrue(route.get().ready().get(5, TimeUnit.SECONDS));
+        controller.stop(id, false, 2_000, done);
+      }
+      assertTrue(stopped.await(5, TimeUnit.SECONDS));
+      List<Integer> sent = new ArrayList<>();
+      for (JSONObject body : posted) if (body.has("frames")) sent.add(body.getJSONArray("frames").length());
+      assertEquals(List.of(0, 2), sent);
+      assertTrue(posted.get(posted.size() - 1).optBoolean("close"));
+      assertTrue(serverClosed.get());
+      assertEquals(List.of(), refusals);
+      assertEquals(List.of(), transcripts);
+    } finally {
+      controller.shutdown();
+    }
+  }
+
+  private static LiveCaptureController.Pipe.Sink failures(List<String> codes) {
+    return new LiveCaptureController.Pipe.Sink() {
+      @Override public void result(JSONObject value) {}
+      @Override public void failed(String code) { codes.add(code); }
+    };
+  }
+
+  private static List<Integer> sentFrames(List<JSONObject> posted) throws Exception {
+    List<Integer> sent = new ArrayList<>();
+    synchronized (posted) { for (JSONObject body : posted) if (body.has("frames")) sent.add(body.getJSONArray("frames").length()); }
+    return sent;
+  }
+
+  @Test public void aStopThatKeepsTheTailBeforeDrainingStartsWarmsTheSessionBeforeSendingIt() throws Exception {
+    Agent agent = new Agent();
+    List<String> codes = Collections.synchronizedList(new ArrayList<>());
+    LiveSegmentPipe pipe = new LiveSegmentPipe(agent, failures(codes), "00000000-0000-4000-8000-000000000004", "room-1");
+    assertTrue(pipe.offer(frames(2, 1_000), new JSONArray().put(new JSONObject().put("type", "speech-start").put("timestampMs", 1_000))));
+    pipe.close(false, 2_000);
+    assertTrue(pipe.start(Executors.newSingleThreadExecutor()));
+    assertTrue(pipe.close(false, 2_000).get(5, TimeUnit.SECONDS));
+    assertTrue(pipe.ready().get(5, TimeUnit.SECONDS));
+    assertEquals(List.of(0, 2), sentFrames(agent.posted));
+    assertTrue(agent.posted.get(agent.posted.size() - 1).optBoolean("close"));
+    assertEquals(List.of(), codes);
+  }
+
+  @Test public void aSessionReadyAtTheWarmupDeadlineIsNotTornDown() throws Exception {
+    Agent agent = new Agent();
+    List<String> codes = Collections.synchronizedList(new ArrayList<>());
+    LiveSegmentPipe pipe = new LiveSegmentPipe(agent, failures(codes), "00000000-0000-4000-8000-000000000005", null);
+    // The deadline fires on the drain thread the moment the session becomes ready.
+    pipe.ready().thenRun(pipe::expire);
+    assertTrue(pipe.start(Executors.newSingleThreadExecutor()));
+    assertTrue(pipe.ready().get(5, TimeUnit.SECONDS));
+    pipe.expire();
+    assertTrue(pipe.offer(frames(2, 1_000), new JSONArray()));
+    assertTrue(pipe.close(false, 2_000).get(5, TimeUnit.SECONDS));
+    assertEquals(List.of(0, 2), sentFrames(agent.posted));
+    assertEquals(List.of(), codes);
+  }
+
+  @Test public void aWarmupDeadlineThatPassesBeforeTheSessionIsReadyFailsOnceAndSendsNoAudio() throws Exception {
+    List<JSONObject> posted = Collections.synchronizedList(new ArrayList<>());
+    List<String> codes = Collections.synchronizedList(new ArrayList<>());
+    AtomicReference<LiveSegmentPipe> self = new AtomicReference<>();
+    LiveSegmentPipe pipe = new LiveSegmentPipe(new LiveSegmentPipe.Transport() {
+      // The deadline passes after the warm reply but before the session is marked ready.
+      @Override public void check() { if (posted.size() == 1) self.get().expire(); }
+      @Override public JSONObject post(JSONObject body) throws Exception {
+        posted.add(body);
+        JSONObject reply = body.optBoolean("close") ? new JSONObject().put("closed", true) : new JSONObject();
+        return new JSONObject().put("status", 200).put("body", reply.toString());
+      }
+    }, failures(codes), "00000000-0000-4000-8000-000000000006", null);
+    self.set(pipe);
+    assertTrue(pipe.offer(frames(2, 1_000), new JSONArray()));
+    assertTrue(pipe.start(Executors.newSingleThreadExecutor()));
+    assertFalse(pipe.ready().get(5, TimeUnit.SECONDS));
+    pipe.close(false, 2_000).get(5, TimeUnit.SECONDS);
+    pipe.expire();
+    assertEquals(List.of(0), sentFrames(posted));
+    assertEquals(List.of("TRANSPORT"), codes);
+  }
+
+  @Test public void aRoutedCaptureWhoseSessionIsNotReadyByTheDeadlineEndsOnceAsTransport() throws Exception {
+    CountDownLatch cancelled = new CountDownLatch(1), reported = new CountDownLatch(1);
+    List<String> codes = Collections.synchronizedList(new ArrayList<>());
+    AtomicReference<LiveCaptureController.Pipe> route = new AtomicReference<>();
+    LiveSegmentPipe.Transport agent = new LiveSegmentPipe.Transport() {
+      @Override public void check() {}
+      @Override public JSONObject post(JSONObject body) throws Exception {
+        if (body.optBoolean("close")) return new JSONObject().put("status", 200).put("body", new JSONObject().put("closed", true).toString());
+        // The warm post hangs until the deadline cancels it, then fails as the drain sees it.
+        if (!cancelled.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("never cancelled");
+        throw new java.io.IOException("cancelled");
+      }
+      @Override public void cancelInFlight() { cancelled.countDown(); }
+    };
+    LiveCaptureController controller = new LiveCaptureController(new LiveCaptureController.Host() {
+      @Override public boolean open(long epoch) { return true; }
+      @Override public LiveCaptureController.Capture capture(String id, LiveCaptureController.Sink sink, LiveCaptureOptions options) {
+        return new LiveCaptureController.Capture() {
+          @Override public String captureId() { return id; }
+          @Override public boolean echoCancelled() { return true; }
+          @Override public void start() {}
+          @Override public long stopAndWait() { return 0; }
+          @Override public void cancelPending() {}
+          @Override public void requestStop() {}
+          @Override public void interrupt(String reason) {}
+        };
+      }
+      @Override public void frames(String id, JSONArray frames, JSONArray vad, float peak) {}
+      @Override public void ended(String id, String error) {}
+      @Override public void transcript(String id, JSONObject value, String error) { if (error != null) { codes.add(error); reported.countDown(); } }
+    }, 200);
+    try {
+      String id = "00000000-0000-4000-8000-000000000007";
+      controller.start(controller.reserve(id, 1L), true, (sink, captureId, room) -> {
+        LiveSegmentPipe pipe = new LiveSegmentPipe(agent, sink, captureId, room);
+        route.set(pipe);
+        return pipe;
+      }, "room-1", false, new LiveCaptureController.Started() {
+        @Override public void started(String captureId, int sampleRate, boolean echoCancelled, boolean piped) {}
+        // Should the deadline pass before the start is reported, the start is refused with it instead.
+        @Override public void refused(String message, String code) { codes.add(code); reported.countDown(); }
+      });
+      assertTrue(reported.await(5, TimeUnit.SECONDS));
+      assertFalse(route.get().ready().get(5, TimeUnit.SECONDS));
+      route.get().close(true, 0).get(5, TimeUnit.SECONDS);
+      assertEquals(List.of("TRANSPORT"), codes);
+    } finally {
+      controller.shutdown();
+    }
+  }
+
+  @Test public void aVadProbeOpensOneDetectorThatTheNextCaptureTakes() throws Exception {
+    File bundle = Files.createTempDirectory("eliza-vad-").toFile();
+    AtomicInteger contexts = new AtomicInteger(), destroyed = new AtomicInteger(), opened = new AtomicInteger(), closed = new AtomicInteger();
+    InferenceSession session = new InferenceSession(bundle, new File(bundle, "m"), new File(bundle, "l"), null, Collections.emptyMap(), new InferenceSession.VadOps() {
+      @Override public boolean supported() { return true; }
+      @Override public long createContext(String bundlePath) { return contexts.incrementAndGet(); }
+      @Override public void destroyContext(long context) { destroyed.incrementAndGet(); }
+      @Override public long open(long context) { return 10 + opened.incrementAndGet(); }
+      @Override public float[] processBatch(long handle, float[] pcm16kMono) { return new float[] {0.1f}; }
+      @Override public void reset(long handle) {}
+      @Override public void close(long handle) { closed.incrementAndGet(); }
+    });
+    try {
+      for (int i = 0; i < 5; i++) assertTrue(LiveVoiceCapture.vadAvailable(session));
+      assertEquals(List.of(1, 1, 0), List.of(contexts.get(), opened.get(), closed.get()));
+      session.openVad().close();
+      assertTrue(LiveVoiceCapture.vadAvailable(session));
+      assertEquals(List.of(1, 1, 1), List.of(contexts.get(), opened.get(), closed.get()));
+      assertTrue(LiveVoiceCapture.vadAvailable(session));
+      session.trimMemory();
+      assertEquals(List.of(1, 1), List.of(closed.get(), destroyed.get()));
+      assertTrue(LiveVoiceCapture.vadAvailable(session));
+      assertEquals(List.of(2, 2), List.of(contexts.get(), opened.get()));
+    } finally {
+      session.close();
+      bundle.delete();
+    }
+    assertFalse(LiveVoiceCapture.vadAvailable(session));
   }
 }

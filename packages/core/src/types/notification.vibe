@@ -90,7 +90,10 @@ export interface NativeNotification extends
   nativeEpoch: string
   nativeSequence: number
 
-  data?: { ownerType?: string; conversationId?: string; messageId?: string }
+  data?:
+    | { ownerType?: string; conversationId?: string; messageId?: string }
+    | { kind: "result"; workflowId: string; runId: string; versionId: string }
+    | { kind: "approval"; workflowId: string; runId: string; versionId: string; proposalId: string }
 }
 
 export interface NotificationInboxSnapshot {
