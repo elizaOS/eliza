@@ -259,6 +259,27 @@ describe("plugin-computeruse journeys", () => {
         }),
       ))
       try Effect.try(() => assert.strictEqual(Exit.isFailure(staleEpoch), true))
+      const routeAction = computerUseRoutes(() => service).find((r) => r.method === "POST" && r.path === "/api/computer-use/sessions/{id}/actions")
+      const routeOnOtherOwner = try promise(async () => routeAction?.handler({
+        parameters: new Map([["id", created.id]]),
+        query: new Map(),
+        headers: new Map(),
+        body: {
+          actionId: "act-route",
+          command: "click",
+          parameters: { coordinate: [1, 1] },
+          observationId: frame.provenance.observationId,
+          expectedSequence: execRes.snapshot.sequence,
+          expectedEpoch: created.generation,
+          surface: "LocalDesktop",
+        },
+        signal: new AbortController().signal,
+      }))
+      try Effect.try(() => {
+        const answer = routeOnOtherOwner as { readonly status: number; readonly body: { readonly error?: string } }
+        assert.strictEqual(answer.status, 409)
+        assert.match(answer.body.error ?? "", /not authorized/)
+      })
       try Effect.try(() => {
         assert.strictEqual(execRes.result.success, true)
         assert.strictEqual(execRes.snapshot.lastActionId, "act-1")
@@ -762,6 +783,12 @@ describe("plugin-computeruse journeys", () => {
       const sceneProv = try promise(() => sceneProvider.get(runtime, makeMessage(""), {} as State))
       const visionSvc = new VisionContextProvider(runtime)
       const visionCtx = try promise(() => visionSvc.getContext())
+      const sceneCachedBeforeOff = service.getCurrentScene() !== null
+      service.setApprovalMode("off")
+      const visionOff = try promise(() => visionSvc.getContext())
+      service.setApprovalMode("approve_all")
+      const visionAskFirst = try promise(() => visionSvc.getContext())
+      service.setApprovalMode("full_control")
 
       _resetOcrProvidersForTests()
       setAndroidBridge(null)
@@ -781,6 +808,11 @@ describe("plugin-computeruse journeys", () => {
         assert.ok((stateProv.discoveryText ?? "").includes("Screen"))
         assert.ok((sceneProv.discoveryText ?? "").includes("Scene"))
         assert.strictEqual(visionCtx.currentTaskGoal, "Save edited file")
+        assert.strictEqual(sceneCachedBeforeOff, true)
+        assert.deepStrictEqual(visionOff.openApps, [])
+        assert.strictEqual(visionOff.focusedWindow, null)
+        assert.deepStrictEqual(visionAskFirst.openApps, [])
+        assert.strictEqual(visionAskFirst.focusedWindow, null)
         assert.strictEqual(androidFeatureCheck().available, false)
         assert.strictEqual(iosFeatureCheck().intentCount >= 4, true)
         assert.strictEqual(findIosAppIntent("com.apple.shortcuts.run")?.bundleId, "com.apple.shortcuts")

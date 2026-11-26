@@ -1445,12 +1445,13 @@ export class VisionContextProvider extends Service {
   async getContext(): Promise<VisionContext> {
     const found: unknown = this.runtime.getService(COMPUTERUSE_SERVICE_TYPE)
     const service = found instanceof ComputerUseService ? found : undefined
-    const scene = service
-      ? (service.getCurrentScene() ?? (service.observationAutoApproved() ? await service.refreshScene("idle") : null))
-      : null
-    const openApps = scene && scene.apps.length > 0
-      ? scene.apps.filter((a) => a.windows.length > 0).map((a) => a.name)
-      : [...new Set(listProcesses().map((p) => p.name).filter((n) => n.length > 0 && n !== "launchd"))].slice(0, 50)
+    const observing = service !== undefined && service.observationAutoApproved()
+    const scene = service && observing ? (service.getCurrentScene() ?? await service.refreshScene("idle")) : null
+    const openApps = !observing
+      ? []
+      : scene && scene.apps.length > 0
+        ? scene.apps.filter((a) => a.windows.length > 0).map((a) => a.name)
+        : [...new Set(listProcesses().map((p) => p.name).filter((n) => n.length > 0 && n !== "launchd"))].slice(0, 50)
     const focused = scene?.focused_window
       ? { app: scene.focused_window.app, title: scene.focused_window.title, bbox: scene.focused_window.bounds }
       : null

@@ -13,7 +13,7 @@ This area defines the formal rules for desktop, browser, sandbox, and mobile com
 
 ### A command is scoped to one session generation, surface and authorized operation
 
-The shell binds the device, browser or approved remote connector to a session. It validates the initiating principal, screenshot and clipboard access, tab identifiers, and the requested operation before dispatching it to the bound host. The caller supplies the session generation and surface it expects; the shell never fills them in from the session itself.
+The shell binds the device, browser or approved remote connector to a session. It validates the initiating principal, screenshot and clipboard access, tab identifiers, and the requested operation before dispatching it to the bound host. The caller supplies the session generation and surface it expects; the shell never fills them in from the session itself. The local computer-use routes carry no per-request principal, so the host principal is their only caller: every session they create is owned by the host principal and every command they send is sent as it. A session owned by another principal therefore refuses route commands.
 
 ```quint
 type ComputerSurface = LocalDesktop | BrowserSurface | MobileDevice | RemoteDesktop
