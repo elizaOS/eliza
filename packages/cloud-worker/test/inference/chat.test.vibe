@@ -310,14 +310,14 @@ module node {
         await fund(rawProfile, organizationId, fixture.databaseUrl)
         const worker = cloudWorker()
         const retained = new Map<number, Promise<unknown>[]>()
-        const callUsing = (bindings: CloudBindings) => (n: number, includeUsage = false, signal?: AbortSignal, stream = true) => {
+        const callUsing = (bindings: CloudBindings) => (n: number, includeUsage = false, signal?: AbortSignal, stream = true, capped = true) => {
           const work: Promise<unknown>[] = []
           retained.set(n, work)
           return worker.fetch(new Request(api + "/api/v1/chat/completions", {
             method: "POST", signal,
             headers: { origin: web, authorization: "Bearer " + owner.access, "content-type": "application/json", "idempotency-key": keyOf(n) },
             body: JSON.stringify({ model: "test-chat", messages: [{ role: "user", content: "Please say hello" }],
-              max_tokens: 16, stream, ...(stream ? { stream_options: { include_usage: includeUsage } } : {}) }),
+              ...(capped ? { max_tokens: 16 } : {}), stream, ...(stream ? { stream_options: { include_usage: includeUsage } } : {}) }),
           }), bindings, { waitUntil: (pending) => { work.push(pending) } })
         }
         const call = callUsing(env)
@@ -401,7 +401,9 @@ module node {
         const whole = await bound(10, false, undefined, false)
         const boundAnswer: unknown = await whole.json()
         const boundStream = await streamSummary(await bound(11, true))
-        await Promise.all([...(retained.get(10) ?? []), ...(retained.get(11) ?? [])])
+        const uncapped = await bound(12, false, undefined, false, false)
+        await uncapped.text()
+        await Promise.all([...(retained.get(10) ?? []), ...(retained.get(11) ?? []), ...(retained.get(12) ?? [])])
         const boundHolds = (await ledger()).slice(settled.length)
         return {
           asked, notAsked, truncated, usedBeforeFailure, preHeader, hangingStatus: hanging.status,
@@ -421,7 +423,7 @@ module node {
           retainedWholeBeforeHeaders: earlyWhole.retainedCount,
           cancelledUpstream: llm.aborted, providerCalls: llm.bodies.length, duplicate: duplicate.status,
           replayUnchanged: JSON.stringify(settled) === JSON.stringify(replayed),
-          workersAi: { missing: missingBinding.status, whole: [whole.status, boundAnswer], stream: boundStream, calls,
+          workersAi: { missing: missingBinding.status, whole: [whole.status, boundAnswer], stream: boundStream, uncapped: uncapped.status, calls,
             holds: boundHolds.map((row) => [row.request, row.phase, row.usageKey === row.key, row.outcome, Number(row.charged)]) },
         }
       } finally {
@@ -435,7 +437,7 @@ module node {
 
 import { workerChatJourney } from node
 
-it.live('Worker streams complete frames and settles the original hold (spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported")', () => effect {
+it.live('Worker streams complete frames and settles the original hold, and a Workers AI call the caller left uncapped is sent the model\'s configured maximum (spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A request is admitted only for a live caller under its plan limit, held under the policy\'s lane at its quote, and otherwise refused well formed"; spec/cloud/services/inference.md, "A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported")', () => effect {
   const got = try tryPromise(() => workerChatJourney((profile, organization, databaseUrl) =>
     runPromise(Effect.provide(fundWorkerChat(profile, organization), storeLayer({ kind: "pg", url: databaseUrl })))))
   const answer = { status: 200, content: replyText, models: ["test-chat"], usage: 0, errors: 0, done: 1, terminal: true, complete: true }
@@ -456,12 +458,14 @@ it.live('Worker streams complete frames and settles the original hold (spec/clou
     cancelSameKey: true, earlyCancelSameKey: true, idleCancelSameKey: true, wholeCancelSameKey: true,
     retainedStream: 1, retainedBeforeHeaders: 1, retainedIdle: 1, retainedWholeBeforeHeaders: 1,
     cancelledUpstream: 2, providerCalls: 7, duplicate: 409, replayUnchanged: true,
-    workersAi: { missing: 503, whole: [200, { ...wholeAnswer, model: "test-chat" }], stream: { ...answer, usage: 1 }, calls: [
+    workersAi: { missing: 503, whole: [200, { ...wholeAnswer, model: "test-chat" }], stream: { ...answer, usage: 1 }, uncapped: 200, calls: [
       { model: upstreamModel, sentModel: false, stream: false, maxTokens: 16, streamOptions: undefined },
       { model: upstreamModel, sentModel: false, stream: true, maxTokens: 16, streamOptions: { include_usage: true } },
+      { model: upstreamModel, sentModel: false, stream: false, maxTokens: 4096, streamOptions: undefined },
     ], holds: [
       ["00000000-0000-4000-8000-000000000010", "settled", true, "known", 31],
       ["00000000-0000-4000-8000-000000000011", "settled", true, "known", 31],
+      ["00000000-0000-4000-8000-000000000012", "settled", true, "known", 31],
     ] },
   }))
 }, 60_000)

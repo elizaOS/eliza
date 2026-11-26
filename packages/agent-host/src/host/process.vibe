@@ -241,7 +241,7 @@ module node {
     })
     if (formed === undefined) return failed()
     if (Result.isFailure(formed)) {
-      logger.error({ src: "agent", phase: "LoadPlugins", failure: formed.failure._tag }, "The agent could not be composed")
+      logger.error({ src: "agent", phase: "LoadPlugins", failure: formed.failure._tag, ...(formed.failure._tag === "ModuleRefused" ? { module: formed.failure.module, reason: formed.failure.reason } : {}) }, "The agent could not be composed")
       if (bootFailureOf(formed.failure) === "Config") {
         lifecycle.send({ type: "loadPlugins", ok: false })
         return failed()
