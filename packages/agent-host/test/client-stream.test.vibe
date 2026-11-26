@@ -695,10 +695,10 @@ it.effect(`Only an object's keys are compared with the host's objects, so one ke
   const shown = ["VIEWS switches", "VIEWS call: it switches", "VIEWS call: view 1\nthen more", "I'm here", "VIEWS call: view 1 2"]
   try Effect.try(() => assert.deepStrictEqual({ held: held.map(streamable), shown: shown.map(streamable) }, { held: held.map(() => ""), shown }))
   const unclosed = `[a_b${' x="y"'.repeat(60)}`
-  const started = try Effect.sync(() => performance.now())
+  const started = try Clock.currentTimeMillis
   const kept = withoutWrittenCalls(unclosed) === unclosed
   const lines = [streamable(unclosed), streamable(`VIEWS call:${" ".repeat(10_000)}x`)].length
-  const took = (try Effect.sync(() => performance.now())) - started
+  const took = (try Clock.currentTimeMillis) - started
   try Effect.try(() => assert.deepStrictEqual({ kept, lines, quick: took < 50 }, { kept: true, lines: 2, quick: true }))
 })
 
