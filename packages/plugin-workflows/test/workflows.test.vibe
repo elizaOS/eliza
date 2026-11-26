@@ -1051,7 +1051,7 @@ it.live('Keep the workflows I saved before this version (spec/workflow/earlierSt
   try check(() => assert.deepStrictEqual([(again.status() as { readonly earlierImport?: unknown }).earlierImport, ids.includes("wf-late"), ids.length], [imported, false, 3]))
 })
 
-it.live('Serve revision and evaluation routes and format digest zone notes (spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored")', effect () => {
+it.live('Dispatch workflows idempotently, serve revision and evaluation routes, and format digest zone notes (spec/workflow/admission.md, "One owner, workflow, submission, version and input survive a retry"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored")', effect () => {
   const rig = try harness({
     draft: (prompt, opts) => opts?.purpose === "fast_eval"
       ? JSON.stringify({ passed: true, score: 0.95, reason: "Clear greeting output" })
@@ -1069,6 +1069,17 @@ it.live('Serve revision and evaluation routes and format digest zone notes (spec
   const restored = try rig.client.restoreRevision(receipt.workflowId, receipt.versionId)
   const run = try rig.client.run(receipt.workflowId, restored.versionId, () => succeed(undefined))
   try settled(rig.client, run)
+
+  const servicesMap = new Map<string, unknown[]>()
+  const fakeRuntime = { services: servicesMap } as unknown as IAgentRuntime
+  registerWorkflowDispatchService(fakeRuntime, () => rig.service)
+  const registeredBefore = servicesMap.has(WORKFLOW_DISPATCH_SERVICE_TYPE)
+  const dispatch = createWorkflowDispatchService(() => rig.service)
+  const firstDispatch = try promise(() => dispatch.execute(receipt.workflowId, { source: "trigger" }, { idempotencyKey: "k-1" }))
+  const dupDispatch = try promise(() => dispatch.execute(receipt.workflowId, { source: "trigger" }, { idempotencyKey: "k-1" }))
+  const missingDispatch = try promise(() => dispatch.execute("nonexistent-wf", {}, { idempotencyKey: "k-2" }))
+  if (firstDispatch.executionId !== undefined) try settled(rig.client, { id: firstDispatch.executionId, workflowId: receipt.workflowId })
+  unregisterWorkflowDispatchService(fakeRuntime)
   const suite = try rig.client.evaluationSamples(receipt.workflowId)
 
   const protocol = hostedDigestProtocol(rig.request)
@@ -1078,12 +1089,20 @@ it.live('Serve revision and evaluation routes and format digest zone notes (spec
   try check(() => assert.deepStrictEqual({
     revisions: revList.revisions.length >= 2,
     restoredVersionChanged: restored.versionId !== revList.currentVersionId,
+    registered: [registeredBefore, servicesMap.has(WORKFLOW_DISPATCH_SERVICE_TYPE)],
+    dispatchOk: firstDispatch.ok && firstDispatch.dedup !== true,
+    dispatchDedup: dupDispatch.ok && dupDispatch.dedup === true && dupDispatch.executionId === firstDispatch.executionId,
+    dispatchMissing: missingDispatch.ok === false && missingDispatch.code === "workflow_not_found",
     suiteCount: suite.sampleCount >= 1 && suite.summary?.passRate === 1,
     digestAvailable,
     zoneNote: [zoneNote.includes("America/New_York"), sameZoneNote],
   }, {
     revisions: true,
     restoredVersionChanged: true,
+    registered: [true, false],
+    dispatchOk: true,
+    dispatchDedup: true,
+    dispatchMissing: true,
     suiteCount: true,
     digestAvailable: true,
     zoneNote: [true, ""],
