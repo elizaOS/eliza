@@ -151,16 +151,20 @@ it('A Photos operation names no more items than its review takes (spec/agent/dev
   assert.isUndefined(readOperation({ type: "photos_album_create", name: "   ", ids: ids(1) }))
   assert.isUndefined(readOperation({ type: "photos_filter", text: "trip\u0007" }))
 })
-it('A telephony contact query is no more than 128 units as submitted (spec agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send")', () => {
-  const bounded: ReadonlyArray<readonly [unknown, unknown]> = [
-    [{ type: "phone_call", target: { kind: "contact", query: "a".repeat(128) } }, { type: "phone_call", target: { kind: "contact", query: ` ${"a".repeat(128)} ` } }],
-    [{ type: "phone_call", target: { kind: "contact", query: "a".repeat(128) } }, { type: "phone_call", target: { kind: "contact", query: "a".repeat(129) } }],
+it('A padded telephony contact query is refused, even when its trimmed length is within 128 (spec agent/deviceActions/telephony.md, "A proposed contact name is one the owner wrote as whole words, outside the text to send")', () => {
+const within = { type: "phone_call", target: { kind: "contact", query: "a".repeat(128) } }
+  assert.isDefined(readOperation(within), JSON.stringify(within).slice(0, 120))
+  const refused: ReadonlyArray<unknown> = [
+    { type: "phone_call", target: { kind: "contact", query: " Sam " }, },
+    { type: "phone_call", target: { kind: "contact", query: `${"a".repeat(127)} ` }, },
+    { type: "phone_call", target: { kind: "contact", query: `${"a".repeat(128)} ` }, },
+    { type: "phone_call", target: { kind: "contact", query: "a".repeat(129) }, },
+    { type: "phone_call", target: { kind: "contact", query: " " }, },
+    { type: "contact_show", query: " Sam " },
+    { type: "contact_create", contact: { displayName: " Sam ", phoneNumbers: ["+15550100"], emailAddresses: [] }, },
+    { type: "sms_compose", query: " Sam ", body: "On my way" },
   ]
-  for (const [within, beyond] of bounded) {
-    assert.isDefined(readOperation(within), JSON.stringify(within).slice(0, 120))
-    assert.isUndefined(readOperation(beyond), JSON.stringify(beyond).slice(0, 120))
-  }
-  assert.isUndefined(readOperation({ type: "phone_call", target: { kind: "contact", query: " " } }))
+  for (const input of refused) assert.isUndefined(readOperation(input), JSON.stringify(input).slice(0, 120))
 })
 it("Propose only operations the device can check: each operation needs its own capability and a workflow read needs its binding", () => {
   assert.isDefined(validate(sms, negotiation(true, "sms.send.v1"), "NoBinding"))
