@@ -121,7 +121,7 @@ export effect function encodeMonoPcm16WavChunks(chunks: readonly Float32Array[],
   return wavOf(chunks, sampleRate)
 }
 
-export effect function encodeMonoPcm16BytesWav(chunks: readonly Uint8Array[], sampleRate: number): Uint8Array!WavRateRefused | WavBytesRefused {
+export effect function encodeMonoPcm16BytesWav(chunks: readonly Uint8Array[], sampleRate: number): Uint8Array!(WavRateRefused | WavBytesRefused) {
   if (!Number.isInteger(sampleRate) || !wavRateAccepted(sampleRate)) throw new WavRateRefused({ rate: sampleRate })
   const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
   if (totalBytes % 2 !== 0) throw new WavBytesRefused({ bytes: totalBytes })
