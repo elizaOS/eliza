@@ -42,7 +42,9 @@ error InvalidGrantCodeRequest { problem: string }
 error GrantRevocationMoved {}
 
 const codes = outputRows("grant_codes", Codes)
-const RedeemBody = Schema.Struct({ code: Schema.String, idempotencyKey: Schema.String })
+const RedeemBody = Schema.Struct({
+  code: Schema.String, idempotencyKey: Schema.String, expectedAccountId: Schema.optionalKey(Schema.NonEmptyString)
+})
 const redeemKeyPattern = /^[A-Za-z0-9._:-]{8,128}$/
 
 function columnsAt(now: number) {
@@ -250,6 +252,7 @@ export const routes: ReadonlyArray<Route> = [{
       { subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), rule: Codes.redeemPerAddress }
     ])
     const body = try jsonBody(context, RedeemBody)
+    if (body.expectedAccountId !== undefined && body.expectedAccountId !== caller.userId) throw refused("AccessDenied")
     if (!redeemKeyPattern.test(body.idempotencyKey)) throw refused("InvalidRequest")
     const canonical = normalizeSubscriptionCode(body.code)
     if (canonical === null) throw refused("GrantCodeInvalid")
