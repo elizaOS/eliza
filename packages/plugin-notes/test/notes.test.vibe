@@ -944,3 +944,11 @@ it.effect(`Ask about, delete or change a phone note only as the owner said it (s
   ])
   assert.deepEqual(model.asked, ["Find my Shopping note and add eggs", "Add eggs to my Shopping note", "Add eggs to this note", "Change this note"])
 })
+
+
+it.effect("drops the truncated tail of a first line longer than the title limit instead of leaking it into the body", () => {
+  const f = fixture()
+  const notes = notesOver(f)
+  const created = try notes.create({ content: "x".repeat(300) + "\nSecond line" })
+  assert.deepEqual([created.value.note.title, created.value.note.body], ["x".repeat(240), "\nSecond line"])
+})
