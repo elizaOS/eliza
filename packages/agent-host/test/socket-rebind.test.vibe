@@ -1,0 +1,61 @@
+// spec/agent/host/process.md, "Story: Boot from a launch and serve only when ready"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"; spec/agent/access/transport.md, "Story: Close the listeners once"
+module node {
+  import { spawn } from "node:child_process"
+  import { existsSync } from "node:fs"
+  import { createServer, type Server } from "node:net"
+
+  export function occupy(path: string): Promise<Server> {
+    return new Promise((resolve, reject) => {
+      const server = createServer()
+      server.once("error", reject)
+      server.listen(path, () => resolve(server))
+    })
+  }
+
+  export function release(server: Server): Promise<void> {
+    return new Promise((resolve) => server.close(() => resolve()))
+  }
+
+  export async function deadSocket(path: string): Promise<void> {
+    const child = spawn(process.execPath, ["-e", "require('node:net').createServer().listen(process.argv[1])", path], { stdio: "ignore" })
+    for (let i = 0; i < 200 && !existsSync(path); i++) await new Promise((resolve) => setTimeout(resolve, 50))
+    child.kill("SIGKILL")
+    await new Promise((resolve) => child.once("exit", resolve))
+  }
+}
+import { deadSocket, occupy, release } from node
+import { assert, it } from "@effect/vitest"
+import { healthReply } from "../gen/agent__host__process.ts"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { startAgent, type StartAgentInput } from "../src/host/process.vibe"
+import { host, scratch } from "./support/kernel.vibe"
+import { launchDocument, launchFrame } from "./support/scratch.ts"
+
+effect function inputFor(state: { readonly path: string; file(name: string): string }) {
+  const frame = launchFrame()
+  const document = try Effect.try(() => launchDocument())
+  const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
+  return { ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") } } satisfies StartAgentInput
+}
+
+it.effect("A live owner's socket refuses the boot, and the same state and socket boot cleanly once it is free (spec/agent/host/resources.md, \"Story: Release everything I acquired, once\")", effect () => {
+  const state = try scratch("socket-live-owner")
+  const input = try inputFor(state)
+  const dummy = try host("occupy socket", () => occupy(state.file("agent.sock")))
+  const failed = try Effect.flip(startAgent(input))
+  try host("release socket", () => release(dummy))
+  const agent = try startAgent(input)
+  const readyNow = try Effect.try(() => healthReply(agent.phase()).tag)
+  const code = try host("stop", () => agent.stop())
+  try Effect.try(() => assert.deepStrictEqual({ failed: failed._tag, readyNow, code }, { failed: "AgentBootFailed", readyNow: "HealthReady", code: 0 }))
+}, 180_000)
+
+it.effect("A socket file left by a dead owner does not wedge the state directory: the next boot clears it and serves (spec/agent/host/process.md, \"Story: Boot from a launch and serve only when ready\")", effect () => {
+  const state = try scratch("socket-dead-owner")
+  const input = try inputFor(state)
+  try host("leave a dead owner's socket", () => deadSocket(state.file("agent.sock")))
+  const agent = try startAgent(input)
+  const readyNow = try Effect.try(() => healthReply(agent.phase()).tag)
+  const code = try host("stop", () => agent.stop())
+  try Effect.try(() => assert.deepStrictEqual({ readyNow, code }, { readyNow: "HealthReady", code: 0 }))
+}, 180_000)
