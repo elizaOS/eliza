@@ -671,7 +671,14 @@ the sentence of a second answer is. A stop after `Dr.`, `Mr.`, `Mrs.`, `Ms.`,
 lowercase letter, or with a digit after `U.S.` or `St.`; every other stop
 followed by a space ends it. The same rule holds where a sentence the model
 gave stops in its reply: one that stops on such a stop while the reply goes
-on in the same sentence is a fragment.
+on in the same sentence is a fragment. So is one that stops on `!` or `?`
+while the reply goes on with a lowercase word, and one that stops at a line's
+end with no stop while the next line, with no blank line between, starts with
+a lowercase word. A closing mark or bracket between the stop and the word
+that follows changes nothing, and `8p.m.` or `9a.m.` reads as `p.m.` or
+`a.m.`. The rule holds where such a sentence starts, too: one that begins
+after a stop, an `!` or `?`, or a line with no stop, where the reply's text
+before it goes on into it by these rules, is a fragment.
 A reply any sentence of which echoes a failed step's text written to the
 model reports nothing. An answer to
 the call that holds a JSON object anywhere is read as that object, and one
@@ -758,9 +765,11 @@ still delivers its reply, with no text, and never ends as a provider issue,
 so nothing offers a retry. So the person hears neither a success the step
 did not have nor a stock sentence after one, each failure is told on its
 own, and nothing the action composed is lost. When every point is reported,
-the reply stands as the model wrote it: a reported sentence that also holds a
-false clause about another step is a known limit of the model's own
-judgment, not a guarantee. A failure whose action wrote no words for the
+the reply stands as the model wrote it. The sentence rule above checks only
+that each report is one whole sentence: a reported sentence that also holds a
+false clause, about another step or about its own, and a separate false
+sentence beside a report, are a known limit of the model's own judgment, and
+nothing here guarantees a reply free of a false success. A failure whose action wrote no words for the
 owner and that a later call of the turn may have answered leaves the model's
 reply as it is when no other failure needs its telling. Each attachment
 omission the model did not report follows the delivered reply in its own
