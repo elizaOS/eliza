@@ -25,7 +25,7 @@ function check(subject: string, rule: RateLimit) {
   return { subject, rule: { ...rule, name: "conformance" } };
 }
 
-export const driver: Driver = {
+export const driver: Driver & AsyncDisposable = {
   async reset() {
     seen.clear();
     const opened = await store();
@@ -51,6 +51,10 @@ export const driver: Driver = {
     if (!seen.has(key)) return initialWindow;
     const opened = await store();
     return await opened.runPromise(readWindow(check(key, { name: "conformance", limit: 1, windowMs: 1 })));
+  },
+  async [Symbol.asyncDispose]() {
+    await runtime?.dispose();
+    runtime = undefined;
   },
 };
 

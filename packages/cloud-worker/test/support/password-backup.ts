@@ -19,7 +19,7 @@ const standaloneMigrations = [
 
 export async function openBackupDatabase(existingStandalone = false) {
   const database = await PGlite.create()
-  const socket = new PGLiteSocketServer({ db: database, host: "127.0.0.1", port: 0, maxConnections: 5 })
+  const socket = new PGLiteSocketServer({ db: database, host: "127.0.0.1", port: 0, maxConnections: 10 })
   try {
     await socket.start()
     const migrations = new URL("../../src/store/migrations/", import.meta.url)

@@ -95,7 +95,9 @@ export async function startFakeServer(): Promise<FakeServer> {
     upgrade: (prefix, handler) => { upgrades.push({ prefix, handler }); },
     close: () => {
       for (const socket of upgraded) socket.destroy();
-      return new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      const closed = new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      server.closeAllConnections();
+      return closed;
     },
   };
 }

@@ -133,31 +133,45 @@ function clientAddress(request: HttpServerRequest.HttpServerRequest): Option.Opt
   return forwarded === undefined || forwarded === "" ? request.remoteAddress : Option.some(forwarded)
 }
 
-effect function served(source: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | Scope.Scope) {
-  if (lifetime !== undefined) {
-    const scope = try Scope.Scope
-    const completed = try Deferred.make<void>()
-    try Scope.addFinalizer(scope, Deferred.succeed(completed, undefined))
-    try sync(() => lifetime.waitUntil(runPromise(Deferred.await(completed))))
-  }
+effect function served(
+  source: Request,
+  env: ProfileBindings & LegacyBindings,
+  providerFetch: typeof fetch,
+  done: PromiseWithResolvers<void>,
+  onRegistered: () => void,
+  onStream: () => void,
+  lifetime?: WorkerLifetime
+): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | Scope.Scope) {
+  const scope = try Scope.Scope
+  try Scope.addFinalizer(scope, sync(() => done.resolve()))
+  onRegistered()
+  if (lifetime !== undefined) try sync(() => lifetime.waitUntil(done.promise))
   const now = try Clock.currentTimeMillis
   const answered = effect {
     const ready = try preparedFor(env)
     const { db, store } = try connected(env)
+    let inflight: Promise<unknown> | undefined
+    try Scope.addFinalizer(scope, promise(async () => { await inflight?.then(() => undefined, () => undefined) }))
     const request = try HttpServerRequest.HttpServerRequest
     const seen = request.modify({ remoteAddress: clientAddress(request) })
     provide platformLayer(env, ready, store) {
       try start(env, ready)
       return try Effect.interruptible(provideService(respond(workerRoutes, returnPageRoute, (route) => tryPromise({
-        try: () => legacyGmailResponse(source, route.path, env, db, providerFetch),
+        try: () => {
+          const run = legacyGmailResponse(source, route.path, env, db, providerFetch)
+          inflight = run
+          return run
+        },
         catch: () => refused("ServiceUnavailable", "NoReason", now + 5000),
       })), HttpServerRequest.HttpServerRequest, seen))
     }
   }
-  return answered catch effect (unready) => {
+  const response = answered catch effect (unready) => {
     try annotateLogs(logError("the Worker is not ready to serve"), { problem: unready.problem })
     return refusalResponse(refused("ServiceUnavailable", "NoReason", now + 5000).refusal, now)
   }
+  if (response.body._tag === "Stream" && source.method !== "HEAD" && response.status !== 204 && response.status !== 304) onStream()
+  return response
 }
 
 function unreadyAnswer(now: number): Response {
@@ -218,8 +232,13 @@ export function workerManagedGoogle(env: ProfileBindings): boolean {
   return ready !== undefined && capabilityEnabled(ready.profile.environments[ready.environment], "managedGoogle")
 }
 
-export function serveFromTable(request: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): Promise<Response> {
-  return HttpEffect.toWebHandler(served(request, env, providerFetch, lifetime))(request)
+export async function serveFromTable(request: Request, env: ProfileBindings & LegacyBindings, providerFetch: typeof fetch, lifetime?: WorkerLifetime): Promise<Response> {
+  const done = Promise.withResolvers<void>()
+  let registered = false
+  let streaming = false
+  const response = await HttpEffect.toWebHandler(served(request, env, providerFetch, done, () => { registered = true }, () => { streaming = true }, lifetime))(request)
+  if (registered && !streaming) await done.promise
+  return response
 }
 
 export function sweepTable(env: ProfileBindings, scheduledAt: number): Promise<void> {
