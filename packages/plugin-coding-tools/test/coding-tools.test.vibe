@@ -970,7 +970,7 @@ it.effect('FILE grep reports no protected or blocked file whatever glob the sear
       }
       try check(() => {
         for (const text of texts) {
-          assert.equal(/root-env|nested-env|nested-git|=ssh|=blocked|\.env|\.git|\.ssh|private/.test(text), false, text)
+          assert.equal(/root-env|nested-env|nested-git|=ssh|=blocked|\.env|\.git|\.ssh|private/.test(text.replaceAll(root, "")), false, text)
         }
         assert.match(texts[0] ?? "", /ok\.ts:1:export const SECRET_MARKER_USE/)
         assert.match(texts[1] ?? "", /ok\.ts/)
