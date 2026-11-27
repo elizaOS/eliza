@@ -19,6 +19,20 @@ const ProviderEvent = Schema.Struct({ id: Schema.String, sender_id: Schema.optio
 schema DmReceipt { dm_event_id: string }
 const DmResponse = Schema.Union([Schema.Struct({ data: DmReceipt }), DmReceipt])
 
+const appRefusal = /client-forbidden|client-not-enrolled|unsupported-authentication|usage-capped|credits?[- ](?:depleted|exhausted)/i
+const recipientRefusal = /(?:cannot|can't|not (?:allowed|permitted) to) (?:send )?(?:a )?(?:direct )?messages? to (?:this user|users who)/i
+const recipientRefusalCodes = new Set([136, 150, 349])
+
+export function xDmRefusal(issue: unknown): "XDmExplicitPermanentRefusal" | "XDmExplicitTransientRefusal" | "XDmOutcomeUnknown" {
+  if (!(issue instanceof ApiResponseError) || issue.code < 400 || issue.code >= 500) return "XDmOutcomeUnknown"
+  if ([401, 402, 408, 429].includes(issue.code)) return "XDmExplicitTransientRefusal"
+  const entries = issue.data.errors ?? []
+  const texts = [issue.data.type, issue.data.title, issue.data.detail, ...entries.flatMap(entry => "code" in entry ? [entry.message] : [entry.type, entry.title, entry.detail])].filter(text => typeof text === "string")
+  if (texts.some(text => appRefusal.test(text))) return "XDmExplicitTransientRefusal"
+  if (issue.code !== 403) return "XDmExplicitPermanentRefusal"
+  return entries.some(entry => "code" in entry && recipientRefusalCodes.has(entry.code)) || texts.some(text => recipientRefusal.test(text)) ? "XDmExplicitPermanentRefusal" : "XDmExplicitTransientRefusal"
+}
+
 function digits(value: string): number[] { return /^\d+$/.test(value) ? Array.from(value, digit => Number(digit)) : [] }
 
 export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount) {
@@ -72,8 +86,7 @@ export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount)
       } else {
         const reason = Cause.findErrorOption(outcome.cause)
         const issue = Option.isSome(reason) && reason.value instanceof Cause.UnknownError ? reason.value.cause : undefined
-        const observation = issue instanceof ApiResponseError && issue.code >= 400 && issue.code < 500 ? issue.code === 404 ? "XDmExplicitPermanentRefusal" : "XDmExplicitTransientRefusal" : "XDmOutcomeUnknown"
-        journal = xObserveDmPart({ tag: observation }, journal)
+        journal = xObserveDmPart({ tag: xDmRefusal(issue) }, journal)
       }
       if (journal.phase !== "XPartAccepted") break
     }

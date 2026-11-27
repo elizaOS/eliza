@@ -1,0 +1,46 @@
+// spec/x/index.md, "The X direct-message journal retries only a confirmed transient refusal before any part was accepted"
+import { assert, describe, it } from "@effect/vitest"
+import { xDmRefusal } from "../src/index.vibe"
+
+module node {
+  import { ApiResponseError, type TwitterApiErrorData } from "twitter-api-v2"
+  import { ClientRequest, IncomingMessage } from "node:http"
+  import { Socket } from "node:net"
+
+  export function refusal(code: number, data: TwitterApiErrorData = {}): ApiResponseError {
+    const request = new ClientRequest("http://127.0.0.1").on("error", () => undefined)
+    request.destroy()
+    return new ApiResponseError(`Request failed with code ${code}`, { code, data, headers: {}, request, response: new IncomingMessage(new Socket()) })
+  }
+}
+import { refusal } from node
+
+const recipient = "about:blank"
+
+describe("Send one X direct message without replaying text the provider may have accepted (spec/x/index.md)", () => {
+  it("A refusal tied to this recipient settles the reply, so later direct messages are not held behind it (spec/x/index.md, \"The X direct-message journal retries only a confirmed transient refusal before any part was accepted\")", () => {
+    assert.deepStrictEqual([
+      xDmRefusal(refusal(403, { title: "Forbidden", detail: "You are not allowed to send a message to this user.", type: recipient })),
+      xDmRefusal(refusal(403, { errors: [{ code: 349, message: "You cannot send messages to this user." }] })),
+      xDmRefusal(refusal(403, { errors: [{ code: 150, message: "You cannot send messages to users who are not following you." }] })),
+      xDmRefusal(refusal(400, { title: "Invalid Request", detail: "One or more parameters to your request was invalid." })),
+      xDmRefusal(refusal(404)),
+    ], ["XDmExplicitPermanentRefusal", "XDmExplicitPermanentRefusal", "XDmExplicitPermanentRefusal", "XDmExplicitPermanentRefusal", "XDmExplicitPermanentRefusal"])
+  })
+
+  it("A refusal of the app or account reopens the reply for the operator to fix (spec/x/index.md, \"The X direct-message journal retries only a confirmed transient refusal before any part was accepted\")", () => {
+    assert.deepStrictEqual([
+      xDmRefusal(refusal(401)),
+      xDmRefusal(refusal(402, { title: "Payment Required", detail: "Your account does not have enough credits." })),
+      xDmRefusal(refusal(408)),
+      xDmRefusal(refusal(429)),
+      xDmRefusal(refusal(403)),
+      xDmRefusal(refusal(403, { title: "Client Forbidden", detail: "You must use keys and tokens from a developer App attached to a Project.", type: "https://api.twitter.com/2/problems/client-forbidden" })),
+      xDmRefusal(refusal(403, { errors: [{ code: 349, message: "usage-capped" }] })),
+    ], ["XDmExplicitTransientRefusal", "XDmExplicitTransientRefusal", "XDmExplicitTransientRefusal", "XDmExplicitTransientRefusal", "XDmExplicitTransientRefusal", "XDmExplicitTransientRefusal", "XDmExplicitTransientRefusal"])
+  })
+
+  it("A failure without a provider answer keeps the no-replay barrier (spec/x/index.md, \"The X direct-message journal retries only a confirmed transient refusal before any part was accepted\")", () => {
+    assert.deepStrictEqual([xDmRefusal(new Error("socket hang up")), xDmRefusal(refusal(500)), xDmRefusal(undefined)], ["XDmOutcomeUnknown", "XDmOutcomeUnknown", "XDmOutcomeUnknown"])
+  })
+})
