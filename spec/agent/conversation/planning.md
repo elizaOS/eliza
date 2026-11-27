@@ -106,8 +106,8 @@ screen allows, how its views open) reaches the
 model after the history, in the note of the offered action it concerns,
 and a call that message serves in another place is refused before
 dispatch (below). The history follows, then the person's latest message,
-and only after it what this turn adds: the screen context, the clock, the
-device outcomes of this conversation's earlier requests, the notes of
+and only after it what this turn adds: the screen context, the note that
+the message was spoken (below), the clock, the device outcomes of this conversation's earlier requests, the notes of
 offered actions on what this message allows, the task the turn runs for,
 the note that older history is not shown and the earlier exchanges
 recalled for this request. They follow one label saying they are notes
@@ -134,12 +134,12 @@ the phone's earlier calls and its warm-up (below) already cached
 ([binding](../models/binding.md) decides where it is sent).
 
 ```quint
-type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
+type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | SpokenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
 pure def promptPosition(p: PromptPart): int = match p {
-  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | DeviceNote => 5 | TaskNote => 6 | WindowNotice => 7 | RecalledExchanges => 8
+  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | SpokenNote => 5 | DeviceNote => 6 | TaskNote => 7 | WindowNotice => 8 | RecalledExchanges => 9
 }
-pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == DeviceNote or p == TaskNote or p == WindowNotice or p == RecalledExchanges
-pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
+pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == SpokenNote or p == DeviceNote or p == TaskNote or p == WindowNotice or p == RecalledExchanges
+pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, SpokenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
 pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
 pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
 pure def hostNoteLabels(hostNotes: int): int = if (hostNotes > 0) 1 else 0
@@ -149,6 +149,29 @@ type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserC
 pure def shapesTools(f: ToolFact): bool = f == LaunchAllowed or f == DeviceNegotiation or f == InstallationViews or f == BrowserCommanded
 pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery
 pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByMessage(f) implies not(shapesTools(f))
+```
+
+### A spoken message asks the model for one short spoken turn, and a typed message never does
+
+A `VOICE_DM` message was spoken, and its reply is spoken aloud as well as
+shown and saved, so its notes carry one spoken-reply note, an instruction
+to the model on how to write the reply: one concise spoken turn, one to
+three short sentences of about 60 words or fewer holding only the verified
+facts the answer needs, with no unasked briefing, list of every result,
+examples or follow-up menu, and no long address, table or tool detail read
+aloud. The reply is longer only when the person asks for detail, a list, a
+full report or exact text, or when a shorter one would mislead, and it never
+leaves out a limitation, a failed check or uncertainty that matters,
+shortens words the person gave, or puts a progress line in place of the
+answer. The note is never a reply of its own and reads nothing of what the
+person said: only the message's channel decides it. A `DM` message, or one
+with no channel, carries no such note, and the tools and the system prompt
+are the same for both.
+
+```quint
+type ReplyStyleNote = SpokenTurnNote | NoStyleNote
+pure def replyStyleNote(spoken: bool): ReplyStyleNote = if (spoken) SpokenTurnNote else NoStyleNote
+pure def lawOnlyASpokenMessageAsksForASpokenTurn(spoken: bool): bool = (replyStyleNote(spoken) == SpokenTurnNote) iff spoken
 ```
 
 ### A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing
