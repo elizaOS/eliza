@@ -1,0 +1,37 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
+import { assert, it } from "@effect/vitest"
+import { MAX_CHOICE_OPTIONS, parseInteractionBlocks } from "../src/index.vibe"
+
+function choiceOptions(text: string) {
+  const { blocks } = parseInteractionBlocks(text)
+  const block = blocks[0]
+  if (!block || block.kind !== "choice") throw new Error("expected one choice block")
+  return block.options
+}
+
+function choiceBlock(optionCount: number): string {
+  const lines = Array.from({ length: optionCount }, (_, index) => `opt${index}=Option ${index}`)
+  return `[CHOICE:pick]\n${lines.join("\n")}\n[/CHOICE]`
+}
+
+it("A CHOICE block keeps only the first MAX_CHOICE_OPTIONS options, in order (spec/core/messaging.md, \"Story: Dispatch through a selected connector account\")", () => {
+  const options = choiceOptions(choiceBlock(25))
+  assert.deepStrictEqual(options.length, MAX_CHOICE_OPTIONS)
+  assert.deepStrictEqual(options[0], { value: "opt0", label: "Option 0" })
+  assert.deepStrictEqual(options[19], { value: "opt19", label: "Option 19" })
+})
+
+it("A CHOICE block below the cap keeps every option (spec/core/messaging.md, \"Story: Dispatch through a selected connector account\")", () => {
+  const options = choiceOptions(choiceBlock(3))
+  assert.deepStrictEqual(options.length, 3)
+  assert.deepStrictEqual(options[2], { value: "opt2", label: "Option 2" })
+})
+
+it("The FOLLOWUPS cap still keeps only the first four options (spec/core/messaging.md, \"Story: Dispatch through a selected connector account\")", () => {
+  const lines = Array.from({ length: 6 }, (_, index) => `reply:opt${index}=Option ${index}`)
+  const text = `[FOLLOWUPS]\n${lines.join("\n")}\n[/FOLLOWUPS]`
+  const { blocks } = parseInteractionBlocks(text)
+  const block = blocks[0]
+  if (!block || block.kind !== "followups") throw new Error("expected one followups block")
+  assert.deepStrictEqual(block.options.length, 4)
+})
