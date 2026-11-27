@@ -1653,6 +1653,11 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const spoken = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
     try TestClock.adjust(Duration.seconds(50))
     const extended = try promise(() => socket.next())
+    const renewedAt = try Clock.currentTimeMillis
+    try check(() => assert.ok(
+      extended.kind === "text" && Date.parse(String(extended.frame.expiresAt)) <= renewedAt + 60_000,
+      `a renewal sent at ${new Date(renewedAt).toISOString()} ends at most one window later, as the device accepts: ${JSON.stringify(extended)}`
+    ))
     try TestClock.adjust(Duration.seconds(10))
     try TestClock.withLive(sleep(Duration.millis(200)))
     const longReply = "Here is the whole story again. ".repeat(26).slice(0, 800)
@@ -1662,9 +1667,9 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       socket.send({ t: "finish", id: "reply-2" })
     })
     try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
-    try TestClock.adjust(Duration.seconds(50))
+    try TestClock.adjust(Duration.seconds(40))
     const extendedAgain = try promise(() => socket.next())
-    for (const step of [10, 50, 10]) {
+    for (const step of [10, 40, 10]) {
       try TestClock.withLive(sleep(Duration.millis(200)))
       try TestClock.adjust(Duration.seconds(step))
     }
@@ -1719,11 +1724,11 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
           { t: "flush_complete", id: "reply-1" },
           { t: "complete", id: "reply-1" }
         ],
-        extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }, { t: "extended", expiresAt: new Date(mintedAt + 180_000).toISOString() }],
+        extended: [{ t: "extended", expiresAt: new Date(mintedAt + 110_000).toISOString() }, { t: "extended", expiresAt: new Date(mintedAt + 160_000).toISOString() }],
         ending: [{ t: "error", code: "unavailable", reason: "insufficient_credits" }, { close: 4402 }],
         forwarded: 3_200,
         phase: "closed",
-        windows: [[1, 60_000, true], [2, 120_000, true], [3, 180_000, true]],
+        windows: [[1, 60_000, true], [2, 110_000, true], [3, 160_000, true]],
         usage: [
           [1, "transcribe", 6_000, 10], [1, "synthesize", 122_880, 18 * 30],
           [2, "transcribe", 6_000, 0], [2, "synthesize", 122_880, 3 * 800 * 30],

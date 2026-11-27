@@ -237,7 +237,7 @@ export effect function admitWindow(id: string, window: number): WindowAdmission!
       if (!retryWindowAdmitted(current.state, window, known.settled, now)) throw refused("SessionClosed")
       return { kind: "admitted", expiresAt: known.expiresAt } satisfies WindowAdmission
     }
-    const expiresAt = nextWindowDeadline(current.state, window)
+    const expiresAt = nextWindowDeadline(current.state, window, now)
     if (!windowRequestAdmitted(current.state, window, expiresAt, now)) throw refused("SessionClosed")
     const allowanceAvailable = realtimeSpeechAdmits(try usedToday(tx, current.userId, day, false), windowLength)
     if (!allowanceAvailable) return { kind: "short", shortfall: "AllowanceShort" } satisfies WindowAdmission
