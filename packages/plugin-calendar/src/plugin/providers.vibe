@@ -125,6 +125,7 @@ export function importPriorResident(raw: string): ResidentDocument | undefined {
 }
 const deletedMark = "\0deleted"
 const residentCalendarId = "primary"
+const residentCalendarName = "Eliza Calendar"
 
 export function residentSource(account: CalendarAccount): CalendarSourceKey {
   return { provider: "eliza", side: "owner", grantId: "resident", connectorAccountId: account.accountId, calendarId: residentCalendarId }
@@ -182,7 +183,7 @@ export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.K
       attendees: (row.who ?? []).map((email) => ({ email, displayName: null, responseStatus: row.responses?.[email] ?? null, self: false, organizer: false, optional: false })),
       metadata: { etag: row.revision, ...(row.occurrenceBegin === undefined ? {} : { originalStartTime: new Date(row.occurrenceBegin).toISOString() }) },
       recurrence: lines.length === 0 ? null : lines, recurringEventId: row.seriesId ?? null,
-      syncedAt: changedAt, updatedAt: changedAt, calendarSummary: "Calendar", connectorAccountId: account.accountId, grantId: "resident",
+      syncedAt: changedAt, updatedAt: changedAt, calendarSummary: residentCalendarName, connectorAccountId: account.accountId, grantId: "resident",
     }
   }
 
@@ -233,7 +234,7 @@ export effect function residentCalendar(): CalendarProviderPort!!KeyValueStore.K
     recurrenceLines: true,
     notifies: false,
     effect sources(account) {
-      return [{ ...residentSource(account), accountEmail: null, summary: "Calendar", description: null, primary: true, accessRole: "owner", timeZone: null, selected: true, includeInFeed: true }]
+      return [{ ...residentSource(account), accountEmail: null, summary: residentCalendarName, description: null, primary: true, accessRole: "owner", timeZone: null, selected: true, includeInFeed: true }]
     },
     effect read(account, source, timeMin, timeMax) {
       if (!isResident(account, source)) return { events: [], complete: false }
