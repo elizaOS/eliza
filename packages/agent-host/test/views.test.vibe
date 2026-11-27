@@ -182,13 +182,14 @@ it.live('A completed turn prepares the saved editor for the note the model named
   let current = true
   const saved: Readonly<Record<string, string>> = { "Ferry checklist": "note-ferry", Calendar: "note-calendar", "Q3 offsite": "note-offsite", "shopping list": "note-shopping", groceries: "note-groceries" }
   const held = new Set(Object.values(saved))
+  const listedOnly = new Map<string, string>()
   class NotesFixture extends Service {
     static override serviceType = "notes"
     override capabilityDescription = "Current note fixture"
     static override start(runtime: IAgentRuntime): Promise<Service> { return Promise.resolve(new NotesFixture(runtime)) }
     override stop(): Promise<void> { return Promise.resolve() }
     matchesSavedEditor(id: string, query: string): Promise<boolean> {
-      return Promise.resolve(current && saved[query] === id)
+      return Promise.resolve(current && (query === id ? held.has(id) || [...listedOnly.values()].includes(id) : saved[query] === id))
     }
     snapshot(): Promise<{ notes: { id: string }[] }> {
       return Promise.resolve({ notes: current ? [...held].map((noteId) => ({ id: noteId })) : [] })
@@ -213,16 +214,28 @@ it.live('A completed turn prepares the saved editor for the note the model named
     handler: async (_runtime, _message, _state, options) => {
       const params = options?.parameters
       const content = typeof params === "object" && params !== null && "content" in params && typeof params.content === "string" ? params.content : ""
-      return { success: true, data: { actionName: "NOTES_GET", noteId: saved[content] ?? "note-ferry" } }
+      return content === "Shoot day" ? { success: true, data: { actionName: "NOTES_GET", code: "NOTES_AMBIGUOUS_NOTE" } }
+        : { success: true, data: { actionName: "NOTES_GET", noteId: saved[content] ?? "note-ferry" } }
+    },
+  }
+  const listing: Action = {
+    name: "NOTES_LIST", similes: [], description: "List the test notes whose title holds content.",
+    validate: async () => true,
+    parameters: [{ name: "content", required: false, description: "Title filter", schema: { type: "string" } }],
+    handler: async (_runtime, _message, _state, options) => {
+      const params = options?.parameters
+      const content = typeof params === "object" && params !== null && "content" in params && typeof params.content === "string" ? params.content.toLowerCase() : ""
+      const notes = [...Object.entries(saved), ...listedOnly].filter(([title]) => title.toLowerCase().includes(content)).map(([title, noteId]) => ({ id: noteId, title }))
+      return { success: true, data: { actionName: "NOTES_LIST", notes } }
     },
   }
   const name = "notes-test-fixture"
   const agent = try startInProcess({
     launch: { ...loaded.launch, load: [...loaded.launch.load, name], callerRole: "owner",
       views: [...loaded.launch.views, { id: "agenda", label: "Calendar", path: "/calendar", aliases: ["appointments"] }],
-      backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS", "NOTES_GET", "NOTES_CREATE"] },
+      backend: { kind: "cloud", origin: cloud.origin }, allowed: ["REPLY", "IGNORE", "NONE", "VIEWS", "NOTES_GET", "NOTES_LIST", "NOTES_CREATE"] },
     frame: { credential: { version: 1, value: deviceKey } },
-    bundled: new Map([[name, { name, description: "Saved Notes fixture", actions: [lookup, creation], services: [NotesFixture] }]]),
+    bundled: new Map([[name, { name, description: "Saved Notes fixture", actions: [lookup, listing, creation], services: [NotesFixture] }]]),
   })
   const opened = try ask(agent, { method: "POST", path: "/api/conversations", body: {} })
   const { id } = (opened.body as { conversation: { id: string } }).conversation
@@ -231,6 +244,7 @@ it.live('A completed turn prepares the saved editor for the note the model named
   const metadata = { viewDelivery: "completed-action", viewClientId: clientId,
     voiceUi: { viewDelivery: "completed-action", uiClientId: clientId, uiNotesEditor: "saved-note-v1" } }
   const get = (content: string) => ({ name: "NOTES_GET", arguments: { content } })
+  const list = (content: string) => ({ name: "NOTES_LIST", arguments: { content } })
   const create = (content: string) => ({ name: "NOTES_CREATE", arguments: { content } })
   const editor = (note: string) => ({ name: "VIEWS", arguments: { action: "show", view: "notes-editor", note } })
   const view = (named: string) => ({ name: "VIEWS", arguments: { action: "show", view: named } })
@@ -284,6 +298,17 @@ it.live('A completed turn prepares the saved editor for the note the model named
     try opensNote("open the note titled shopping list", "shopping list"),
     try opensNote("pull up my shopping list", "shopping list"),
   ]
+  try Effect.sync(() => { listedOnly.set("Shoot day checklist", "note-shoot") })
+  try Effect.sync(() => cloud.script(toolCalls("", list("shoot")), toolCalls("", editor("note-shoot")), text("The note is open.")))
+  const listedOpen = handoff(try send("show me the shoot list in notes", metadata))
+  const listedClaim = (try claimed(listedOpen)).body as { claimId?: string; target?: { noteId: string } }
+  try shown(listedOpen, listedClaim.claimId ?? "", listedClaim.target?.noteId ?? "")
+  try Effect.sync(() => cloud.script(toolCalls("", list("shoot")), toolCalls("", editor("Shoot day checklist")), text("Which note?")))
+  const listedByTitle = handoff(try send("show me the shoot list in notes", metadata))
+  try Effect.sync(() => cloud.script(toolCalls("", list("groceries")), toolCalls("", editor("note-shoot")), text("Which note?")))
+  const notListed = handoff(try send("open my shoot day checklist", metadata))
+  try Effect.sync(() => cloud.script(toolCalls("", get("Shoot day")), toolCalls("", list("shoot")), toolCalls("", editor("note-shoot")), text("Which note?")))
+  const listedAfterAmbiguous = handoff(try send("open my shoot day note", metadata))
   try Effect.sync(() => cloud.script(toolCalls("", create("Groceries")), toolCalls("", editor("groceries")), text("Created and opened.")))
   const created = handoff(try send("create a checklist called groceries with milk and eggs and open it", metadata))
   const createdClaim = (try claimed(created)).body as { target?: { noteId: string } }
@@ -311,6 +336,10 @@ it.live('A completed turn prepares the saved editor for the note the model named
     assert.deepStrictEqual(noted, ["note-calendar", "note-offsite", "note-shopping", "note-shopping"].map((noteId) => ({ subview: "saved-note-v1", noteId: undefined, target: { kind: "saved-note", noteId } })))
     assert.deepStrictEqual([created?.subview, createdClaim.target?.noteId], ["saved-note-v1", "note-created-5"])
     assert.isUndefined(notCreated?.navigationBinding)
+    assert.deepStrictEqual([listedOpen?.subview, listedOpen?.noteId, listedClaim.target?.noteId], ["saved-note-v1", undefined, "note-shoot"])
+    assert.isUndefined(listedByTitle?.navigationBinding)
+    assert.isUndefined(notListed?.navigationBinding)
+    assert.isUndefined(listedAfterAmbiguous?.navigationBinding)
   })
 }, 120_000)
 

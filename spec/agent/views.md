@@ -227,7 +227,9 @@ pure def screenTold(h: ViewHost, observed: str): bool = targets(h, observed).len
 The model opens one saved note, in whatever words the owner asked for it,
 by calling VIEWS with `view: "notes-editor"` and `note` set to the note's
 title or text, or to the ID the lookup read it by, only after a unique
-successful `NOTES_GET` in the same turn.
+successful `NOTES_GET` in the same turn. A note a successful `NOTES_LIST` of
+the same turn returned is found the same way when `note` is that note's
+exact ID, unless a `NOTES_GET` of the turn found several notes.
 The canonical resident collection must still match that `note` uniquely to
 the note the lookup found. A note the same turn created with `NOTES_CREATE`
 is found exactly by that creation instead: `note` names its title, the
