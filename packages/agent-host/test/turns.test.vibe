@@ -242,6 +242,13 @@ module node {
     handler: async () => ({ success: false, error: refusedConnection }),
   }
 
+  const bookRoom: Action = {
+    name: "BOOK_ROOM", description: "Books a meeting room at the place the owner names.",
+    parameters: [{ name: "place", required: true, description: "The place.", schema: { type: "string" } }],
+    tags: ["capability:write"], validate: async () => true,
+    handler: async () => ({ success: false, userFacingText: "The booking service is down.", error: refusedConnection }),
+  }
+
   const holdSeat: Action = {
     name: "HOLD_SEAT", description: "Holds a seat at the place the owner names.",
     parameters: [{ name: "place", required: true, description: "The place.", schema: { type: "string" } }],
@@ -300,7 +307,7 @@ module node {
     actions: [
       fixtureWrite("SEND_TEXT", "message.send", "message.recipient", "to", (id) => `The text to ${id} did not send.`),
       fixtureWrite("UPDATE_EVENT", "calendar.event.update", "calendar.event", "event", (id) => `The ${id} event did not change.`),
-      showResult, createChecklist, scheduleEvent, proposeText, bookTable, holdSeat,
+      showResult, createChecklist, scheduleEvent, proposeText, bookTable, holdSeat, bookRoom,
     ],
   }
 
@@ -822,6 +829,8 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
   const quotedNote = reasked().note
   try Effect.sync(() => cloud.script(toolCalls("", dividing), text(`It's ${localDay("UTC", 3).weekday}.`), text(reporting("7 divided by 0 has no answer."))))
   const { answer: dayRevised, calls: dayRevisedCalls } = try callsFor({ text: "What day is it?" })
+  try Effect.sync(() => cloud.script(toolCalls("", dividing), text(`It's ${localDay("UTC", 3).weekday}.`), text(`Sure: {"reply": "7 divided by 0 has no answer.", "told": [{"point": 1, "sentence": "7 divided by 0 has no answer."}]}`)))
+  const { answer: dayJson, calls: dayJsonCalls } = try callsFor({ text: "What day is it?" })
   try Effect.sync(() => cloud.script(toolCalls("", dividing), text(`It returned: ${noAnswer}`)))
   const { answer: quoted, calls: quotedCalls } = try callsFor({ text: "Divide 7 by 0." })
   try Effect.sync(() => cloud.script(toolCalls("", dividing), cutOff("A long answer that")))
@@ -967,7 +976,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     actions: solved.actionResults.map(({ action }) => action),
     unrendered: [unrendered.text, unrenderedCalls, unrenderedAsked.toolChoice, unrenderedAsked.said, unrenderedAsked.note],
     failed: [failed.text === "I couldn't add two plus two: the calculator didn't take it.", failedCalls, failedAsked.said, failedAsked.note.startsWith(asksAgain) && failedAsked.note.includes("A step of this turn did not happen as asked.")],
-    notFinal: { toldInItsWords, cuedAgain, stoodBy, doneTwice, keptSuccess, misquoted, curlyQuoted, fragmentQuoted, repeatedQuoted, blankAgain, dayRevised: [dayRevised.text, dayRevisedCalls], ownersReport: quotedNote.includes(JSON.stringify(noAnswer)), fencedReport: failedAsked.note.includes(wrapExternalContent(unparsed, { source: "unknown" })) },
+    notFinal: { toldInItsWords, cuedAgain, stoodBy, doneTwice, keptSuccess, misquoted, curlyQuoted, fragmentQuoted, repeatedQuoted, blankAgain, dayRevised: [dayRevised.text, dayRevisedCalls], dayJson: [dayJson.text, dayJsonCalls], ownersReport: quotedNote.includes(JSON.stringify(noAnswer)), fencedReport: failedAsked.note.includes(wrapExternalContent(unparsed, { source: "unknown" })) },
     quoted: [quoted.text, quotedCalls],
     cutAfterFailure: [cutAfterFailure.text, cutAfterFailureCalls],
     separate: [separate.text, separateCalls],
@@ -1009,7 +1018,7 @@ it.live(`An allowed action runs as a tool whatever the message, its result groun
     notFinal: {
       toldInItsWords: ["7 divided by 0 has no answer (a divide-by-zero), so I couldn't work it out.", 3], cuedAgain: [noAnswer, 3], stoodBy: ["You can't divide 7 by 0.", 3],
       doneTwice: [noAnswer, 3], keptSuccess: [noAnswer, 3], misquoted: [noAnswer, 3], curlyQuoted: ["7 divided by 0 doesn’t work, so there’s no answer.", 3], fragmentQuoted: [noAnswer, 3], repeatedQuoted: [noAnswer, 3],
-      blankAgain: [noAnswer, 6], dayRevised: ["7 divided by 0 has no answer.", 3], ownersReport: true, fencedReport: true,
+      blankAgain: [noAnswer, 6], dayRevised: ["7 divided by 0 has no answer.", 3], dayJson: ["7 divided by 0 has no answer.", 3], ownersReport: true, fencedReport: true,
     },
     quoted: [`It returned: ${noAnswer}`, 2],
     cutAfterFailure: [`${cutOffReply}\n\n${noAnswer}`, 2],
@@ -1145,12 +1154,12 @@ it.live(`An answer keeps JSON that only shares a name with an offered tool and l
   }))
 }, 120_000)
 
-it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its answer reports it in the model's words alone with no fixed line after them, each failure needs its own quote of one whole sentence (a sentence's opening clause, a quote spanning two sentences, a sentence another failure already quoted or another failure's quote reports nothing, and an unreported failure is told in its action's words, or, when its action wrote none, in the sentence the model writes when asked about it alone, beside the model's quoted report of the other, while an error, a call that did not start and the host's own sentences never reach the owner, and a lone failure without owner words never lets a false success stand), a rendered card or an open proposal's own copy beside a failure stays, the words its action wrote for the owner follow a reply that lacks them only when the model gives no answer, a retry of the same operation that succeeds closes it, words an action wrote to the model never reach the owner under any reply, and a checklist with no title is a question the model asks, not a failure (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on")`, effect () => {
+it.live(`A failure on one recipient or event stays reported beside a success on another, in either order, the model is asked once to report it, its answer reports it in the model's words alone with no fixed line after them, each failure needs its own quote of one whole sentence (a sentence's opening clause, a quote spanning two sentences, a sentence another failure already quoted or another failure's quote reports nothing, and an unreported failure is told in its action's words, or, when its action wrote none, as its step marked untold, never a provider issue, beside the model's quoted report of the other, while an error, a call that did not start and the host's own sentences never reach the owner, and a lone failure without owner words never lets a false success stand), a rendered card or an open proposal's own copy beside a failure stays, the words its action wrote for the owner follow a reply that lacks them only when the model gives no answer, a retry of the same operation that succeeds closes it, words an action wrote to the model never reach the owner under any reply, and a checklist with no title is a question the model asks, not a failure (${planning}, "A failure or proposal the turn made stays reported unless a later success of the same operation supersedes it"; ${planning}, "A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions"; ${planning}, "A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them"; ${planning}, "A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole"; spec/notes/records.md, "A Notes change answers with a receipt of the note and the revision it committed, and a refusal says what it waits on")`, effect () => {
   const cloud = try cloudFake(deviceKey)
   const agent = try startInProcess({
     launch: {
       backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
-      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT", "UPDATE_EVENT", "CREATE_CHECKLIST", "SCHEDULE_EVENT", "SHOW_RESULT", "PROPOSE_TEXT", "BOOK_TABLE", "HOLD_SEAT"],
+      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT", "UPDATE_EVENT", "CREATE_CHECKLIST", "SCHEDULE_EVENT", "SHOW_RESULT", "PROPOSE_TEXT", "BOOK_TABLE", "HOLD_SEAT", "BOOK_ROOM"],
     },
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[fixtureApp.name, fixtureApp]]),
   })
@@ -1255,15 +1264,17 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const timeFaultAgain = try badTime(() => [text(askedTime), requestFault("invalid_request")])
   const timeCut = try badTime(() => [cutOff("Let me")])
   const timeTold = try badTime(() => [text("Done."), text(`[answer] I couldn't add it: 25:70 isn't a real time. What time did you mean?\n[reported 1: "I couldn't add it: 25:70 isn't a real time."]`)])
-  const booking = effect (failure: "Refused" | "NotStarted", said: () => readonly CloudReply[], ...also: readonly { readonly name: string; readonly arguments: unknown }[]) => {
-    try Effect.sync(() => cloud.script(toolCalls("", { name: failure === "Refused" ? "BOOK_TABLE" : "HOLD_SEAT", arguments: { place: "Nopa" } }, ...also), ...said()))
+  const booking = effect (failure: "Refused" | "NotStarted" | "Mixed", said: () => readonly CloudReply[], ...also: readonly { readonly name: string; readonly arguments: unknown }[]) => {
+    try Effect.sync(() => cloud.script(toolCalls("", { name: failure === "Refused" ? "BOOK_TABLE" : failure === "Mixed" ? "BOOK_ROOM" : "HOLD_SEAT", arguments: { place: "Nopa" } }, ...also), ...said()))
     const before = completions(cloud)
     const sent = replyOf(try send(agent, id, { text: "Book me a table at Nopa for 8." }))
     const stored = try host("stored reply", () => agent.agent.runtime.getMemoryById(sent.messageId as UUID))
     const untold = sent.actionResults.filter(({ data }) => data.untold === true).map(({ action }) => action)
+    const rows = (answerOf(try call(agent, { method: "GET", path: `/api/conversations/${id}/messages` })).body as { messages?: readonly { id: string; untold?: readonly string[] }[] }).messages ?? []
+    const history = rows.find((row) => row.id === sent.messageId)?.untold ?? []
     const seen = `${sent.text}\n${stored?.content.text ?? ""}`.toLowerCase()
     return {
-      text: sent.text, stored: stored?.content.text, calls: completions(cloud) - before, untold, failureKind: sent.failureKind,
+      text: sent.text, stored: stored?.content.text, calls: completions(cloud) - before, untold, history, failureKind: sent.failureKind,
       booked: seen.includes("booked") && !seen.includes("not booked") && !seen.includes("nothing was booked"), hostText: hostWords.filter((words) => seen.includes(words.toLowerCase())),
     }
   }
@@ -1279,6 +1290,11 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const notStartedEchoed = try booking("NotStarted", () => [bookedOnce(), settle("A HOLD_SEAT call did not start.", [1, "A HOLD_SEAT call did not start."])])
   const saturdayPasses = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa for Saturday.", [1, "I couldn't book Nopa for Saturday."])])
   const abbreviated = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa for 8 p.m. tonight.", [1, "I couldn't book Nopa for 8 p.m. tonight."])])
+  const titled = try booking("Refused", () => [bookedOnce(), settle("Dr. Lee's table at Nopa couldn't be reserved.", [1, "Dr. Lee's table at Nopa couldn't be reserved."])])
+  const mixedEchoed = try booking("Mixed", () => [bookedOnce(), settle("It failed with ECONNREFUSED.", [1, "It failed with ECONNREFUSED."])])
+  const mixedEchoedFirst = try booking("Mixed", () => [text(`It failed with ECONNREFUSED.\n[reported 1: "It failed with ECONNREFUSED."]`), bookedOnce()])
+  const jsonAfterWords = try booking("Refused", () => [bookedOnce(), text(`Sure: ${JSON.stringify({ reply: "I couldn't book Nopa.", told: [{ point: 1, sentence: "I couldn't book Nopa." }] })}`)])
+  const jsonCutShort = try booking("Refused", () => [bookedOnce(), text(`Sure: {"reply": "I couldn't book`)])
   const bookedBesideCard = try booking("Refused", () => [text("Booked, and here are the cafes."), text("Booked, and here are the cafes.")], { name: "SHOW_RESULT", arguments: { which: "cafes" } })
   const modelWords = [untitledChecklist, unrealTime, "Write each as", "Ask the owner", "One of those times is not a real date"]
   const ownerHeard = [untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut, timeTold, unwordedUnreported, unwordedSettled].map(({ text: said }) => modelWords.filter((words) => said.includes(words)))
@@ -1286,7 +1302,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   try Effect.try(() => assert.deepStrictEqual({
     bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, toldFirstPartly, besideACard, besideAProposal, declaredBesideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
     untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut: timeCut.text === cutOffReply, timeTold, ownerHeard,
-    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, bookedBesideCard,
+    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, titled, mixedEchoed, mixedEchoedFirst, jsonAfterWords, jsonCutShort, bookedBesideCard,
   }, {
     bobFirst: { text: onlyBob, calls: 3, laterRunNote: false },
     aliceFirst: { text: onlyBob, calls: 4, laterRunNote: false },
@@ -1326,18 +1342,23 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     timeCut: true,
     timeTold: { text: "I couldn't add it: 25:70 isn't a real time. What time did you mean?", calls: 3, laterRunNote: false },
     ownerHeard: [[], [], [], [], [], [], [], []],
-    refusedToldOwn: { text: "I couldn't book the table: the booking service didn't answer.", stored: "I couldn't book the table: the booking service didn't answer.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
-    notStartedToldOwn: { text: "I couldn't hold a seat at Nopa; nothing was booked.", stored: "I couldn't hold a seat at Nopa; nothing was booked.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
-    refusedToldInReply: { text: "I couldn't book Nopa: the booking service is down.", stored: "I couldn't book Nopa: the booking service is down.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
-    bookedUntold: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
-    bookedBlank: { text: "", stored: "", calls: 4, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
-    bookedFault: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
-    errorEchoed: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
-    echoedFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
-    notStartedEchoed: { text: "", stored: "", calls: 3, untold: ["HOLD_SEAT"], failureKind: undefined, booked: false, hostText: [] },
-    saturdayPasses: { text: "I couldn't book Nopa for Saturday.", stored: "I couldn't book Nopa for Saturday.", calls: 3, untold: [], failureKind: undefined, booked: false, hostText: [] },
-    abbreviated: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
-    bookedBesideCard: { text: nearestCafes, stored: nearestCafes, calls: 3, untold: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    refusedToldOwn: { text: "I couldn't book the table: the booking service didn't answer.", stored: "I couldn't book the table: the booking service didn't answer.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
+    notStartedToldOwn: { text: "I couldn't hold a seat at Nopa; nothing was booked.", stored: "I couldn't hold a seat at Nopa; nothing was booked.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
+    refusedToldInReply: { text: "I couldn't book Nopa: the booking service is down.", stored: "I couldn't book Nopa: the booking service is down.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
+    bookedUntold: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    bookedBlank: { text: "", stored: "", calls: 4, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    bookedFault: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    errorEchoed: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    echoedFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    notStartedEchoed: { text: "", stored: "", calls: 3, untold: ["HOLD_SEAT"], history: ["HOLD_SEAT"], failureKind: undefined, booked: false, hostText: [] },
+    saturdayPasses: { text: "I couldn't book Nopa for Saturday.", stored: "I couldn't book Nopa for Saturday.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
+    abbreviated: { text: "I couldn't book Nopa for 8 p.m. tonight.", stored: "I couldn't book Nopa for 8 p.m. tonight.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
+    titled: { text: "Dr. Lee's table at Nopa couldn't be reserved.", stored: "Dr. Lee's table at Nopa couldn't be reserved.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
+    mixedEchoed: { text: "", stored: "", calls: 3, untold: ["BOOK_ROOM"], history: ["BOOK_ROOM"], failureKind: undefined, booked: false, hostText: [] },
+    mixedEchoedFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_ROOM"], history: ["BOOK_ROOM"], failureKind: undefined, booked: false, hostText: [] },
+    jsonAfterWords: { text: "I couldn't book Nopa.", stored: "I couldn't book Nopa.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
+    jsonCutShort: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    bookedBesideCard: { text: nearestCafes, stored: nearestCafes, calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
   }))
 }, 120_000)
 

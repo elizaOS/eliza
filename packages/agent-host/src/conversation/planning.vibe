@@ -80,6 +80,7 @@ export interface FailureNotice {
   readonly failedActions: readonly string[]
   readonly laterActions: readonly string[]
   readonly steps: readonly number[]
+  readonly toTheModel: readonly string[]
 }
 
 export function failureNote({ words, verified, answerableLater, failedActions, laterActions }: FailureNotice): string {
@@ -123,7 +124,14 @@ export interface Report {
   readonly sentence: string
 }
 
-const insideASentence = /[.!?…]["'”’)\]]*\s/u
+const boundary = /(\S*?)([.!?…])["'”’)\]]*\s+(\S)/gu
+const insideASentence = {
+  test: (said: string) => [...said.matchAll(boundary)].some(([, before = "", stop, next = ""]) => {
+    if (stop !== ".") return true
+    const word = before.replace(/^[("“‘'[]+/u, "")
+    return !/^(?:\p{L}\.)*\p{L}$/u.test(word) && !/^\p{Lu}\p{Ll}{0,2}$/u.test(word) && !/[\p{Ll}\d]/u.test(next)
+  }),
+}
 
 export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {
   const told = new Set<string>()
@@ -148,9 +156,18 @@ export function reportIn(prose: string, quote: string): Report {
 
 export interface Point {
   readonly note: string
-  readonly toTheModel: string | undefined
+  readonly toTheModel: readonly string[]
   readonly needed: boolean
 }
+
+export function writtenToTheModel(result: ActionResult): readonly string[] {
+  const owner = result.verifiedUserFacing === true ? result.userFacingText?.trim() : undefined
+  const data = typeof result.data === "object" && result.data !== null ? Object.values(result.data) : []
+  return [...new Set([result.verifiedUserFacing === true ? undefined : result.userFacingText, errorText(result.error), result.text, ...data]
+    .flatMap((text) => typeof text === "string" && text.trim() !== "" && text.trim() !== owner ? [text] : []))]
+}
+
+const hostPartOf = (note: string) => note.split("The step's own report:")[0] ?? note
 
 function settleSchema(points: readonly Point[]): JSONSchema {
   return {
@@ -165,15 +182,17 @@ function settleSchema(points: readonly Point[]): JSONSchema {
   }
 }
 
-function settledJson(text: string): Record<string, unknown> | undefined {
-  const body = text.trim().replace(/^```(?:json)?\s*|\s*```$/gu, "")
-  if (!body.startsWith("{")) return undefined
+function settledJson(text: string): Record<string, unknown> | "Malformed" | undefined {
+  const open = text.indexOf("{")
+  if (open < 0) return undefined
+  const close = text.lastIndexOf("}")
   try {
-    const parsed: unknown = JSON.parse(body)
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? { ...parsed } : {}
+    const parsed: unknown = JSON.parse(text.slice(open, close + 1))
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) return { ...parsed }
   } catch {
-    return undefined
+    return /"(?:reply|told)"\s*:/u.test(text.slice(open)) ? "Malformed" : undefined
   }
+  return "Malformed"
 }
 
 function settledArguments(args: Record<string, unknown>): { readonly reply: string | undefined; readonly told: ReadonlyMap<number, readonly string[]> } {
@@ -571,6 +590,7 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
       failedActions: [...new Set([...earlier?.failedActions ?? [], step.action])],
       laterActions: [...new Set([...earlier?.laterActions ?? [], ...laterRuns])],
       steps: [...earlier?.steps ?? [], steps.indexOf(step)],
+      toTheModel: [...new Set([...earlier?.toTheModel ?? [], ...writtenToTheModel(step.result)])],
     })
   }
   return {
@@ -934,8 +954,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   const firstProse = prose === undefined ? undefined : declaredFirst.said
   const firstReports = reportsEach(new Map([...declaredFirst.quotes].map(([at, quotes]) => {
     const step = steps[at - 1]
-    const notice = step === undefined ? undefined : failureNotice(step)
-    const toTheModel = notice === undefined || notice.owner !== undefined ? [] : [notice.words]
+    const toTheModel = step === undefined ? [] : writtenToTheModel(step.result)
     return [at, quotes.map((quote) => {
       const read = reportIn(firstProse ?? "", quote)
       return read.span === "OneSentence" && (holdsHostText(read.sentence, input.hostNotes) || echoesHostText(read.sentence, [...input.hostNotes, ...toTheModel])) ? { span: "Fragment" as const, sentence: "" } : read
@@ -947,10 +966,11 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       const said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
         system: input.system, reasoning: "off", temperature: plannerTemperature, signal, providerOptions: agentCache(runtime, "planner"),
         messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...points.map(({ note }, at) => `(${at + 1}) ${note}`), ...notes].join("\n") }],
-        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }), responseSchema: settleSchema(points),
+        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }), ...(points.length === 0 ? {} : { responseSchema: settleSchema(points) }),
       })), signal)
       const answered = answerOf(said)
       const json = settledJson(answered.text)
+      if (json === "Malformed") return { revised: undefined, stoodBy: false, reports: new Map() }
       const forced = json === undefined ? undefined : settledArguments(json)
       const written = forced === undefined ? reportsOf(answered.text, points.length) : undefined
       const replied = forced === undefined ? written?.said : forced.reply === undefined ? undefined : reportsOf(forced.reply, points.length).said
@@ -966,7 +986,7 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       const spoken = revised !== settled.compose(undefined)
       const quotes = forced === undefined ? written?.quotes ?? new Map<number, readonly string[]>() : forced.told
       const echoes = (point: number, sentence: string) =>
-        holdsHostText(sentence, hostNotes) || echoesHostText(sentence, [...input.hostNotes, answerAgain, reportNote, ...[points[point - 1]?.toTheModel].flatMap((text) => text ?? [])])
+        holdsHostText(sentence, hostNotes) || echoesHostText(sentence, [...input.hostNotes, answerAgain, reportNote, ...points.map(({ note }) => hostPartOf(note)), ...points[point - 1]?.toTheModel ?? []])
       return {
         revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
         stoodBy: spoken && standsBy(draft, sameAsFirst),

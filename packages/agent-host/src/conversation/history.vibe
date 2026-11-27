@@ -2,7 +2,7 @@
 module node {
   import { createHash } from "node:crypto"
   import { MESSAGE_CONTENT_SEGMENT_TABLE, MESSAGE_SOURCE_TRIGGER_PROMPT, messageContentSegmentId, messageTextSourceDescriptor, parseCanonicalInteger, readDurableConversationChatMarker, readMessageContentProjection, type AgentRuntime, type IDatabaseAdapter, type Memory, type MessageContentSegmentMetadata, type UUID } from "@elizaos/core"
-  import { around, aroundRadius, cursorOf, olderPage, olderThan, pageOf, pageSize, precedes, privateNotice, recentPage, recentWindow, rowMarks, searchAdmitted, searchSize, shownText, type Body, type Page, type Row } from "../../gen/agent__conversation__conversations.ts"
+  import { around, aroundRadius, cursorOf, olderPage, olderThan, pageOf, pageSize, precedes, privateNotice, recentPage, recentWindow, rowMarks, rowUntold, searchAdmitted, searchSize, shownText, type Body, type Page, type Row } from "../../gen/agent__conversation__conversations.ts"
   import type { IntegerResult } from "../../gen/core__numbers.ts"
   import { historyShows } from "../../gen/agent__schedule__triggers.ts"
   import type { LocalRoute } from "@elizaos/agent"
@@ -71,7 +71,8 @@ module node {
 
   export async function messageView(runtime: AgentRuntime, memory: Memory) {
     const fromAgent = memory.entityId === runtime.agentId
-    const { failureKind: failed, abortCause: cause, stopReason, cloudCode } = memory.content
+    const { failureKind: failed, abortCause: cause, stopReason, cloudCode, untoldActions } = memory.content
+    const untold = rowUntold(fromAgent ? "Agent" : "User", Array.isArray(untoldActions) ? untoldActions.filter((name): name is string => typeof name === "string") : [])
     const marks = rowMarks(fromAgent ? "Agent" : "User",
       readDurableConversationChatMarker(memory.content.chatIdempotency)?.clientMessageId ?? "", typeof failed === "string" ? failed : "", typeof cause === "string" ? cause : "",
       typeof cloudCode === "string" ? cloudCode : "")
@@ -82,6 +83,7 @@ module node {
       ...(marks.failed === "" ? {} : { failureKind: marks.failed }),
       ...(marks.cause === "" ? {} : { abortCause: marks.cause, ...(typeof stopReason === "string" ? { stopReason } : {}) }),
       ...(marks.cloudCode === "" ? {} : { cloudCode: marks.cloudCode }),
+      ...(untold.length === 0 ? {} : { untold }),
     }
   }
 

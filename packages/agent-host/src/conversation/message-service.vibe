@@ -350,8 +350,8 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
   const asked = omitted || considered.some((notice) => !toldFirst(notice)) ? considered : []
   const ownerWords = (notice: FailureNotice) => notice.owner !== undefined
   const points: readonly Point[] = [
-    ...asked.map((notice) => ({ note: failureNote(notice), toTheModel: ownerWords(notice) ? undefined : notice.words, needed: !notice.answerableLater })),
-    ...(omitted ? [{ note: omittedNote, toTheModel: undefined, needed: true }] : []),
+    ...asked.map((notice) => ({ note: failureNote(notice), toTheModel: notice.toTheModel, needed: !notice.answerableLater })),
+    ...(omitted ? [{ note: omittedNote, toTheModel: [], needed: true }] : []),
   ]
   const wrong = misgrounded(planned.reply)
   const { revised, stoodBy, reports } = asksAgain(points.length > 0, wrong !== undefined, planned.cutOff)
