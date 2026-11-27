@@ -1,4 +1,4 @@
-// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "Consent and an allowance are required before speech is sent"
+// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/services/speechSession.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "Consent and an allowance are required before speech is sent"
 import { apply, canSettleWindow, consentLifetime, decodeState, firstSessionDeadline, initial, nextWindowDeadline, Rejected, retryWindowAdmitted, windowLength, windowTtsChars, windowRequestAdmitted, type Event, type Session, type NotAState } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
 import { relayChannels, relaySampleRate } from "../../gen/cloud__services__speechRelay.effect.vibe"
@@ -237,7 +237,7 @@ export effect function admitWindow(id: string, window: number): WindowAdmission!
       if (!retryWindowAdmitted(current.state, window, known.settled, now)) throw refused("SessionClosed")
       return { kind: "admitted", expiresAt: known.expiresAt } satisfies WindowAdmission
     }
-    const expiresAt = nextWindowDeadline(current.state, window)
+    const expiresAt = nextWindowDeadline(current.state, window, now)
     if (!windowRequestAdmitted(current.state, window, expiresAt, now)) throw refused("SessionClosed")
     const allowanceAvailable = realtimeSpeechAdmits(try usedToday(tx, current.userId, day, false), windowLength)
     if (!allowanceAvailable) return { kind: "short", shortfall: "AllowanceShort" } satisfies WindowAdmission

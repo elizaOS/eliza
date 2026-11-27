@@ -18,7 +18,7 @@ describe("Speech session (spec/cloud/services/speechRelay.md, \"Story: Start spe
     expect(await driver.dispatch("a", { type: "openSocket", now: 1 })).toBe("accepted");
     expect(await driver.dispatch("a", { type: "openSocket", now: 2 })).toBe("refused");
     expect(await driver.dispatch("a", { type: "admitWindow", window: 1, expiresAt: exp, now: 3, funded: true, allowanceAvailable: true })).toBe("accepted");
-    expect(await driver.dispatch("a", { type: "admitWindow", window: 2, expiresAt: exp + 60_000, now: 4, funded: false, allowanceAvailable: true })).toBe("refused");
+    expect(await driver.dispatch("a", { type: "admitWindow", window: 2, expiresAt: 4 + 60_000, now: 4, funded: false, allowanceAvailable: true })).toBe("refused");
     expect(await driver.dispatch("a", { type: "retire" })).toBe("accepted");
     expect(await driver.dispatch("a", { type: "close" })).toBe("refused");
     expect(await driver.dispatch("a", { type: "settleWindow", window: 1 })).toBe("accepted");

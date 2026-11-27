@@ -5,6 +5,9 @@ batch requests that transcribe or synthesize. Consent nonces, minting,
 windows, budgets and the wire are the cloud's
 (`spec/cloud/services/speechRelay.md`). HTTP, the socket, PCM, tokens and
 clocks stay in the Java shell (`voice-io`), which reports what it observed.
+The shell takes an `extended` end only when it is later than the current
+one and at most one window and 5 s of clock slack from now, as the relay
+grants a renewal; any other end breaks the protocol.
 
 ## Story: Talk to the agent through the cloud speech relay
 
