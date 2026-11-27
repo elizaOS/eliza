@@ -42,7 +42,7 @@ pure def lawDiscordDisabledDmBlocksCommand(inbound: DiscordInbound, policy: Disc
 
 ### Every accepted Discord event keeps the captured account and channel
 
-The transport validates message identity, and the shell scopes each session to the bot account and credential epoch. An accepted message or interaction is delivered at most once per session. Disconnect retires the epoch and clears all processing authority. The provider identity is kept on the deliveryEffect turn.
+The transport validates message identity, and the shell scopes each session to the bot account and credential epoch. An accepted message or interaction is delivered at most once per session. Disconnect retires the epoch and clears all processing authority. The provider identity is kept on the deliveryEffect turn. Session epochs are never negative, so connecting always advances to a positive epoch.
 
 ```quint
 type DiscordCaller = DiscordGateway | DiscordExternal
@@ -63,7 +63,7 @@ pure def canAdmitDiscord(s: DiscordSession, by: DiscordCaller, inbound: DiscordI
 pure def admitDiscord(s: DiscordSession, by: DiscordCaller, inbound: DiscordInbound, policy: DiscordPolicy): DiscordStep = { state: { ...s, seen: s.seen.union(Set(inbound.messageId)), accepted: s.accepted + 1 }, out: List(AdmitDiscordTurn({ accepted: inbound })) }
 pure def discordEffectMatches(s: DiscordSession, deliveryEffect: DiscordEffect): bool = match deliveryEffect { | AdmitDiscordTurn(delivery) => delivery.accepted.accountId == s.accountId and delivery.accepted.epoch == s.epoch and not(s.seen.contains(delivery.accepted.messageId)) }
 pure def stepDiscordNeverMovesTurn(before: DiscordSession, after: DiscordSession, out: List[DiscordEffect]): bool = out.every(deliveryEffect => before.connected and discordEffectMatches(before, deliveryEffect))
-pure def alwaysDiscordConnectedHasAccount(s: DiscordSession): bool = s.connected implies s.accountId != "" and s.epoch > 0
+pure def alwaysDiscordConnectedHasAccount(s: DiscordSession): bool = s.epoch >= 0 and (s.connected implies s.accountId != "" and s.epoch > 0)
 pure def sometimesDiscordIngested(s: DiscordSession): bool = s.accepted > 0
 pure val eval_witness_sometimesDiscordIngested = (("connectDiscord", DiscordGateway, "discord-1"), ("admitDiscord", DiscordGateway, sampleDiscordInbound, sampleDiscordPolicy))
 ```

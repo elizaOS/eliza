@@ -6,7 +6,7 @@
 
 ### Each captured answer belongs to one field in the participant's current form
 
-The shell resolves the form definition, normalizes composite controls to stable paths, checks the dependency graph, and decodes external control callbacks. A change to an earlier answer recomputes the visible fields and removes answers that became hidden. Suggestions and externally observed values need confirmation when the control requires it.
+The shell resolves the form definition, normalizes composite controls to stable paths, checks the dependency graph, and decodes external control callbacks. An unstarted form carries no answers yet. A change to an earlier answer recomputes the visible fields and removes answers that became hidden. Suggestions and externally observed values need confirmation when the control requires it.
 
 ```quint
 type AnswerState = SuggestedAnswer | ConfirmedAnswer
@@ -42,7 +42,7 @@ pure def confirmAnswer(s: FormSession, ownerId: str, version: int, at: int, ques
   { ...s, revision: s.revision + 1, answers: s.answers.foldl(List(), (entries, a) =>
     entries.append(if (a.question == question) { ...a, certainty: ConfirmedAnswer } else a)) }
 pure def alwaysAnswersVisible(s: FormSession): bool =
-  s.requiredFields.subseteq(s.visibleFields) and s.answers.every(a => s.visibleFields.contains(a.question) and a.answerText != "")
+  (s.formPhase == UnstartedForm implies s.answers.length() == 0) and s.requiredFields.subseteq(s.visibleFields) and s.answers.every(a => s.visibleFields.contains(a.question) and a.answerText != "")
 pure def alwaysOneAnswerPerField(s: FormSession): bool =
   s.answers.every(a => s.answers.select(b => a.question == b.question).length() == 1)
 ```

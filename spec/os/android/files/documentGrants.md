@@ -29,7 +29,8 @@ A selection is retained when the picker took a persistable read grant
 in this process. A retained pick also inherits write from a retained
 selection of the same document; a transient pick inherits nothing. If
 saving the registry fails, the pick gives back the grant it just took
-unless something else still holds the document.
+unless something else still holds the document. Every kept selection has a
+unique positive issued ID below `nextId` and a positive document ID.
 
 ```quint
 import bridge.* from "../bridge"
@@ -68,7 +69,7 @@ pure def pick(s: DocumentGrants, doc: int, offered: PickerGrant, commit: Registr
 }
 pure val docValues = Set(1, 2)
 pure val idValues = Set(1, 2, 3)
-pure def alwaysIdsWereIssued(s: DocumentGrants): bool = s.nextId >= 1 and s.entries.every(e => e.id >= 1 and e.id < s.nextId and e.doc >= 1)
+pure def alwaysIdsWereIssued(s: DocumentGrants): bool = s.nextId >= 1 and s.entries.every(e => e.id >= 1 and e.id < s.nextId and e.doc >= 1 and s.entries.select(o => o.id == e.id).length() == 1)
 pure def sometimesTwoSelectionsShareADocument(s: DocumentGrants): bool = s.entries.some(a => s.entries.some(b => a.id != b.id and a.doc == b.doc))
 pure def sometimesTransientBesideRetained(s: DocumentGrants): bool = s.entries.some(e => e.retention == Transient) and s.entries.some(e => e.retention != Transient)
 ```

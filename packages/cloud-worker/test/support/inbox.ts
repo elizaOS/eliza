@@ -1,12 +1,12 @@
 // spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"
 import { networkInterfaces } from "node:os";
 import { Effect } from "effect";
-import type { TestCloud } from "./cloud.vibe";
+import type { Answer, CallInit } from "./http.ts";
 import type { FakeRequest, FakeServer } from "./fakes.ts";
 
 export class InboxEmpty extends Error {}
 
-export const latestCode = (cloud: TestCloud, destination: string) =>
+export const latestCode = (cloud: { call(path: string, init?: CallInit): Effect.Effect<Answer> }, destination: string) =>
   Effect.flatMap(cloud.call(`/api/test/inbox/${encodeURIComponent(destination)}`), (answer) => {
     const text = answer.status === 200 ? (answer.body as { readonly text?: unknown }).text : undefined;
     const code = typeof text === "string" ? /\b\d{6}\b/.exec(text)?.[0] : undefined;

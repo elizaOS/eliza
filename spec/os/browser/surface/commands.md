@@ -114,7 +114,7 @@ pure def canDialogClosed(s: SurfaceCommands, id: str): bool = s.controls.some(c 
 pure def dialogClosed(s: SurfaceCommands, id: str): SurfaceCommands = { ...s, controls: s.controls.listMap(c => if (forId(s, id, c)) { ...c, dialogOpen: false } else c) }
 pure def alwaysEachSurfaceHasOneRecord(s: SurfaceCommands): bool =
   L::alwaysIssuedOnce(s.host) and s.controls.every(c => s.host.surfaces.some(x => x.gen == c.gen)) and
-    s.host.surfaces.every(x => s.controls.select(c => c.gen == x.gen).length() == 1)
+    s.host.surfaces.every(x => s.host.surfaces.select(y => y.id == x.id).length() == 1 and s.controls.select(c => c.gen == x.gen).length() == 1)
 pure def refOf(h: HistoryObservation): int = match h { | ObservedAt(o) => o.ref | NotObserved => 0 }
 pure def alwaysObservationsAreOnReadyPages(s: SurfaceCommands): bool =
   s.issued >= 0 and s.controls.every(c => refOf(c.history) <= s.issued and (c.history == NotObserved or s.host.surfaces.some(x => x.gen == c.gen and ready(x))))

@@ -239,6 +239,7 @@ pure def alwaysReleaseFollowsCoreStop(s: AgentProcess): bool =
   ((s.resources.phase == RS::Open) iff (s.runtime.stopPhase == R::Open or s.runtime.stopPhase == R::Stopping))
     and ((s.runtime.stopPhase == R::Closed) iff s.resources.released.includes("store"))
     and (s.resources.phase != RS::Open implies s.runtime.initPhase != R::Initializing)
+    and RS::alwaysReleasedNewestFirst(s.resources)
 pure def sometimesAdapterClosed(s: AgentProcess): bool = s.runtime.adapterClosed and s.resources.phase == RS::Closed
 ```
 

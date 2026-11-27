@@ -153,7 +153,6 @@ lemma lawConsecutivePagesJoin_ensures(xs: seq<int>, split: int, more: int)
   }
 }
 
-// spec/agent/conversation/conversations.md: the rules of conversations, read with the filters of the proof library.
 lemma ConvAlwaysOneRecordPerConversationFilter(s: Conversations)
   ensures alwaysOneRecordPerConversation(s) == (!((exists c :: c in s.conversations && !((|ProofLib.Filter((d: Conversation) => (d.id == c.id), s.conversations)| == 1)))))
 {
@@ -222,7 +221,6 @@ lemma ConvForkAnswerFilter(s: Conversations, conversationId: int, messageId: int
 {
 }
 
-// spec/agent/conversation/conversations.md: a conversation, a fork request and a message id each name one entry.
 lemma ConvOnly<T>(p: T -> bool, xs: seq<T>, x: T)
   requires |ProofLib.Filter(p, xs)| == 1 && x in xs && p(x)
   ensures ProofLib.Filter(p, xs) == [x]
@@ -262,7 +260,6 @@ lemma ConvLookup(s: Conversations, cid: int)
   }
 }
 
-// spec/agent/conversation/conversations.md: changing a conversation's fields other than its id keeps it the one record for its id.
 lemma ConvMapped(s: Conversations, after: Conversations)
   requires alwaysOneRecordPerConversation(s)
   requires |after.conversations| == |s.conversations| && forall i :: 0 <= i < |s.conversations| ==> after.conversations[i].id == s.conversations[i].id
@@ -299,7 +296,6 @@ lemma ConvMapped(s: Conversations, after: Conversations)
   }
 }
 
-// spec/agent/conversation/conversations.md: a new conversation takes a fresh id.
 lemma ConvAppended(s: Conversations, after: Conversations, n: Conversation)
   requires alwaysOneRecordPerConversation(s) && alwaysIdsAreFresh(s)
   requires after.conversations == s.conversations + [n] && n.id == s.nextConversation
@@ -328,7 +324,6 @@ lemma ConvAppended(s: Conversations, after: Conversations, n: Conversation)
   }
 }
 
-// spec/agent/conversation/conversations.md: creating a conversation adds one record and no message.
 lemma ConvCreate(s: Conversations, title: string, titleUnits: int)
   requires inv(s)
   ensures alwaysOneRecordPerConversation(create(s, title, titleUnits))
@@ -343,7 +338,6 @@ lemma ConvCreate(s: Conversations, title: string, titleUnits: int)
   }
 }
 
-// spec/agent/conversation/conversations.md: a message received in a listed conversation is its own original.
 lemma ConvReceive(s: Conversations, conversationId: int, author: Author, text: string, at: int)
   requires inv(s) && canReceive(s, conversationId, author, text, at)
   ensures alwaysOneRecordPerConversation(receive(s, conversationId, author, text, at))
@@ -385,7 +379,6 @@ lemma ConvReceive(s: Conversations, conversationId: int, author: Author, text: s
   }
 }
 
-// spec/agent/conversation/conversations.md: a fork is listed only once its copy is stored whole.
 lemma ConvFinishFork(s: Conversations, forkId: int)
   requires inv(s) && canFinishFork(s, forkId)
   ensures alwaysOneRecordPerConversation(finishFork(s, forkId))
@@ -408,7 +401,6 @@ lemma ConvFinishFork(s: Conversations, forkId: int)
   }
 }
 
-// spec/agent/conversation/conversations.md: redaction changes only stored text.
 lemma ConvRedact(s: Conversations, conversationId: int, messageId: int, expectedText: string)
   requires inv(s)
   ensures alwaysForkHoldsTheWholePrefix(redact(s, conversationId, messageId, expectedText))
@@ -421,27 +413,33 @@ lemma ConvRedact(s: Conversations, conversationId: int, messageId: int, expected
   ConvBodiesOnlyStep(s, after);
 }
 
-// spec/agent/conversation/conversations.md: the fork holds a timed copy of each source message before the chosen one.
-lemma {:induction false} ConvCopies(f: (seq<Message>, Message) -> seq<Message>, base: int, forkId: int, acc: seq<Message>, xs: seq<Message>)
-  requires forall a, m :: f(a, m) == a + [m.(id := (base + |a|), conversationId := forkId, origin := Copied(m.id))]
-  ensures |Std.Collections.Seq.FoldLeft(f, acc, xs)| == |acc| + |xs|
-  ensures Std.Collections.Seq.FoldLeft(f, acc, xs)[..|acc|] == acc
-  ensures forall i :: 0 <= i < |xs| ==> Std.Collections.Seq.FoldLeft(f, acc, xs)[|acc| + i] == xs[i].(id := (base + |acc| + i), conversationId := forkId, origin := Copied(xs[i].id))
+lemma {:induction false} ConvCopies(base: int, forkId: int, xs: seq<Message>)
+  ensures var f := (acc: seq<Message>, m: Message) => (acc + [m.(id := (base + |acc|), conversationId := forkId, origin := Copied(m.id))]);
+    var r := Std.Collections.Seq.FoldLeft(f, [], xs);
+    |r| == |xs| && forall i :: 0 <= i < |xs| ==> r[i] == xs[i].(id := (base + i), conversationId := forkId, origin := Copied(xs[i].id))
   decreases |xs|
 {
-  if |xs| > 0 {
-    var next := f(acc, xs[0]);
-    assert Std.Collections.Seq.FoldLeft(f, acc, xs) == Std.Collections.Seq.FoldLeft(f, next, xs[1..]);
-    ConvCopies(f, base, forkId, next, xs[1..]);
-    var r := Std.Collections.Seq.FoldLeft(f, acc, xs);
-    assert r[..|next|][..|acc|] == r[..|acc|];
+  hide *;
+  var f := (acc: seq<Message>, m: Message) => (acc + [m.(id := (base + |acc|), conversationId := forkId, origin := Copied(m.id))]);
+  if |xs| == 0 {
+    reveal Std.Collections.Seq.FoldLeft();
+    assert Std.Collections.Seq.FoldLeft(f, [], xs) == [];
+  } else {
+    var prefix := xs[..|xs| - 1];
+    var last := xs[|xs| - 1];
+    assert xs == prefix + [last];
+    ConvCopies(base, forkId, prefix);
+    ProofLib.FoldLeftAppend(f, [], prefix, last);
+    var prev := Std.Collections.Seq.FoldLeft(f, [], prefix);
+    var r := Std.Collections.Seq.FoldLeft(f, [], xs);
+    assert r == prev + [last.(id := (base + |prev|), conversationId := forkId, origin := Copied(last.id))];
     forall i | 0 <= i < |xs|
-      ensures r[|acc| + i] == xs[i].(id := (base + |acc| + i), conversationId := forkId, origin := Copied(xs[i].id))
+      ensures r[i] == xs[i].(id := (base + i), conversationId := forkId, origin := Copied(xs[i].id))
     {
-      if i == 0 {
-        assert r[..|next|][|acc|] == next[|acc|];
+      if i < |prefix| {
+        assert r[i] == prev[i] && prefix[i] == xs[i];
       } else {
-        assert xs[1..][i - 1] == xs[i];
+        assert i == |prefix| && r[i] == last.(id := (base + |prefix|), conversationId := forkId, origin := Copied(last.id));
       }
     }
   }
@@ -470,12 +468,13 @@ lemma ConvFork(s: Conversations, conversationId: int, messageId: int, requestId:
   ConvForkAnswerFacts(s, conversationId, messageId, requestId, expectedText, textDigest);
   assert local_3 in s.messages && local_3.id == messageId && local_3.conversationId == conversationId;
   assert after == s.(conversations := s.conversations + [nc], messages := s.messages + local_7, forks := s.forks + [nf], nextConversation := s.nextConversation + 1, nextMessage := s.nextMessage + |local_6|);
-  ConvCopies(lam, s.nextMessage, local_4, [], local_6);
+  var f := (acc: seq<Message>, m: Message) => (acc + [m.(id := (s.nextMessage + |acc|), conversationId := local_4, origin := Copied(m.id))]);
+  ProofLib.FoldLeftPointwise(lam, f, [], local_6, local_6);
+  ConvCopies(s.nextMessage, local_4, local_6);
   forall i | 0 <= i < |local_6|
     ensures local_7[i] == local_6[i].(id := (s.nextMessage + i), conversationId := local_4, origin := Copied(local_6[i].id))
     ensures local_6[i] in s.messages && local_6[i].conversationId == nf.source && beforeBoundary(local_6[i], nf)
   {
-    assert local_7[0 + i] == local_6[i].(id := (s.nextMessage + 0 + i), conversationId := local_4, origin := Copied(local_6[i].id));
     ProofLib.FilterMember(pf, s.messages, local_6[i]);
   }
   forall m | m in s.messages && m.conversationId == nf.source && beforeBoundary(m, nf)
@@ -491,7 +490,6 @@ lemma ConvFork(s: Conversations, conversationId: int, messageId: int, requestId:
   ConvGrowsStep(s, after, local_7);
 }
 
-// spec/agent/conversation/conversations.md: a page holds the newest rows, each newer than fewer rows than the page holds.
 lemma ConvNewestMember(rows: seq<Row>, n: int, y: Row)
   ensures (y in newest(rows, n)) == (y in rows && |ProofLib.Filter((x: Row) => precedes(y, x), rows)| < n)
 {
@@ -558,7 +556,6 @@ lemma ConvSplit<T>(p: T -> bool, q: T -> bool, xs: seq<T>)
   }
 }
 
-// spec/agent/conversation/conversations.md: rows are ordered by time, then id, so of two different rows one precedes the other.
 lemma ConvMinimal(xs: seq<Row>)
   requires |xs| > 0
   ensures exists o :: o in xs && forall x :: x in xs ==> x == o || precedes(o, x)
@@ -615,7 +612,6 @@ lemma ConvMaximal(xs: seq<Row>)
   }
 }
 
-// spec/agent/conversation/conversations.md: among distinct rows, at most n are newer than fewer than n of them.
 lemma ConvNewestAtMost(rows: seq<Row>, n: int)
   requires ProofLib.Distinct(rows) && n >= 0
   ensures |newest(rows, n)| <= n
@@ -684,7 +680,6 @@ lemma ConvPageIsTheNewestFilter(rows: seq<Row>, n: int)
 {
 }
 
-// spec/agent/conversation/conversations.md: a page of a list is its slice, so consecutive pages join.
 lemma {:induction false} ConvTake(xs: seq<int>, offset: int, n: int, i: int, acc: seq<int>)
   requires i >= 0 && offset >= 0 && n >= 0
   ensures Std.Collections.Seq.FoldLeft((w: Taking, x: int) => Taking((w.index + 1), (if ((w.index >= offset) && (w.index < (offset + n))) then (w.taken + [x]) else w.taken)), Taking(i, acc), xs).taken
@@ -706,14 +701,12 @@ lemma {:induction false} ConvTake(xs: seq<int>, offset: int, n: int, i: int, acc
   }
 }
 
-// spec/agent/conversation/conversations.md: a scrubbed message keeps everything but its text.
 lemma ConvScrubFacts(messages: seq<Message>, conversationId: int, text: string)
   ensures |scrub(messages, conversationId, text)| == |messages|
   ensures forall i :: 0 <= i < |messages| ==> sameExceptBody(messages[i], scrub(messages, conversationId, text)[i])
 {
 }
 
-// spec/agent/conversation/conversations.md: changing only stored text keeps every fork's copied prefix.
 lemma ConvBodiesOnly(s: Conversations, after: Conversations)
   requires alwaysForkHoldsTheWholePrefix(s)
   requires after.forks == s.forks && |after.messages| == |s.messages|
@@ -727,7 +720,6 @@ lemma ConvBodiesOnly(s: Conversations, after: Conversations)
   ConvBodiesOnlySources(s, after);
 }
 
-// spec/agent/conversation/conversations.md: redaction keeps every message and log row, changing only text.
 lemma ConvBodiesOnlyStep(s: Conversations, after: Conversations)
   requires |after.messages| == |s.messages| && |after.log| == |s.log|
   requires forall i :: 0 <= i < |s.messages| ==> sameExceptBody(s.messages[i], after.messages[i])
@@ -741,7 +733,6 @@ lemma ConvBodiesOnlyStep(s: Conversations, after: Conversations)
   }
 }
 
-// spec/agent/conversation/conversations.md: a new fork answers a listed source, a request with no fork yet, and a message of the source.
 lemma ConvForkAnswerFacts(s: Conversations, conversationId: int, messageId: int, requestId: string, expectedText: string, textDigest: int)
   requires alwaysOneForkPerRequest(s) && alwaysIdsAreFresh(s)
   requires canFork(s, conversationId, messageId, requestId, expectedText, textDigest)
@@ -770,7 +761,6 @@ lemma ConvForkAnswerFacts(s: Conversations, conversationId: int, messageId: int,
   ProofLib.FilterMember((m: Message) => (m.id == messageId), s.messages, local_3);
 }
 
-// spec/agent/conversation/conversations.md: a fork takes the next conversation id and the next message ids.
 lemma ConvForkIds(s: Conversations, after: Conversations, sel: seq<Message>, copies: seq<Message>, nc: Conversation, nf: Fork)
   requires alwaysIdsAreFresh(s)
   requires after.conversations == s.conversations + [nc] && after.messages == s.messages + copies && after.forks == s.forks + [nf]
@@ -801,7 +791,6 @@ lemma ConvForkIds(s: Conversations, after: Conversations, sel: seq<Message>, cop
   }
 }
 
-// spec/agent/conversation/conversations.md: a request forks a conversation once.
 lemma ConvForkOnePerRequest(s: Conversations, after: Conversations, nf: Fork)
   requires alwaysOneForkPerRequest(s)
   requires after.forks == s.forks + [nf] && nf.forkId >= 1
@@ -822,7 +811,6 @@ lemma ConvForkOnePerRequest(s: Conversations, after: Conversations, nf: Fork)
   }
 }
 
-// spec/agent/conversation/conversations.md: the fork holds a copy of each source message before the chosen one, and only those.
 lemma ConvForkPrefix(s: Conversations, after: Conversations, sel: seq<Message>, copies: seq<Message>, nf: Fork)
   requires alwaysForkHoldsTheWholePrefix(s) && alwaysIdsAreFresh(s)
   requires after.messages == s.messages + copies && after.forks == s.forks + [nf]
@@ -876,7 +864,6 @@ lemma ConvForkPrefix(s: Conversations, after: Conversations, sel: seq<Message>, 
   }
 }
 
-// spec/agent/conversation/conversations.md: a pending fork holds only its copies.
 lemma ConvForkPending(s: Conversations, after: Conversations, nc: Conversation, sel: seq<Message>, copies: seq<Message>)
   requires alwaysPendingForkHoldsOnlyCopies(s) && alwaysOneRecordPerConversation(s) && alwaysIdsAreFresh(s)
   requires after.conversations == s.conversations + [nc] && nc.id == s.nextConversation && after.messages == s.messages + copies
@@ -896,7 +883,6 @@ lemma ConvForkPending(s: Conversations, after: Conversations, nc: Conversation, 
   }
 }
 
-// spec/agent/conversation/conversations.md: a step that only adds messages keeps every message and log row.
 lemma ConvGrowsStep(s: Conversations, after: Conversations, added: seq<Message>)
   requires after.messages == s.messages + added && after.log == s.log
   ensures stepOnlyRedactionChangesStoredText(s, "fork", after)
@@ -907,7 +893,6 @@ lemma ConvGrowsStep(s: Conversations, after: Conversations, added: seq<Message>)
   }
 }
 
-// spec/agent/conversation/conversations.md: of distinct rows that all follow one row, only that row itself is not counted among the rows it precedes.
 lemma ConvCountAbove(p: Row -> bool, rows: seq<Row>, y: Row)
   requires ProofLib.Distinct(rows)
   requires forall x :: x in rows && p(x) ==> x == y || precedes(y, x)
@@ -960,13 +945,11 @@ lemma ConvCountBelow(p: Row -> bool, rows: seq<Row>, y: Row)
   }
 }
 
-// spec/agent/conversation/conversations.md: a fork holds a copy of each source message before its boundary, and each copy has its source message.
 lemma ConvWholePrefixIs(s: Conversations)
   ensures alwaysForkHoldsTheWholePrefix(s) <==> (forall f, m :: f in s.forks && m in s.messages && m.conversationId == f.source && beforeBoundary(m, f) ==> exists c :: c in s.messages && c.conversationId == f.forkId && copiedFrom(c, m)) && (forall f, c :: f in s.forks && c in s.messages && c.conversationId == f.forkId && !c.origin.Original? ==> exists m :: m in s.messages && m.conversationId == f.source && beforeBoundary(m, f) && copiedFrom(c, m))
 {
 }
 
-// spec/agent/conversation/conversations.md: the rows before the pivot come first and the rows after it last, at most n of each.
 lemma ConvAroundSide(a: seq<Row>, pivot: Row, b: seq<Row>, n: int)
   requires |a| <= n && |b| <= n
   requires forall x :: x in a ==> precedes(x, pivot)

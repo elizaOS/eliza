@@ -200,7 +200,9 @@ pure def lawAdmittedOverlayAllowsOnlyReviewedPrivilege(call: StagingCall): bool 
 ### Only an admitted, rendered overlay is published, once, and never over an existing output
 
 The call writes its private directory (`P::create`, `P::write`) only after
-admission, and publishes it by `P::rename`; an existing output makes the
+admission, and publishes it by `P::rename`; while rendered and waiting to
+publish, its private copy is complete and its publication receipt is still
+pending. An existing output makes the
 rename fail and stays untouched. A failed write (`WriteFailed`) or rename
 (`OutputNotPublished`) ends the call like a refusal. Cleanup removes the private directory
 whatever happened, and the caller's answer is the publication receipt.
@@ -236,7 +238,7 @@ pure def alwaysPublishedOnlyAnAdmittedOverlayIntoAFreeOutput(s: LauncherStaging)
   and ((s.phase == Rendered or s.phase == Published) implies s.call.mode == StageOverlay) and (s.phase == Published implies not(s.call.outputExists))
 pure def alwaysNothingWrittenBeforeRendering(s: LauncherStaging): bool =
   (s.phase == Pending or s.phase == Admitted or refusedAtAdmission(s.phase) or s.call.mode == AdmissionOnly) implies s.publication == P::initial
-pure def alwaysRenderedHoldsACompletePrivateCopy(s: LauncherStaging): bool = s.phase == Rendered implies (s.publication.phase == P::Renaming and s.publication.temporary == P::CompleteTemporary)
+pure def alwaysRenderedHoldsACompletePrivateCopy(s: LauncherStaging): bool = s.phase == Rendered implies (s.publication.phase == P::Renaming and s.publication.temporary == P::CompleteTemporary and s.publication.receipt == P::PendingReceipt)
 pure def alwaysReceiptIsHonest(s: LauncherStaging): bool = P::alwaysSuccessMeansPublished(s.publication) and P::alwaysPublicationMatchesWrite(s.publication)
 pure def stepPublishedOverlayIsNeverReplaced(before: LauncherStaging, after: LauncherStaging): bool = before.phase == Published implies (after.phase == Published and after.call == before.call)
 pure def sometimesPublishedWithSuccessReceipt(s: LauncherStaging): bool = s.phase == Published and s.publication.receipt == P::SuccessReceipt

@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import { Clock, Effect } from "effect";
 import { landAccount } from "../../src/identity/accounts.vibe";
 import { issueSession } from "../../src/identity/sessions.vibe";
-import type { TestCloud } from "./cloud.vibe";
+import type { Store } from "../../src/store/store.vibe";
 
-export const signedIn = (cloud: TestCloud, email: string) =>
+export const signedIn = (cloud: { readonly store: typeof Store.Service }, email: string) =>
   Effect.flatMap(Clock.currentTimeMillis, (now) =>
     cloud.store.transaction((tx) =>
       Effect.flatMap(landAccount(tx, { method: "EmailSignIn", subject: email }, email, now), (landed) =>
