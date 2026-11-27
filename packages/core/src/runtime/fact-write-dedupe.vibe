@@ -47,14 +47,19 @@ export function mergeStrongerFactMetadata(
     const keptEvidence = Array.isArray(keptMetadata?.extractionEvidenceIds)
       ? keptMetadata.extractionEvidenceIds
       : []
+    const keptIds = [
+      ...new Set(
+        keptEvidence.filter((id): id is string => typeof id === "string"),
+      ),
+    ]
     const evidenceIds = [
       ...new Set(
-        [...keptEvidence, ...incomingEvidence].filter(
+        [...keptIds, ...incomingEvidence].filter(
           (id): id is string => typeof id === "string",
         ),
       ),
     ]
-    if (evidenceIds.length !== keptEvidence.length) {
+    if (evidenceIds.length !== keptIds.length) {
       upgrades.extractionEvidenceIds = evidenceIds
     }
     const incomingRevisions = (incoming.metadata as CustomMetadata)
