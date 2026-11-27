@@ -130,10 +130,17 @@ const mayEnd = new Set(["p.m", "a.m", "u.s", "st", "jr", "sr"])
 const beforeNumbers = new Set(["u.s", "st"])
 
 function continuesAfter(before: string, next: string): boolean {
-  const word = before.replace(/^[("“‘'[]+/u, "").toLowerCase()
+  const word = before.replace(/^[("“‘'[]+/u, "").toLowerCase().replace(/^\d+(?=[ap]\.m$)/u, "")
   if (neverFinal.has(word)) return true
   if (!mayEnd.has(word)) return false
   return /\p{Ll}/u.test(next) || (/\d/u.test(next) && beforeNumbers.has(word))
+}
+
+const lowercase = (next: string) => /^\p{Ll}/u.test(next)
+
+function goesOn(before: string, stop: string, next: string): boolean {
+  if (stop === ".") return continuesAfter(before, next)
+  return (stop === "!" || stop === "?") && lowercase(next)
 }
 
 const insideASentence = {
@@ -160,9 +167,16 @@ export function reportIn(prose: string, quote: string): Report {
   const whole = new RegExp(`${opensASentence}${words}${closesASentence}`, "u").exec(prose)
   if (whole === null) return { span: "Fragment", sentence: "" }
   const matched = whole[0].trim()
-  const next = prose.slice(whole.index + whole[0].length).trimStart()[0] ?? ""
+  const after = prose.slice(whole.index + whole[0].length).replace(/^[*_"'”’)\]]+/u, "")
+  const next = after.trimStart()[0] ?? ""
   const last = matched.replace(/[.!?…"'”’)\]*_]+$/u, "").split(/\s+/u).at(-1) ?? ""
-  return matched.endsWith(".") && next !== "" && continuesAfter(last, next) ? { span: "Fragment", sentence: "" } : { span: "OneSentence", sentence: matched }
+  const stop = /[.!?…]$/u.test(matched) ? matched.at(-1) ?? "" : ""
+  const goesOnAfter = stop === "" ? /^[ \t]*\n[ \t]*\p{Ll}/u.test(after) : next !== "" && goesOn(last, stop, next)
+  const before = prose.slice(0, whole.index).replace(/[*_"“]+$/u, "")
+  const stopBefore = /(\S*?)([.!?…])[*_"'”’)\]]*\s+$/u.exec(before)
+  const first = matched[0] ?? ""
+  const goesOnBefore = stopBefore === null ? /\S[ \t]*\n[ \t]*$/u.test(before) && lowercase(first) : goesOn(stopBefore[1] ?? "", stopBefore[2] ?? "", first)
+  return goesOnAfter || goesOnBefore ? { span: "Fragment", sentence: "" } : { span: "OneSentence", sentence: matched }
 }
 
 export interface Point {

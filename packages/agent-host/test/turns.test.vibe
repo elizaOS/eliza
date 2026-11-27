@@ -1338,12 +1338,40 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
       [`I couldn't book Nopa for Bob Smith ${suffix} Your table is booked.`, `I couldn't book Nopa for Bob Smith ${suffix} Your table is booked.`, "marked"],
       [`I couldn't book Nopa for Bob Smith ${suffix} 2 tables are booked.`, `I couldn't book Nopa for Bob Smith ${suffix} 2 tables are booked.`, "marked"],
       [`I couldn't book Nopa for Bob Smith ${suffix}`, `I couldn't book Nopa for Bob Smith ${suffix}`, "told"],
+      [`I couldn't book Nopa for Bob Smith ${suffix} tonight, but your table is booked.`, `I couldn't book Nopa for Bob Smith ${suffix}`, "marked"],
     ]),
+    [`I couldn't book Nopa on Divisadero St. tonight, but your table is booked.`, `I couldn't book Nopa on Divisadero St.`, "marked"],
+    [`I couldn't book a table off U.S. 101 tonight, but your table is booked.`, `I couldn't book a table off U.S.`, "marked"],
+    [`I couldn't book Nopa on Divisadero St. 2 blocks up, but your table is booked.`, `I couldn't book Nopa on Divisadero St.`, "marked"],
+    [`I couldn't book Nopa (for 8 p.m.) tonight, but your table is booked.`, `I couldn't book Nopa (for 8 p.m.`, "marked"],
+    [`I couldn't book Nopa for the "8 p.m." slot, but your table is booked.`, `I couldn't book Nopa for the "8 p.m.`, "marked"],
+    [`I couldn't book Nopa (for 8 p.m.) Want me to try 9 p.m.?`, `I couldn't book Nopa (for 8 p.m.`, "told"],
+    [`I couldn't book Nopa at Yahoo! but your table is booked.`, `I couldn't book Nopa at Yahoo!`, "marked"],
+    [`I couldn't book Nopa, can you believe it? but your table is booked.`, `I couldn't book Nopa, can you believe it?`, "marked"],
+    [`I couldn't book Nopa! Want me to try Zuni?`, `I couldn't book Nopa!`, "told"],
+    [`Could I book Nopa? No, it was full.`, `No, it was full.`, "told"],
+    [`I couldn't book Nopa\nbut your table is booked.`, `I couldn't book Nopa`, "marked"],
+    [`I couldn't book Nopa\nWant me to try Zuni?`, `I couldn't book Nopa`, "told"],
+    ...["8p.m.", "9a.m."].flatMap((time): (readonly [string, string, "told" | "marked"])[] => [
+      [`I couldn't book Nopa for ${time} tonight, but your table is booked.`, `I couldn't book Nopa for ${time}`, "marked"],
+      [`I couldn't book Nopa for ${time} tonight.`, `I couldn't book Nopa for ${time} tonight.`, "told"],
+      [`I couldn't book Nopa for ${time}`, `I couldn't book Nopa for ${time}`, "told"],
+    ]),
+    [`Your table is booked for 8 p.m. but I couldn't book Nopa.`, `but I couldn't book Nopa.`, "marked"],
+    [`Your table is booked, yay! but I couldn't book Nopa.`, `but I couldn't book Nopa.`, "marked"],
+    [`Your table is booked\nbut I couldn't book Nopa.`, `but I couldn't book Nopa.`, "marked"],
+    [`I asked Dr. Nopa couldn't take the booking.`, `Nopa couldn't take the booking.`, "marked"],
+    [`sorry about that. i couldn't book nopa.`, `i couldn't book nopa.`, "told"],
+    [`i couldn't book nopa for 8 p.m. tonight.`, `i couldn't book nopa for 8 p.m. tonight.`, "told"],
+    [`hey\n\ni couldn't book nopa.`, `i couldn't book nopa.`, "told"],
   ]
+  const outcomeOf = (read: { readonly text: string; readonly untold: readonly string[]; readonly calls: number }, reply: string, toldIn: number) =>
+    read.untold.length > 0 && read.text === "" && read.calls === 3 ? "marked" : read.untold.length === 0 && read.text === reply && read.calls === toldIn ? "told" : `other: ${read.calls} ${read.text}`
   const boundaries: string[] = []
-  for (const [reply, quote] of boundaryCases) {
-    const read = try booking("Refused", () => [bookedOnce(), settle(reply, [1, quote])])
-    boundaries.push(read.untold.length > 0 && read.text === "" ? "marked" : read.untold.length === 0 && read.text === reply ? "told" : `other: ${read.text}`)
+  const boundariesFirst: string[] = []
+  for (const [reply, quote, outcome] of boundaryCases) {
+    boundaries.push(outcomeOf(try booking("Refused", () => [bookedOnce(), settle(reply, [1, quote])]), reply, 3))
+    if (!quote.includes('"')) boundariesFirst.push(outcomeOf(try booking("Refused", () => [text(`${reply}\n[reported 1: "${quote}"]`), ...outcome === "marked" ? [bookedOnce()] : []]), reply, 2))
   }
   const runOnSentence = try booking("Refused", () => [bookedOnce(), settle("I couldn't reach Bob. Your table is booked.", [1, "I couldn't reach Bob. Your table is booked."])])
   const runOnSentenceFirst = try booking("Refused", () => [text(`I couldn't book Nopa for Bob. Your table is booked.\n[reported 1: "I couldn't book Nopa for Bob. Your table is booked."]`), bookedOnce()])
@@ -1363,7 +1391,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   try Effect.try(() => assert.deepStrictEqual({
     bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, otherStepsError, toldFirstPartly, besideACard, besideAProposal, declaredBesideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
     untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut: timeCut.text === cutOffReply, timeTold, ownerHeard,
-    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, titled, mixedEchoed, mixedEchoedFirst, jsonAfterWords, jsonCutShort, boundaries, afternoonRunOn, afternoonRunOnFirst, streetRunOn, tomorrowEvening, runOnSentence, runOnSentenceFirst, otherSentenceEchoes, ownersNumber, ownersDevice, ownersEmail, bookedBesideCard,
+    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, titled, mixedEchoed, mixedEchoedFirst, jsonAfterWords, jsonCutShort, boundaries, boundariesFirst, afternoonRunOn, afternoonRunOnFirst, streetRunOn, tomorrowEvening, runOnSentence, runOnSentenceFirst, otherSentenceEchoes, ownersNumber, ownersDevice, ownersEmail, bookedBesideCard,
   }, {
     bobFirst: { text: onlyBob, calls: 3, laterRunNote: false },
     aliceFirst: { text: onlyBob, calls: 4, laterRunNote: false },
@@ -1421,6 +1449,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     jsonAfterWords: { text: "I couldn't book Nopa.", stored: "I couldn't book Nopa.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
     jsonCutShort: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
     boundaries: boundaryCases.map(([, , outcome]) => outcome),
+    boundariesFirst: boundaryCases.flatMap(([, quote, outcome]) => quote.includes('"') ? [] : [outcome]),
     afternoonRunOn: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
     afternoonRunOnFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
     streetRunOn: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
