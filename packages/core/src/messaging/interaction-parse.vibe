@@ -17,6 +17,7 @@ import { stripDashboardOnlyMarkers } from "./interaction-dashboard-markers.vibe"
 
 export const MAX_FORM_FIELDS = 20
 export const MAX_FOLLOWUPS = 4
+export const MAX_CHOICE_OPTIONS = 20
 export const MAX_TASK_TITLE_LEN = 200
 
 const FIELD_TYPES: ReadonlySet<InteractionFieldType> = new Set([
@@ -76,6 +77,7 @@ function parseOptionLines(body: string): InteractionOption[] {
   for (const rawLine of body.split("\n")) {
     const line = rawLine.trim()
     if (!line) continue
+if (options.length >= MAX_CHOICE_OPTIONS) break
     const eq = line.indexOf("=")
     if (eq < 0) continue
     const value = line.slice(0, eq).trim()
