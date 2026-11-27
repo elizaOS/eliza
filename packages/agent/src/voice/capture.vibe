@@ -8,6 +8,7 @@ import {
 const captureWorkletUrl = new URL("./capture.worklet.mjs", import.meta.url)
 
 export error WavRateRefused { rate: number }
+export error WavBytesRefused { bytes: number }
 export error CapturePolicyRefused { field: "sampleRate" | "maxSeconds" | "minimumNewSamples" | "previewIntervalMs" | "speechThreshold"; value: number }
 export error SharedContextRateRefused { contextRate: number; captureRate: number }
 export error CaptureUnavailable { cause: unknown }
@@ -120,9 +121,11 @@ export effect function encodeMonoPcm16WavChunks(chunks: readonly Float32Array[],
   return wavOf(chunks, sampleRate)
 }
 
-export effect function encodeMonoPcm16BytesWav(chunks: readonly Uint8Array[], sampleRate: number): Uint8Array!WavRateRefused {
+export effect function encodeMonoPcm16BytesWav(chunks: readonly Uint8Array[], sampleRate: number): Uint8Array!(WavRateRefused | WavBytesRefused) {
   if (!Number.isInteger(sampleRate) || !wavRateAccepted(sampleRate)) throw new WavRateRefused({ rate: sampleRate })
-  const bytes = wavHeaded(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0) / 2, sampleRate)
+  const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
+  if (totalBytes % 2 !== 0) throw new WavBytesRefused({ bytes: totalBytes })
+  const bytes = wavHeaded(totalBytes / 2, sampleRate)
   let offset = wavHeaderBytes
   for (const chunk of chunks) {
     bytes.set(chunk, offset)
