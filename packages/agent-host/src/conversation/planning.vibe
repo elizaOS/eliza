@@ -124,11 +124,14 @@ export interface Report {
   readonly sentence: string
 }
 
-const boundary = /(\S*?)([.!?…])["'”’)\]]*\s+\S/gu
-const abbreviations = new Set(["dr", "mr", "mrs", "ms", "st", "jr", "sr", "prof", "p.m", "a.m", "u.s", "e.g", "i.e"])
+const boundary = /(\S*?)([.!?…])["'”’)\]]*\s+(\S)/gu
+const neverFinal = new Set(["dr", "mr", "mrs", "ms", "prof", "e.g", "i.e"])
+const mayEnd = new Set(["p.m", "a.m", "u.s", "st", "jr", "sr"])
 const insideASentence = {
-  test: (said: string) => [...said.matchAll(boundary)].some(([, before = "", stop]) =>
-    stop !== "." || !abbreviations.has(before.replace(/^[("“‘'[]+/u, "").toLowerCase())),
+  test: (said: string) => [...said.matchAll(boundary)].some(([, before = "", stop, next = ""]) => {
+    const word = before.replace(/^[("“‘'[]+/u, "").toLowerCase()
+    return stop !== "." || !(neverFinal.has(word) || (mayEnd.has(word) && /[\p{Ll}\d]/u.test(next)))
+  }),
 }
 
 export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {

@@ -1307,6 +1307,10 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const mixedEchoedFirst = try booking("Mixed", () => [text(`It failed with ECONNREFUSED.\n[reported 1: "It failed with ECONNREFUSED."]`), bookedOnce()])
   const jsonAfterWords = try booking("Refused", () => [bookedOnce(), text(`Sure: ${JSON.stringify({ reply: "I couldn't book Nopa.", told: [{ point: 1, sentence: "I couldn't book Nopa." }] })}`)])
   const jsonCutShort = try booking("Refused", () => [bookedOnce(), text(`Sure: {"reply": "I couldn't book`)])
+  const afternoonRunOn = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa for 8 p.m. Your table is booked.", [1, "I couldn't book Nopa for 8 p.m. Your table is booked."])])
+  const afternoonRunOnFirst = try booking("Refused", () => [text(`I couldn't book Nopa for 8 p.m. Your table is booked.\n[reported 1: "I couldn't book Nopa for 8 p.m. Your table is booked."]`), bookedOnce()])
+  const streetRunOn = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa on Divisadero St. Your table is booked.", [1, "I couldn't book Nopa on Divisadero St. Your table is booked."])])
+  const tomorrowEvening = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa at 8 p.m. tomorrow.", [1, "I couldn't book Nopa at 8 p.m. tomorrow."])])
   const runOnSentence = try booking("Refused", () => [bookedOnce(), settle("I couldn't reach Bob. Your table is booked.", [1, "I couldn't reach Bob. Your table is booked."])])
   const runOnSentenceFirst = try booking("Refused", () => [text(`I couldn't book Nopa for Bob. Your table is booked.\n[reported 1: "I couldn't book Nopa for Bob. Your table is booked."]`), bookedOnce()])
   const otherSentenceEchoes = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa. It failed with ECONNREFUSED.", [1, "I couldn't book Nopa."])])
@@ -1325,7 +1329,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   try Effect.try(() => assert.deepStrictEqual({
     bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, otherStepsError, toldFirstPartly, besideACard, besideAProposal, declaredBesideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
     untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut: timeCut.text === cutOffReply, timeTold, ownerHeard,
-    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, titled, mixedEchoed, mixedEchoedFirst, jsonAfterWords, jsonCutShort, runOnSentence, runOnSentenceFirst, otherSentenceEchoes, ownersNumber, ownersDevice, ownersEmail, bookedBesideCard,
+    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, titled, mixedEchoed, mixedEchoedFirst, jsonAfterWords, jsonCutShort, afternoonRunOn, afternoonRunOnFirst, streetRunOn, tomorrowEvening, runOnSentence, runOnSentenceFirst, otherSentenceEchoes, ownersNumber, ownersDevice, ownersEmail, bookedBesideCard,
   }, {
     bobFirst: { text: onlyBob, calls: 3, laterRunNote: false },
     aliceFirst: { text: onlyBob, calls: 4, laterRunNote: false },
@@ -1382,6 +1386,10 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     mixedEchoedFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_ROOM"], history: ["BOOK_ROOM"], failureKind: undefined, booked: false, hostText: [] },
     jsonAfterWords: { text: "I couldn't book Nopa.", stored: "I couldn't book Nopa.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
     jsonCutShort: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    afternoonRunOn: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    afternoonRunOnFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    streetRunOn: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    tomorrowEvening: { text: "I couldn't book Nopa at 8 p.m. tomorrow.", stored: "I couldn't book Nopa at 8 p.m. tomorrow.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
     runOnSentence: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
     runOnSentenceFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
     otherSentenceEchoes: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },

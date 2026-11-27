@@ -665,10 +665,10 @@ sentence the model gives when asked again (below): one whole sentence of the
 reply's prose, given once, that echoes no host text. When every failure put
 to the model is reported so, and nothing else is unreported or unobserved,
 the turn makes no further call; such a line is the model's own judgment, as
-the sentence of a second answer is. A sentence that ends on a stop after one of a
-closed set of abbreviations (the titles `Dr.`, `Mr.`, `Mrs.`, `Ms.`, `St.`,
-`Jr.`, `Sr.`, `Prof.` and the initialisms `p.m.`, `a.m.`, `U.S.`, `e.g.`,
-`i.e.`) has not ended there; every other stop followed by a space ends it.
+the sentence of a second answer is. A stop after `Dr.`, `Mr.`, `Mrs.`, `Ms.`,
+`Prof.`, `e.g.` or `i.e.` never ends a sentence; a stop after `p.m.`, `a.m.`,
+`U.S.`, `St.`, `Jr.` or `Sr.` ends it unless the next word starts with a
+lowercase letter or a digit; every other stop followed by a space ends it.
 A reply any sentence of which echoes a failed step's text written to the
 model reports nothing. An answer to
 the call that holds a JSON object anywhere is read as that object, and one
