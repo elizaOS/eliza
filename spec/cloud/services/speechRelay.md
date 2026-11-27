@@ -417,6 +417,11 @@ pure def lawARenewedWindowEndsWithinOneWindowOfItsAdmission(s: Session, window: 
 pure def sometimesSessionActive(s: Session): bool = s.phase == Active
 pure def sometimesSessionExtended(s: Session): bool = s.admittedWindows >= 2
 pure val windowValues = Set(0, 1, 2, 3)
+pure val sValues = Set(
+  { ...initial, phase: Starting, tokenDigest: "session-digest", expiresAt: 60000, credentialExpiresAt: 180000 },
+  { ...initial, phase: Active, tokenDigest: "session-digest", expiresAt: 60000, credentialExpiresAt: 180000, admittedWindows: 1 },
+  { ...initial, phase: Active, tokenDigest: "session-digest", expiresAt: 60000, credentialExpiresAt: 120000, admittedWindows: 1 },
+  { ...initial, phase: Active, tokenDigest: "session-digest", expiresAt: 119999, credentialExpiresAt: 180000, admittedWindows: 2, settledWindows: Set(1) })
 pure val weight_admitWindow = 5
 ```
 

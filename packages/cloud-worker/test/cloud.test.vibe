@@ -1630,7 +1630,7 @@ effect function closedPhase(cloud: TestCloud, sessionId: string) {
 }
 
 describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
-  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew while each ended window settles at its use, and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\"; spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\")", () => scoped(effect {
+  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew while each ended window settles at its use, and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\"; spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\"; spec/cloud/services/speechSession.md, \"A window is admitted only when the day has room for it and both its holds are funded\")", () => scoped(effect {
     const { speech, cloud } = try relayCloud()
     const caller = try signedCaller(cloud, "talker")
     const reservedPerWindow = reservedFor(60 * 100) + reservedFor(4096 * 30)

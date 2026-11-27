@@ -184,8 +184,9 @@ The day is checked first: no room is `allowance_exhausted`, an unfunded
 hold is `insufficient_credits`. Window 1 is admitted after the hello; its
 refusal ends the session before audio. Later windows renew 10 s or less
 before the deadline, only for a hello with `extend` and at most 10 in all;
-the relay then sends `extended`. A refused renewal keeps the session to
-its old deadline.
+a renewed window ends one window after it is renewed, never past the
+credential, and is funded for that span; the relay then sends `extended`. A
+refused renewal keeps the session to its old deadline.
 
 ```quint
 type Funding = Funded | ShortOf({ funding: Rl::Shortfall })
@@ -201,17 +202,19 @@ pure def canRefuseFirstWindow(s: Session, now: Millis, speechUsed: Millis, holds
   s.phase == Starting and now < s.expiresAt and fundingOf(speechUsed, s.expiresAt - now, holdsFunded) != Funded
 pure def refuseFirstWindow(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): Session =
   { ...s, phase: Retiring({ cause: FundingEnded({ funding: shortfallOf(fundingOf(speechUsed, s.expiresAt - now, holdsFunded)) }) }) }
-pure def nextDeadline(s: Session): Millis = M::minOf(s.expiresAt + windowLength, s.credentialExpiresAt)
+pure def nextDeadline(s: Session, now: Millis): Millis = M::minOf(now + windowLength, s.credentialExpiresAt)
 pure def renewalDue(s: Session, now: Millis): bool =
   s.phase == Active and s.extend and s.renewal == RenewalOpen and s.windows < maxWindows
-  and now >= s.expiresAt - renewalLead and now < s.expiresAt and nextDeadline(s) > s.expiresAt
+  and now >= s.expiresAt - renewalLead and now < s.expiresAt and nextDeadline(s, now) > s.expiresAt
 pure def canRenew(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): bool =
-  renewalDue(s, now) and fundingOf(speechUsed, nextDeadline(s) - s.expiresAt, holdsFunded) == Funded
-pure def renew(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): Session = { ...s, expiresAt: nextDeadline(s), windows: s.windows + 1 }
+  renewalDue(s, now) and fundingOf(speechUsed, nextDeadline(s, now) - now, holdsFunded) == Funded
+pure def renew(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): Session = { ...s, expiresAt: nextDeadline(s, now), windows: s.windows + 1 }
 pure def canRefuseRenewal(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): bool =
-  renewalDue(s, now) and fundingOf(speechUsed, nextDeadline(s) - s.expiresAt, holdsFunded) != Funded
+  renewalDue(s, now) and fundingOf(speechUsed, nextDeadline(s, now) - now, holdsFunded) != Funded
 pure def refuseRenewal(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): Session =
-  { ...s, renewal: RenewalRefused({ funding: shortfallOf(fundingOf(speechUsed, nextDeadline(s) - s.expiresAt, holdsFunded)) }) }
+  { ...s, renewal: RenewalRefused({ funding: shortfallOf(fundingOf(speechUsed, nextDeadline(s, now) - now, holdsFunded)) }) }
+pure def lawARenewalEndsWithinOneWindowOfIt(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): bool =
+  canRenew(s, now, speechUsed, holdsFunded) implies renew(s, now, speechUsed, holdsFunded).expiresAt <= now + windowLength
 pure def lawAShortWindowIsNeverFunded(speechUsed: Millis, span: Millis): bool =
   fundingOf(speechUsed, span, false) != Funded and fundingOf(realtimeSpeechPerDay, span, true) == ShortOf({ funding: Rl::AllowanceShort })
 pure def alwaysWindowsFollowThePhase(s: Session): bool =
@@ -227,6 +230,11 @@ pure def sometimesRenewalRefused(s: Session): bool = s.phase == Active and s.ren
 pure def fundingEnded(c: RetireCause): bool = match c { | FundingEnded(f) => true | _ => false }
 pure def sometimesFirstWindowRefused(s: Session): bool = isRetiring(s.phase) and s.windows == 0 and fundingEnded(causeOf(s.phase))
 pure val spanValues = Set(1, 60000)
+pure val sValues = Set(
+  { ...initial, phase: Starting, account: "a1", credential: "k1", tokenDigest: "d1", credentialExpiresAt: 86400000, expiresAt: 60000, extend: true },
+  { ...initial, phase: Active, account: "a1", credential: "k1", tokenDigest: "d1", credentialExpiresAt: 86400000, expiresAt: 60000, extend: true, windows: 1 },
+  { ...initial, phase: Active, account: "a1", credential: "k1", tokenDigest: "d1", credentialExpiresAt: 100000, expiresAt: 60000, extend: true, windows: 1 },
+  { ...initial, phase: Active, account: "a1", credential: "k1", tokenDigest: "d1", credentialExpiresAt: 86400000, expiresAt: 110000, extend: true, windows: 2 })
 pure val weight_admitFirstWindow = 4
 pure val weight_renew = 4
 ```
