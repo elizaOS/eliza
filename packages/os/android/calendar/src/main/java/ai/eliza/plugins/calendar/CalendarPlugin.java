@@ -155,7 +155,7 @@ public abstract class CalendarPlugin extends Plugin {
   if(!allowed()){status(c,"permission-required");return;}
   boolean dispatched=false;
   try{
-   String change=c.getString("change","");Long start=c.getLong("originalStart");if(start==null)throw new IllegalArgumentException();
+   String change=c.getString("change","");long start=whole(c,"originalStart");
    ContentResolver resolver=getContext().getContentResolver();
    CalendarEventGuard.ScopedDeletion current=CalendarEventGuard.ScopedDeletion.of(resolver,Long.parseLong(c.getString("id","")),Long.parseLong(c.getString("calendarId","")));
    ArrayList<ContentProviderOperation> operations=current==null||!current.revision.equals(c.getString("revision",""))||!current.sourceRevision.equals(c.getString("sourceRevision",""))?null:current.batch(change,start);
@@ -164,6 +164,8 @@ public abstract class CalendarPlugin extends Plugin {
    JSObject value=statusValue("committed");value.put("readback",current.readback(resolver,change,start));c.resolve(value);
   }catch(android.content.OperationApplicationException conflict){status(c,"conflict");}catch(Exception failure){status(c,dispatched?"unknown":"conflict");}
  }
+ /** A whole number the bridge sent: the WebView's JSON parses one that fits an int, like the -1 of an event or series deletion, as an Integer, which PluginCall.getLong reads as absent. */
+ private static long whole(PluginCall c,String key){Object value=c.getData().opt(key);if(!(value instanceof Integer)&&!(value instanceof Long))throw new IllegalArgumentException();return ((Number)value).longValue();}
  @Override protected void handleOnPause(){super.handleOnPause();if(deleteDialog!=null)deleteDialog.dismiss();}
  @Override protected void handleOnDestroy(){if(deleteDialog!=null)deleteDialog.dismiss();super.handleOnDestroy();}
  /** Explicit New Event source initialization; no event is created. */

@@ -20,7 +20,8 @@ import org.json.JSONObject;
  * occurrence of a local or synced series, a moved exception, the whole series, and every refusal.
  * The arguments are the method names the bridge's AndroidCalendarPlugin declares; each must be a
  * plugin method of the compiled class. Prints one JSON object of what the plugin answered and what
- * the provider holds after.
+ * the provider holds after. Each call's data is parsed from JSON text, as Capacitor parses the
+ * WebView's message, so a number that fits an int reaches the plugin as an Integer.
  */
 public final class CalendarDeletionJourney {
   static final long HOUR = 3_600_000L, WEEK = 7 * 24 * HOUR, FIRST = 1_791_766_800_000L;
@@ -80,7 +81,7 @@ public final class CalendarDeletionJourney {
   }
 
   private JSObject call(String method, JSObject data) throws Exception {
-    PluginCall call = new PluginCall(data);
+    PluginCall call = new PluginCall(new JSObject(data.toString()));
     plugin.getClass().getMethod(method, PluginCall.class).invoke(plugin, call);
     if (call.rejected != null) return new JSObject().put("rejected", call.rejected);
     return call.result;
