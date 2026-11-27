@@ -668,7 +668,10 @@ the turn makes no further call; such a line is the model's own judgment, as
 the sentence of a second answer is. A stop after `Dr.`, `Mr.`, `Mrs.`, `Ms.`,
 `Prof.`, `e.g.` or `i.e.` never ends a sentence; a stop after `p.m.`, `a.m.`,
 `U.S.`, `St.`, `Jr.` or `Sr.` ends it unless the next word starts with a
-lowercase letter or a digit; every other stop followed by a space ends it.
+lowercase letter, or with a digit after `U.S.` or `St.`; every other stop
+followed by a space ends it. The same rule holds where a sentence the model
+gave stops in its reply: one that stops on such a stop while the reply goes
+on in the same sentence is a fragment.
 A reply any sentence of which echoes a failed step's text written to the
 model reports nothing. An answer to
 the call that holds a JSON object anywhere is read as that object, and one

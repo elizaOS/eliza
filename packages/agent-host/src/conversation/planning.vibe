@@ -127,11 +127,17 @@ export interface Report {
 const boundary = /(\S*?)([.!?…])["'”’)\]]*\s+(\S)/gu
 const neverFinal = new Set(["dr", "mr", "mrs", "ms", "prof", "e.g", "i.e"])
 const mayEnd = new Set(["p.m", "a.m", "u.s", "st", "jr", "sr"])
+const beforeNumbers = new Set(["u.s", "st"])
+
+function continuesAfter(before: string, next: string): boolean {
+  const word = before.replace(/^[("“‘'[]+/u, "").toLowerCase()
+  if (neverFinal.has(word)) return true
+  if (!mayEnd.has(word)) return false
+  return /\p{Ll}/u.test(next) || (/\d/u.test(next) && beforeNumbers.has(word))
+}
+
 const insideASentence = {
-  test: (said: string) => [...said.matchAll(boundary)].some(([, before = "", stop, next = ""]) => {
-    const word = before.replace(/^[("“‘'[]+/u, "").toLowerCase()
-    return stop !== "." || !(neverFinal.has(word) || (mayEnd.has(word) && /[\p{Ll}\d]/u.test(next)))
-  }),
+  test: (said: string) => [...said.matchAll(boundary)].some(([, before = "", stop, next = ""]) => stop !== "." || !continuesAfter(before, next)),
 }
 
 export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {
@@ -152,7 +158,11 @@ export function reportIn(prose: string, quote: string): Report {
   if (insideASentence.test(said)) return { span: "Fragment", sentence: "" }
   const words = said.split(/\s+/u).map(asWritten).join("\\s+")
   const whole = new RegExp(`${opensASentence}${words}${closesASentence}`, "u").exec(prose)
-  return whole === null ? { span: "Fragment", sentence: "" } : { span: "OneSentence", sentence: whole[0].trim() }
+  if (whole === null) return { span: "Fragment", sentence: "" }
+  const matched = whole[0].trim()
+  const next = prose.slice(whole.index + whole[0].length).trimStart()[0] ?? ""
+  const last = matched.replace(/[.!?…"'”’)\]*_]+$/u, "").split(/\s+/u).at(-1) ?? ""
+  return matched.endsWith(".") && next !== "" && continuesAfter(last, next) ? { span: "Fragment", sentence: "" } : { span: "OneSentence", sentence: matched }
 }
 
 export interface Point {
