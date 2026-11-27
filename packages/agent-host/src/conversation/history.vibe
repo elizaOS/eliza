@@ -88,8 +88,8 @@ module node {
   }
 
   export function historyRoutes(runtime: AgentRuntime, store: ConversationStore): LocalRoute[] {
-    const messagesOf = async (record: ConversationRecord, textContains?: string) =>
-      (await runtime.adapter.getMemories({ roomId: record.roomId, tableName: "messages", ...(textContains === undefined ? {} : { textContains }) }))
+    const messagesOf = async (record: ConversationRecord) =>
+      (await runtime.adapter.getMemories({ roomId: record.roomId, tableName: "messages" }))
         .filter((memory) => historyShows(memory.entityId === runtime.agentId, memory.content.source === MESSAGE_SOURCE_TRIGGER_PROMPT ? "FiredByTrigger" : "SaidByOwner"))
     const shown = (order: Ordered, rows: readonly Row[]) => {
       const byRow = new Map(order.placed.map(({ row, memory }) => [row.id, memory]))
@@ -110,20 +110,27 @@ module node {
           if (limit.tag === "InvalidInteger" || offset.tag === "InvalidInteger" || !searchAdmitted(text.length, countOf(offset))) {
             return failure(400, "invalid_search")
           }
+          const needle = text.toLowerCase()
           const conversations = await store.list()
-          const found = await Promise.all(conversations.map(async (record) =>
-            (await messagesOf(record, text)).filter((memory) => bodyOf(memory.content.text ?? "").tag === "Said").map((memory) => ({ record, memory }))))
+          const found = await Promise.all(conversations.map(async (record) => {
+            const messages = await messagesOf(record)
+            const hits = []
+            for (const memory of messages) {
+              const view = await messageView(runtime, memory)
+              if (view.text !== privateNotice && view.text.toLowerCase().includes(needle)) hits.push({ record, memory, view })
+            }
+            return hits
+          }))
           const hits = found.flat()
-          const owner = new Map(hits.map(({ record, memory }) => [String(memory.id), record]))
+          const byMessage = new Map(hits.map((hit) => [String(hit.memory.id), hit]))
           const newestFirst = ordered(hits.map(({ memory }) => memory)).placed.toReversed()
           const page = pageOf(newestFirst.map((_, index) => index), countOf(offset), searchSize(countOf(limit)))
-          const results = (await Promise.all(page.map(async (index) => {
-            const { memory } = newestFirst[index]
-            const record = owner.get(String(memory.id))
-            if (record === undefined) return []
-            const view = await messageView(runtime, memory)
+          const results = page.flatMap((index) => {
+            const hit = byMessage.get(String(newestFirst[index].memory.id))
+            if (hit === undefined) return []
+            const { record, view } = hit
             return [{ messageId: view.id, conversationId: record.id, roomId: record.roomId, role: view.role, text: view.text, createdAt: view.timestamp }]
-          }))).flat()
+          })
           return { status: 200, body: { results, count: results.length } }
         },
       },
