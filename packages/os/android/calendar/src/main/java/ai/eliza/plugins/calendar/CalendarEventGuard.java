@@ -57,134 +57,121 @@ public final class CalendarEventGuard {
   if(event==null||number(event,"calendar_id")!=calendarId)return null;ContentValues calendar=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId),CALENDAR);if(calendar==null)return null;
   return new Snapshot(id,calendarId,event,calendar);
  }
- /** Provider snapshot used only for delayed reviewed deletion. All dependent rows are
-  * asserted in the dispatch transaction; no caller is treated as a sync adapter. */
+ /** One selected row's recurrence family as the provider holds it. The provider supplies the scope
+  * evidence and the bridge plans the scope; a dispatch writes only the change that family still admits,
+  * asserting every family, attendee and reminder row in the same batch. */
  public static final class ScopedDeletion {
+  static final int MAXIMUM_ROWS=2048,MAXIMUM_REVISION_INPUT=2*1024*1024;
   private static final String[] EVENT_FIELDS={"_id","calendar_id","title","description","eventLocation","dtstart","dtend","duration","eventTimezone","allDay","rrule","rdate","exrule","exdate","original_id","original_sync_id","originalInstanceTime","originalAllDay","eventStatus","deleted","hasAlarm","hasAttendeeData","availability","accessLevel","organizer","_sync_id","selfAttendeeStatus"};
   private static final String[] ATTENDEE_FIELDS={"_id","event_id","attendeeName","attendeeEmail","attendeeRelationship","attendeeType","attendeeStatus","attendeeIdentity","attendeeIdNamespace"};
   private static final String[] REMINDER_FIELDS={"_id","event_id","minutes","method"};
-  public final long eventId,calendarId,selectedEventId,originalInstanceTime,begin,end;
-  public final String scope,revision,sourceRevision;
-  public final JSONObject fields;
-  private final ContentValues calendar,parent;
+  public final long selectedId,parentId,calendarId;
+  public final String revision,sourceRevision;
+  private final ContentValues calendar,selected,parent;
   private final java.util.List<ContentValues> events,attendees,reminders;
+  private final boolean bounded;
   private final String familyWhere;
   private final String[] familyArgs;
-  private ScopedDeletion(ContentResolver resolver,long id,long source,String scope,long instance,long selectedId,long selectedBegin,long selectedEnd)throws Exception{
-   if(id<=0||source<=0||!(scope.equals("event")||scope.equals("occurrence")||scope.equals("series")))throw new IllegalArgumentException("Invalid deletion scope");
-   this.eventId=id;this.calendarId=source;this.selectedEventId=selectedId;this.scope=scope;this.originalInstanceTime=instance;this.begin=selectedBegin;this.end=selectedEnd;
-   parent=read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),EVENT_FIELDS);
-   calendar=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,source),CALENDAR);
-   if(parent==null||calendar==null||number(parent,"calendar_id")!=source||number(parent,"deleted")!=0||number(calendar,"calendar_access_level")<CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR)throw new IllegalStateException("Calendar source changed");
-   boolean recurring=!empty(parent,"rrule")||!empty(parent,"rdate");
-   if(parent.get("original_id")!=null||!empty(parent,"original_sync_id")||recurring==scope.equals("event")||scope.equals("occurrence")&&instance<0)throw new IllegalArgumentException("Calendar recurrence scope changed");
-   // The public exception insertion API requires RRULE; reject unsupported RDATE-only
-   // occurrence cancellation explicitly instead of silently deleting the series.
-   if(scope.equals("occurrence")&&empty(parent,"rrule"))throw new UnsupportedOperationException("This recurrence needs external Calendar review");
-   if(scope.equals("occurrence")&&!local()&&empty(parent,"_sync_id"))throw new UnsupportedOperationException("This unsynced calendar event needs external Calendar review");
-   familyWhere="calendar_id=? AND (_id=? OR original_id=?)";familyArgs=new String[]{Long.toString(source),Long.toString(id),Long.toString(id)};
-   events=rows(resolver,CalendarContract.Events.CONTENT_URI,EVENT_FIELDS,familyWhere,familyArgs,2048);
-   if(scope.equals("occurrence")&&localExclusion()&&(events.size()!=1||selectedId!=id||instance%1000!=0))throw new UnsupportedOperationException("This local recurrence needs external Calendar review");
-   StringBuilder ids=new StringBuilder();for(ContentValues event:events){if(ids.length()>0)ids.append(',');ids.append(number(event,"_id"));}
-   String children="event_id IN ("+ids+")";
-   attendees=rows(resolver,CalendarContract.Attendees.CONTENT_URI,ATTENDEE_FIELDS,children,null,2048);
-   reminders=rows(resolver,CalendarContract.Reminders.CONTENT_URI,REMINDER_FIELDS,children,null,2048);
-   ContentValues selected=null;for(ContentValues row:events)if(number(row,"_id")==selectedId)selected=row;
-   if(selected==null||number(selected,"deleted")!=0)throw new IllegalStateException("Selected event changed");
-   if(scope.equals("occurrence")){
-    int matches=0;for(ContentValues event:events)if(number(event,"original_id")==id&&number(event,"originalInstanceTime")==instance&&number(event,"deleted")==0){if(number(event,"_id")!=selectedId)throw new IllegalStateException("Selected exception changed");matches++;}
-    if(matches>1||number(selected,"eventStatus")==CalendarContract.Events.STATUS_CANCELED)throw new IllegalStateException("Ambiguous or cancelled recurrence exception");
-   }
-   if(selectedBegin<0||selectedEnd<=selectedBegin)throw new IllegalArgumentException("Invalid selected occurrence");
-   android.net.Uri.Builder range=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(range,selectedBegin);ContentUris.appendId(range,selectedEnd);
-   String[] projection={CalendarContract.Instances.EVENT_ID,CalendarContract.Instances.BEGIN,CalendarContract.Instances.END};
-   try(Cursor row=resolver.query(range.build(),projection,"event_id=? AND begin=? AND end=?",new String[]{Long.toString(number(selected,"_id")),Long.toString(selectedBegin),Long.toString(selectedEnd)},null)){
-    if(row==null||!row.moveToFirst()||row.moveToNext())throw new IllegalStateException("Selected occurrence changed");
-   }
-   if(scope.equals("occurrence")&&selectedId==id&&selectedBegin!=instance)throw new IllegalStateException("Original occurrence identity changed");
-   String zone=selected.getAsString("eventTimezone");if(zone==null||zone.isEmpty())zone="UTC";
-   fields=new JSONObject().put("title",text(selected,"title")).put("description",text(selected,"description")).put("location",text(selected,"eventLocation")).put("start",instant(selectedBegin)).put("end",instant(selectedEnd)).put("timeZone",zone);
+  private ScopedDeletion(ContentResolver resolver,long selectedId,long calendarId,ContentValues selected,ContentValues calendar)throws Exception{
+   this.selectedId=selectedId;this.calendarId=calendarId;this.selected=selected;this.calendar=calendar;
+   parentId=selected.get("original_id")==null?selectedId:number(selected,"original_id");
+   parent=parentId==selectedId?selected:read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,parentId),EVENT_FIELDS);
+   familyWhere="calendar_id=? AND (_id=? OR original_id=?)";familyArgs=new String[]{Long.toString(calendarId),Long.toString(parentId),Long.toString(parentId)};
+   events=rows(resolver,CalendarContract.Events.CONTENT_URI,EVENT_FIELDS,familyWhere,familyArgs);
+   String children="event_id IN ("+ids(events)+")";
+   attendees=rows(resolver,CalendarContract.Attendees.CONTENT_URI,ATTENDEE_FIELDS,children,null);
+   reminders=rows(resolver,CalendarContract.Reminders.CONTENT_URI,REMINDER_FIELDS,children,null);
    sourceRevision=sourceDigest(calendar);
-   StringBuilder canonical=new StringBuilder();canonical.append(scope).append(':').append(id).append(':').append(instance).append(':').append(selectedId).append(':').append(selectedBegin).append(':').append(selectedEnd).append(';');append(canonical,CALENDAR,calendar);
+   StringBuilder canonical=new StringBuilder().append(selectedId).append(':').append(parentId).append(';');append(canonical,CALENDAR,calendar);
    for(ContentValues row:events)append(canonical,EVENT_FIELDS,row);for(ContentValues row:attendees)append(canonical,ATTENDEE_FIELDS,row);for(ContentValues row:reminders)append(canonical,REMINDER_FIELDS,row);
-   if(canonical.length()>2*1024*1024)throw new IllegalStateException("Calendar snapshot exceeds bounded review");revision=digest(canonical.toString());
+   bounded=events.size()<=MAXIMUM_ROWS&&attendees.size()<=MAXIMUM_ROWS&&reminders.size()<=MAXIMUM_ROWS&&canonical.length()<=MAXIMUM_REVISION_INPUT;
+   revision=digest(canonical.toString());
   }
-  private static String instant(long value){return java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd\'T\'HH:mm:ss.SSS\'Z\'",java.util.Locale.ROOT).withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.ofEpochMilli(value));}
-  private static String text(ContentValues row,String key){String value=row.getAsString(key);return value==null?"":value;}
-  private static java.util.List<ContentValues> rows(ContentResolver resolver,android.net.Uri uri,String[] fields,String where,String[] args,int maximum){
+  /** The selected live row of this calendar and its family, or null when that row is gone or moved. */
+  public static ScopedDeletion of(ContentResolver resolver,long selectedId,long calendarId)throws Exception{
+   if(selectedId<=0||calendarId<=0)throw new IllegalArgumentException();
+   ContentValues selected=read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,selectedId),EVENT_FIELDS),calendar=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId),CALENDAR);
+   if(selected==null||calendar==null||number(selected,"calendar_id")!=calendarId||number(selected,"deleted")!=0)return null;
+   return new ScopedDeletion(resolver,selectedId,calendarId,selected,calendar);
+  }
+  private static java.util.List<ContentValues> rows(ContentResolver resolver,android.net.Uri uri,String[] fields,String where,String[] args){
    java.util.List<ContentValues> result=new ArrayList<>();try(Cursor cursor=resolver.query(uri,fields,where,args,"_id ASC")){
-    if(cursor==null)throw new IllegalStateException("Provider snapshot unavailable");while(cursor.moveToNext()){
-     if(result.size()>=maximum)throw new IllegalStateException("Provider snapshot exceeds bounded review");ContentValues row=new ContentValues();
+    if(cursor==null)throw new IllegalStateException("Provider snapshot unavailable");while(result.size()<=MAXIMUM_ROWS&&cursor.moveToNext()){
+     ContentValues row=new ContentValues();
      for(int i=0;i<fields.length;i++){if(cursor.isNull(i))row.putNull(fields[i]);else if(cursor.getType(i)==Cursor.FIELD_TYPE_INTEGER)row.put(fields[i],cursor.getLong(i));else row.put(fields[i],cursor.getString(i));}result.add(row);
     }
    }return result;
   }
-  public boolean matchesVisible(JSONObject expected){return expected!=null&&expected.optString("title","").equals(fields.optString("title"))&&expected.optString("body","").equals(fields.optString("description"))&&expected.optString("location","").equals(fields.optString("location"))&&expected.optLong("begin",-1)==begin&&expected.optLong("end",-1)==end;}
-  public String account(){return text(calendar,"account_name");}
-  public boolean local(){return CalendarContract.ACCOUNT_TYPE_LOCAL.equals(calendar.getAsString("account_type"));}
-  public String organizer(){return text(parent,"organizer");}
-  public int attendeeCount(){return attendees.size();}
-  private boolean localExclusion(){return local()&&empty(parent,"_sync_id");}
-  private String excludedDates(){String date=java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmss'Z'",java.util.Locale.ROOT).withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.ofEpochMilli(originalInstanceTime));return empty(parent,"exdate")?date:parent.getAsString("exdate")+"\n"+date;}
-  private ContentValues exclusionUpdate(){
+  private static String ids(java.util.List<ContentValues> rows){StringBuilder ids=new StringBuilder();for(ContentValues row:rows){if(ids.length()>0)ids.append(',');ids.append(number(row,"_id"));}return ids.toString();}
+  private static String text(ContentValues row,String key){String value=row.getAsString(key);return value==null?"":value;}
+  private static boolean cancelled(ContentValues row){return number(row,"eventStatus")==CalendarContract.Events.STATUS_CANCELED;}
+  private boolean parentLive(){return parent!=null&&number(parent,"calendar_id")==calendarId&&number(parent,"deleted")==0;}
+  private ContentValues shape(){return parentLive()?parent:selected;}
+  private boolean exceptionRow(){return parentId!=selectedId;}
+  private boolean ruled(){return !empty(shape(),"rrule");}
+  private String sync(){return !empty(shape(),"_sync_id")?"SyncedSeries":CalendarContract.ACCOUNT_TYPE_LOCAL.equals(calendar.getAsString("account_type"))?"LocalUnsynced":"RemoteUnsynced";}
+  private long exceptionOriginal(){return exceptionRow()&&selected.get("originalInstanceTime")!=null?number(selected,"originalInstanceTime"):-1;}
+  private java.util.List<ContentValues> exceptionsAt(long start){java.util.List<ContentValues> found=new ArrayList<>();for(ContentValues row:events)if(number(row,"_id")!=parentId&&number(row,"original_id")==parentId&&row.get("originalInstanceTime")!=null&&number(row,"originalInstanceTime")==start&&number(row,"deleted")==0)found.add(row);return found;}
+  private String liveException(long start){
+   java.util.List<ContentValues> found=exceptionsAt(start);
+   if(found.isEmpty())return "NoLiveException";
+   if(found.size()==1&&number(found.get(0),"_id")==selectedId)return cancelled(found.get(0))?"CancelledSelection":"SelectedException";
+   return "OtherException";
+  }
+  public boolean writable(){return number(calendar,"calendar_access_level")>=CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR;}
+  public String recurrence(){return ruled()?"rule":!empty(shape(),"rdate")?"date-list":"one-off";}
+  public boolean matches(JSONObject expected){return expected.optString("title","").equals(text(selected,"title"))&&expected.optString("body","").equals(text(selected,"description"))&&expected.optString("location","").equals(text(selected,"eventLocation"));}
+  private static int instances(ContentResolver resolver,long begin,long end,String where,String[] args){
+   android.net.Uri.Builder range=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(range,begin);ContentUris.appendId(range,end);
+   int count=0;try(Cursor row=resolver.query(range.build(),new String[]{CalendarContract.Instances.EVENT_ID},where,args,null)){if(row==null)throw new IllegalStateException("Provider instances unavailable");while(count<2&&row.moveToNext())count++;}return count;
+  }
+  /** Scope evidence for the instance the owner selected at begin through end. */
+  public JSONObject evidence(ContentResolver resolver,long begin,long end)throws Exception{
+   boolean others=false;for(ContentValues row:events)others|=number(row,"_id")!=parentId&&number(row,"_id")!=selectedId;
+   int selection=begin<0||end<=begin?0:instances(resolver,begin,end,"event_id=? AND begin=? AND end=?",new String[]{Long.toString(selectedId),Long.toString(begin),Long.toString(end)});
+   return new JSONObject().put("selectedRow",exceptionRow()?"ExceptionRow":"ParentRow").put("sync",sync()).put("sourceCurrent",parentLive()).put("bounded",bounded).put("otherExceptions",others)
+    .put("liveException",liveException(exceptionRow()?exceptionOriginal():begin)).put("instances",selection).put("begin",begin).put("finish",end).put("exceptionOriginal",exceptionOriginal());
+  }
+  private String excludedDates(long start){String date=java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmss'Z'",java.util.Locale.ROOT).withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.ofEpochMilli(start));return empty(parent,"exdate")?date:parent.getAsString("exdate")+"\n"+date;}
+  private ContentValues exclusionUpdate(long start){
    ContentValues values=new ContentValues();
    for(String field:new String[]{"dtstart","dtend","allDay"}){if(parent.get(field)==null)values.putNull(field);else values.put(field,parent.getAsLong(field));}
    for(String field:new String[]{"duration","eventTimezone","rrule","rdate","exrule"}){if(parent.get(field)==null)values.putNull(field);else values.put(field,parent.getAsString(field));}
-   values.put("exdate",excludedDates());return values;
+   values.put("exdate",excludedDates(start));return values;
   }
-  public ArrayList<ContentProviderOperation> assertions(){
+  private ContentProviderOperation write(String change,long start){
+   if(!writable()||!parentLive()||!bounded)return null;
+   ContentValues cancel=new ContentValues();cancel.put(CalendarContract.Events.STATUS,CalendarContract.Events.STATUS_CANCELED);
+   switch(change){
+    case "DeleteRow":return start!=-1?null:ContentProviderOperation.newDelete(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,parentId)).withExpectedCount(1).build();
+    case "ExcludeOccurrence":return !"LocalUnsynced".equals(sync())||!ruled()||exceptionRow()||events.size()!=1||start<0||start%1000!=0?null:ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,parentId)).withValues(exclusionUpdate(start)).withExpectedCount(1).build();
+    case "CancelOccurrence":return !"SyncedSeries".equals(sync())||!ruled()||!exceptionRow()||exceptionOriginal()!=start||!"SelectedException".equals(liveException(start))?null:ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,selectedId)).withValues(cancel).withExpectedCount(1).build();
+    case "InsertCancelledOccurrence":cancel.put(CalendarContract.Events.ORIGINAL_INSTANCE_TIME,start);return !"SyncedSeries".equals(sync())||!ruled()||exceptionRow()||start<0||!exceptionsAt(start).isEmpty()?null:ContentProviderOperation.newInsert(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_EXCEPTION_URI,parentId)).withValues(cancel).build();
+    default:return null;
+   }
+  }
+  /** The family assertions and then the one change, or null when this family no longer admits it. Never a retry API. */
+  public ArrayList<ContentProviderOperation> batch(String change,long start){
+   ContentProviderOperation write=write(change,start);if(write==null)return null;
    ArrayList<ContentProviderOperation> operations=new ArrayList<>();operations.add(ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId)).withValues(calendar).withExpectedCount(1).build());
    addAssertions(operations,CalendarContract.Events.CONTENT_URI,events,familyWhere,familyArgs);
-   StringBuilder ids=new StringBuilder();for(ContentValues event:events){if(ids.length()>0)ids.append(',');ids.append(number(event,"_id"));}
-   String where="event_id IN ("+ids+")";addAssertions(operations,CalendarContract.Attendees.CONTENT_URI,attendees,where,null);addAssertions(operations,CalendarContract.Reminders.CONTENT_URI,reminders,where,null);return operations;
+   String where="event_id IN ("+ids(events)+")";addAssertions(operations,CalendarContract.Attendees.CONTENT_URI,attendees,where,null);addAssertions(operations,CalendarContract.Reminders.CONTENT_URI,reminders,where,null);
+   operations.add(write);return operations;
   }
-  /** Caller must persist its dispatch claim first. This method is never a retry API. */
-  public void dispatch(ContentResolver resolver)throws Exception{
-   ArrayList<ContentProviderOperation> operations=assertions();
-   if(!scope.equals("occurrence"))operations.add(ContentProviderOperation.newDelete(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withExpectedCount(1).build());
-   else if(localExclusion()){
-    // AOSP's unsynced-exception cache expansion omits the recurrence family.
-    // For an unmodified local series, exclude this exact original UTC occurrence
-    // on the parent. Supply its unchanged recurrence fields so expansion retains
-    // duration and every other occurrence. Existing exceptions require editor review.
-    operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withValues(exclusionUpdate()).withExpectedCount(1).build());
-   }else{
-    ContentValues exception=null;for(ContentValues event:events)if(number(event,"original_id")==eventId&&number(event,"originalInstanceTime")==originalInstanceTime&&number(event,"deleted")==0)exception=event;
-    ContentValues cancelled=new ContentValues();cancelled.put(CalendarContract.Events.STATUS,CalendarContract.Events.STATUS_CANCELED);
-    if(exception!=null)operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,number(exception,"_id"))).withValues(cancelled).withExpectedCount(1).build());
-    else{cancelled.put(CalendarContract.Events.ORIGINAL_INSTANCE_TIME,originalInstanceTime);operations.add(ContentProviderOperation.newInsert(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_EXCEPTION_URI,eventId)).withValues(cancelled).build());}
-   }
-   resolver.applyBatch(CalendarContract.AUTHORITY,operations);
-  }
-  /** Local-provider evidence only; it does not claim a remote organizer accepted a change. */
-  public boolean deletionVerified(ContentResolver resolver)throws Exception{
-   ContentValues current=read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId),EVENT_FIELDS);
-   if(!scope.equals("occurrence"))return current==null||number(current,"deleted")==1;
-   if(current==null||number(current,"deleted")!=0||number(current,"calendar_id")!=calendarId)return false;
-   if(localExclusion()){
-    if(!excludedDates().equals(current.getAsString("exdate")))return false;
-    android.net.Uri.Builder range=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(range,begin);ContentUris.appendId(range,end);
-    try(Cursor row=resolver.query(range.build(),new String[]{CalendarContract.Instances.EVENT_ID},"event_id=? AND begin=? AND end=?",new String[]{Long.toString(eventId),Long.toString(begin),Long.toString(end)},null)){return row!=null&&!row.moveToFirst();}
-   }
-   java.util.List<ContentValues> exceptions=rows(resolver,CalendarContract.Events.CONTENT_URI,EVENT_FIELDS,"original_id=? AND originalInstanceTime=? AND deleted=0",new String[]{Long.toString(eventId),Long.toString(originalInstanceTime)},2);
-   if(exceptions.size()!=1||number(exceptions.get(0),"eventStatus")!=CalendarContract.Events.STATUS_CANCELED)return false;
-   android.net.Uri.Builder range=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(range,begin);ContentUris.appendId(range,end);
-   try(Cursor row=resolver.query(range.build(),new String[]{CalendarContract.Instances.EVENT_ID},"(event_id=? OR event_id=?) AND begin=?",new String[]{Long.toString(eventId),Long.toString(number(exceptions.get(0),"_id")),Long.toString(begin)},null)){return row!=null&&!row.moveToFirst();}
+  private boolean instanceAt(ContentResolver resolver,long at){return instances(resolver,at,at+1,"(event_id=? OR event_id=?) AND begin=?",new String[]{Long.toString(parentId),Long.toString(selectedId),Long.toString(at)})>0;}
+  /** Local-provider evidence of what the change left; it does not claim a remote organizer accepted it. */
+  public JSONObject readback(ContentResolver resolver,String change,long start)throws Exception{
+   ContentValues after=read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,parentId),EVENT_FIELDS);
+   boolean live=after!=null&&number(after,"deleted")==0,occurrence=!"DeleteRow".equals(change);
+   int cancelledAt=0;if(occurrence)for(ContentValues row:rows(resolver,CalendarContract.Events.CONTENT_URI,EVENT_FIELDS,"original_id=? AND originalInstanceTime=? AND deleted=0",new String[]{Long.toString(parentId),Long.toString(start)}))if(cancelled(row))cancelledAt++;
+   boolean remains=occurrence?instanceAt(resolver,start)||exceptionRow()&&instanceAt(resolver,number(selected,"dtstart")):live;
+   return new JSONObject().put("parentAfter",live?"ParentLive":"ParentGone").put("fieldsMatch",false).put("exclusionExact","ExcludeOccurrence".equals(change)&&live&&excludedDates(start).equals(after.getAsString("exdate")))
+    .put("cancelledAtStart",cancelledAt).put("instanceRemains",remains);
   }
   private static void addAssertions(ArrayList<ContentProviderOperation> operations,android.net.Uri uri,java.util.List<ContentValues> rows,String where,String[] args){
    operations.add(ContentProviderOperation.newAssertQuery(uri).withSelection(where,args).withExpectedCount(rows.size()).build());
    for(ContentValues row:rows)operations.add(ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(uri,number(row,"_id"))).withValues(row).withExpectedCount(1).build());
   }
  }
- public static ScopedDeletion selectScopedDeletion(ContentResolver resolver,long selectedId,long calendarId,String requestedScope,long begin,long end)throws Exception{
-  ContentValues selected=read(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,selectedId),ScopedDeletion.EVENT_FIELDS);
-  if(selected==null||number(selected,"calendar_id")!=calendarId||number(selected,"deleted")!=0)throw new IllegalStateException("Selected event changed");
-  long parentId=selected.get("original_id")==null?selectedId:number(selected,"original_id");
-  boolean recurring=parentId!=selectedId||!empty(selected,"rrule")||!empty(selected,"rdate");
-  String scope=requestedScope==null?(recurring?"occurrence":"event"):requestedScope;
-  long instance=scope.equals("occurrence")?(parentId==selectedId?begin:number(selected,"originalInstanceTime")):-1;
-  return new ScopedDeletion(resolver,parentId,calendarId,scope,instance,selectedId,begin,end);
- }
- public static ScopedDeletion readScopedDeletion(ContentResolver resolver,long eventId,long calendarId,String scope,long originalInstanceTime,long selectedEventId,long begin,long end)throws Exception{return new ScopedDeletion(resolver,eventId,calendarId,scope,originalInstanceTime,selectedEventId,begin,end);}
 
 }

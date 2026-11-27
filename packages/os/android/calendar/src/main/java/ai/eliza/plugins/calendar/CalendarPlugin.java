@@ -1,6 +1,7 @@
 package ai.eliza.plugins.calendar;
 
 import android.Manifest;
+import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.ContentProviderOperation;
@@ -136,6 +137,32 @@ public abstract class CalendarPlugin extends Plugin {
     }catch(Exception unavailable){if(deleteDialog==ownedDialog[0]){deleteDialog=null;deleting.set(false);}if(delivered.compareAndSet(false,true))c.resolve(outcome[0]!=null?outcome[0]:statusValue("unavailable"));}
    });
   }catch(Exception unavailable){deleting.set(false);status(c,"unavailable");}
+ }
+ /** Scope evidence for the row the owner selected, read while they review it. The bridge plans the scope; nothing is written. */
+ @PluginMethod public void inspectDeletion(PluginCall c){
+  if(!allowed()){status(c,"permission-required");return;}if(!workflowForeground()||!unlocked()){status(c,"unavailable");return;}
+  try{
+   String scope=c.getString("scope");JSObject expected=c.getObject("expected");
+   if(scope!=null&&!scope.matches("event|occurrence|series")||expected==null)throw new IllegalArgumentException();
+   CalendarEventGuard.ScopedDeletion snapshot=CalendarEventGuard.ScopedDeletion.of(getContext().getContentResolver(),Long.parseLong(c.getString("id","")),Long.parseLong(c.getString("calendarId","")));
+   if(snapshot==null||!snapshot.matches(expected)){status(c,"conflict");return;}
+   JSObject value=statusValue("ready");value.put("recurrence",snapshot.recurrence());value.put("writable",snapshot.writable());value.put("revision",snapshot.revision);value.put("sourceRevision",snapshot.sourceRevision);
+   value.put("evidence",snapshot.evidence(getContext().getContentResolver(),expected.getLong("begin"),expected.getLong("end")));c.resolve(value);
+  }catch(IllegalArgumentException|org.json.JSONException invalid){status(c,"conflict");}catch(Exception unavailable){status(c,"unavailable");}
+ }
+ /** Writes one staged deletion at once, after the bridge's Undo window: only while the reviewed revision holds, in one batch that asserts the family, and never replayed. */
+ @PluginMethod public synchronized void dispatchDeletion(PluginCall c){
+  if(!allowed()){status(c,"permission-required");return;}
+  boolean dispatched=false;
+  try{
+   String change=c.getString("change","");Long start=c.getLong("originalStart");if(start==null)throw new IllegalArgumentException();
+   ContentResolver resolver=getContext().getContentResolver();
+   CalendarEventGuard.ScopedDeletion current=CalendarEventGuard.ScopedDeletion.of(resolver,Long.parseLong(c.getString("id","")),Long.parseLong(c.getString("calendarId","")));
+   ArrayList<ContentProviderOperation> operations=current==null||!current.revision.equals(c.getString("revision",""))||!current.sourceRevision.equals(c.getString("sourceRevision",""))?null:current.batch(change,start);
+   if(operations==null){status(c,"conflict");return;}
+   dispatched=true;resolver.applyBatch(CalendarContract.AUTHORITY,operations);
+   JSObject value=statusValue("committed");value.put("readback",current.readback(resolver,change,start));c.resolve(value);
+  }catch(android.content.OperationApplicationException conflict){status(c,"conflict");}catch(Exception failure){status(c,dispatched?"unknown":"conflict");}
  }
  @Override protected void handleOnPause(){super.handleOnPause();if(deleteDialog!=null)deleteDialog.dismiss();}
  @Override protected void handleOnDestroy(){if(deleteDialog!=null)deleteDialog.dismiss();super.handleOnDestroy();}
