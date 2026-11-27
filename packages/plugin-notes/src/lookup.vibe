@@ -1,6 +1,4 @@
 // spec/notes/records.md, "The agent reads and changes Notes only for the owner, and changes the note the model picked"
-import { extractUserText, incomingMessagePersistenceSnapshot, unwrapUserMessageText, type Memory } from "@elizaos/core"
-import { ownerWordsSource } from "../gen/notes__records.effect.vibe"
 import { authoredNoteText } from "@elizaos/plugin-notes-client"
 import { reconstructNoteContent, type StickyNote } from "@elizaos/plugin-notes-client"
 
@@ -68,14 +66,4 @@ export function noteContentKey(note: StickyNote): string {
 
 export function notesNamedIn(text: string, notes: readonly StickyNote[]): StickyNote[] {
   return text === "" ? [] : notes.filter((note) => titleAppearsAsNamedPhrase(text, note.title))
-}
-
-export effect function ownerRequestText(message: Memory): string!! {
-  const bound = Effect.try(() => incomingMessagePersistenceSnapshot(message)) catch () => null
-  if (bound === null) return ""
-  const source = ownerWordsSource(bound !== undefined)
-  switch (source) {
-    case "BoundRequestWords": return bound === undefined ? "" : unwrapUserMessageText(bound)
-    case "MessageWords": return extractUserText(unwrapUserMessageText(message))
-  }
 }

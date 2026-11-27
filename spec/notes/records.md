@@ -174,10 +174,7 @@ owner routes. The actions are offered on every owner turn, in the general
 context as well as the Notes one, so a request about a note needs no
 earlier Notes turn. When no saved note has the title the owner asked for,
 the saved-notes context tells the agent to ask which note to use before
-citing another one. The named-notes context reads the words the owner typed
-in the request the host bound to this turn, never the text a route wrapped
-around it; with no bound request, it reads the message's own text with its
-envelopes removed. The model picks the note to edit or delete from the
+citing another one. The model picks the note to edit or delete from the
 saved-notes index, whatever words the owner used for it, and an exact ID
 edits or deletes that note when no other distinct note has its title, case
 and spacing aside. When another one does, the model's pick is a guess: the
@@ -195,14 +192,11 @@ confirm and deletes nothing. Content that matches distinct notes asks the
 owner which one, and nothing is changed.
 
 ```quint
-type OwnerWords = BoundRequestWords | MessageWords
-pure def ownerWordsSource(requestBound: bool): OwnerWords = if (requestBound) BoundRequestWords else MessageWords
 pure def notesAccessAllowed(isOwner: bool): bool = isOwner
 type NotesTurnContext = GeneralContext | NotesContext | AnotherContext
 pure def notesOffered(isOwner: bool, context: NotesTurnContext): bool = notesAccessAllowed(isOwner) and context != AnotherContext
 pure def lawNotesNeedNoEarlierNotesTurn(isOwner: bool): bool = notesOffered(isOwner, GeneralContext) == notesOffered(isOwner, NotesContext)
 pure def deleteByContentAllowed(isOwner: bool, givesExactTitle: bool): bool = notesAccessAllowed(isOwner) and givesExactTitle
-pure def lawBoundRequestWins(requestBound: bool): bool = requestBound implies ownerWordsSource(requestBound) == BoundRequestWords
 pure def lawOnlyTheOwnerReachesNotes(givesExactTitle: bool): bool = not(deleteByContentAllowed(false, givesExactTitle))
 pure def lawAnInexactMatchIsNotDeleted(isOwner: bool): bool = not(deleteByContentAllowed(isOwner, false))
 pure def pickedNoteChanged(isOwner: bool, titleShared: bool, ownerChoseEarlier: bool): bool =

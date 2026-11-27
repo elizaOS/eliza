@@ -40,14 +40,24 @@ function screenShows(message: Memory, view: DeclaredView): boolean {
   return screenCanShow(stated !== undefined, [...stated ?? []], view.viewId)
 }
 
-function resolvedNote(options: HandlerOptions | undefined): string | undefined {
-  const reads = options?.actionContext?.previousResults.filter((result) => result.data?.actionName === "NOTES_GET") ?? []
-  if (reads.length === 0 || reads.some((result) => result.data?.code === "NOTES_AMBIGUOUS_NOTE")) return undefined
+function listedIds(results: readonly ActionResult[]): Set<string> {
+  return new Set(results.filter((result) => result.success && result.data?.actionName === "NOTES_LIST").flatMap((result) => {
+    const notes: unknown = result.data?.notes
+    return Array.isArray(notes) ? notes.flatMap((note: unknown) =>
+      typeof note === "object" && note !== null && "id" in note && typeof note.id === "string" && noteIdPattern.test(note.id) ? [note.id] : []) : []
+  }))
+}
+
+function resolvedNote(options: HandlerOptions | undefined, query: string | undefined): string | undefined {
+  const results = options?.actionContext?.previousResults ?? []
+  const reads = results.filter((result) => result.data?.actionName === "NOTES_GET")
+  if (reads.some((result) => result.data?.code === "NOTES_AMBIGUOUS_NOTE")) return undefined
   const ids = [...new Set(reads.flatMap((result) => {
     const id = result.data?.noteId
     return result.success && typeof id === "string" && noteIdPattern.test(id) ? [id] : []
   }))]
-  return ids.length === 1 ? ids[0] : undefined
+  if (ids.length > 0) return ids.length === 1 ? ids[0] : undefined
+  return query !== undefined && listedIds(results).has(query) ? query : undefined
 }
 
 function sameTitle(a: string, b: string): boolean {
@@ -108,7 +118,7 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   if (exact && !offersEditor(message, clientId, true, true)) return refused("This turn cannot open a saved Notes editor.")
   if (exact && query === undefined) return coached("Name the saved note to open with note: the content argument given to NOTES_GET, or the title of the note this turn created with NOTES_CREATE.")
   const created = exact ? createdNote(options, query) : undefined
-  const noteId = exact ? created ?? resolvedNote(options) : undefined
+  const noteId = exact ? created ?? resolvedNote(options, query) : undefined
   if (exact && noteId === undefined) return coached("Read the exact current note with NOTES_GET first. If several notes match, ask which one.")
   if (noteId !== undefined && query !== undefined) {
     const confirmed = tryPromise(() => created === undefined ? noteIsCurrent(runtime, noteId, query) : noteIsHeld(runtime, noteId)) catch () => false
@@ -172,7 +182,7 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
     parameters: [
       { name: "action", description: "", required: false, schema: { type: "string", enum: ["show"] } },
       { name: "view", description: "View id, label, or alias.", required: true, schema: { type: "string" } },
-      { name: "note", description: "For view=notes-editor only: exact content arg or noteId given to NOTES_GET this turn, or title created by NOTES_CREATE this turn.", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
+      { name: "note", description: "For view=notes-editor only: exact content arg or noteId given to NOTES_GET this turn, a noteId NOTES_LIST returned this turn, or title created by NOTES_CREATE this turn.", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
     ],
     validate: async (runtime, message) => {
       const turn = deviceTurnFor(runtime, message)
