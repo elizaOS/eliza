@@ -3,7 +3,7 @@
 A grant code gives an organization a paid plan for a fixed time, or for
 life, without a payment. The operator mints codes with
 `elizaos-cloud grants mint` (`spec/cloud/operator.md`); a person redeems one
-with `POST /api/v1/subscription/redeem` `{code, idempotencyKey}` and gets
+with `POST /api/v1/subscription/redeem` `{code, idempotencyKey, expectedAccountId?}` and gets
 `{replayed, grant, entitlement}`. The grant uses the billing snapshot's
 grant fields. The entitlement contains the effective plan summary as
 `{plan: {key, source, effectiveUntil}}`. The idempotency key has 8 to 128 ASCII
@@ -19,6 +19,10 @@ Sources are develop `packages/cloud/shared/src/db/repositories/subscription-gran
 `packages/cloud/scripts/admin/mint-subscription-grant-codes.ts`. Downstream,
 one product redeems codes from its plan screen and reads the grant in the
 billing snapshot; another vendors the call and keeps it switched off.
+
+When a request includes an expected account ID, the authenticated account
+must match. A mismatch returns `403 access_denied` before the shell looks
+up the code. Requests may still omit the expected account ID.
 
 The shell redeems in one store transaction. It locks the organization, the
 account, and the code row in that order. It reads `now` from the store's
