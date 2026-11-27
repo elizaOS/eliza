@@ -665,9 +665,12 @@ sentence the model gives when asked again (below): one whole sentence of the
 reply's prose, given once, that echoes no host text. When every failure put
 to the model is reported so, and nothing else is unreported or unobserved,
 the turn makes no further call; such a line is the model's own judgment, as
-the sentence of a second answer is. A sentence that ends on a stop after a
-single letter or a short capitalised word (`p.m.`, `Dr.`), or that is
-followed by a lowercase word or a digit, has not ended there. An answer to
+the sentence of a second answer is. A sentence that ends on a stop after one of a
+closed set of abbreviations (the titles `Dr.`, `Mr.`, `Mrs.`, `Ms.`, `St.`,
+`Jr.`, `Sr.`, `Prof.` and the initialisms `p.m.`, `a.m.`, `U.S.`, `e.g.`,
+`i.e.`) has not ended there; every other stop followed by a space ends it.
+A reply any sentence of which echoes a failed step's text written to the
+model reports nothing. An answer to
 the call that holds a JSON object anywhere is read as that object, and one
 that starts such an object it cannot finish is no answer at all, so neither
 is ever delivered as written; the schema is asked for only when there are
@@ -721,11 +724,12 @@ sentence's opening clause before a comma, or words from its middle), spans
 more than one sentence, is a sentence an earlier point already gave, or
 echoes host text reports nothing, and one point's sentence never reports
 another. A sentence echoes host text when it shares a run of five words with
-a host note, with the host's own words of any point's note, or with that
-point's text written to the model (every field of its steps' results that no
-action marked for the owner: unverified owner text, error, result text and
-the plain words of its data), or holds a token of that text written like an
-identifier (six or more characters with a
+a host note, with the host's own words of any point's note, or with the text
+written to the model of any failed step of the turn (every field of its
+result that no action marked for the owner: unverified owner text, error,
+result text and the plain words of its data), or holds a token of that text
+written like an identifier, unless that run or token is also in the person's
+own message (six or more characters with a
 capital past the first, a digit, an underscore or an inner dot), such as a
 raw error code or an action's name; a capitalised word, a phone number or a
 product name of the person's own passes. A failure or omission the model

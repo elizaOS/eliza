@@ -249,6 +249,16 @@ module node {
     handler: async () => ({ success: false, userFacingText: "The booking service is down.", error: refusedConnection }),
   }
 
+  const bookFor: Action = {
+    name: "BOOK_FOR", description: "Books a table at Nopa for the guest the owner names.",
+    parameters: [{ name: "guest", required: true, description: "The guest, as the owner wrote them.", schema: { type: "string" } }],
+    tags: ["capability:write"], validate: async () => true,
+    handler: async (_runtime, _message, _state, options) => {
+      const guest = parameter(options, "guest")
+      return { success: false, text: `Booking at Nopa for ${guest} did not work.`, data: { guest } }
+    },
+  }
+
   const holdSeat: Action = {
     name: "HOLD_SEAT", description: "Holds a seat at the place the owner names.",
     parameters: [{ name: "place", required: true, description: "The place.", schema: { type: "string" } }],
@@ -307,7 +317,7 @@ module node {
     actions: [
       fixtureWrite("SEND_TEXT", "message.send", "message.recipient", "to", (id) => `The text to ${id} did not send.`),
       fixtureWrite("UPDATE_EVENT", "calendar.event.update", "calendar.event", "event", (id) => `The ${id} event did not change.`),
-      showResult, createChecklist, scheduleEvent, proposeText, bookTable, holdSeat, bookRoom,
+      showResult, createChecklist, scheduleEvent, proposeText, bookTable, holdSeat, bookRoom, bookFor,
     ],
   }
 
@@ -1159,7 +1169,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const agent = try startInProcess({
     launch: {
       backend: { kind: "cloud", origin: cloud.origin }, callerRole: "owner",
-      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT", "UPDATE_EVENT", "CREATE_CHECKLIST", "SCHEDULE_EVENT", "SHOW_RESULT", "PROPOSE_TEXT", "BOOK_TABLE", "HOLD_SEAT", "BOOK_ROOM"],
+      load: [fixtureApp.name], allowed: ["REPLY", "IGNORE", "NONE", "SEND_TEXT", "UPDATE_EVENT", "CREATE_CHECKLIST", "SCHEDULE_EVENT", "SHOW_RESULT", "PROPOSE_TEXT", "BOOK_TABLE", "HOLD_SEAT", "BOOK_ROOM", "BOOK_FOR"],
     },
     frame: { credential: { version: 1, value: deviceKey } }, modules: builtinModuleFactories, bundled: new Map([[fixtureApp.name, fixtureApp]]),
   })
@@ -1234,6 +1244,8 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const falseClause = try turn(bothAsked)
   try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice")), text(`I couldn't text Alice: it didn't go through.\n[reported 1: "I couldn't text Alice: it didn't go through."]`)) })
   const toldFirst = try turn("Text Alice that I'm running late.")
+  try Effect.sync(() => { failNext("Alice"); cloud.script(toolCalls("", textTo("Alice"), { name: "BOOK_TABLE", arguments: { place: "Nopa" } }), text("Both done."), settle("The text to Alice failed with ECONNREFUSED. I couldn't book Nopa.", [1, "The text to Alice failed with ECONNREFUSED."], [2, "I couldn't book Nopa."])) })
+  const otherStepsError = try turn("Text Alice that I'm late and book Nopa.")
   try Effect.sync(() => { failNext("Alice", "standup"); cloud.script(textAndStandup(), text(`I couldn't text Alice. Your standup moved.\n[reported 1: "I couldn't text Alice."]`), text("I couldn't text Alice. Your standup moved.")) })
   const toldFirstPartly = try turn(bothAsked)
   try Effect.sync(() => { failNext("Alice"); cloud.script(textAndTime(), text("Both done."), text(`[answer] Alice has your text. 25:70 isn't a real time, so nothing was added.\n[reported 2: "25:70 isn't a real time, so nothing was added."]`)) })
@@ -1295,14 +1307,25 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
   const mixedEchoedFirst = try booking("Mixed", () => [text(`It failed with ECONNREFUSED.\n[reported 1: "It failed with ECONNREFUSED."]`), bookedOnce()])
   const jsonAfterWords = try booking("Refused", () => [bookedOnce(), text(`Sure: ${JSON.stringify({ reply: "I couldn't book Nopa.", told: [{ point: 1, sentence: "I couldn't book Nopa." }] })}`)])
   const jsonCutShort = try booking("Refused", () => [bookedOnce(), text(`Sure: {"reply": "I couldn't book`)])
+  const runOnSentence = try booking("Refused", () => [bookedOnce(), settle("I couldn't reach Bob. Your table is booked.", [1, "I couldn't reach Bob. Your table is booked."])])
+  const runOnSentenceFirst = try booking("Refused", () => [text(`I couldn't book Nopa for Bob. Your table is booked.\n[reported 1: "I couldn't book Nopa for Bob. Your table is booked."]`), bookedOnce()])
+  const otherSentenceEchoes = try booking("Refused", () => [bookedOnce(), settle("I couldn't book Nopa. It failed with ECONNREFUSED.", [1, "I couldn't book Nopa."])])
+  const guestBooking = effect (guest: string, sentence: string) => {
+    try Effect.sync(() => cloud.script(toolCalls("", { name: "BOOK_FOR", arguments: { guest } }), text("Booked."), settle(sentence, [1, sentence])))
+    const sent = replyOf(try send(agent, id, { text: `Book Nopa for ${guest}.` }))
+    return { text: sent.text, untold: sent.actionResults.filter(({ data }) => data.untold === true).map(({ action }) => action) }
+  }
+  const ownersNumber = try guestBooking("+14155550100", "I couldn't book Nopa for +14155550100.")
+  const ownersDevice = try guestBooking("my iPhone15", "I couldn't book Nopa from your iPhone15.")
+  const ownersEmail = try guestBooking("alice@example.com", "I couldn't book Nopa for alice@example.com.")
   const bookedBesideCard = try booking("Refused", () => [text("Booked, and here are the cafes."), text("Booked, and here are the cafes.")], { name: "SHOW_RESULT", arguments: { which: "cafes" } })
   const modelWords = [untitledChecklist, unrealTime, "Write each as", "Ask the owner", "One of those times is not a real date"]
   const ownerHeard = [untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut, timeTold, unwordedUnreported, unwordedSettled].map(({ text: said }) => modelWords.filter((words) => said.includes(words)))
 
   try Effect.try(() => assert.deepStrictEqual({
-    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, toldFirstPartly, besideACard, besideAProposal, declaredBesideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
+    bobFirst, aliceFirst, retried, events, told, unanswered, bothClaimed, sentClaimed, prefixQuoted, oneOfTwoQuoted, unnumberedOfTwo, bothQuoted, bothQuotedOddly, sameQuoteTwice, spanningQuote, unwordedUnreported, unwordedSettled, unwordedQuoted, shortTold, notJson, noReplyField, phoneNumberPasses, falseClause, toldFirst, otherStepsError, toldFirstPartly, besideACard, besideAProposal, declaredBesideAProposal, sentThenCue, unshownNoted, afterWorkNote: sentThenCueNote.includes("The tool results above are what this turn did."),
     untitled, timeAskedTwice, timeBlankAgain, timeFaultAgain, timeCut: timeCut.text === cutOffReply, timeTold, ownerHeard,
-    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, titled, mixedEchoed, mixedEchoedFirst, jsonAfterWords, jsonCutShort, bookedBesideCard,
+    refusedToldOwn, notStartedToldOwn, refusedToldInReply, bookedUntold, bookedBlank, bookedFault, errorEchoed, echoedFirst, notStartedEchoed, saturdayPasses, abbreviated, titled, mixedEchoed, mixedEchoedFirst, jsonAfterWords, jsonCutShort, runOnSentence, runOnSentenceFirst, otherSentenceEchoes, ownersNumber, ownersDevice, ownersEmail, bookedBesideCard,
   }, {
     bobFirst: { text: onlyBob, calls: 3, laterRunNote: false },
     aliceFirst: { text: onlyBob, calls: 4, laterRunNote: false },
@@ -1327,6 +1350,7 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     phoneNumberPasses: { text: "The text to +1 415 555 0100 didn't send.", calls: 3, laterRunNote: false },
     falseClause: { text: "The text to Alice didn't send, but your standup is done.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     toldFirst: { text: "I couldn't text Alice: it didn't go through.", calls: 2, laterRunNote: false },
+    otherStepsError: { text: "The text to Alice did not send.", calls: 3, laterRunNote: false, untold: ["BOOK_TABLE"] },
     toldFirstPartly: { text: "The text to Alice did not send.\n\nThe standup event did not change.", calls: 3, laterRunNote: false },
     unwordedQuoted: { text: "The text to Alice did not send.\n\n25:70 isn't a real time, so nothing was added.", calls: 3, laterRunNote: false },
     besideACard: { text: `${nearestCafes}\n\nThe text to Alice did not send.`, calls: 3, laterRunNote: false },
@@ -1358,6 +1382,12 @@ it.live(`A failure on one recipient or event stays reported beside a success on 
     mixedEchoedFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_ROOM"], history: ["BOOK_ROOM"], failureKind: undefined, booked: false, hostText: [] },
     jsonAfterWords: { text: "I couldn't book Nopa.", stored: "I couldn't book Nopa.", calls: 3, untold: [], history: [], failureKind: undefined, booked: false, hostText: [] },
     jsonCutShort: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    runOnSentence: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    runOnSentenceFirst: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    otherSentenceEchoes: { text: "", stored: "", calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
+    ownersNumber: { text: "I couldn't book Nopa for +14155550100.", untold: [] },
+    ownersDevice: { text: "I couldn't book Nopa from your iPhone15.", untold: [] },
+    ownersEmail: { text: "I couldn't book Nopa for alice@example.com.", untold: [] },
     bookedBesideCard: { text: nearestCafes, stored: nearestCafes, calls: 3, untold: ["BOOK_TABLE"], history: ["BOOK_TABLE"], failureKind: undefined, booked: false, hostText: [] },
   }))
 }, 120_000)

@@ -347,21 +347,22 @@ async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded:
     const report = planned.firstReports.get(at + 1)
     return report?.span === "OneSentence" && planned.reply.includes(report.sentence)
   })
-  const asked = omitted || considered.some((notice) => !toldFirst(notice)) ? considered : []
+  const asked = omitted || planned.firstEchoes || considered.some((notice) => !toldFirst(notice)) ? considered : []
   const ownerWords = (notice: FailureNotice) => notice.owner !== undefined
   const points: readonly Point[] = [
     ...asked.map((notice) => ({ note: failureNote(notice), toTheModel: notice.toTheModel, needed: !notice.answerableLater })),
     ...(omitted ? [{ note: omittedNote, toTheModel: [], needed: true }] : []),
   ]
   const wrong = misgrounded(planned.reply)
-  const { revised, stoodBy, reports } = asksAgain(points.length > 0, wrong !== undefined, planned.cutOff)
+  const { revised, stoodBy, echoes, reports } = asksAgain(points.length > 0, wrong !== undefined, planned.cutOff)
     ? await planned.reask(points, [...(points.length === 0 ? [] : [reportNote]), ...(wrong === undefined ? [] : [wrong.note])])
-    : { revised: undefined, stoodBy: false, reports: new Map<number, Report>() }
+    : { revised: undefined, stoodBy: false, echoes: false, reports: new Map<number, Report>() }
   const source = replySource(points.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)
   const modelsReply = !planned.cutOff && !(source === "FixedWords" && wrong !== undefined)
-  const reportedAt = (point: number) => modelsReply && reportsIt(source === "RevisedReply", stoodBy, reports.get(point)?.span ?? "NoQuote")
+  const echoed = source === "RevisedReply" ? echoes : planned.firstEchoes
+  const reportedAt = (point: number) => modelsReply && !echoed && reportsIt(source === "RevisedReply", stoodBy, reports.get(point)?.span ?? "NoQuote")
   const pointOf = (notice: FailureNotice) => asked.indexOf(notice) + 1
-  const reported = (notice: FailureNotice) => asked.includes(notice) ? reportedAt(pointOf(notice)) : source === "ModelReply" && modelsReply && toldFirst(notice)
+  const reported = (notice: FailureNotice) => asked.includes(notice) ? reportedAt(pointOf(notice)) : source === "ModelReply" && modelsReply && !planned.firstEchoes && toldFirst(notice)
   const answered = (notice: FailureNotice) => failureAnswered(modelsReply, reported(notice), notice.answerableLater, stoodBy)
   const ownersWords = planned.notices
     .filter((notice) => reachesTheOwner(ownerWords(notice), followsTheReply(answered(notice), considered.includes(notice), notice.safetyCopy)))
