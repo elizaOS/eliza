@@ -167,11 +167,20 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
       assert.notStrictEqual(stored, code)
     })
 
-    const redeem = (offered: string, idempotencyKey: string, credential = token) => cloud.call("/api/v1/subscription/redeem", credential, {
-      headers: { "idempotency-key": idempotencyKey }, json: { code: offered, idempotencyKey }
+    const redeem = (offered: string, idempotencyKey: string, credential = token, expectedAccountId?: string) => cloud.call("/api/v1/subscription/redeem", credential, {
+      headers: { "idempotency-key": idempotencyKey }, json: { code: offered, idempotencyKey, expectedAccountId }
     })
     const formatted = `\u00a0${code.slice(0, 8).toLowerCase()}-${code.slice(8).toLowerCase()}\u00a0`
-    const issued = try redeem(formatted, "member-request")
+    const wrongAccount = try redeem(formatted, "member-request", peerToken, "member")
+    const refusedCode = Schema.Struct({ error: Schema.String })
+    const wrongAccountRefusal = try Schema.decodeUnknownEffect(refusedCode)(wrongAccount.body)
+    const memberBefore = try snapshotFromResponse((try cloud.call("/api/v1/billing/limits", token)).body)
+    const peerBefore = try snapshotFromResponse((try cloud.call("/api/v1/billing/limits", peerToken)).body)
+    try check(() => assert.deepStrictEqual(
+      [wrongAccount.status, wrongAccountRefusal.error, memberBefore.grant, peerBefore.grant],
+      [403, "access_denied", null, null]
+    ))
+    const issued = try redeem(formatted, "member-request", token, "member")
     const original = try redeemResultFromResponse(issued.body, now)
     if (original.kind !== "redeemed") {
       try check(() => assert.fail("a lifetime grant should be active immediately"))
@@ -189,7 +198,6 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
     const reusedKey = try redeem(secondCode, "member-request", otherSession)
     const heldFamily = try redeem(secondCode, "member-new-key", otherSession)
     const paidPlan = try redeem(secondCode, "payer-second", payer)
-    const refusedCode = Schema.Struct({ error: Schema.String })
     const refusals: Array<[number, string]> = []
     for (const answer of [exhausted, reusedKey, heldFamily, paidPlan]) {
       const { error } = try Schema.decodeUnknownEffect(refusedCode)(answer.body)
