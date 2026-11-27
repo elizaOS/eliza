@@ -269,8 +269,18 @@ effect function complete(request: Request, url: URL, env: GoogleEnv, db: Client,
   const config = try googleConfig(env)
   const proof = flow(request)
   const code = url.searchParams.get("code")
-  if (!proof || !code || code.length > 2048 || proof.state !== url.searchParams.get("state") || url.searchParams.has("error")) throw new AuthorizationFailed()
+  const states = url.searchParams.getAll("state")
+  if (!proof || states.length !== 1 || proof.state !== states[0]) throw new AuthorizationFailed()
   const stateHash = hex(try sha256(proof.state))
+  const errors = url.searchParams.getAll("error")
+  if (code === null && errors.length === 1 && errors[0] === "access_denied") {
+    const cancelled = try forAccount(db, account, query(db,
+      "DELETE FROM cloud_google_authorizations WHERE account_id = $1 AND state_hash = $2 AND expires_at > now()",
+      [account, stateHash]))
+    if (!cancelled.rowCount) throw new AuthorizationFailed()
+    return
+  }
+  if (!code || code.length > 2048 || errors.length > 0) throw new AuthorizationFailed()
   const { rows } = try query<Authorization>(db, `
     SELECT o.expected_email, o.mail, o.calendar, o.send_mail, o.trash_mail, o.write_calendar, p.provider, p.provider_subject
     FROM cloud_google_authorizations o JOIN accounts a ON a.key = o.account_id
@@ -284,11 +294,12 @@ effect function complete(request: Request, url: URL, env: GoogleEnv, db: Client,
   const credentials = try oauthToken(config, new URLSearchParams({
     grant_type: "authorization_code", code, code_verifier: proof.verifier, redirect_uri: config.redirectUri
   }))
-  const granted = new Set((credentials.scope ?? "").split(/\s+/))
-  if (!credentials.refresh_token || !capabilities(intended).every((scope) => granted.has(scope))) throw new AuthorizationFailed()
   const profile = try verifiedProfile(credentials)
-  if (intended.provider === "google" ? intended.provider_subject !== profile.sub : profile.email !== intended.expected_email) throw new AuthorizationFailed()
-  try link(env, config, db, account, profile, intended, credentials.refresh_token, stateHash)
+  const identity = intended.provider === "google"
+    ? { expected: intended.provider_subject, returned: profile.sub }
+    : { expected: intended.expected_email ?? "", returned: profile.email }
+  const grant = try approvedGrant(identity, intended, credentials)
+  try link(env, config, db, account, profile, grant.scopes, grant.refreshToken, stateHash)
 }
 
 effect function verifiedProfile(credentials: OAuthResult) {
@@ -298,6 +309,27 @@ effect function verifiedProfile(credentials: OAuthResult) {
   const verified = Schema.decodeUnknownOption(GoogleProfile)(profileRaw)
   if (Option.isNone(verified) || !verified.value.email_verified || !/^[a-zA-Z0-9_-]{1,255}$/.test(verified.value.sub)) throw new AuthorizationFailed()
   return { sub: verified.value.sub, email: verified.value.email.trim().toLowerCase() }
+}
+
+effect function approvedGrant(identity: { expected: string; returned: string }, selected: Capabilities, credentials: OAuthResult) {
+  const refreshToken = credentials.refresh_token ?? ""
+  const granted = new Set((credentials.scope ?? "").split(/\s+/))
+  const stored = graceNativeConnectStores(identity.expected, identity.returned, refreshToken !== "", {
+    readMail: selected.mail, sendMail: selected.send_mail, trashMail: selected.trash_mail,
+    readCalendar: selected.calendar, writeCalendar: selected.write_calendar
+  }, {
+    readMail: granted.has(scopeByCapability.mail),
+    sendMail: granted.has(scopeByCapability.send_mail),
+    trashMail: granted.has(scopeByCapability.trash_mail),
+    readCalendar: granted.has(scopeByCapability.calendar),
+    writeCalendar: granted.has(scopeByCapability.write_calendar)
+  })
+  if (!nativeConnectStoresAny(stored)) throw new AuthorizationFailed()
+  const scopes: Capabilities = {
+    mail: stored.readMail, send_mail: stored.sendMail, trash_mail: stored.trashMail,
+    calendar: stored.readCalendar, write_calendar: stored.writeCalendar
+  }
+  return { scopes, refreshToken }
 }
 
 type DeviceWrite = { readonly kind: "DeviceWrite"; readonly current: () => Promise<boolean> }
@@ -347,23 +379,12 @@ effect function connectNative(request: Request, env: GoogleEnv, db: Client, acco
   if (!signedInSubject) throw new AuthorizationFailed()
   const config = try googleConfig(env)
   const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: selected.serverAuthCode, redirect_uri: "" }))
-  const refreshToken = credentials.refresh_token ?? ""
-  const granted = new Set((credentials.scope ?? "").split(/\s+/))
   const profile = try verifiedProfile(credentials)
-  const stored = graceNativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
-    readMail: selected.mail, sendMail: selected.sendMail, trashMail: selected.trashMail,
-    readCalendar: selected.calendar, writeCalendar: selected.writeCalendar
-  }, {
-    readMail: granted.has(scopeByCapability.mail),
-    sendMail: granted.has(scopeByCapability.send_mail),
-    trashMail: granted.has(scopeByCapability.trash_mail),
-    readCalendar: granted.has(scopeByCapability.calendar),
-    writeCalendar: granted.has(scopeByCapability.write_calendar)
-  })
-  if (!nativeConnectStoresAny(stored)) throw new AuthorizationFailed()
-  try link(env, config, db, account, profile, {
-    mail: stored.readMail, send_mail: stored.sendMail, trash_mail: stored.trashMail, calendar: stored.readCalendar, write_calendar: stored.writeCalendar
-  }, refreshToken, null, device)
+  const grant = try approvedGrant({ expected: signedInSubject, returned: profile.sub }, {
+    mail: selected.mail, calendar: selected.calendar, send_mail: selected.sendMail,
+    trash_mail: selected.trashMail, write_calendar: selected.writeCalendar
+  }, credentials)
+  try link(env, config, db, account, profile, grant.scopes, grant.refreshToken, null, device)
   return try status(db, env, account)
 }
 

@@ -4478,6 +4478,9 @@ module node {
       let version = 789
       let folder = "INBOX"
       let verifiedSubject = subject
+      let verifiedEmail = email
+      let tokenScopes = scopes
+      let issueRefreshToken = true
       let revokeDuringConsent: (() => Promise<void>) | undefined
       const selectedMessage = "https://gmail.googleapis.com/gmail/v1/users/me/messages/selected-mail"
       const providerFetch: typeof fetch = async (input, init) => {
@@ -4485,11 +4488,11 @@ module node {
         const url = new URL(request.url)
         calls.push(`${request.method} ${url.origin}${url.pathname}`)
         if (url.href === "https://oauth2.googleapis.com/token") {
-          return Response.json({ access_token: "fixture-access", refresh_token: "fixture-refresh", scope: scopes.join(" ") })
+          return Response.json({ access_token: "fixture-access", ...(issueRefreshToken ? { refresh_token: "fixture-refresh" } : {}), scope: tokenScopes.join(" ") })
         }
         if (url.href === "https://openidconnect.googleapis.com/v1/userinfo") {
           await revokeDuringConsent?.()
-          return Response.json({ sub: verifiedSubject, email, email_verified: true })
+          return Response.json({ sub: verifiedSubject, email: verifiedEmail, email_verified: true })
         }
         if (url.href === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send") return Response.json({ id: "sent-from-grace" })
         const address = url.origin + url.pathname
@@ -4521,13 +4524,17 @@ module node {
         await grace.fetch(new Request(web + "/api/v1/eliza/google/status", { headers: browser }), env),
       ].map((response) => response.status)
       const preflight = await grace.fetch(new Request(root + "connect/initiate", { method: "OPTIONS", headers: { origin: web, "access-control-request-method": "POST" } }), env)
-      const opened = await grace.fetch(start(browser), env)
-      const { authorizeUrl } = Schema.decodeUnknownSync(Schema.Struct({ authorizeUrl: Schema.String }))(await opened.json())
-      const authorization = new URL(authorizeUrl)
-      const callback = new URL(authorization.searchParams.get("redirect_uri") ?? "")
-      const flow = opened.headers.get("set-cookie")?.split(";", 1)[0]
-      if (!flow) throw new Error("The Google consent flow cookie is absent")
-      const callbackCookie = { cookie: cookie + "; " + flow }
+      const openBrowserConsent = async () => {
+        const opened = await grace.fetch(start(browser), env)
+        const { authorizeUrl } = Schema.decodeUnknownSync(Schema.Struct({ authorizeUrl: Schema.String }))(await opened.json())
+        const authorization = new URL(authorizeUrl)
+        const callback = new URL(authorization.searchParams.get("redirect_uri") ?? "")
+        const flow = opened.headers.get("set-cookie")?.split(";", 1)[0]
+        if (!flow) throw new Error("The Google consent flow cookie is absent")
+        const callbackCookie = { cookie: cookie + "; " + flow }
+        return { opened, authorization, callback, callbackCookie }
+      }
+      const { opened, authorization, callback, callbackCookie } = await openBrowserConsent()
       const denied = await grace.fetch(new Request(callback + "?code=fixture-code&state=wrong", { headers: callbackCookie }), env)
       const beforeConsent = calls.length
       callback.search = new URLSearchParams({ code: "fixture-code", state: authorization.searchParams.get("state") ?? "" }).toString()
@@ -4549,6 +4556,27 @@ module node {
       const trashId = "d00b7b70-fabd-4fb6-a93e-d65759b38ea1"
       const trash = await change("gmail/trash", { operationId: trashId, messageId: "selected-mail", version: "789" })
       const undo = await change("gmail/trash", { operationId: "bcd5b8c0-99f5-4b9d-883e-1a905f1ffd40", messageId: "selected-mail", version: "790", undoOf: trashId })
+      const completeBrowserRetry = async (result: { code: string } | { error: string }) => {
+        const { authorization, callback, callbackCookie } = await openBrowserConsent()
+        callback.search = new URLSearchParams({ ...result, state: authorization.searchParams.get("state") ?? "" }).toString()
+        const response = await grace.fetch(new Request(callback, { headers: callbackCookie }), env)
+        return [response.headers.get("location"), authorization.searchParams.get("prompt")?.split(" ").includes("consent")]
+      }
+      const partialScopes = scopes.filter((scope) => scope === "openid" || scope === "email" || scope.endsWith("/gmail.readonly") || scope.endsWith("/calendar.events.owned"))
+      tokenScopes = partialScopes
+      const partial = await completeBrowserRetry({ code: "partial-code" })
+      const partialLink = await status()
+      const cancelled = await completeBrowserRetry({ error: "access_denied" })
+      tokenScopes = ["openid", "email"]
+      const noAccess = await completeBrowserRetry({ code: "no-access-code" })
+      tokenScopes = scopes
+      issueRefreshToken = false
+      const noRefresh = await completeBrowserRetry({ code: "missing-refresh-code" })
+      issueRefreshToken = true
+      verifiedEmail = "wrong-mailbox@example.test"
+      const wrongMailbox = await completeBrowserRetry({ code: "wrong-mailbox-code" })
+      verifiedEmail = email
+      const afterRefusals = await status()
       const disconnect = (headers: Record<string, string>) => grace.fetch(new Request(root + "disconnect", { method: "POST", headers }), env)
       const disconnected = await disconnect(browser)
       const disconnectedInBrowser = (await status()).connected
@@ -4586,6 +4614,10 @@ module node {
       verifiedSubject = subject
       const nativeResponse = await connectNative(device)
       if (!nativeResponse.ok) throw new Error(`Grace native consent returned ${nativeResponse.status}: ${await nativeResponse.text()}`)
+      const nativeFirstLink = await status()
+      tokenScopes = partialScopes
+      const nativePartial = await connectNative(device, { ...selection, calendar: true, sendMail: true, trashMail: true, writeCalendar: true })
+      tokenScopes = scopes
       const nativeLinked = await status()
       const lease = await post("/api/v1/app-auth/mobile/lease", {}, bearer(key.lease.refresh))
       const { access } = Schema.decodeUnknownSync(Schema.Struct({ access: Schema.String }))(await lease.json())
@@ -4612,11 +4644,17 @@ module node {
         sent: [...receipts, await receipt.json()].map((body) => Schema.decodeUnknownSync(Schema.Struct({ messageId: Schema.String }))(body).messageId),
         calls: calls.filter((line) => line.endsWith("/messages/send")).length,
         trash: [trash.status, undo.status, folder, version],
+        consentAgain: {
+          partial, replaced: partialLink.connectionId !== linked.connectionId, scopes: partialLink.grantedScopes,
+          cancelled, refused: [noAccess, noRefresh, wrongMailbox],
+          retained: afterRefusals.connectionId === partialLink.connectionId && afterRefusals.grantedScopes.join(" ") === partialLink.grantedScopes.join(" "),
+        },
         disconnected: [disconnected.status, disconnectedInBrowser],
         native: {
           signedIn: [challenge.status, signed.status, key.accountCreated, key.user.id === owner.account.id, acknowledged.status],
           refused: [browserCannotConnectNative.status, invalidSelection.status, wrongGoogle.status, expiredDuringConsent.status],
           connected: [nativeResponse.status, nativeLinked.connected, nativeLinked.accountId === verified.account.id, nativeLinked.identity?.email, nativeLinked.grantedScopes],
+          partial: [nativePartial.status, nativeLinked.connectionId !== nativeFirstLink.connectionId],
           mail: [lease.status, read.status, message.accountId === owner.account.id, message.bodyText],
           disconnected: [unrelatedDisconnect.status, stillLinked.connectionId === nativeLinked.connectionId, nativeDisconnect.status, (await status()).connected],
         },
@@ -5202,11 +5240,20 @@ it.live('Use Grace Google consent on the web and tablet, send once, then disconn
     complete: [303, "https://app.example.test/#account"],
     linked: [true, true, "grace-owner@example.test", true, true],
     sent: ["sent-from-grace", "sent-from-grace", "sent-from-grace"], calls: 1,
-    trash: [200, 200, "INBOX", 791], disconnected: [200, false],
+    trash: [200, 200, "INBOX", 791],
+    consentAgain: {
+      partial: ["https://app.example.test/#account", true], replaced: true,
+      scopes: ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"],
+      cancelled: ["https://app.example.test/#account", true],
+      refused: Array.from({ length: 3 }, () => ["https://app.example.test/?googleConnectionError=authorization_failed#account", true]),
+      retained: true,
+    },
+    disconnected: [200, false],
     native: {
       signedIn: [200, 200, false, true, 200],
       refused: [401, 400, 409, 401],
       connected: [200, true, true, "grace-owner@example.test", ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]],
+      partial: [200, true],
       mail: [200, 200, true, "Mail for this Grace account"],
       disconnected: [200, true, 200, false],
     },
