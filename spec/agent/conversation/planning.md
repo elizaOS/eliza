@@ -610,7 +610,8 @@ later call to the same action can be for another request. An unlinked
 refusal stays open as a call that did not start, even if the action later
 runs. An open proposal is reported as awaiting the owner in the action's own
 copy, whatever the model's prose claims. An open failure is reported as that
-action's failure in the action's own words, except a failure with no
+action's failure: in the model's own words when the model reports it
+(below), and otherwise in the action's own words, except a failure with no
 receipt that a later step may have answered under the rule below.
 
 ```quint
@@ -651,9 +652,32 @@ pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: 
 
 ### A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions
 
-After planning, an open failure (above) whose own words the reply does not
-hold is unreported, and so is an attached document left out for the turn's
-allowance. A failure's own words are its action's text for the owner, its
+After planning, an open failure (above) is unreported unless the reply
+holds the words its action marked for the owner or reports it itself (words
+written only to the model, held in the reply, report nothing: they are an
+echo), and so is an
+attached document left out for the turn's allowance. A failed step's tool
+result asks the model, when its reply tells the person, to end that reply
+with a line of its own, `[reported S: "…"]`, where S is the step's number in
+the turn. The host takes such lines out of the reply, and out of what it
+streams, and a line reports its step's failure under the same rules as a
+sentence the model gives when asked again (below): one whole sentence of the
+reply's prose, given once, that echoes no host text. When every failure put
+to the model is reported so, and nothing else is unreported or unobserved,
+the turn makes no further call; such a line is the model's own judgment, as
+the sentence of a second answer is. A stop after `Dr.`, `Mr.`, `Mrs.`, `Ms.`,
+`Prof.`, `e.g.` or `i.e.` never ends a sentence; a stop after `p.m.`, `a.m.`,
+`U.S.`, `St.`, `Jr.` or `Sr.` ends it unless the next word starts with a
+lowercase letter, or with a digit after `U.S.` or `St.`; every other stop
+followed by a space ends it. The same rule holds where a sentence the model
+gave stops in its reply: one that stops on such a stop while the reply goes
+on in the same sentence is a fragment.
+A reply any sentence of which echoes a failed step's text written to the
+model reports nothing. An answer to
+the call that holds a JSON object anywhere is read as that object, and one
+that starts such an object it cannot finish is no answer at all, so neither
+is ever delivered as written; the schema is asked for only when there are
+points to report. A failure's own words are its action's text for the owner, its
 error or its result text; a call its action's own check declined is
 `unavailableNotice`, and a failure with no words is a sentence that the
 call did not start or did not complete. Of these, only the text its action
@@ -682,23 +706,81 @@ never replaced by a cue), it is not the first reply again, and the clock
 rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, or the clock's or the calendar change's own words (below)
-take its place when it stated a time they did not observe. Under the
-model's reply, first or kept second, each remaining open failure whose words
-its action wrote for the owner, and each attachment omission, is reported in
-those words if the reply does not already contain them. Under fixed words,
-the last resort, each remaining open failure whose action wrote words for
-the owner follows in those words, as the rule below allows, if the reply
-does not already contain them. Under any reply, a failure's error, its
-result text that no action marked for the owner, `unavailableNotice` and the
-host's own sentence that a call did not start or did not complete reach the
-model only, and the owner hears such a failure in the model's words alone:
-nothing written to the model is ever added to the owner's reply.
-A reply with nothing unreported and no
-unobserved time makes no further call, a turn cut off at the model's output
-limit is never asked again, and no turn is asked more than once. The reply
-this decides, with the words that follow it, is the turn's settled text: a
-streamed turn writes it at once, whole and without the provisional mark, and
-nothing it streamed before is ever unmarked ([reply stream](./replyStream.md)).
+take its place when it stated a time they did not observe. The note numbers
+each failure and omission it names, one point each, and the call asks for
+one JSON object under a fixed schema, with the turn's tools unchanged and
+none to be chosen: the whole reply and, for each point it tells, that point's
+number and the one sentence of the reply that tells it. A model that answers
+in text instead may end it with a line `[reported N: "…"]` per point, read
+the same way, and the host takes every such line out of the answer, in any
+of the forms a model writes it. A
+missing, partial or malformed answer never ends the turn: a malformed reply
+keeps the first reply, and a point with no valid sentence is unreported. The
+host reads each sentence as the model's own judgment, never matching the
+person's words. A point is reported when the model's second answer is kept,
+or when it gives its first reply again word for word (it stands by it), and
+that point's own sentence is one whole sentence of the model's prose in that
+answer (it starts where a sentence starts and ends where that sentence ends)
+and echoes no host text. A sentence that is blank, names no point or another
+point's number, is a fragment (it starts or ends inside a sentence, such as a
+sentence's opening clause before a comma, or words from its middle), spans
+more than one sentence, is a sentence an earlier point already gave, or
+echoes host text reports nothing, and one point's sentence never reports
+another. A sentence echoes host text when it shares a run of five words with
+a host note, with the host's own words of any point's note, or with the text
+written to the model of any failed step of the turn (every field of its
+result that no action marked for the owner: unverified owner text, error,
+result text and the plain words of its data), or holds a token of that text
+written like an identifier, unless that run or token is also in the person's
+own message (six or more characters with a
+capital past the first, a digit, an underscore or an inner dot), such as a
+raw error code or an action's name; a capitalised word, a phone number or a
+product name of the person's own passes. A failure or omission the model
+reports so is told in the model's words alone: no fixed line follows them,
+written or spoken. A failure the model was asked about and did not report,
+under a reply that is the model's (its first or kept second, in a turn not
+cut off and with no clock or change words in its place), needs its telling
+when its action wrote words for the owner, or when it wrote none and no later
+call of the turn may have answered it (a step retried later in the turn that
+the model stands by is answered, never told as failed). A failure that needs
+its telling never lets the model's reply stand, whether the model repeated
+it, kept a second answer that still leaves the failure out or claims it
+happened, or gave no answer: the model's prose gives way, and in its place
+each point put to the model, in order, is told by the sentence the model gave
+for it when it reported it, or else by the words its action wrote for the
+owner, verbatim, while the turn's verified tool copy, an open proposal's own
+copy and review card, and a rendered card stay where composition puts them.
+A failure that needs its telling and has neither is never dropped: its step
+is marked untold in the turn's action results, with no words, and the app
+draws its own in-chat notice of a step that did not happen for it, in the
+transcript, silent in Talk. When everything gave way to such marks the turn
+still delivers its reply, with no text, and never ends as a provider issue,
+so nothing offers a retry. So the person hears neither a success the step
+did not have nor a stock sentence after one, each failure is told on its
+own, and nothing the action composed is lost. When every point is reported,
+the reply stands as the model wrote it: a reported sentence that also holds a
+false clause about another step is a known limit of the model's own
+judgment, not a guarantee. A failure whose action wrote no words for the
+owner and that a later call of the turn may have answered leaves the model's
+reply as it is when no other failure needs its telling. Each attachment
+omission the model did not report follows the delivered reply in its own
+words, and each open failure the model was not asked about whose action wrote
+words for the owner follows in those words, if the reply does not already
+contain them. When the turn was cut off, or the clock's or the change's
+words take the reply's place, each remaining open failure whose action wrote
+words for the owner follows those words in its own, each one whose action
+wrote none is marked untold, and each attachment omission follows in its own
+words. Under any reply, a failure's error, its result text that no action
+marked for the owner, `unavailableNotice` and the host's own sentence that a
+call did not start or did not complete reach the model only, and the owner
+hears such a failure in the model's words alone or as its marked step:
+nothing written to the model is ever added to the owner's reply. A reply
+with nothing unreported and no unobserved time makes no further call, a turn
+cut off at the model's output limit is never asked again, and no turn is
+asked more than once.
+The reply this decides, with the words that follow it, is the turn's settled
+text: a streamed turn writes it at once, whole and without the provisional
+mark, and nothing it streamed before is ever unmarked ([reply stream](./replyStream.md)).
 
 Safety copy is never rewritten. A failure whose action marks its words as
 safety copy (the emergency refusal of a phone that cannot open its keypad),
@@ -716,6 +798,15 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
 pure def reachesTheOwner(ownCopy: bool, follows: bool): bool = ownCopy and follows
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
+type QuoteSpan = NoQuote | Fragment | Reused | OneSentence
+pure def quoteReports(span: QuoteSpan): bool = span == OneSentence
+type PartInPlace = ModelsReport | ActionsWords | MarkedUntold | NoPart
+type SettledOutcome = Delivered | NoReply
+pure def needsItsTelling(answered: bool, ownerWords: bool, answerable: bool): bool = not(answered) and (ownerWords or not(answerable))
+pure def partInPlace(reported: bool, answered: bool, ownerWords: bool): PartInPlace =
+  if (reported) ModelsReport else if (answered) NoPart else if (ownerWords) ActionsWords else MarkedUntold
+pure def settledOutcome(hasText: bool, marked: bool): SettledOutcome = if (hasText or marked) Delivered else NoReply
+pure def extraCalls(unreported: bool, ungrounded: bool, cutOff: bool): int = if (asksAgain(unreported, ungrounded, cutOff)) 1 else 0
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
 pure def lawASecondAnswerThatHoldsIsKept(unreported: bool, ungrounded: bool): bool =
@@ -730,6 +821,15 @@ pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putTo
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
 pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
+pure def lawAReportedPointKeepsTheModelsOwnSentence(answered: bool, ownerWords: bool): bool = partInPlace(true, answered, ownerWords) == ModelsReport
+pure def lawAFailureIsNeverDropped(reported: bool, ownerWords: bool): bool = partInPlace(reported, false, ownerWords) != NoPart
+pure def lawAnUnreportedFailureIsToldInItsActionsWordsOrMarked(ownerWords: bool): bool =
+  partInPlace(false, false, ownerWords) == (if (ownerWords) ActionsWords else MarkedUntold)
+pure def lawAStepALaterCallAnsweredAddsNothingInPlace(ownerWords: bool): bool = partInPlace(false, true, ownerWords) == NoPart
+pure def lawAMarkedFailureIsADeliveredReply(hasText: bool): bool = settledOutcome(hasText, true) == Delivered
+pure def lawATurnMakesAtMostOneExtraCall(unreported: bool, ungrounded: bool, cutOff: bool): bool =
+  extraCalls(unreported, ungrounded, cutOff) <= 1 and (cutOff implies extraCalls(unreported, ungrounded, cutOff) == 0)
+pure def lawAFailureWithoutOwnerWordsNoLaterCallMayHaveAnsweredNeedsItsTelling(ownerWords: bool): bool = needsItsTelling(false, ownerWords, false)
 ```
 
 ### A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them
@@ -746,8 +846,8 @@ did not start, or a Files filter proposed to the phone after a call that did
 not start. A later call of another action that had no effect answers
 nothing, and nor does any later call of another action answer a failure
 whose action wrote words for the owner, such as a phone that cannot send a
-text or open its keypad from chat: those words reach the owner beside a
-reminder the turn set, whatever the reply claims. A later call may also
+text or open its keypad from chat: such a failure stays put to the model
+beside a reminder the turn set. A later call may also
 have been for another request, such as a second recipient. A later call can answer a failure only
 when the model saw that failure first, in an earlier planner response. Such
 a failure stays open (above), and only the model can tell whether the later
@@ -757,15 +857,17 @@ naming the actions of the later calls that may have answered it, that when that 
 the failed step was for the model gives its reply exactly as it was, word
 for word, and that otherwise the reply must say the failed step did not
 happen. When the model answers that note with its first reply again, word for word, it stands by
-that reply, and when that reply is delivered, the failure's own words do not
-follow it. Otherwise the failure is reported as any failure is (above): a
-kept second answer reports it in the model's words, followed only by words
-its action wrote for the owner, and those words for the owner, when its
-action wrote any, follow the reply when the call fails, when the model answers with a blank (read as below), when it gives another answer that is not kept, when the failure
-was never put to the model, or when the clock's or the change's words take
-the reply's place. A failure
-with a receipt, a failure in the same planner response as the later call,
-and safety copy are reported as above.
+that reply, and when that reply is delivered as the model's, the failure is
+answered: its own words neither follow nor replace it. A failure with a
+receipt, a failure in the same planner response as the later call, a failure
+no later call may have answered, and every failure when the model does not
+stand by its reply are reported as any failure is (above): in the model's
+words alone when its answer quotes that failure's own report as one whole
+sentence, and otherwise in the words
+its action wrote for the owner, or, when it wrote none, as its step marked
+untold, in place of a reply that is the model's or
+after the clock's or the change's words or a turn cut off. Safety copy is
+reported as above.
 
 ```quint
 pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
@@ -774,23 +876,35 @@ pure def mayAnswer(sameAction: bool, ownerWords: bool, laterOutcome: StepOutcome
   else not(ownerWords) and (laterOutcome == Applied or laterOutcome == Proposed)
 pure def gaveAnAnswer(draft: Draft): bool = draft == Answer
 pure def standsBy(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and sameAsFirst
-pure def followsTheReply(answerable: bool, asked: bool, stoodBy: bool, modelsReply: bool, safetyCopy: bool): bool =
-  safetyCopy or not(answerable and asked and stoodBy and modelsReply)
+pure def reportsIt(kept: bool, stoodBy: bool, span: QuoteSpan): bool = (kept or stoodBy) and quoteReports(span)
+pure def failureAnswered(modelsReply: bool, reported: bool, answerable: bool, stoodBy: bool): bool =
+  modelsReply and (reported or (answerable and stoodBy))
+pure def followsTheReply(answered: bool, asked: bool, safetyCopy: bool): bool =
+  safetyCopy or not(asked and answered)
+pure def replacesTheReply(modelsReply: bool, unanswered: bool): bool = modelsReply and unanswered
 pure def lawACueOrSilenceGivesNoAnswer(sameAsFirst: bool): bool =
   not(gaveAnAnswer(Cue)) and not(gaveAnAnswer(Silent)) and not(standsBy(Cue, sameAsFirst)) and not(standsBy(Silent, sameAsFirst))
 pure def lawAnotherAnswerIsNoStandingBy(draft: Draft): bool = not(standsBy(draft, false))
+pure def lawAnAnswerThatQuotesNoSentenceOfItsOwnReportsNothing(kept: bool, stoodBy: bool): bool =
+  not(reportsIt(kept, stoodBy, NoQuote)) and not(reportsIt(kept, stoodBy, Fragment)) and not(reportsIt(kept, stoodBy, Reused))
+pure def lawOnlyTheModelsOwnAnswerReports(span: QuoteSpan): bool = not(reportsIt(false, false, span))
+pure def lawAReportedFailureIsTheModelsWordsAlone(answerable: bool, stoodBy: bool, safetyCopy: bool): bool =
+  followsTheReply(failureAnswered(true, true, answerable, stoodBy), true, safetyCopy) == safetyCopy
 pure def lawAFailureALaterRunMayHaveAnsweredDoesNotFollowAReplyTheModelStandsBy(safetyCopy: bool): bool =
-  followsTheReply(true, true, true, true, safetyCopy) == safetyCopy
-pure def lawUnlessTheModelStandsByItsReplyTheFailureStillFollows(answerable: bool, asked: bool, modelsReply: bool, safetyCopy: bool): bool =
-  followsTheReply(answerable, asked, false, modelsReply, safetyCopy)
-pure def lawAFailureNeverPutToTheModelStillFollows(answerable: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerable, false, stoodBy, modelsReply, false)
-pure def lawUnderTheHostsWordsTheFailureStillFollows(answerable: bool, asked: bool, stoodBy: bool): bool =
-  followsTheReply(answerable, asked, stoodBy, false, false)
-pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(false, seenFirst, ranLater), asked, stoodBy, modelsReply, false)
-pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(receiptless, false, ranLater), asked, stoodBy, modelsReply, false)
+  followsTheReply(failureAnswered(true, false, true, true), true, safetyCopy) == safetyCopy
+pure def lawAModelsReplyThatLeavesAFailureUnreportedNeverStands(answerable: bool): bool =
+  replacesTheReply(true, needsItsTelling(failureAnswered(true, false, answerable, false), true, answerable))
+    and partInPlace(false, failureAnswered(true, false, answerable, false), true) == ActionsWords
+pure def lawUnderTheHostsWordsTheFailureStillFollows(reported: bool, answerable: bool, stoodBy: bool, asked: bool): bool =
+  followsTheReply(failureAnswered(false, reported, answerable, stoodBy), asked, false) and not(replacesTheReply(false, true))
+pure def lawAFailureNeverPutToTheModelStillFollows(answered: bool): bool =
+  followsTheReply(answered, false, false)
+pure def lawAFailureWithAReceiptStillNeedsAReport(seenFirst: bool, ranLater: bool): bool =
+  not(failureAnswered(true, false, answerableLater(false, seenFirst, ranLater), true))
+pure def lawAFailureInTheSameResponseStillNeedsAReport(receiptless: bool, ranLater: bool): bool =
+  not(failureAnswered(true, false, answerableLater(receiptless, false, ranLater), true))
+pure def lawWithNoLaterCallThatMayAnswerTheFailureStillNeedsAReport(receiptless: bool, seenFirst: bool): bool =
+  not(failureAnswered(true, false, answerableLater(receiptless, seenFirst, false), true))
 pure def lawALaterRunOfTheSameActionMayAnswer(ownerWords: bool): bool =
   mayAnswer(true, ownerWords, Applied) and mayAnswer(true, ownerWords, Proposed) and mayAnswer(true, ownerWords, NoEffect)
 pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForTheOwner(laterOutcome: StepOutcome): bool =
@@ -798,8 +912,6 @@ pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForT
 pure def lawAnotherActionsCallNeverAnswersAFailureWithWordsForTheOwner(laterOutcome: StepOutcome): bool = not(mayAnswer(false, true, laterOutcome))
 pure def lawAFailedOrRefusedCallAnswersNothing(sameAction: bool, ownerWords: bool): bool =
   not(mayAnswer(sameAction, ownerWords, Failed)) and not(mayAnswer(sameAction, ownerWords, Rejected))
-pure def lawWithNoLaterCallThatMayAnswerTheFailureStillFollows(receiptless: bool, seenFirst: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(receiptless, seenFirst, false), asked, stoodBy, modelsReply, false)
 ```
 
 ### A coaching response stays in the planner transcript

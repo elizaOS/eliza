@@ -5,7 +5,7 @@
 import {
   type Action, type ActionResult, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService, type Media, type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole, type RoomHandlerLease, type State, executePlannedToolCall, ModelType, getTrajectoryContext, historyWindowNotice, readSystemNotice, runWithTrajectoryContext, RunTerminalOwner, ServiceType, stampedMessage, stampYear, toElizaError, trackPostDeliveryTask, windowHistory, withActionGatePolicy, withRoomDeliverySettlement, wrapExternalContent, revertedEffectReceiptIds, utf8ByteLength, type EffectReceipt,
 } from "@elizaos/core"
-import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, followsTheReply, hostNoteLabels, markedUnanswered, offersContextRestore, putToTheModel, reachesTheOwner, replySource, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
+import { asksAgain, attachedDocumentBytes, attachedRead, documentTextFits, failureAnswered, followsTheReply, needsItsTelling, hostNoteLabels, markedUnanswered, offersContextRestore, partInPlace, putToTheModel, reachesTheOwner, replacesTheReply, replySource, reportsIt, settledOutcome, stampedForTheModel, type AttachedKind } from "../../gen/agent__conversation__planning.ts"
 import { carriesCutOffEffect, failureEndsTheRun, limitOriginOn, replyQuoteChars, storedFailureName } from "../../gen/agent__conversation__turns.ts"
 import type { BindingView, LastCloudFailure } from "../models/binding.vibe"
 import { turnClock, ungroundedEventReply, ungroundedTimeReply, type Ungrounded } from "./clock.vibe"
@@ -14,7 +14,7 @@ import { bodyOf, storedText } from "./history.vibe"
 import { ModelRefusal } from "../models/chat.vibe"
 import { emptyTextTurnAccepted, readTurnContext, type BrowserPage, type ReviewedEmail } from "@elizaos/agent"
 import { plannerTemperature, warmUpOutputCap } from "../../gen/agent__conversation__planning.ts"
-import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, type FailureNotice, type PlannedTurn } from "./planning.vibe"
+import { actionNotes, agentCache, failureNote, offeredActions, plannerTools, planTurn, reportNote, type FailureNotice, type PlannedTurn, type Point, type Report } from "./planning.vibe"
 import { cueRule, hostNoteMark } from "./reply-text.vibe"
 import { runTurnEvaluators } from "./turn-evaluators.vibe"
 import { recordedTurn, toolRecordOf } from "./tool-record.vibe"
@@ -61,7 +61,7 @@ const reply: Action = {
   handler: async (_runtime, _message, _state, options, callback) => {
     const parameters = options?.parameters
     const text = typeof parameters === "object" && parameters !== null && "text" in parameters ? parameters.text : undefined
-    if (typeof text !== "string" || !text.trim()) return { success: false }
+    if (typeof text !== "string") return { success: false }
     await callback?.({ text, actions: ["REPLY"] })
     return { success: true, text }
   },
@@ -336,24 +336,55 @@ function withWords(reply: string, words: readonly string[]): string {
   return [reply, ...words.filter((said) => !reply.includes(said))].filter((part) => part.trim()).join("\n\n")
 }
 
-async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded: (reply: string) => Ungrounded | undefined): Promise<string> {
-  const asked = planned.notices.filter((notice) => putToTheModel(planned.reply.includes(notice.words), notice.safetyCopy))
-  const unreported = [...asked.map(failureNote), ...(omitted ? [omittedNote] : [])]
+interface Settled {
+  readonly text: string
+  readonly untold: ReadonlySet<number>
+}
+
+async function settledReply(planned: PlannedTurn, omitted: boolean, misgrounded: (reply: string) => Ungrounded | undefined): Promise<Settled> {
+  const considered = planned.notices.filter((notice) => putToTheModel(notice.owner !== undefined && planned.reply.includes(notice.words), notice.safetyCopy))
+  const toldFirst = (notice: FailureNotice) => notice.steps.some((at) => {
+    const report = planned.firstReports.get(at + 1)
+    return report?.span === "OneSentence" && planned.reply.includes(report.sentence)
+  })
+  const asked = omitted || planned.firstEchoes || considered.some((notice) => !toldFirst(notice)) ? considered : []
+  const ownerWords = (notice: FailureNotice) => notice.owner !== undefined
+  const points: readonly Point[] = [
+    ...asked.map((notice) => ({ note: failureNote(notice), toTheModel: notice.toTheModel, needed: !notice.answerableLater })),
+    ...(omitted ? [{ note: omittedNote, toTheModel: [], needed: true }] : []),
+  ]
   const wrong = misgrounded(planned.reply)
-  const { revised, stoodBy } = asksAgain(unreported.length > 0, wrong !== undefined, planned.cutOff)
-    ? await planned.reask([...unreported, ...(wrong === undefined ? [] : [wrong.note])])
-    : { revised: undefined, stoodBy: false }
-  const ownersWords = (follows: (notice: FailureNotice) => boolean) =>
-    planned.notices.filter((notice) => reachesTheOwner(notice.owner !== undefined, follows(notice))).flatMap(({ owner }) => owner ?? [])
-  const attachmentWords = omitted ? [omittedDocuments] : []
-  switch (replySource(unreported.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)) {
-    case "ModelReply": return withWords(planned.reply, ownersWords(() => true))
-    case "RevisedReply": return withWords(revised ?? "", [...ownersWords(() => true), ...attachmentWords])
-    case "FixedWords": return withWords(wrong?.fixed ?? planned.reply, [
-      ...ownersWords((notice) => followsTheReply(notice.answerableLater, asked.includes(notice), stoodBy, wrong === undefined, notice.safetyCopy)),
-      ...attachmentWords,
-    ])
+  const { revised, stoodBy, echoes, reports } = asksAgain(points.length > 0, wrong !== undefined, planned.cutOff)
+    ? await planned.reask(points, [...(points.length === 0 ? [] : [reportNote]), ...(wrong === undefined ? [] : [wrong.note])])
+    : { revised: undefined, stoodBy: false, echoes: false, reports: new Map<number, Report>() }
+  const source = replySource(points.length > 0, wrong !== undefined, planned.cutOff, revised !== undefined, revised !== undefined && misgrounded(revised) === undefined)
+  const modelsReply = !planned.cutOff && !(source === "FixedWords" && wrong !== undefined)
+  const echoed = source === "RevisedReply" ? echoes : planned.firstEchoes
+  const reportedAt = (point: number) => modelsReply && !echoed && reportsIt(source === "RevisedReply", stoodBy, reports.get(point)?.span ?? "NoQuote")
+  const pointOf = (notice: FailureNotice) => asked.indexOf(notice) + 1
+  const reported = (notice: FailureNotice) => asked.includes(notice) ? reportedAt(pointOf(notice)) : source === "ModelReply" && modelsReply && !planned.firstEchoes && toldFirst(notice)
+  const answered = (notice: FailureNotice) => failureAnswered(modelsReply, reported(notice), notice.answerableLater, stoodBy)
+  const ownersWords = planned.notices
+    .filter((notice) => reachesTheOwner(ownerWords(notice), followsTheReply(answered(notice), considered.includes(notice), notice.safetyCopy)))
+    .flatMap(({ owner }) => owner ?? [])
+  const untold = new Set(considered.filter((notice) => needsItsTelling(answered(notice), ownerWords(notice), notice.answerableLater) && !ownerWords(notice)).flatMap(({ steps }) => steps))
+  const omissionPoint = asked.length + 1
+  const omissionReported = omitted && reportedAt(omissionPoint)
+  const attachmentWords = omitted && !omissionReported ? [omittedDocuments] : []
+  const said = source === "RevisedReply" ? revised ?? "" : source === "FixedWords" ? wrong?.fixed ?? planned.reply : planned.reply
+  if (!replacesTheReply(modelsReply, considered.some((notice) => needsItsTelling(answered(notice), ownerWords(notice), notice.answerableLater)))) {
+    return { text: withWords(said, [...ownersWords, ...attachmentWords]), untold }
   }
+  const inPlace = considered.flatMap((notice) => {
+    switch (partInPlace(reported(notice), answered(notice), ownerWords(notice))) {
+      case "ModelsReport": return [asked.includes(notice) ? reports.get(pointOf(notice))?.sentence ?? "" : notice.steps.map((at) => planned.firstReports.get(at + 1)?.sentence ?? "").find((sentence) => sentence !== "") ?? ""]
+      case "ActionsWords": return [notice.owner ?? ""]
+      case "MarkedUntold": return []
+      case "NoPart": return []
+    }
+  })
+  const omissionInPlace = omissionReported ? [reports.get(omissionPoint)?.sentence ?? ""] : []
+  return { text: withWords(planned.compose([...new Set([...inPlace, ...omissionInPlace])].join("\n\n")), [...ownersWords, ...attachmentWords]), untold }
 }
 
 function turnScope<T>(message: Memory, run: () => Promise<T>): Promise<T> {
@@ -439,19 +470,20 @@ async function respond(
         }, actions)
         signal.throwIfAborted()
         const results = planned.steps.map(({ result }) => result)
-        const replyText = await settledReply(planned, attachments.omitted, (said) => ungroundedTimeReply(said, asked, clock) ?? ungroundedEventReply(said, asked, results, runtime.agentId))
+        const { text: replyText, untold } = await settledReply(planned, attachments.omitted, (said) => ungroundedTimeReply(said, asked, clock) ?? ungroundedEventReply(said, asked, results, runtime.agentId))
         signal.throwIfAborted()
-        if (!replyText.trim()) throw new Error("The turn produced no reply")
+        if (settledOutcome(replyText.trim() !== "", untold.size > 0) === "NoReply") throw new Error("The turn produced no reply")
         if (onStreamChunk !== undefined && options?.onReplySettled !== undefined) options.onReplySettled(replyText)
         else if (onStreamChunk !== undefined && replyText !== written) options?.onReplyRestart?.(replyText)
         written = replyText
-        const ran = planned.steps.map(({ action, result: step }): ActionResult => ({ ...step, data: { ...step.data, actionName: action } }))
+        const ran = planned.steps.map(({ action, result: step }, at): ActionResult => ({ ...step, data: { ...step.data, actionName: action, ...(untold.has(at) ? { untold: true } : {}) } }))
         const toolRecord = toolRecordOf(planned.steps)
+        const untoldActions = [...untold].map((at) => planned.steps[at]?.action ?? "")
         const result = await withRoomDeliverySettlement(runtime, message.roomId, lease, async () => {
           const delivered = await executePlannedToolCall(runtime, {
             message, state, activeContexts: ["general"], userRoles: roles, previousResults: planned.steps.map(({ result }) => result),
             callback: async (content, actionName) => {
-              const stored = await callback?.(toolRecord === undefined ? content : { ...content, toolRecord }, actionName) ?? []
+              const stored = await callback?.({ ...content, ...(toolRecord === undefined ? {} : { toolRecord }), ...(untoldActions.length === 0 ? {} : { untoldActions }) }, actionName) ?? []
               responseMessages.push(...stored)
               return stored
             },
@@ -466,7 +498,7 @@ async function respond(
         await terminal.request(outcome)
         if (result.success) evaluateLater(runtime, message, state, responseMessages, lease)
         return {
-          didRespond: result.success, responseContent: result.success ? { text: replyText } : null, responseMessages,
+          didRespond: result.success, responseContent: result.success ? { text: replyText, ...(untoldActions.length === 0 ? {} : { untoldActions }) } : null, responseMessages,
           actionResults: [...ran, result], outcome,
         }
       } catch (error: unknown) {

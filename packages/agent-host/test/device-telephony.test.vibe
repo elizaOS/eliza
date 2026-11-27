@@ -194,7 +194,7 @@ module node {
       const told = reportedTo(cloud.calls.slice(sent))
       return {
         reply: told ?? turn.text, operation: offered?.payload.operation,
-        ...(told === undefined ? {} : { heard: turn.text === `${retold}\n\n${told}` }),
+        ...(told === undefined ? {} : { heard: turn.text === told }),
         ...(offered !== undefined && offered.payload.requestMessageId !== turn.userMessageId ? { reviewed: true } : {}),
       }
     }

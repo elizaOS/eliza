@@ -8,12 +8,12 @@
 // spec/agent/conversation/planning.md, "A response that is only a written call of an offered tool runs as that call, and one copying the host's own data is asked again once"
 import {
   type Action, type ActionParameterSchema, type ActionResult, type AgentRuntime, type EffectReceipt, type IAgentRuntime, type GenerateTextParams, type GenerateTextResult,
-  type AgentContext, type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type ToolCall, type ToolDefinition,
+  type AgentContext, type HistorySource, type Memory, type RoleGateRole, type State, type StreamChunkCallback, type JSONSchema, type ToolCall, type ToolDefinition,
   buildPlannerToolsFromActions, DISCOVER_ACTIONS_NAME, executePlannedToolCall, isDiscoveryActionName, isModelOutputLimitFinishReason, ModelType, modelAttemptCapture, modelOutputIncompleteEvidence, resolveActionContexts, sha256Hex, sleepWithAbort, stableStringify, tagsMayProduceEffects, wrapExternalContent,
 } from "@elizaos/core"
 import {
   actionNoteSent, askedAgainAt, answerableLater, answeredAgain, callAdmission, callRunOf, cueDelivered, standsBy, cutOffReply, failedOpen, isTurnStep, maxPlanSteps, mayAnswer, nextMove, offered, openOutcomes, plannerOnlyCoaching, plansOn, resendWait, spokenFrom, toolActivity,
-  admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type StepOutcome, type ToolSettlement,
+  admitsPlannerWork, contextRestoreOf, loneObjectMove, maxRestoredHistoryBytes, nothingRan, offersContextRestore, plannerTemperature, terminalAnswerOf, toolDispatch, turnNarrowed, unavailableNotice, writtenMarkupOf, type CallFailure, type PlanStep, type QuoteSpan, type StepOutcome, type ToolSettlement,
 } from "../../gen/agent__conversation__planning.ts"
 import { originAfterResend } from "../../gen/agent__conversation__turns.ts"
 import { readTurnContext, unauthoredTurnAllowsCall } from "@elizaos/agent"
@@ -79,6 +79,8 @@ export interface FailureNotice {
   readonly answerableLater: boolean
   readonly failedActions: readonly string[]
   readonly laterActions: readonly string[]
+  readonly steps: readonly number[]
+  readonly toTheModel: readonly string[]
 }
 
 export function failureNote({ words, verified, answerableLater, failedActions, laterActions }: FailureNotice): string {
@@ -89,18 +91,166 @@ export function failureNote({ words, verified, answerableLater, failedActions, l
     : `A step of this turn did not happen as asked. The reply must tell the person so truthfully, never claiming it happened. ${report}`
 }
 
+export const reportNote = `Answer with only one JSON object, {"reply": "…", "told": [{"point": N, "sentence": "…"}]}: "reply" is your whole reply to the person, and "told" holds, for each numbered point above that it tells the person, that point's number and the one sentence of your reply that tells it, copied exactly, a different sentence for each point. Leave out any point your reply does not tell.`
+
+const reportTag = /\[[ \t]*reported[ \t]*#?(\d*)[ \t]*:[ \t]*(“[^”\n]*”|"[^"\n]*"|[^\]\n]*)[ \t]*\]|\([ \t]*reported[ \t]*#?(\d*)[ \t]*:[ \t]*(“[^”\n]*”|"[^"\n]*")[ \t]*\)/giu
+const reportLabel = /^[ \t]*(?:[-*•][ \t]+)?[*_]*[ \t]*[[(][ \t]*reported[ \t]*#?(\d*)[ \t]*[\])][ \t]*[*_]*[ \t]*:[ \t]*([^\n]*)$/gimu
+const reportBare = /^[ \t]*(?:[-*•][ \t]+)?[*_]*[ \t]*reported[ \t]*#?(\d*)[ \t]*[*_]*[ \t]*:[ \t]*[*_]*[ \t]*(["“][^\n]*["”])[ \t]*[*_]*[ \t]*$/gimu
+const quoteMarks = /^[\s"“”'‘’*_]+|[\s"“”'‘’*_]+$/gu
+
+function reportsOf(said: string, points: number): { readonly said: string; readonly quotes: ReadonlyMap<number, readonly string[]> } {
+  const labelled = said.replace(reportLabel, "")
+  const untagged = labelled.replace(reportTag, "")
+  const found = [...said.matchAll(reportLabel), ...labelled.matchAll(reportTag), ...untagged.matchAll(reportBare)]
+  const quotes = new Map<number, string[]>()
+  for (const [, tagPoint, tagQuote, parenPoint, parenQuote] of found) {
+    const point = tagPoint ?? parenPoint ?? ""
+    const quote = tagQuote ?? parenQuote
+    const at = point === "" ? (points === 1 ? 1 : 0) : Number(point)
+    if (at >= 1 && at <= points) quotes.set(at, [...quotes.get(at) ?? [], (quote ?? "").replace(quoteMarks, "")])
+  }
+  return { said: untagged.replace(reportBare, "").trim(), quotes }
+}
+
+const sentenceEnd = `[.!?…]`
+const closers = `[*_"'”’)\\]]*`
+const opensASentence = `(?<=(?:^|${sentenceEnd}${closers}\\s+|\\n[ \\t]*(?:[-*•][ \\t]+|\\d+[.)][ \\t]+)?)[*_"“]*)`
+const closesASentence = `(?:${sentenceEnd}+(?=${closers}(?:\\s|$))|(?=${closers}[ \\t]*(?:\\n|$)))`
+const asWritten = (word: string) => [...word].map((char) =>
+  /['‘’]/u.test(char) ? "['‘’]" : /["“”]/u.test(char) ? `["“”]` : char.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("")
+
+export interface Report {
+  readonly span: QuoteSpan
+  readonly sentence: string
+}
+
+const boundary = /(\S*?)([.!?…])["'”’)\]]*\s+(\S)/gu
+const neverFinal = new Set(["dr", "mr", "mrs", "ms", "prof", "e.g", "i.e"])
+const mayEnd = new Set(["p.m", "a.m", "u.s", "st", "jr", "sr"])
+const beforeNumbers = new Set(["u.s", "st"])
+
+function continuesAfter(before: string, next: string): boolean {
+  const word = before.replace(/^[("“‘'[]+/u, "").toLowerCase()
+  if (neverFinal.has(word)) return true
+  if (!mayEnd.has(word)) return false
+  return /\p{Ll}/u.test(next) || (/\d/u.test(next) && beforeNumbers.has(word))
+}
+
+const insideASentence = {
+  test: (said: string) => [...said.matchAll(boundary)].some(([, before = "", stop, next = ""]) => stop !== "." || !continuesAfter(before, next)),
+}
+
+export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {
+  const told = new Set<string>()
+  return new Map([...quotes].toSorted(([a], [b]) => a - b).map(([point, read]): [number, Report] => {
+    const own = read.find(({ span, sentence }) => span === "OneSentence" && !told.has(sentence))
+    if (own !== undefined) {
+      told.add(own.sentence)
+      return [point, own]
+    }
+    return [point, read.some(({ span }) => span === "OneSentence") ? { span: "Reused", sentence: "" } : read[0] ?? { span: "NoQuote", sentence: "" }]
+  }))
+}
+
+export function reportIn(prose: string, quote: string): Report {
+  const said = quote.replace(/[\s.!?…*_"”]+$/u, "").trim()
+  if (said === "") return { span: "NoQuote", sentence: "" }
+  if (insideASentence.test(said)) return { span: "Fragment", sentence: "" }
+  const words = said.split(/\s+/u).map(asWritten).join("\\s+")
+  const whole = new RegExp(`${opensASentence}${words}${closesASentence}`, "u").exec(prose)
+  if (whole === null) return { span: "Fragment", sentence: "" }
+  const matched = whole[0].trim()
+  const next = prose.slice(whole.index + whole[0].length).trimStart()[0] ?? ""
+  const last = matched.replace(/[.!?…"'”’)\]*_]+$/u, "").split(/\s+/u).at(-1) ?? ""
+  return matched.endsWith(".") && next !== "" && continuesAfter(last, next) ? { span: "Fragment", sentence: "" } : { span: "OneSentence", sentence: matched }
+}
+
+export interface Point {
+  readonly note: string
+  readonly toTheModel: readonly string[]
+  readonly needed: boolean
+}
+
+export function writtenToTheModel(result: ActionResult): readonly string[] {
+  const owner = result.verifiedUserFacing === true ? result.userFacingText?.trim() : undefined
+  const data = typeof result.data === "object" && result.data !== null ? Object.values(result.data) : []
+  return [...new Set([result.verifiedUserFacing === true ? undefined : result.userFacingText, errorText(result.error), result.text, ...data]
+    .flatMap((text) => typeof text === "string" && text.trim() !== "" && text.trim() !== owner ? [text] : []))]
+}
+
+const hostPartOf = (note: string) => note.split("The step's own report:")[0] ?? note
+
+function settleSchema(points: readonly Point[]): JSONSchema {
+  return {
+    type: "object", required: ["reply", "told"],
+    properties: {
+      reply: { type: "string" },
+      told: {
+        type: "array", minItems: points.filter(({ needed }) => needed).length,
+        items: { type: "object", required: ["point", "sentence"], properties: { point: { type: "integer", minimum: 1, maximum: Math.max(points.length, 1) }, sentence: { type: "string" } } },
+      },
+    },
+  }
+}
+
+function settledJson(text: string): Record<string, unknown> | "Malformed" | undefined {
+  const open = text.indexOf("{")
+  if (open < 0) return undefined
+  const close = text.lastIndexOf("}")
+  try {
+    const parsed: unknown = JSON.parse(text.slice(open, close + 1))
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) return { ...parsed }
+  } catch {
+    return /"(?:reply|told)"\s*:/u.test(text.slice(open)) ? "Malformed" : undefined
+  }
+  return "Malformed"
+}
+
+function settledArguments(args: Record<string, unknown>): { readonly reply: string | undefined; readonly told: ReadonlyMap<number, readonly string[]> } {
+  const told = new Map<number, string[]>()
+  for (const entry of Array.isArray(args.told) ? args.told : []) {
+    const { point, sentence } = (typeof entry === "object" && entry !== null ? entry : {}) as { point?: unknown; sentence?: unknown }
+    const at = typeof point === "number" ? point : typeof point === "string" ? Number(point) : Number.NaN
+    if (Number.isInteger(at) && typeof sentence === "string") told.set(at, [...told.get(at) ?? [], sentence.replace(quoteMarks, "")])
+  }
+  return { reply: typeof args.reply === "string" ? args.reply : undefined, told }
+}
+
+const wordsOf = (text: string) => text.toLowerCase().replace(/[‘’]/gu, "'").split(/[^\p{L}\p{N}']+/u).filter((word) => word !== "")
+const identifierLike = (token: string) => token.length >= 6 && /.[A-Z]|\d|_|\w\.\w/u.test(token)
+const tokensOf = (text: string) => text.split(/[\s,;:!?()"“”]+/u).map((token) => token.replace(/^[.…]+|[.…]+$/gu, "")).filter(identifierLike)
+
+const runsOf = (text: string) => {
+  const words = wordsOf(text)
+  return words.length < 5 ? [] : words.slice(0, words.length - 4).map((_, at) => words.slice(at, at + 5).join(" "))
+}
+
+export function echoesHostText(sentence: string, hostTexts: readonly string[], ownerSaid = ""): boolean {
+  const said = new Set(runsOf(sentence))
+  const tokens = new Set(tokensOf(sentence))
+  const ownerRuns = new Set(runsOf(ownerSaid))
+  const ownerTokens = new Set(tokensOf(ownerSaid))
+  return hostTexts.some((host) =>
+    runsOf(host).some((run) => said.has(run) && !ownerRuns.has(run)) || tokensOf(host).some((token) => tokens.has(token) && !ownerTokens.has(token)))
+}
+
 export interface PlannedTurn {
   readonly reply: string
   readonly notices: readonly FailureNotice[]
   readonly cutOff: boolean
   readonly steps: readonly PlannedStep[]
   readonly streamed: string
-  readonly reask: (notes: readonly string[]) => Promise<Reasked>
+  readonly firstReports: ReadonlyMap<number, Report>
+  readonly firstEchoes: boolean
+  readonly reask: (points: readonly Point[], notes: readonly string[]) => Promise<Reasked>
+  readonly compose: (prose: string | undefined) => string
 }
 
 export interface Reasked {
   readonly revised: string | undefined
   readonly stoodBy: boolean
+  readonly echoes: boolean
+  readonly reports: ReadonlyMap<number, Report>
 }
 
 export interface PlanInput {
@@ -272,7 +422,9 @@ function errorText(error: ActionResult["error"]): string | undefined {
 
 const unshownResult = "The owner sees none of this tool text. Your reply is the only thing you tell them, so say in it what this did or found."
 
-function toolMessage(result: ActionResult): string {
+const reportsAs = (step: number) => `This step did not happen as asked. If your reply tells the person so, end your reply with a line of its own, [reported ${step}: "…"], holding the one sentence of your reply that tells it, copied exactly.`
+
+function toolMessage(result: ActionResult, failedStep?: number): string {
   const summary = {
     success: result.success,
     text: result.text ?? result.userFacingText,
@@ -281,6 +433,7 @@ function toolMessage(result: ActionResult): string {
     effects: (result.effectReceipts ?? []).map(({ operation, outcome, resource }) => ({ operation, outcome, resource: resource.kind })),
     data: result.data,
     ...(result.verifiedUserFacing === true ? {} : { owner: unshownResult }),
+    ...(failedStep === undefined ? {} : { report: reportsAs(failedStep) }),
   }
   let text: string
   try {
@@ -453,6 +606,8 @@ function settleReply(steps: readonly PlannedStep[]): SettledReply {
       answerableLater: (earlier?.answerableLater ?? true) && laterRuns.length > 0,
       failedActions: [...new Set([...earlier?.failedActions ?? [], step.action])],
       laterActions: [...new Set([...earlier?.laterActions ?? [], ...laterRuns])],
+      steps: [...earlier?.steps ?? [], steps.indexOf(step)],
+      toTheModel: [...new Set([...earlier?.toTheModel ?? [], ...writtenToTheModel(step.result)])],
     })
   }
   return {
@@ -567,14 +722,17 @@ function plannedToolRunner(input: PlanInput, named: ReadonlyMap<string, Action>,
     return { result, captured }
   }
   const record = async (item: AdmittedCall, { result, captured }: CallRun, response: number): Promise<boolean> => {
+    let failedStep: number | undefined
     if (item.kind === "run") {
       settlements.set(item.identity, toolSettlement(result, named.get(item.call.name)))
       if (!plannerOnlyCoaching(result.transcriptVisibility === "internal", result.data?.coachingFailure === true, result.success, (result.effectReceipts?.length ?? 0) > 0)) {
         await input.onStepResult?.(result)
-        steps.push({ action: item.call.name, cue: cues.get(item.call.id) ?? "", params: item.params, result, shown: shownBy(result, captured), outcomes: planStepsOf(item.call.name, item.params, result), response })
+        const outcomes = planStepsOf(item.call.name, item.params, result)
+        steps.push({ action: item.call.name, cue: cues.get(item.call.id) ?? "", params: item.params, result, shown: shownBy(result, captured), outcomes, response })
+        if (outcomes.some(({ outcome }) => outcome === "Failed" || outcome === "Rejected")) failedStep = steps.length
       }
     }
-    conversation.push({ role: "tool", toolCallId: item.call.id, name: item.call.name, content: toolMessage(result) })
+    conversation.push({ role: "tool", toolCallId: item.call.id, name: item.call.name, content: toolMessage(result, failedStep) })
     return stoppedAtModelMaximum(result)
   }
   return async (work: readonly ToolCall[], response: number): Promise<boolean> => {
@@ -809,24 +967,57 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
     }
   }
   const settled = settleReply(steps)
-  const reply = settled.compose(prose)
-  const reask = async (notes: readonly string[]): Promise<Reasked> => {
+  const ownerSaid = typeof input.message.content.text === "string" ? input.message.content.text : ""
+  const failedToTheModel = steps.filter(({ outcomes }) => outcomes.some(({ outcome }) => outcome === "Failed" || outcome === "Rejected")).flatMap(({ result }) => writtenToTheModel(result))
+  const declaredFirst = reportsOf(prose ?? "", steps.length)
+  const firstProse = prose === undefined ? undefined : declaredFirst.said
+  const firstReports = reportsEach(new Map([...declaredFirst.quotes].map(([at, quotes]) => {
+    return [at, quotes.map((quote) => {
+      const read = reportIn(firstProse ?? "", quote)
+      return read.span === "OneSentence" && (holdsHostText(read.sentence, input.hostNotes) || echoesHostText(read.sentence, [...input.hostNotes, ...failedToTheModel], ownerSaid)) ? { span: "Fragment" as const, sentence: "" } : read
+    })]
+  })))
+  const reply = settled.compose(firstProse)
+  const firstEchoes = echoesHostText(firstProse ?? "", failedToTheModel, ownerSaid)
+  const reask = async (points: readonly Point[], notes: readonly string[]): Promise<Reasked> => {
     try {
       const said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
         system: input.system, reasoning: "off", temperature: plannerTemperature, signal, providerOptions: agentCache(runtime, "planner"),
-        messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...notes].join("\n") }],
-        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }),
+        messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...points.map(({ note }, at) => `(${at + 1}) ${note}`), ...notes].join("\n") }],
+        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }), ...(points.length === 0 ? {} : { responseSchema: settleSchema(points) }),
       })), signal)
-      const { declared, text: answer } = declaredOf(writtenCallFree(answerOf(said).text).prose)
-      const revised = settled.compose(withoutOfferedCalls(answer, offeredNames))
-      const draft = draftOf(answer, 0, offeredNames, true, declared, [...input.hostNotes, ...notes])
+      const answered = answerOf(said)
+      const json = settledJson(answered.text)
+      if (json === "Malformed") return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
+      const forced = json === undefined ? undefined : settledArguments(json)
+      const written = forced === undefined ? reportsOf(answered.text, points.length) : undefined
+      const replied = forced === undefined ? written?.said : forced.reply === undefined ? undefined : reportsOf(forced.reply, points.length).said
+      if (replied === undefined) return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
+      const read = declaredOf(writtenCallFree(replied).prose)
+      const declared = forced === undefined || read.declared === "DeclaredPromise" ? read.declared : "DeclaredAnswer"
+      const answer = read.text
+      const prose = withoutOfferedCalls(answer, offeredNames)
+      const revised = settled.compose(prose)
+      const hostNotes = [...input.hostNotes, ...points.map(({ note }) => note), ...notes]
+      const draft = draftOf(answer, 0, offeredNames, true, declared, hostNotes)
       const sameAsFirst = revised.trim() === reply.trim()
       const spoken = revised !== settled.compose(undefined)
-      return { revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined, stoodBy: spoken && standsBy(draft, sameAsFirst) }
+      const quotes = forced === undefined ? written?.quotes ?? new Map<number, readonly string[]>() : forced.told
+      const echoes = (point: number, sentence: string) =>
+        holdsHostText(sentence, hostNotes) || echoesHostText(sentence, [...input.hostNotes, answerAgain, reportNote, ...points.map(({ note }) => hostPartOf(note)), ...points.flatMap(({ toTheModel }) => toTheModel), ...failedToTheModel], ownerSaid)
+      return {
+        revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
+        stoodBy: spoken && standsBy(draft, sameAsFirst),
+        echoes: echoesHostText(prose, failedToTheModel, ownerSaid),
+        reports: reportsEach(new Map([...quotes].filter(([point]) => point >= 1 && point <= points.length).map(([point, told]) => [point, told.map((quote) => {
+          const read = reportIn(prose, quote)
+          return read.span === "OneSentence" && echoes(point, read.sentence) ? { span: "Fragment" as const, sentence: "" } : read
+        })]))),
+      }
     } catch (error: unknown) {
       if (signal.aborted) throw error
-      return { revised: undefined, stoodBy: false }
+      return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
     }
   }
-  return { reply, notices: settled.notices, cutOff: stoppedShort, steps, streamed, reask }
+  return { reply, notices: settled.notices, cutOff: stoppedShort, steps, streamed, firstReports, firstEchoes, reask, compose: settled.compose }
 }

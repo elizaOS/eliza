@@ -241,7 +241,7 @@ pure def chatReturn(ask: ChatAsk, answer: ChatAnswer): ChatReturn =
   else if (wantsResult(ask)) AnswerResult
   else AnswerText
 pure val askValues = Set({ offersTools: false, choosesTool: false, asksSchema: false }, { offersTools: true, choosesTool: false, asksSchema: false },
-  { offersTools: true, choosesTool: true, asksSchema: false }, { offersTools: false, choosesTool: false, asksSchema: true })
+  { offersTools: true, choosesTool: true, asksSchema: false }, { offersTools: false, choosesTool: false, asksSchema: true }, { offersTools: true, choosesTool: false, asksSchema: true })
 pure val answerValues = Set({ textBlank: true, toolCalls: 0 }, { textBlank: true, toolCalls: 1 }, { textBlank: false, toolCalls: 0 }, { textBlank: false, toolCalls: 2 })
 pure def lawAnEmptyAnswerIsAProviderIssue(ask: ChatAsk, answer: ChatAnswer): bool =
   (answer.textBlank and answer.toolCalls == 0) iff chatReturn(ask, answer) == AnswerProviderIssue

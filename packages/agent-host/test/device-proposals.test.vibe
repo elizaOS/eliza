@@ -362,7 +362,7 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     notHere: { grouped: true, reasonsSaid: 1 },
     proposalReply: "Review the reminder “Milk” on your phone.",
     milk: { state: "pending", payload: expectedPayload },
-    refusalReply: ["I didn't set that one. What should the reminder say?\n\nTell me what to remind you of.", true], afterRefusal: 1,
+    refusalReply: ["Tell me what to remind you of.", true], afterRefusal: 1,
     askedAgain: { refused: true, afterAskedAgain: 1 },
     held: { reply: true, afterHeld: 2 },
     hostOnlyOffered: false,

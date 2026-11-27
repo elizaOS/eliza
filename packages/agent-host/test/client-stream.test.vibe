@@ -953,7 +953,7 @@ it.live(`In one long chat, an earlier reply reaches the model with what its tool
 
   try Effect.sync(() => cloud.script(toolCalls("", show("Browser")), text("Browser is open.")))
   const opened = try turn({ text: "Open the browser.", metadata: on("home") })
-  try Effect.sync(() => cloud.script(toolCalls("", cued("Let me look.", { name: "BROWSER_OPEN", arguments: { url: address } })), text("I can't open that page from here.")))
+  try Effect.sync(() => cloud.script(toolCalls("", cued("Let me look.", { name: "BROWSER_OPEN", arguments: { url: address } })), text("I can't open that page from here."), text(JSON.stringify({ reply: "I can't open that page from here.", told: [{ point: 1, sentence: "I can't open that page from here." }] }))))
   const refused = try turn({ text: address, metadata: on("browser") })
   try Effect.sync(() => cloud.script(toolCalls("", { name: "VIEWS", arguments: { view: "Home", action: "show" } }), text("Home.")))
   const home = try turn({ text: "Go home.", metadata: on("notes") })

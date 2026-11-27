@@ -121,14 +121,21 @@ stored with what ended its turn also carries `abortCause`, and `stopReason`
 when it has one. A reply stored with Cloud's own funds code (`cloudCode`,
 [turns](./turns.md)) carries it too, and only beside a failure kind, so a
 reopened conversation shows an account out of plan allowance and credits
-the same way the live reply did. A row never carries the other side's
-fields, and carries none when its message has none.
+the same way the live reply did. A reply whose turn marked failed steps
+untold ([planning](./planning.md)) carries `untold`, the actions of those
+steps in order, so a reopened conversation draws the same notices for them
+as the live reply did, whatever its text, an empty text included. A row
+never carries the other side's fields, and carries none when its message
+has none.
 
 ```quint
 type RowMarks = { sendKey: str, failed: str, cause: str, cloudCode: str }
 pure def rowMarks(author: Author, sendKey: str, failed: str, cause: str, cloudCode: str): RowMarks =
   if (author == User) { sendKey: sendKey, failed: "", cause: "", cloudCode: "" }
   else { sendKey: "", failed: failed, cause: cause, cloudCode: if (failed == "") "" else cloudCode }
+pure def rowUntold(author: Author, untold: List[str]): List[str] = if (author == User) List() else untold
+pure def lawOnlyTheAgentsRowCarriesUntoldSteps(untold: List[str]): bool = rowUntold(User, untold) == List() and rowUntold(Agent, untold) == untold
+pure val untoldValues = Set(List(), List("BOOK_TABLE"), List("BOOK_TABLE", "SCHEDULE_EVENT"))
 pure val sendKeyValues = Set("", "m-1")
 pure val failedValues = Set("", "aborted", "insufficient_credits")
 pure val causeValues = Set("", "client_left")

@@ -200,15 +200,22 @@ it.live('A turn writes the reply it decided once without the mark, after its too
 
   try Effect.sync(() => cloud.script(toolCalls("Let me check.", { name: "CALCULATE", arguments: { expression: "3847 * 292" } }), text("That is ", "1,123,324.")))
   const tool = try turn("What is 3847 times 292?")
-  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("I couldn't add two plus two: the calculator didn't take it.")))
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text(`I couldn't add two plus two: the calculator didn't take it.\n[reported 1: "I couldn't add two plus two: the calculator didn't take it."]`)))
   const revised = try turn("Add two plus two.")
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("Done!"), text("Done!")))
+  const marked = try turn("Add two plus two.")
+  try Effect.sync(() => cloud.script(toolCalls("", { name: "CALCULATE", arguments: { expression: "two plus two" } }), text("I couldn't add two plus two.", `\n[reported 1: "I couldn't add`, ` two plus two."]`)))
+  const declaredFrames = framesOf(try send(agent, id, { text: "Add two plus two." }))
+  const declared = { ...settledOrder(declaredFrames), shownReport: declaredFrames.some((frame) => `${frame.text ?? ""}${frame.fullText ?? ""}`.includes("reported")) }
   const plain = try turn("Say ok.")
-  try Effect.try(() => assert.deepStrictEqual({ plain, tool, revised }, {
+  try Effect.try(() => assert.deepStrictEqual({ plain, tool, revised, marked, declared }, {
     plain: { settled: ["ok"], done: "ok", markedBefore: true, after: ["reply_ready", "done"], toolsBefore: false },
     tool: { settled: ["That is 1,123,324."], done: "That is 1,123,324.", markedBefore: true, after: ["reply_ready", "done"], toolsBefore: true },
     revised: {
       settled: ["I couldn't add two plus two: the calculator didn't take it."], done: "I couldn't add two plus two: the calculator didn't take it.",
       markedBefore: true, after: ["reply_ready", "done"], toolsBefore: true,
     },
+    marked: { settled: [""], done: "", markedBefore: true, after: ["reply_ready", "done"], toolsBefore: true },
+    declared: { settled: ["I couldn't add two plus two."], done: "I couldn't add two plus two.", markedBefore: true, after: ["reply_ready", "done"], toolsBefore: true, shownReport: false },
   }))
 }, 120_000)
