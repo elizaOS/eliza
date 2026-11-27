@@ -1,0 +1,42 @@
+// spec/agent/voice/clientAudio.md, "A WAV holds every sample in order as mono PCM16 behind a 44-byte header"
+import { assert, it } from "@effect/vitest"
+import { encodeMonoPcm16BytesWav, WavBytesRefused, WavRateRefused } from "../src/voice/capture.vibe"
+
+it.effect("A WAV holds every sample in order as mono PCM16 behind a 44-byte header: a single odd chunk refuses the bytes", () => effect {
+  const refused = try Effect.flip(encodeMonoPcm16BytesWav([new Uint8Array([0x01, 0x02, 0x03])], 16000))
+  try Effect.try(() => {
+    assert.instanceOf(refused, WavBytesRefused)
+    assert.strictEqual(refused.bytes, 3)
+  })
+})
+
+it.effect("A WAV holds every sample in order as mono PCM16 behind a 44-byte header: an odd total across chunks refuses the bytes", () => effect {
+  const refused = try Effect.flip(encodeMonoPcm16BytesWav([new Uint8Array([0x01, 0x02]), new Uint8Array([0x03, 0x04, 0x05])], 16000))
+  try Effect.try(() => {
+    assert.instanceOf(refused, WavBytesRefused)
+    assert.strictEqual(refused.bytes, 5)
+  })
+})
+
+it.effect("A WAV holds every sample in order as mono PCM16 behind a 44-byte header: an even total produces a valid WAV", () => effect {
+  const wav = try encodeMonoPcm16BytesWav([new Uint8Array([0x01, 0x02, 0x03, 0x04]), new Uint8Array([0x05, 0x06])], 16000)
+  try Effect.try(() => {
+    const dataBytes = (wav[40] ?? 0) + (wav[41] ?? 0) * 256 + (wav[42] ?? 0) * 65536 + (wav[43] ?? 0) * 16777216
+    assert.strictEqual(wav.length, 50)
+    assert.strictEqual(wav[0], 0x52)
+    assert.strictEqual(wav[1], 0x49)
+    assert.strictEqual(wav[2], 0x46)
+    assert.strictEqual(wav[3], 0x46)
+    assert.strictEqual(dataBytes, 6)
+    assert.strictEqual((wav.length - 44) / 2, 3)
+    assert.deepStrictEqual(Array.from(wav.slice(44)), [0x01, 0x02, 0x03, 0x04, 0x05, 0x06])
+  })
+})
+
+it.effect("A WAV holds every sample in order as mono PCM16 behind a 44-byte header: an invalid rate still refuses the rate", () => effect {
+  const refused = try Effect.flip(encodeMonoPcm16BytesWav([new Uint8Array([0x01, 0x02])], 4000))
+  try Effect.try(() => {
+    assert.instanceOf(refused, WavRateRefused)
+    assert.strictEqual(refused.rate, 4000)
+  })
+})
