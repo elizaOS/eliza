@@ -75,7 +75,7 @@ effect function contentParts(written: string, allowBlank: boolean): { title: str
   const first = Math.max(0, content.search(/\S/u))
   const newline = content.indexOf("\n", first)
   const title = wellFormedPrefix(newline < 0 ? content : content.slice(0, newline), noteLimits.title)
-  const body = content.slice(title.length)
+  const body = newline < 0 ? "" : content.slice(newline)
   if (body.length > noteLimits.body) throw refused("NOTES_VALIDATION_FAILED", `content must be at most ${noteLimits.body} characters after its first line.`)
   return { title, body }
 }
