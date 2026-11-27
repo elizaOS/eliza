@@ -20,6 +20,7 @@ export {
   findInteractionRegions,
   type InteractionRegion,
   MAX_FOLLOWUPS,
+MAX_CHOICE_OPTIONS,
   MAX_FORM_FIELDS,
   MAX_TASK_TITLE_LEN,
   type ParsedInteractions,
