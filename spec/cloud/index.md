@@ -169,7 +169,7 @@ pure def cloudDeviceAllows(deviceEndsAt: int, nowAt: int, acknowledged: bool, in
 
 > As a signed-in person, I can choose to connect Google mail, my primary
 > calendar or both. I can read my Gmail folders and Calendar events I
-> approved, and disconnect the access I granted.
+> approved, ask Google for access again, and disconnect the access I granted.
 
 ### Google sign-in and read access require separate permission
 
@@ -178,6 +178,11 @@ person approves each requested capability. A deployment can use its sign-in OAut
 client for this separate exchange. The exchange requests only the selected scopes and identity needed to link the right account. The verified Google subject
 must match a Google sign-in account. For email or SMS sign-in the verified
 Google email must match the email chosen for the connection.
+When Google approves some of the requested scopes, Grace keeps those
+permissions and makes the related features available. Sending and moving
+mail to Trash also require reading mail, and changing Calendar events
+requires reading Calendar. Cancellation or an answer with no usable
+permission leaves any existing connection in place.
 
 ```quint
 type CloudGoogleReadScope = GoogleReadMail | GoogleReadCalendar

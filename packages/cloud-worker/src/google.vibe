@@ -264,8 +264,18 @@ effect function complete(request: Request, url: URL, env: GoogleEnv, db: Client,
   const config = try googleConfig(env)
   const proof = flow(request)
   const code = url.searchParams.get("code")
-  if (!proof || !code || code.length > 2048 || proof.state !== url.searchParams.get("state") || url.searchParams.has("error")) throw new AuthorizationFailed()
+  const states = url.searchParams.getAll("state")
+  if (!proof || states.length !== 1 || proof.state !== states[0]) throw new AuthorizationFailed()
   const stateHash = hex(try sha256(proof.state))
+  const errors = url.searchParams.getAll("error")
+  if (code === null && errors.length === 1 && errors[0] === "access_denied") {
+    const cancelled = try forAccount(db, account, query(db,
+      "DELETE FROM cloud_google_authorizations WHERE account_id = $1 AND state_hash = $2 AND expires_at > now()",
+      [account, stateHash]))
+    if (!cancelled.rowCount) throw new AuthorizationFailed()
+    return
+  }
+  if (!code || code.length > 2048 || errors.length > 0) throw new AuthorizationFailed()
   const { rows } = try query<Authorization>(db, `
     SELECT o.expected_email, o.mail, o.calendar, o.send_mail, o.trash_mail, o.write_calendar, p.provider, p.provider_subject
     FROM cloud_google_authorizations o JOIN accounts a ON a.key = o.account_id
@@ -279,11 +289,25 @@ effect function complete(request: Request, url: URL, env: GoogleEnv, db: Client,
   const credentials = try oauthToken(config, new URLSearchParams({
     grant_type: "authorization_code", code, code_verifier: proof.verifier, redirect_uri: config.redirectUri
   }))
-  const granted = new Set((credentials.scope ?? "").split(/\s+/))
-  if (!credentials.refresh_token || !capabilities(intended).every((scope) => granted.has(scope))) throw new AuthorizationFailed()
+  const refreshToken = credentials.refresh_token
+  if (!refreshToken) throw new AuthorizationFailed()
   const profile = try verifiedProfile(credentials)
-  if (intended.provider === "google" ? intended.provider_subject !== profile.sub : profile.email !== intended.expected_email) throw new AuthorizationFailed()
-  try link(env, config, db, account, profile, intended, credentials.refresh_token, stateHash)
+  const identity = intended.provider === "google"
+    ? { expected: intended.provider_subject, returned: profile.sub }
+    : { expected: intended.expected_email ?? "", returned: profile.email }
+  const granted = new Set((credentials.scope ?? "").split(/\s+/))
+  const stored = nativeConnectStores(identity.expected, identity.returned, true, {
+    readMail: intended.mail && granted.has(scopeByCapability.mail),
+    sendMail: intended.send_mail && granted.has(scopeByCapability.send_mail),
+    trashMail: intended.trash_mail && granted.has(scopeByCapability.trash_mail),
+    readCalendar: intended.calendar && granted.has(scopeByCapability.calendar),
+    writeCalendar: intended.write_calendar && granted.has(scopeByCapability.write_calendar)
+  })
+  if (!nativeConnectStoresAny(stored)) throw new AuthorizationFailed()
+  try link(env, config, db, account, profile, {
+    mail: stored.readMail, send_mail: stored.sendMail, trash_mail: stored.trashMail,
+    calendar: stored.readCalendar, write_calendar: stored.writeCalendar
+  }, refreshToken, stateHash)
 }
 
 effect function verifiedProfile(credentials: OAuthResult) {
