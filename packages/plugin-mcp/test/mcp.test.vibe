@@ -12,7 +12,7 @@ module node {
   import { Ajv } from "ajv"
 
   const text = { type: "string" }
-  const deep = (levels: number): object => levels === 0 ? { type: "integer" } : { type: "object", properties: { next: deep(levels - 1) }, required: ["next"] }
+  const deep = (levels: number, leaf: object = { type: "integer" }): object => levels === 0 ? leaf : { type: "object", properties: { next: deep(levels - 1, leaf) }, required: ["next"] }
 
   const tools = [
     { name: "push_files", inputSchema: { type: "object", properties: { branch: text, files: { type: "array", items: { type: "object", properties: { path: text, content: text }, required: ["path", "content"], additionalProperties: false } } }, required: ["branch", "files"] } },
@@ -21,6 +21,59 @@ module node {
     { name: "echo_value", inputSchema: { type: "object", properties: { value: {} }, required: ["value"] } },
     { name: "set_labels", inputSchema: { type: "object", properties: { labels: { type: "object", additionalProperties: text } }, required: ["labels"] } },
     { name: "nest", inputSchema: { type: "object", properties: { root: deep(7) }, required: ["root"] } },
+    {
+      name: "query_items",
+      inputSchema: {
+        type: "object",
+        properties: {
+          filter: {
+            anyOf: [
+              { type: "object", description: "Owner filter", properties: { owner: text }, required: ["owner"], additionalProperties: false },
+              { type: ["string", "null"] },
+              { type: "null" },
+            ],
+          },
+          tags: {
+            anyOf: [
+              { type: "array", items: { type: "integer" } },
+              { type: "null" },
+            ],
+          },
+          flex: {
+            anyOf: [
+              text,
+              {},
+            ],
+          },
+          both: {
+            anyOf: [text, { type: "integer" }],
+            oneOf: [text, { type: "integer" }],
+          },
+          atLimit: deep(4, {
+            anyOf: [
+              { type: "object", properties: { leaf: { type: "integer" } }, required: ["leaf"], additionalProperties: false },
+              { type: "null" },
+            ],
+          }),
+        },
+        required: ["filter"],
+      },
+    },
+    {
+      name: "resolve_target",
+      inputSchema: {
+        type: "object",
+        properties: {
+          target: {
+            oneOf: [
+              { type: "object", properties: { issue: { type: "integer" } }, required: ["issue"], additionalProperties: false },
+              { type: "object", properties: { slug: text }, required: ["slug"], additionalProperties: false },
+            ],
+          },
+        },
+        required: ["target"],
+      },
+    },
   ]
 
   export async function startServer(signal: AbortSignal): Promise<{ connection: { readonly kind: "http"; readonly url: URL; readonly fetch: typeof fetch }; called: string[]; delivered: unknown[]; stop(): Promise<void> }> {
@@ -68,6 +121,18 @@ const cases: ReadonlyArray<readonly [string, Record<string, unknown>, string | n
   ["set_labels", { labels: { team: 1 } }, "Argument 'labels.team' expected string, got number", false],
   ["nest", { root: nested(7, 1) }, null, true],
   ["nest", { root: nested(7, "one") }, null, false],
+  ["query_items", { filter: { owner: "alice" }, tags: [1, 2], flex: { ok: true }, both: "s", atLimit: nested(4, { leaf: 7 }) }, null, true],
+  ["query_items", { filter: null, tags: null }, null, true],
+  ["query_items", { filter: {} }, "Argument 'filter' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: { owner: "alice", extra: 1 } }, "Argument 'filter' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: null, tags: ["bad"] }, "Argument 'tags' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: null, both: { x: 1 } }, "Argument 'both' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: null, both: [1] }, "Argument 'both' did not satisfy any anyOf branch", false],
+  ["query_items", { filter: null, atLimit: nested(4, {}) }, "Argument 'atLimit.next.next.next.next' did not satisfy any anyOf branch", false],
+  ["resolve_target", { target: { issue: 42 } }, null, true],
+  ["resolve_target", { target: { slug: "core" } }, null, true],
+  ["resolve_target", { target: {} }, "Argument 'target' did not satisfy any anyOf branch", false],
+  ["resolve_target", { target: { issue: "42" } }, "Argument 'target' did not satisfy any anyOf branch", false],
 ]
 
 it.live("An MCP tool's nested argument shapes reach the planner and the server (spec/mcp/index.md, \"A tool's parameters keep the nested shape of its input schema down to a fixed depth\")", () => scoped(effect {
@@ -99,9 +164,20 @@ it.live("An MCP tool's nested argument shapes reach the planner and the server (
   const setLabels = try planned("set_labels")
   const echoValue = try planned("echo_value")
   const createPage = try planned("create_page")
-  const shapes = { pushFiles, setLabels, anyValueArrayLevels: arrayLevels(echoValue?.properties.value), title: createPage?.properties.title }
+  const queryItems = try planned("query_items")
+  const resolveTarget = try planned("resolve_target")
+  const shapes = {
+    pushFiles,
+    setLabels,
+    anyValueArrayLevels: arrayLevels(echoValue?.properties.value),
+    title: createPage?.properties.title,
+    queryFilterAnyOf: queryItems?.properties.filter?.anyOf,
+    queryTagsAnyOf: queryItems?.properties.tags?.anyOf,
+    queryFlexArrayLevels: arrayLevels(queryItems?.properties.flex),
+    resolveTargetAnyOf: resolveTarget?.properties.target?.anyOf,
+  }
   try Effect.try(() => {
-    assert.deepStrictEqual(actions.map((entry) => entry.name), ["MCP_PEER_PUSH_FILES", "MCP_PEER_CREATE_PAGE", "MCP_PEER_SUM_IDS", "MCP_PEER_ECHO_VALUE", "MCP_PEER_SET_LABELS", "MCP_PEER_NEST"])
+    assert.deepStrictEqual(actions.map((entry) => entry.name), ["MCP_PEER_PUSH_FILES", "MCP_PEER_CREATE_PAGE", "MCP_PEER_SUM_IDS", "MCP_PEER_ECHO_VALUE", "MCP_PEER_SET_LABELS", "MCP_PEER_NEST", "MCP_PEER_QUERY_ITEMS", "MCP_PEER_RESOLVE_TARGET"])
     assert.deepStrictEqual(shapes, {
       pushFiles: {
         type: "object",
@@ -115,6 +191,20 @@ it.live("An MCP tool's nested argument shapes reach the planner and the server (
       setLabels: { type: "object", properties: { labels: { type: "object", properties: {}, required: [], additionalProperties: { type: "string" } } }, required: ["labels"], additionalProperties: false },
       anyValueArrayLevels: 4,
       title: { type: "string", description: 'Page title JSON schema: {"type":"string","minLength":1,"description":"Page title"}' },
+      queryFilterAnyOf: [
+        { type: "object", description: "Owner filter", properties: { owner: { type: "string" } }, required: ["owner"], additionalProperties: false },
+        { type: "string" },
+        { type: "null" },
+      ],
+      queryTagsAnyOf: [
+        { type: "array", items: { type: "integer" } },
+        { type: "null" },
+      ],
+      queryFlexArrayLevels: 4,
+      resolveTargetAnyOf: [
+        { type: "object", properties: { issue: { type: "integer" } }, required: ["issue"], additionalProperties: false },
+        { type: "object", properties: { slug: { type: "string" } }, required: ["slug"], additionalProperties: false },
+      ],
     })
     assert.deepStrictEqual(outcomes, cases.map(([tool, , refused, delivered]) => ({ tool, refused, called: delivered, delivered })))
     assert.deepStrictEqual(fixture.delivered, cases.filter(([, , , delivered]) => delivered).map(([tool, args]) => ({ [tool]: args })))
