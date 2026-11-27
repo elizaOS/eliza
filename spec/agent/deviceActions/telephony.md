@@ -369,8 +369,9 @@ pure def lawOnlyARefusalIsExplained(verdict: TargetVerdict, contactChange: bool,
 > As the owner, I want "draft a text to Sam saying …" to become a draft to
 > Sam that I send myself, "draft a reply to them" to go to the sender the
 > agent just read for me, in that sender's conversation, and "who texted me
-> last?" to name only as much of that sender as I asked for, each without an
-> extra approval when I asked for exactly that.
+> last?" to name only as much of that sender as I asked for (the last four
+> digits, unless I ask for the whole number), each without an extra approval
+> when I asked for exactly that.
 
 ### A draft is the model's to ask for, to the recipient it proposed or to the sender the agent just read
 
@@ -427,13 +428,18 @@ pure def lawAnOlderReadNeverAddressesADraft(wholeAddress: bool, addressNegotiate
   not(senderDraftReady(SenderReadEarlier, wholeAddress, addressNegotiated))
 ```
 
-### A latest-sender read names the whole address only when the owner asked who sent it, on a phone that names it
+### A latest-sender read names the whole address only when the owner asked for the whole number, on a phone that names it
 
 A proposed `sms_latest_sender` is offered in the form the model read from
 the owner's words, its `disclosure`, which the tool defines for the model:
-`address` for a question about who sent the newest incoming SMS, `last-four` for an ask for the last four digits, and
+`last-four` for a question about who sent the newest incoming SMS and for an
+ask for the last four digits, `address` for an ask for the sender's whole
+number or to text that sender, and
 `unclear` for a narrower or unclear ask (the first digits, three digits,
-"without the number", a masked or partial number). `address`, on a phone
+"without the number", a masked or partial number). So "look up the sender
+of my newest text" reads and answers only the last four digits, and the
+whole number is read only when the owner asks for it, or asks to text that
+sender when no whole number was read yet. `address`, on a phone
 that negotiated `sms.latest-sender.v2`, reads the whole address. `last-four`,
 a disclosure left out, and any read on an older phone read only the last four
 digits. `unclear` offers nothing and is handed back to the model, which asks
@@ -462,8 +468,8 @@ when the current message asked for exactly that: a keypad that is empty or
 filled with a number the owner wrote, not only spoke, in this message; a
 draft to a number the owner wrote, not only spoke, outside the words to
 send, or to the sender of the read just delivered, carrying that sender's
-thread; a read of the whole sender address because the owner asked who sent
-it. Review is the default: a draft or a read keeps its card unless the model
+thread; a read of the whole sender address because the owner asked for the
+whole number or to text that sender. Review is the default: a draft or a read keeps its card unless the model
 set `reviewRequested: false`, which the tool tells it to set unless the owner
 asked to see or approve it first. So one the owner asked to review first
 ("ask me first", "show me the approval", "wait for my approval"), and one

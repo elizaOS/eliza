@@ -32,7 +32,7 @@ export function latestSenderReplyFor(result: unknown): string | undefined {
 export function latestSenderGuidance(negotiation: Negotiation): string {
   switch (senderGuidance(negotiation)) {
     case "AddressThenDraft":
-      return "Use sms_latest_sender (disclosure=address) when owner asks who sent the latest SMS. To draft a text to them next, propose sms_compose with recipientKind=previous-sender and body; never give hypothetical copy."
+      return "Use sms_latest_sender when owner asks who sent the latest SMS: disclosure=last-four, or address only when owner asks for the whole number or to text them. After an address read, to draft a text to them, propose sms_compose with recipientKind=previous-sender and body; never give hypothetical copy."
     case "SuffixOnly":
       return "Use sms_latest_sender when owner asks who sent the newest incoming SMS: reviewed read of sender number suffix only. No history/MMS/body; don't use inbox or open-thread read."
   }
