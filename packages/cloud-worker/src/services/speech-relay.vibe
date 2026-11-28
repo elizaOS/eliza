@@ -1,13 +1,13 @@
 // spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "A speech window bounds the audio and text sent to providers"
 import { Socket } from "effect/socket"
 import {
-  acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs, windowLength, windowTtsChars,
-  type Relay, type RelayInput, type ServerFrame, type Shortfall
+  acceptsAudio, helloDeadline, isSttFrame, listeningLinkEnd, listeningTurnAfter, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep,
+  speaking, speakingLinkEnd, stageIs, windowLength, windowTtsChars, type ProviderLink, type Relay, type RelayAnswer, type RelayInput, type ServerFrame, type Shortfall
 } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { readDevice, validUplink, writeRelay, type RelayWire } from "@elizaos/cloud"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { CloudContext, Route, RouteContext } from "../http/routes.vibe"
-import { openStt, openTts, type SttEdge, type SttLink, type TtsEdge, type TtsLink } from "../providers/speech.vibe"
+import { openStt, openTts, realtimeOpenBudget, type CloseCode, type SpeechWriteFailure, type SttEdge, type SttLink, type TtsEdge, type TtsLink } from "../providers/speech.vibe"
 import { relaySession } from "./speech-session.vibe"
 
 export type Failure = { readonly _tag: string }
@@ -69,8 +69,15 @@ interface Window {
   dispatched: boolean
   settled: boolean
   pcmBytes: number
+  sttUncertain: boolean
   ttsChars: number
   outputBytes: number
+}
+
+interface SttConnection {
+  readonly link: SttLink
+  lastAudioWindow: Window | undefined
+  turnOpen: boolean
 }
 
 interface Shell {
@@ -78,7 +85,7 @@ interface Shell {
   readonly windows: Window[]
   current: number
   refusal: Shortfall | undefined
-  stt: SttLink | undefined
+  stt: SttConnection | undefined
   tts: TtsLink | undefined
   readonly transcripts: string[]
   readonly spoken: Set<string>
@@ -97,11 +104,19 @@ type Arrival =
   | { readonly kind: "opened" }
   | { readonly kind: "stt"; readonly edge: SttEdge }
   | { readonly kind: "tts"; readonly edge: TtsEdge }
+  | { readonly kind: "closed"; readonly code: CloseCode; readonly from: ProviderConnection }
+  | { readonly kind: "writeTimeout"; readonly write: WaitingForProviderClose }
   | { readonly kind: "renewed"; readonly window: Window }
   | { readonly kind: "refusedRenewal"; readonly shortfall: Shortfall }
   | { readonly kind: "deadline"; readonly window: number }
 
 type Arrivals = Queue.Queue<Arrival>
+type ProviderConnection = SttLink | TtsLink
+type QueuedDevice = { readonly data: string | Uint8Array; readonly retried: boolean }
+type WaitingForProviderClose = { readonly kind: "waiting"; readonly from: ProviderConnection }
+type DeviceProgress = { readonly kind: "handled"; readonly opens: boolean } | WaitingForProviderClose
+type DeviceOutage = { readonly kind: "failed"; readonly failure: Failure }
+type RelayPayload = { readonly transcript?: string; readonly pcm?: Uint8Array }
 
 type Sent = "sent" | "unwritable" | "gone"
 
@@ -142,7 +157,7 @@ function windowOf(shell: Shell, number: number): Window | undefined {
 }
 
 function openWindow(number: number, expiresAt: number): Window {
-  return { number, expiresAt, dispatched: false, settled: false, pcmBytes: 0, ttsChars: 0, outputBytes: 0 }
+  return { number, expiresAt, dispatched: false, settled: false, pcmBytes: 0, sttUncertain: false, ttsChars: 0, outputBytes: 0 }
 }
 
 function iso(at: number): string {
@@ -181,9 +196,8 @@ effect function write(shell: Shell, writer: Socket.Writer, frame: ServerFrame, p
   return shell.gone ? "gone" : "sent"
 }
 
-effect function advance(shell: Shell, writer: Socket.Writer, input: RelayInput, payload: { readonly transcript?: string; readonly pcm?: Uint8Array } = {}) {
+effect function applyRelayAnswer(shell: Shell, writer: Socket.Writer, answer: RelayAnswer, payload: RelayPayload = {}) {
   const held = shell.relay.pending.length
-  const answer = relayStep(shell.relay, input)
   shell.relay = answer.relay
   if (payload.transcript !== undefined && (answer.frames.some(isSttFrame) || answer.relay.pending.length > held)) {
     shell.transcripts.push(payload.transcript)
@@ -200,6 +214,10 @@ effect function advance(shell: Shell, writer: Socket.Writer, input: RelayInput, 
       return
     }
   }
+}
+
+effect function advance(shell: Shell, writer: Socket.Writer, input: RelayInput, payload?: RelayPayload) {
+  try applyRelayAnswer(shell, writer, relayStep(shell.relay, input), payload)
 }
 
 function inputOf(frame: DeviceFrame, tokenMatches: boolean): RelayInput {
@@ -226,31 +244,54 @@ function breaksBudget(shell: Shell, before: Relay, frame: DeviceFrame): boolean 
   return false
 }
 
-effect function deviceEffects(shell: Shell, before: Relay, frame: DeviceFrame): void!Failure {
+effect function providerWrite(write: void!SpeechWriteFailure, account?: () => void): boolean!SpeechWriteFailure {
+  const completed = write catch effect (failure) => {
+    if (failure._tag === "ProviderClosedBeforeWrite") return false
+    account?.()
+    throw failure
+  }
+  if (completed === false) return false
+  account?.()
+  return true
+}
+
+effect function deviceEffects(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, before: Relay, after: Relay, frame: DeviceFrame): (WaitingForProviderClose | undefined)!Failure!(Scope.Scope | CloudContext) {
   const window = windowOf(shell, shell.current)
   const tts = shell.tts
   switch (frame.kind) {
-    case "audio":
-      if (!acceptsAudio(before) || shell.relay.phase !== "RelayLive" || shell.stt === undefined || window === undefined) return
-      window.pcmBytes += frame.pcm.length
-      try shell.stt.send(frame.pcm)
+    case "audio": {
+      if (!acceptsAudio(before) || after.phase !== "RelayLive" || window === undefined) return
+      const stt = try sttLink(shell, ports, sessionId, arrivals)
+      const accepted = try providerWrite(stt.link.send(frame.pcm), () => {
+        window.pcmBytes += frame.pcm.length
+        stt.lastAudioWindow = window
+      })
+      if (!accepted) return { kind: "waiting", from: stt.link }
       return
-    case "tts":
-      if (!stageIs(shell.relay, frame.id, "UtteranceOpen") || tts === undefined || window === undefined) return
-      window.ttsChars += frame.text.length
+    }
+    case "tts": {
+      if (!stageIs(after, frame.id, "UtteranceOpen") || window === undefined) return
+      const link = try ttsLink(shell, ports, sessionId, arrivals)
+      const accepted = try providerWrite(link.speak(frame.id, frame.text, frame.flush), () => { window.ttsChars += frame.text.length })
+      if (!accepted) return { kind: "waiting", from: link }
       shell.spoken.add(frame.id)
-      try tts.speak(frame.id, frame.text, frame.flush)
       return
-    case "finish":
-      if (stageIs(before, frame.id, "UtteranceOpen") && stageIs(shell.relay, frame.id, "UtteranceFinishing") && tts !== undefined) try tts.finish(frame.id)
+    }
+    case "finish": {
+      if (!stageIs(before, frame.id, "UtteranceOpen") || !stageIs(after, frame.id, "UtteranceFinishing")) return
+      const link = try ttsLink(shell, ports, sessionId, arrivals)
+      const accepted = try providerWrite(link.finish(frame.id))
+      if (!accepted) return { kind: "waiting", from: link }
+      shell.spoken.add(frame.id)
       return
+    }
     case "cancel":
-      if (shell.relay.phase !== "RelayLive" || !speaking(before, frame.id) || tts === undefined) return
+      if (after.phase !== "RelayLive" || !speaking(before, frame.id) || !shell.spoken.has(frame.id) || tts === undefined) return
       shell.ttsUncertain = true
-      try tts.cancel(frame.id)
+      try providerWrite(tts.cancel(frame.id))
       return
     case "stop":
-      if (before.phase === "RelayLive" && shell.relay.phase === "RelayEnded") shell.graceful = true
+      if (before.phase === "RelayLive" && after.phase === "RelayEnded") shell.graceful = true
       return
     case "hello":
     case "prepare":
@@ -262,31 +303,69 @@ effect function deviceEffects(shell: Shell, before: Relay, frame: DeviceFrame): 
   }
 }
 
-effect function deviceFrame(shell: Shell, ports: RelayPorts, sessionId: string, writer: Socket.Writer, data: string | Uint8Array): boolean!!CloudContext {
-  const frame = decodeDeviceFrame(data)
+effect function deviceFrame(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, queued: QueuedDevice): DeviceProgress!!(Scope.Scope | CloudContext) {
+  const frame = decodeDeviceFrame(queued.data)
   const before = shell.relay
   if (frame === undefined || breaksBudget(shell, before, frame)) {
     try advance(shell, writer, { tag: "ClientViolation" })
-    return false
+    return { kind: "handled", opens: false }
   }
   const tokenMatches = frame.kind === "hello" && before.phase === "RelayAwaitingHello"
     ? ports.session.tokenMatches(sessionId, frame.token) catch () => false
     : false
-  try advance(shell, writer, inputOf(frame, tokenMatches))
-  deviceEffects(shell, before, frame) catch effect () => {
+  const answer = relayStep(before, inputOf(frame, tokenMatches))
+  const result = deviceEffects(shell, ports, sessionId, arrivals, before, answer.relay, frame) catch (failure): DeviceOutage => ({ kind: "failed", failure })
+  if (result?.kind === "waiting") {
+    if (!queued.retried) return result
+    try annotateLogs(logError("a replacement speech provider link closed before writing"), { sessionId })
+    try advance(shell, writer, { tag: "ProviderFailed" })
+    return { kind: "handled", opens: false }
+  }
+  try applyRelayAnswer(shell, writer, answer)
+  if (result?.kind === "failed") {
+    try annotateLogs(logError("a speech provider link failed"), { sessionId, failure: result.failure._tag })
     try advance(shell, writer, { tag: "ProviderFailed" })
   }
-  return before.phase === "RelayAwaitingHello" && shell.relay.phase === "RelayOpening"
+  return { kind: "handled", opens: before.phase === "RelayAwaitingHello" && shell.relay.phase === "RelayOpening" }
 }
 
-effect function pump<A>(edges: Stream.Stream<A, Failure>, arrivals: Arrivals, wrap: (edge: A) => Arrival) {
+effect function pump<A>(sessionId: string, arrivals: Arrivals, link: ProviderLink, from: ProviderConnection, edges: Stream.Stream<A, Failure>, wrap: (edge: A) => Arrival) {
   const pumped = effect {
     for try (const edge of edges) {
       try Queue.offer(arrivals, wrap(edge))
     }
+    return true
   }
-  pumped catch () => undefined
-  try Queue.offer(arrivals, providerFailed)
+  const closed = pumped catch effect (failure) => {
+    try annotateLogs(logError("a speech provider link failed"), { sessionId, link, failure: failure._tag })
+    return false
+  }
+  if (!closed) {
+    try Queue.offer(arrivals, providerFailed)
+    return
+  }
+  const code = try from.closeCode()
+  try annotateLogs(logInfo("a speech provider link closed"), { sessionId, link, code })
+  try Queue.offer(arrivals, { kind: "closed", code, from })
+}
+
+effect function sttLink(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals): SttConnection!Failure!(Scope.Scope | CloudContext) {
+  const open = shell.stt
+  if (open !== undefined) return open
+  const link = try ports.links.openStt()
+  const stt: SttConnection = { link, lastAudioWindow: undefined, turnOpen: false }
+  shell.stt = stt
+  fork.scoped pump(sessionId, arrivals, "ListeningLink", link, link.edges, (edge) => ({ kind: "stt", edge }))
+  return stt
+}
+
+effect function ttsLink(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals): TtsLink!Failure!(Scope.Scope | CloudContext) {
+  const open = shell.tts
+  if (open !== undefined) return open
+  const tts = try ports.links.openTts()
+  shell.tts = tts
+  fork.scoped pump(sessionId, arrivals, "SpeakingLink", tts, tts.edges, (edge) => ({ kind: "tts", edge }))
+  return tts
 }
 
 effect function openProviders(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals) {
@@ -300,11 +379,7 @@ effect function openProviders(shell: Shell, ports: RelayPorts, sessionId: string
   shell.current = 1
   try ports.session.dispatchWindow(sessionId, 1)
   window.dispatched = true
-  const [stt, tts] = try Effect.all([ports.links.openStt(), ports.links.openTts()], { concurrency: "unbounded" })
-  shell.stt = stt
-  shell.tts = tts
-  fork.scoped pump(stt.edges, arrivals, (edge) => ({ kind: "stt", edge }))
-  fork.scoped pump(tts.edges, arrivals, (edge) => ({ kind: "tts", edge }))
+  try Effect.all([sttLink(shell, ports, sessionId, arrivals), ttsLink(shell, ports, sessionId, arrivals)], { concurrency: "unbounded" })
   try Queue.offer(arrivals, { kind: "opened" })
 }
 
@@ -411,14 +486,8 @@ effect function ttsEdge(shell: Shell, writer: Socket.Writer, edge: TtsEdge) {
   }
 }
 
-effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, arrival: Arrival) {
+effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, arrival: Exclude<Arrival, { readonly kind: "device" | "writeTimeout" }>) {
   switch (arrival.kind) {
-    case "device":
-      shell.queued -= 1
-      if (try deviceFrame(shell, ports, sessionId, writer, arrival.data)) {
-        fork.scoped openFirstWindow(shell, ports, sessionId, arrivals)
-      }
-      return
     case "gone":
       shell.gone = true
       return
@@ -431,12 +500,27 @@ effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arriv
       try advance(shell, writer, { tag: "Admitted" })
       return
     }
-    case "stt":
+    case "stt": {
+      const stt = shell.stt
+      if (stt !== undefined) stt.turnOpen = listeningTurnAfter(stt.turnOpen, arrival.edge.kind)
       try advance(shell, writer, { tag: "ProviderStt", kind: arrival.edge.kind, transcriptChars: arrival.edge.transcript.length }, { transcript: arrival.edge.transcript })
       return
+    }
     case "tts":
       try ttsEdge(shell, writer, arrival.edge)
       return
+    case "closed": {
+      const stt = shell.stt
+      if (stt !== undefined && stt.link === arrival.from) {
+        shell.stt = undefined
+        if (arrival.code !== 1000 && stt.lastAudioWindow !== undefined) stt.lastAudioWindow.sttUncertain = true
+        try advance(shell, writer, listeningLinkEnd(stt.turnOpen))
+      } else if (shell.tts === arrival.from) {
+        shell.tts = undefined
+        try advance(shell, writer, speakingLinkEnd(shell.relay, Array.from(shell.spoken)))
+      }
+      return
+    }
     case "renewed":
       try advance(shell, writer, { tag: "WindowRenewed" })
       return
@@ -473,9 +557,7 @@ effect function readDeviceFrames(reader: Socket.Reader, shell: Shell, arrivals: 
 
 effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   const stt = shell.stt
-  const drained = shell.graceful && stt !== undefined ? try stt.drain() : false
-  const forwarded = shell.windows.reduce((sum, window) => sum + window.pcmBytes, 0)
-  const sttFinal = shell.graceful && (forwarded === 0 || drained)
+  const drained = shell.graceful && stt !== undefined && try stt.link.drain()
   const ttsFinal = shell.graceful && !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
   ports.session.retire(sessionId) catch effect (failure) => {
     try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
@@ -486,6 +568,7 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   if (settling !== undefined) try Deferred.await(settling)
   for (const window of shell.windows) {
     if (window.settled) continue
+    const sttFinal = window.number < shell.current || (shell.graceful && !window.sttUncertain && (stt?.lastAudioWindow !== window || drained))
     const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttFinal, ttsFinal, dispatched: window.dispatched }
     ports.session.settleWindow(sessionId, window.number, usage) catch effect (failure) => {
       try annotateLogs(logError("a speech window could not be settled"), { sessionId, window: window.number, failure: failure._tag })
@@ -496,7 +579,8 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
 effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socket) {
   const shell: Shell = {
     relay: relayAtUpgrade, windows: [], current: 0, refusal: undefined, stt: undefined, tts: undefined,
-    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false, renewal: undefined, settling: undefined
+    transcripts: [], spoken: new Set(), ttsUncertain: false,
+    graceful: false, queued: 0, gone: false, renewal: undefined, settling: undefined
   }
   const session = effect {
     const reader = try socket.reader
@@ -511,9 +595,39 @@ effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socke
       const end = try ports.session.ended(sessionId)
       try Queue.offer(arrivals, { kind: "edge", input: { tag: end } })
     })
+    const devices: QueuedDevice[] = []
+    let waitForClose: WaitingForProviderClose | undefined
     while (shell.relay.phase !== "RelayEnded" && !shell.gone) {
+      const next = waitForClose === undefined ? devices.shift() : undefined
+      if (next !== undefined) {
+        const progress = try deviceFrame(shell, ports, sessionId, arrivals, writer, next)
+        if (progress.kind === "waiting") {
+          waitForClose = progress
+          devices.unshift({ data: next.data, retried: true })
+          fork.scoped (effect {
+            try sleep(Duration.millis(realtimeOpenBudget))
+            try Queue.offer(arrivals, { kind: "writeTimeout", write: progress })
+          })
+        } else {
+          shell.queued -= 1
+          if (progress.opens) fork.scoped openFirstWindow(shell, ports, sessionId, arrivals)
+        }
+        continue
+      }
       const arrival = try Queue.take(arrivals)
+      if (arrival.kind === "device") {
+        devices.push({ data: arrival.data, retried: false })
+        continue
+      }
+      if (arrival.kind === "writeTimeout") {
+        if (arrival.write === waitForClose) {
+          try annotateLogs(logError("a closing speech provider link did not finish"), { sessionId })
+          try advance(shell, writer, { tag: "ProviderFailed" })
+        }
+        continue
+      }
       try arrive(shell, ports, sessionId, arrivals, writer, arrival)
+      if (arrival.kind === "closed" && arrival.from === waitForClose?.from) waitForClose = undefined
     }
   }
   try ensuring(Effect.ignore(session), settleAll(shell, ports, sessionId))

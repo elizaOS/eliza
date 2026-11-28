@@ -47,8 +47,9 @@ import { secrets } from "./support/profile.ts"
 import { leasedCaller, signedCaller } from "./support/caller.vibe"
 import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
+import { holdFirstTtsClose } from "./support/held-provider-close.ts"
 import { oneSecondWav, recordingBytes, recordingForm } from "./support/recording.ts"
-import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
+import { openRelay, upgradeStatus, type Received, type RelaySocket } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
 import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
 import { mapsSweeps } from "../src/services/maps.vibe"
@@ -1612,9 +1613,9 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     ))
   }), 60_000)
 })
-effect function relayCloud() {
+effect function relayCloud(options?: Parameters<typeof speechFake>[0]) {
   try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
-  const speech = try sync(() => speechFake())
+  const speech = try sync(() => speechFake(options))
   const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
   try TestClock.adjust(Duration.seconds(5))
   return { speech, cloud }
@@ -1630,6 +1631,27 @@ effect function closedPhase(cloud: TestCloud, sessionId: string) {
 }
 
 describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
+  it.effect('A listening socket that closes before connected ends the relay as unavailable (spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket")', () => scoped(effect {
+    const { speech, cloud } = try relayCloud({ sendSttConnected: false })
+    const caller = try signedCaller(cloud, "startup-close")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "startup-close-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string }
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    const ready = try TestClock.withLive(timeout(promise(() => socket.next()), "5 seconds"))
+    try check(() => assert.deepStrictEqual(ready, { kind: "text", frame: { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: session.expiresAt } }))
+
+    const closed = try sync(() => speech.closeIdle("stt", 0))
+    try check(() => assert.strictEqual(closed, 1))
+    const ending = try TestClock.withLive(timeout(promise(() => socket.until((received) => received.kind === "close")), "5 seconds"))
+    try check(() => assert.deepStrictEqual(ending, [
+      { kind: "text", frame: { t: "error", code: "unavailable" } },
+      { kind: "close", code: 1008 },
+    ]))
+  }), 60_000)
+
   it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew while each ended window settles at its use, and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\"; spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\"; spec/cloud/services/speechSession.md, \"A window is admitted only when the day has room for it and both its holds are funded\")", () => scoped(effect {
     const { speech, cloud } = try relayCloud()
     const caller = try signedCaller(cloud, "talker")
@@ -1760,6 +1782,221 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       { phase, settled: windows.every((row) => row.settled === true), renewedUnused: renewed.every((row) => Number(row.charged) === 0 && row.outcome === "released") },
       { phase: "closed", settled: true, renewedUnused: true }
     ))
+  }), 60_000)
+  it.effect('A queued first phrase waits for the closed TTS link to deliver its last completion, then reaches a new link once (spec/cloud/services/speechRelay.md, "A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage")', () => scoped(effect {
+    const { speech, cloud } = try relayCloud()
+    const caller = try signedCaller(cloud, "closed-first-write")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "closed-first-write-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string }
+    const gate = try acquireRelease(sync(() => holdFirstTtsClose(cloud.fakes.url)), (held) => sync(held.restore))
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    const waitFor = <A>(begin: () => Promise<A>) => TestClock.withLive(timeout(promise(begin), "5 seconds"))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    const opened = try waitFor(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try check(() => assert.deepStrictEqual(opened.map((received) => received.kind === "text" && received.frame.t), ["ready", "stt"]))
+
+    try sync(() => socket.send({ t: "tts", id: "earlier", text: "The first reply.", flush: true }))
+    const first = try waitFor(() => socket.until((received) => received.kind === "text" && received.frame.t === "flush_complete"))
+    try check(() => assert.deepStrictEqual(first.map((received) => received.kind === "text" ? received.frame.t : received.kind), ["tts_prepared", "binary", "flush_complete"]))
+    try sync(() => {
+      gate.hold()
+      socket.send({ t: "finish", id: "earlier" })
+    })
+    const last = try waitFor(() => gate.message)
+    const completion = try Effect.try(() => JSON.parse(String(last)) as unknown)
+    try check(() => assert.deepStrictEqual(completion, { type: "done", context_id: "earlier" }))
+    const closed = try sync(() => speech.closeIdle("tts", 0))
+    const code = try waitFor(() => gate.closed)
+    try check(() => assert.deepStrictEqual([closed, code], [1, 1000]))
+
+    const phrase = "This reply uses a fresh link."
+    try sync(gate.watchStaleWrite)
+    try sync(() => socket.send({ t: "tts", id: "fresh", text: phrase, flush: true }))
+    try waitFor(() => gate.staleWrite)
+    try sync(() => {
+      socket.send({ t: "finish", id: "fresh" })
+      gate.release()
+    })
+    const received = try waitFor(() => socket.until((frame) => frame.kind === "text" && frame.frame.t === "complete" && frame.frame.id === "fresh"))
+    try check(() => {
+      const shown = received.map((frame) => frame.kind === "text" ? frame.frame : frame.kind)
+      assert.deepStrictEqual(shown, [
+        { t: "complete", id: "earlier" },
+        { t: "tts_prepared", id: "fresh" },
+        "binary",
+        { t: "flush_complete", id: "fresh" },
+        { t: "complete", id: "fresh" },
+      ])
+      assert.equal(speech.connections.filter(({ path }) => path === "/tts/websocket").length, 2)
+      assert.deepStrictEqual(speech.ttsMessages.filter(({ context_id }) => context_id === "fresh").map(({ transcript }) => transcript), [phrase, ""])
+    })
+  }), 60_000)
+
+  it.effect("A provider socket that closes while idle is opened again when it is next needed and Talk goes on, one that closes under an unfinished reply still ends as an outage, and a dropped link can leave this window's audio uncertain (spec/cloud/services/speechRelay.md, \"A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage\"; spec/cloud/services/speechSession.md, \"Each window settles each direction once, an earlier window while the next one serves and the live one while retiring, and a session closes only with every receipt\")", () => scoped(effect {
+    const { speech, cloud } = try relayCloud()
+    const idleFor = effect (route: "stt" | "tts", code?: number) => {
+      try TestClock.withLive(sleep(Duration.millis(400)))
+      const closed = try sync(() => speech.closeIdle(route, 300, code))
+      try TestClock.withLive(sleep(Duration.millis(300)))
+      return closed
+    }
+    const talk = effect (who: string) => {
+      const caller = try signedCaller(cloud, who)
+      try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: `${who}-funding` }))
+      const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+      const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+      const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string }
+      const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+      try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+      const opened = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+      return { caller, session, socket, opened }
+    }
+    const shown = (seen: ReadonlyArray<Received>) => seen.map((received) => received.kind === "text" ? received.frame : received.kind === "binary" ? { audio: received.bytes.length } : { close: received.code })
+    const opens = (path: string) => speech.connections.filter((each) => each.path === path).length
+    const sendAudio = effect (socket: RelaySocket) => {
+      const pcm = new Uint8Array(3_200)
+      const sent = speech.sttPcmBytes + pcm.length
+      try sync(() => socket.send(pcm))
+      for (let attempt = 0; attempt < 100 && speech.sttPcmBytes < sent; attempt += 1) {
+        try TestClock.withLive(sleep(Duration.millis(50)))
+      }
+      try check(() => assert.equal(speech.sttPcmBytes, sent))
+    }
+
+    const idle = try talk("idler")
+    try sync(() => idle.socket.send({ t: "prepare", id: "reply-1" }))
+    const prepared = try promise(() => idle.socket.until((received) => received.kind === "text" && received.frame.t === "tts_prepared"))
+    try check(() => assert.deepStrictEqual(shown(prepared), [{ t: "tts_prepared", id: "reply-1" }]))
+    const idleBefore = [try idleFor("stt", 1001), try idleFor("tts")]
+    try sync(() => idle.socket.send(new Uint8Array(3_200)))
+    const heard = try promise(() => idle.socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "end-of-turn"))
+    try sync(() => {
+      idle.socket.send({ t: "tts", id: "reply-1", text: "Porch light is on.", flush: true })
+      idle.socket.send({ t: "finish", id: "reply-1" })
+    })
+    const spoken = try promise(() => idle.socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
+    const idleAfter = [try idleFor("stt"), try idleFor("tts")]
+    const reopened = { stt: opens("/stt/turns/websocket"), tts: opens("/tts/websocket") }
+    try sync(() => idle.socket.send({ t: "stop" }))
+    const stopped = try promise(() => idle.socket.until((received) => received.kind === "close"))
+    const phase = try closedPhase(cloud, idle.session.sessionId)
+    const usage = try sql(cloud, `SELECT u.outcome, CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
+      FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY direction DESC`, [idle.session.sessionId, idle.caller.organizationId])
+    const forwarded = speech.sttPcmBytes
+
+    const midReply = try talk("interrupted")
+    try sync(() => midReply.socket.send({ t: "tts", id: "reply-2", text: "Here is the first half", flush: false }))
+    const halfSpoken = try promise(() => midReply.socket.until((received) => received.kind === "binary"))
+    const idleMidReply = try idleFor("tts")
+    const cut = try promise(() => midReply.socket.until((received) => received.kind === "close"))
+
+    const dropped = try talk("dropped")
+    try sync(() => dropped.socket.send(new Uint8Array(3_200)))
+    const idleDropped = try idleFor("stt", 1001)
+    try sync(() => dropped.socket.send({ t: "stop" }))
+    const droppedStop = try promise(() => dropped.socket.until((received) => received.kind === "close"))
+    try closedPhase(cloud, dropped.session.sessionId)
+    const droppedUsage = try sql(cloud, `SELECT u.outcome, CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
+      FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY direction DESC`, [dropped.session.sessionId, dropped.caller.organizationId])
+
+    const renewed = try talk("renewed-after-drop")
+    try sendAudio(renewed.socket)
+    const idleBeforeRenewal = try idleFor("stt", 1001)
+    try TestClock.adjust(Duration.seconds(50))
+    const extension = try promise(() => renewed.socket.until((received) => received.kind === "text" && received.frame.t === "extended"))
+    try TestClock.adjust(Duration.seconds(10))
+    let priorSettled = false
+    for (let attempt = 0; attempt < 100 && !priorSettled; attempt += 1) {
+      try TestClock.withLive(sleep(Duration.millis(50)))
+      const prior = try sql(cloud, "SELECT settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 AND number = 1", [renewed.session.sessionId])
+      priorSettled = prior[0]?.settled === true
+    }
+    try sendAudio(renewed.socket)
+    try sendAudio(renewed.socket)
+    try sync(() => renewed.socket.send({ t: "stop" }))
+    const renewedStop = try promise(() => renewed.socket.until((received) => received.kind === "close"))
+    try closedPhase(cloud, renewed.session.sessionId)
+    const renewedUsage = try sql(cloud, `SELECT w.number, u.outcome, u.charged FROM speech_windows w
+      JOIN usage_records u ON u.hold_key = w.transcribe_hold WHERE w.session_id = $1 ORDER BY w.number`, [renewed.session.sessionId])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        opened: shown(idle.opened),
+        heard: shown(heard),
+        spoken: shown(spoken),
+        reopened,
+        stopped: shown(stopped),
+        forwarded,
+        phase,
+        usage: usage.map((row) => [row.direction, row.outcome]),
+        idled: [idleBefore, idleAfter, idleMidReply, idleDropped],
+        cut: shown([...halfSpoken, ...cut]),
+        dropped: [shown(droppedStop), droppedUsage.map((row) => [row.direction, row.outcome])],
+        renewed: [idleBeforeRenewal, extension.at(-1)?.kind === "text", priorSettled, shown(renewedStop), renewedUsage.map((row) => [Number(row.number), row.outcome, Number(row.charged)])]
+      },
+      {
+        opened: [
+          { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: idle.session.expiresAt },
+          { t: "stt", event: { type: "connected" } }
+        ],
+        heard: [
+          { t: "stt", event: { type: "start-of-turn", transcript: "" } },
+          { t: "stt", event: { type: "transcript-update", transcript: spokenTranscript.slice(0, 7) } },
+          { t: "stt", event: { type: "end-of-turn", transcript: spokenTranscript } }
+        ],
+        spoken: [{ audio: 2 + 7 + 3_200 }, { t: "flush_complete", id: "reply-1" }, { t: "complete", id: "reply-1" }],
+        reopened: { stt: 2, tts: 2 },
+        stopped: [{ close: 1000 }],
+        forwarded: 3_200,
+        phase: "closed",
+        usage: [["transcribe", "known"], ["synthesize", "known"]],
+        idled: [[1, 1], [1, 1], 1, 1],
+        cut: [{ t: "tts_prepared", id: "reply-2" }, { audio: 2 + 7 + 3_200 }, { t: "error", code: "unavailable" }, { close: 1008 }],
+        dropped: [[{ close: 1000 }], [["transcribe", "unknown"], ["synthesize", "known"]]],
+        renewed: [1, true, true, [{ close: 1000 }], [[1, "known", 10], [2, "known", 20]]]
+      }
+    ))
+  }), 60_000)
+  it.effect("An interrupted listening turn ends as an outage even after an eager end (spec/cloud/services/speechRelay.md, \"A listening link that loses its open turn ends the relay\")", () => scoped(effect {
+    const { speech, cloud } = try relayCloud()
+    const caller = try signedCaller(cloud, "interrupted-listener")
+    try cloud.inside(addCredits({
+      organizationId: caller.organizationId,
+      amount: reservedFor(60 * 100) + reservedFor(4096 * 30),
+      requestKey: "interrupted-listener-funding"
+    }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string }
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    try sync(() => {
+      speech.turns([{ type: "turn.start" }, { type: "turn.eager_end", transcript: "an unfinished thought" }])
+      socket.send({ t: "hello", token: session.token })
+    })
+    try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try sync(() => socket.send(new Uint8Array(3_200)))
+    const heard = try promise(() => socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "eager-end-of-turn"))
+    const closed = try sync(() => speech.closeIdle("stt", 0))
+    const ending = try TestClock.withLive(timeoutOrElse(promise(() => socket.until((received) => received.kind === "close")), {
+      duration: "5 seconds", orElse: () => succeed([])
+    }))
+    try check(() => assert.deepStrictEqual(
+      { heard, closed, ending },
+      {
+        heard: [
+          { kind: "text", frame: { t: "stt", event: { type: "start-of-turn", transcript: "" } } },
+          { kind: "text", frame: { t: "stt", event: { type: "eager-end-of-turn", transcript: "an unfinished thought" } } }
+        ],
+        closed: 1,
+        ending: [{ kind: "text", frame: { t: "error", code: "unavailable" } }, { kind: "close", code: 1008 }]
+      }
+    ))
+    const phase = try closedPhase(cloud, session.sessionId)
+    try check(() => assert.equal(phase, "closed"))
   }), 60_000)
 })
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {

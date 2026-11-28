@@ -41,6 +41,8 @@ export interface RealtimeSeen {
   readonly headers: IncomingMessage["headers"];
 }
 
+export type RealtimeRoute = "stt" | "tts";
+
 export interface SpeechFake {
   readonly synthesized: ReadonlyArray<Synthesized>;
   readonly transcribed: ReadonlyArray<Transcribed>;
@@ -52,6 +54,7 @@ export interface SpeechFake {
   script(...next: ReadonlyArray<BatchScript>): void;
   scriptRealtime(...next: ReadonlyArray<RealtimeScript>): void;
   turns(next: ReadonlyArray<ProviderTurn>): void;
+  closeIdle(route: RealtimeRoute, idleMs: number, code?: number): number;
 }
 
 export const spokenTranscript = "turn on the porch light";
@@ -162,7 +165,7 @@ function accept(request: IncomingMessage, socket: Duplex, received: (peer: Peer,
   return peer;
 }
 
-export function speechFake(): SpeechFake {
+export function speechFake({ sendSttConnected = true }: { readonly sendSttConnected?: boolean } = {}): SpeechFake {
   const synthesized: Synthesized[] = [];
   const transcribed: Transcribed[] = [];
   const connections: RealtimeSeen[] = [];
@@ -170,6 +173,7 @@ export function speechFake(): SpeechFake {
   const batch: BatchScript[] = [];
   const realtime: RealtimeScript[] = [];
   let script: ReadonlyArray<ProviderTurn> = defaultTurns;
+  const live: Array<{ readonly route: RealtimeRoute; readonly peer: Peer; last: number; open: boolean }> = [];
   let sttPcmBytes = 0;
   let drained = 0;
 
@@ -234,9 +238,15 @@ export function speechFake(): SpeechFake {
       socket.end(`HTTP/1.1 ${status} Refused\r\ncontent-length: 7\r\n\r\nrefused`);
       return;
     }
-    const peer = accept(request, socket, route);
+    const peer = accept(request, socket, (current, message) => {
+      seen.last = Date.now();
+      route(current, message);
+    });
+    const seen = { route: route === stt ? "stt" as const : "tts" as const, peer, last: Date.now(), open: true };
+    live.push(seen);
+    socket.on("close", () => { seen.open = false; });
     if (scripted.kind === "fail") peer.text({ type: "error", context_id: "provider", message: "scripted failure" });
-    else if (route === stt) peer.text({ type: "connected" });
+    else if (route === stt && sendSttConnected) peer.text({ type: "connected" });
   };
 
   return {
@@ -257,5 +267,10 @@ export function speechFake(): SpeechFake {
     script: (...next) => { batch.push(...next); },
     scriptRealtime: (...next) => { realtime.push(...next); },
     turns: (next) => { script = next; },
+    closeIdle: (route, idleMs, code = 1000) => {
+      const idle = live.filter((each) => each.open && each.route === route && Date.now() - each.last >= idleMs);
+      for (const each of idle) each.peer.close(code);
+      return idle.length;
+    },
   };
 }
