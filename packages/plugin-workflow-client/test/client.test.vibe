@@ -1,8 +1,10 @@
-// spec/workflow/budget.md, "Story: Compact step context, batch independent DAG steps and route fast evaluations"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"
+// spec/workflow/budget.md, "Story: Compact step context, batch independent DAG steps and route fast evaluations"; spec/workflow/hostedDigest.md, "Story: Acknowledge a page of digests only after it is stored"; spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"
 import { assert, it } from "@effect/vitest"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import {
-  compactStepOutput, digestZoneNote, estimateWorkflowCostMicros, estimateWorkflowTokens, nextParallelWaveIndices, selectWorkflowModelTier,
-  type PhoneStep,
+  compactStepOutput, digestZoneNote, estimateWorkflowCostMicros, estimateWorkflowTokens, keyValueIntentBackend, nextParallelWaveIndices,
+  revalidateWorkflowApprovalNotice, selectWorkflowModelTier, workflowApprovalNoticeIdentity, workflowApprovalProposalId, workflowIntentOwnerPrefix,
+  workflowIntentStore, type PhoneStep, type WorkflowApproval, type WorkflowApprovalReceipt, type WorkflowNoticeReads, type WorkflowRun,
 } from "../src/index.vibe"
 
 it.effect('Compact oversized step outputs, plan parallel DAG waves without crossing barriers, and route model tiers (spec/workflow/budget.md, "Step context compaction bounds every prompt input to the configured window"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps"; spec/workflow/budget.md, "Fast evaluations and short step drafts route to the fast model tier")', effect () => {
@@ -40,4 +42,77 @@ it.effect('Compact oversized step outputs, plan parallel DAG waves without cross
     tokens: [0, 100, true],
     zoneNote: true,
   }))
+})
+
+
+it.effect('Report pending lifecycle workflow IDs, enforce run and receipt identity on approval revalidation, and preserve DAG readiness and UTF-16 surrogates (spec/workflow/intents.md, "Story: Preserve the owner’s pending action across transport uncertainty"; spec/workflow/notices.md, "A notice opens only its own run, at its own version, of a workflow still present"; spec/workflow/notices.md, "A pending approval is offered again only while its run is unchanged and unsettled"; spec/workflow/budget.md, "Step context compaction bounds every prompt input to the configured window"; spec/workflow/budget.md, "Parallel DAG waves batch only ready non-barrier steps")', effect () => {
+  provide KeyValueStore.layerMemory {
+    const owner = { origin: "agent:local", ownerId: "owner-1", agentId: "agent-1" }
+    const store = try workflowIntentStore(owner, try keyValueIntentBackend(workflowIntentOwnerPrefix(owner)))
+    try store.load()
+    const lifecycleKey = store.key("wf-alpha:lifecycle")
+    const legacyKey = `${store.key("wf-beta")}:lifecycle`
+    const runKey = store.key("wf-gamma:run")
+    const admitted = try store.admit(lifecycleKey, { operation: "remove" })
+    try store.admit(legacyKey, { operation: "restore" })
+    try store.admit(runKey, { submissionId: "sub-1" })
+    const beforeAck = try store.pendingLifecycle()
+    try store.acknowledge(lifecycleKey, admitted)
+    const afterAck = try store.pendingLifecycle()
+
+    const route = { scope: "phone", origin: "agent:local", ownerId: "owner-1", agentId: "agent-1", workflowId: "wf-1", runId: "run-1", versionId: "v1" }
+    const expiresAt = Date.now() + 60_000
+    const approvalItem: WorkflowApproval = {
+      runId: "run-1", workflowId: "wf-1", workflowVersionId: "v1", nodeId: "gate", iteration: 0, requestDigest: "a".repeat(64),
+      status: "pending", title: "Read", summary: "Read notes", operation: "read_selected_notes", target: "Notes", account: "device", supported: true, expiresAt,
+    }
+    const identity = try workflowApprovalNoticeIdentity(route, workflowApprovalProposalId(approvalItem))
+    const notice = { ...identity, expiresAt, route }
+    const baseRun: WorkflowRun = { id: "run-1", workflowId: "wf-1", status: "waiting-approval", startedAt: "2026-11-28T00:00:00.000Z", finished: false, versionId: "v1", events: [] }
+    const baseReceipt: WorkflowApprovalReceipt = { runId: "run-1", workflowId: "wf-1", workflowVersionId: "v1", finished: false, cancellationRequested: false, approvals: [approvalItem] }
+    const makeReads = (runOverride: Partial<WorkflowRun>, receiptOverride: Partial<WorkflowApprovalReceipt>): WorkflowNoticeReads => ({
+      detail: () => succeed({ versionId: "v1", removed: false }),
+      receipt: () => succeed({ ...baseRun, ...runOverride }),
+      approvals: () => succeed({ ...baseReceipt, ...receiptOverride }),
+    })
+    const validDecision = try revalidateWorkflowApprovalNotice(notice, makeReads({}, {}), () => true)
+    const wrongRunWorkflow = try revalidateWorkflowApprovalNotice(notice, makeReads({ workflowId: "wf-other" }, {}), () => true)
+    const wrongReceiptVersion = try revalidateWorkflowApprovalNotice(notice, makeReads({}, { workflowVersionId: "v2" }), () => true)
+    const wrongItemVersion = try revalidateWorkflowApprovalNotice(notice, makeReads({}, { approvals: [{ ...approvalItem, workflowVersionId: "v2" }] }), () => true)
+
+    const steps: PhoneStep[] = [
+      { id: "r1", kind: "Read", operation: "supplied_text", text: "a" },
+      { id: "d1", kind: "Write", operation: "model_draft", source: "r1", instruction: "go" },
+      { id: "n1", kind: "Notify", operation: "app_notification", source: "d1", title: "Done" },
+    ]
+    const unreadyDraft = nextParallelWaveIndices(steps, 1, new Set())
+    const unreadyBarrier = nextParallelWaveIndices(steps, 2, new Set(["r1"]))
+    const alreadyDoneDraft = nextParallelWaveIndices(steps, 1, new Set(["r1", "d1"]))
+    const alreadyDoneBarrier = nextParallelWaveIndices(steps, 2, new Set(["r1", "d1", "n1"]))
+    const negativeStart = nextParallelWaveIndices(steps, -1, new Set())
+
+    const emoji = "🚀".repeat(200)
+    const compactedEmoji = compactStepOutput(emoji, 120)
+    const tinyEmoji = compactStepOutput(emoji, 5)
+
+    try Effect.try(() => assert.deepStrictEqual({
+      beforeAck,
+      afterAck,
+      decisions: [validDecision, wrongRunWorkflow, wrongReceiptVersion, wrongItemVersion],
+      waves: [unreadyDraft, unreadyBarrier, alreadyDoneDraft, alreadyDoneBarrier, negativeStart],
+      surrogates: [
+        compactedEmoji.compacted,
+        compactedEmoji.retainedChars <= 120,
+        compactedEmoji.text.isWellFormed(),
+        tinyEmoji.retainedChars <= 5,
+        tinyEmoji.text.isWellFormed(),
+      ],
+    }, {
+      beforeAck: ["wf-alpha", "wf-beta"],
+      afterAck: ["wf-beta"],
+      decisions: ["resume", "withdraw", "withdraw", "withdraw"],
+      waves: [[], [], [], [], []],
+      surrogates: [true, true, true, true, true],
+    }))
+  }
 })

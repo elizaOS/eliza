@@ -31,20 +31,29 @@ export function estimateWorkflowCostMicros(tokens: number, tier: ModelTier): num
   return tier === "FastEvalTier" ? Math.max(1, Math.ceil(tokens * 0.6)) : Math.max(1, Math.ceil(tokens * 3))
 }
 
+function snapSurrogate(text: string, index: number, step: -1 | 1): number {
+  const clamped = Math.max(0, Math.min(index, text.length))
+  if (clamped <= 0 || clamped >= text.length) return clamped
+  const prev = text.charCodeAt(clamped - 1)
+  const curr = text.charCodeAt(clamped)
+  return prev >= 0xd800 && prev <= 0xdbff && curr >= 0xdc00 && curr <= 0xdfff ? clamped + step : clamped
+}
+
 export function compactStepOutput(text: string, maxChars: number = defaultContextWindowChars): CompactedText {
   const target = compactedLength(text.length, maxChars)
   if (target <= 0) return { text: "", compacted: text.length > 0, originalChars: text.length, retainedChars: 0 }
   if (text.length <= target) return { text, compacted: false, originalChars: text.length, retainedChars: text.length }
   const marker = `\n...[compacted ${text.length - target} chars of ${text.length}]...\n`
   if (marker.length >= target) {
-    const sliced = text.slice(0, target)
+    const sliced = text.slice(0, snapSurrogate(text, target, -1))
     return { text: sliced, compacted: true, originalChars: text.length, retainedChars: sliced.length }
   }
   const budget = target - marker.length
   const headChars = Math.ceil(budget * 0.6)
   const tailChars = budget - headChars
-  const combined = tailChars > 0 ? text.slice(0, headChars) + marker + text.slice(text.length - tailChars) : text.slice(0, headChars) + marker
-  const bounded = combined.length > target ? combined.slice(0, target) : combined
+  const head = text.slice(0, snapSurrogate(text, headChars, -1))
+  const tail = tailChars > 0 ? text.slice(snapSurrogate(text, text.length - tailChars, 1)) : ""
+  const bounded = head + marker + tail
   return { text: bounded, compacted: true, originalChars: text.length, retainedChars: bounded.length }
 }
 
@@ -61,11 +70,7 @@ export function isDeviceStepBarrier(step: PhoneStep): boolean {
 }
 
 export function nextParallelWaveIndices(steps: readonly PhoneStep[], startIndex: number, completedIds: ReadonlySet<string>): readonly number[] {
-  if (startIndex >= steps.length) return []
-  const first = steps[startIndex]
-  const firstApproval = isDeviceStepBarrier(first)
-  const firstControl = first.kind === "If"
-  if (!waveAdmitsStep(true, false, firstApproval, firstControl)) return [startIndex]
+  if (!Number.isInteger(startIndex) || startIndex < 0 || startIndex >= steps.length) return []
   const wave: number[] = []
   const waveIds = new Set<string>()
   for (let index = startIndex; index < steps.length; index++) {
@@ -74,9 +79,11 @@ export function nextParallelWaveIndices(steps: readonly PhoneStep[], startIndex:
     const control = candidate.kind === "If"
     const source = "source" in candidate ? candidate.source : undefined
     const depsReady = source === undefined || (completedIds.has(source) && !waveIds.has(source))
-    if (!waveAdmitsStep(depsReady, completedIds.has(candidate.id), approval, control)) break
+    const done = completedIds.has(candidate.id)
+    if (index === startIndex && depsReady && !done && (approval || control)) return [startIndex]
+    if (!waveAdmitsStep(depsReady, done, approval, control)) break
     wave.push(index)
     waveIds.add(candidate.id)
   }
-  return wave.length > 0 ? wave : [startIndex]
+  return wave
 }
