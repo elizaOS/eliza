@@ -270,12 +270,11 @@ async function startCloudSession(
 }
 
 async function stopSessionHandle(
-  closing: Promise<unknown> | undefined,
-  stopCloud: () => Promise<unknown>,
-  clearHandle: () => Promise<void> | undefined,
+  stop: Promise<unknown>,
+  clearHandle: () => Promise<void>,
 ): Promise<void> {
   try {
-    await (closing ?? stopCloud())
+    await stop
   } finally {
     await clearHandle()
   }
@@ -302,6 +301,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   let handle: CloudSpeechListenerHandle | undefined
   let opening: Promise<void> | undefined
   let stopping: Promise<void> | undefined
+  let nativeStop: Promise<unknown> | undefined
   let closingSession: Promise<unknown> | undefined
   let draining: Promise<void> | undefined
   let opened = false
@@ -333,6 +333,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
   }
 
   const ownerAborted = () => { void stop().catch(() => {}) }
+  const requestStop = (id: SpeechSessionId) => Promise.resolve().then(() => port.stopCloudSpeech({ sessionId: id }))
 
   const teardown = (): Promise<void> => {
     if (stopping) return stopping
@@ -343,15 +344,16 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     ownerSignal?.removeEventListener("abort", ownerAborted)
     ownerSignal = undefined
     rejectAll(utterances, stopped())
-    const closing = closingSession
-    const attempt = stopSessionHandle(closing, () => port.stopCloudSpeech({ sessionId }), () => {
+    const requested = nativeStop ??= closingSession ?? requestStop(sessionId)
+    const attempt = stopSessionHandle(requested, async () => {
       const current = handle
-      handle = undefined
-      return current?.remove()
+      await current?.remove()
+      if (handle === current) handle = undefined
     })
     stopping = attempt
-    void closing?.catch(() => {
-      if (closingSession === closing) closingSession = undefined
+    void requested.catch(() => {
+      if (nativeStop === requested) nativeStop = undefined
+      if (closingSession === requested) closingSession = undefined
     })
     void attempt.catch(() => {
       if (stopping === attempt) stopping = undefined
@@ -456,7 +458,7 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     speechGeneration = undefined
     opened = false
     opening = undefined
-    const closing = Promise.resolve().then(() => port.stopCloudSpeech({ sessionId: previous }))
+    const closing = requestStop(previous)
     closingSession = closing
     try {
       if (unfinished) endUnheard(listening && !listening.signal.aborted ? listening : undefined)

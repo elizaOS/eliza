@@ -11,10 +11,12 @@ module android {
   export interface Phone {
     calls: string[]
     utterances: string[]
+    stoppedSessions: string[]
     sessionId: string | undefined
     listener: ((event: CloudStreamEvent) => void) | undefined
     cancelFails: boolean
     stopFails: number
+    removeFails: number
     muteHangs: boolean
     stopped: Promise<void>
     started: Promise<void>
@@ -23,7 +25,7 @@ module android {
 
   /** @throws {never} */
   export function device(): Phone {
-    return { calls: [], utterances: [], sessionId: undefined, listener: undefined, cancelFails: false, stopFails: 0, muteHangs: false, stopped: Promise.resolve(), started: Promise.resolve(), startError: undefined }
+    return { calls: [], utterances: [], stoppedSessions: [], sessionId: undefined, listener: undefined, cancelFails: false, stopFails: 0, removeFails: 0, muteHangs: false, stopped: Promise.resolve(), started: Promise.resolve(), startError: undefined }
   }
 
   /** @throws {never} */
@@ -41,8 +43,9 @@ module android {
         phone.sessionId = input.sessionId
         return { sessionId: input.sessionId, sampleRate: 16000, echoCancelled: true }
       },
-      stopCloudSpeech: async () => {
+      stopCloudSpeech: async (input) => {
         phone.calls.push("stop")
+        phone.stoppedSessions.push(input.sessionId)
         await phone.stopped
         if (phone.stopFails > 0) {
           phone.stopFails -= 1
@@ -64,7 +67,15 @@ module android {
       },
       addListener: async (_event, callback) => {
         phone.listener = callback
-        return { remove: async () => { phone.listener = undefined; phone.calls.push("removed") } }
+        return { remove: async () => {
+          if (phone.removeFails > 0) {
+            phone.removeFails -= 1
+            phone.calls.push("remove rejected")
+            throw new Error("listener removal rejected")
+          }
+          phone.listener = undefined
+          phone.calls.push("removed")
+        } }
       },
     }
   }
@@ -618,6 +629,23 @@ it.live("A rejected stop is asked again by the next stop or cancel, and a confir
   try promise(() => speech.stop())
   try promise(() => capture.cancel())
   assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "stop", "removed", "stop"])
+
+  const removing = device()
+  const ended = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(removing))
+  const listener = try promise(() => ended.listen(heard(new AbortController().signal).handlers))
+  const original = removing.sessionId
+  removing.removeFails = 1
+  const removalError = try failure(() => ended.stop())
+  assert.strictEqual((removalError as Error).message, "listener removal rejected")
+  assert.ok(removing.listener !== undefined)
+  const retry = begin(() => ended.stop())
+  const joinedRetry = begin(() => listener.cancel())
+  try promise(() => retry.settled)
+  try promise(() => joinedRetry.settled)
+  try promise(() => ended.stop())
+  assert.deepStrictEqual(removing.calls, ["start production key-1", "unmute", "stop", "remove rejected", "removed"])
+  assert.deepStrictEqual(removing.stoppedSessions, [original])
+  assert.strictEqual(removing.listener, undefined)
 })
 
 it.live("A rejected stop of the old session during a replacement is asked again by the next stop (spec/os/voice/cloudSpeech.md, \"Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once\")", () => effect {
@@ -625,6 +653,7 @@ it.live("A rejected stop of the old session during a replacement is asked again 
     const swapping = device()
     const replacing = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(swapping))
     const open = await replacing.listen(heard(new AbortController().signal).handlers)
+    const previous = swapping.sessionId
     emit(swapping, { type: "speech-start" })
     swapping.stopFails = 1
     const closing = refusal(open.close())
@@ -634,6 +663,7 @@ it.live("A rejected stop of the old session during a replacement is asked again 
     await replacing.stop()
     await replacing.stop()
     assert.deepStrictEqual(swapping.calls, ["start production key-1", "unmute", "mute", "stop", "removed", "stop"])
+    assert.deepStrictEqual(swapping.stoppedSessions, [previous, previous])
   }))
 })
 

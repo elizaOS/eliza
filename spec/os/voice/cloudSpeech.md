@@ -329,11 +329,11 @@ Only the person's stop and declined consent end without a failure. A
 failure says whether audio had started (capture granted or reply audio
 received): before it core routing may re-route; after it nothing falls
 back silently. An end while minting revokes what the mint may return.
-A stop or cancel joins the stop already under way, and once the bridge
-confirms it every later stop or cancel settles without asking again. A
-stop the bridge rejects is not kept, including the old session's stop
-during a replacement: the next stop or cancel asks the bridge again, so
-voice is never left unable to end.
+A stop or cancel joins the teardown already under way. Once the bridge
+confirms the stop, a later stop or cancel retries any failed listener
+removal without asking the bridge to stop again. A stop the bridge
+rejects is not kept, including the old session's stop during a
+replacement: the next stop or cancel asks the bridge again.
 
 ```quint
 pure def revokeOwed(p: Phase): bool = p == Minting or mintedPhase(p)
