@@ -135,6 +135,8 @@ module node {
       taskId: await verb(reach, water.taskId, "edit", { taskId: "other" }),
       state: await verb(reach, water.taskId, "edit", { state: { status: "fired" } }),
       instructions: ((await send(reach, "POST", `/api/scheduled-tasks/${water.taskId}/edit`, { promptInstructions: "Drink two glasses" })).json.task as WireTask).promptInstructions,
+      impossible: await verb(reach, water.taskId, "edit", { trigger: { kind: "cron", expression: "0 9 30 2 *", tz: "UTC" } }),
+      retainedTrigger: ((await send(reach, "GET", `/api/scheduled-tasks/${water.taskId}`)).json.task as { trigger: unknown }).trigger,
     }
 
     scheduledDeliveries.script.push(...Array.from({ length: 4 }, () => ({ kind: "retry" as const, afterMs: minuteMs, reason: "offline" })))
@@ -212,6 +214,8 @@ module node {
       taskId: refused(400, "malformed"),
       state: refused(400, "malformed"),
       instructions: "Drink two glasses",
+      impossible: refused(400, "malformed"),
+      retainedTrigger: { kind: "manual" },
     },
     retries: [
       deferred(later + minuteMs), deferred(later + minuteMs), deferred(later + minuteMs),
