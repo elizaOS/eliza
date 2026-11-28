@@ -2,7 +2,7 @@
 import { App, webApi } from "@slack/bolt"
 import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
 import { fetchRemoteMedia } from "@elizaos/core-node"
-import { enabled, initial, machineOver, slackEntityText, slackReplyTarget, slackRetries, slackSendOutcome, type SlackAdmission, type SlackCallFailure, type SlackConversation, type SlackInbound, type SlackPartReceipt } from "../gen/slack.effect.vibe"
+import { enabled, initial, machineOver, slackEntityText, slackReplyTarget, slackRetries, slackSendOutcome, type SlackAdmission, type SlackCallFailure, type SlackConversation, type SlackInbound, type SlackInstallation, type SlackPartReceipt } from "../gen/slack.effect.vibe"
 
 const envelope = Schema.Struct({ team_id: Schema.optionalKey(Schema.String), enterprise_id: Schema.optionalKey(Schema.String) })
 const slackEvent = Schema.Struct({ type: Schema.Literals(["message", "app_mention"]), channel: Schema.String, ts: Schema.String, user: Schema.optionalKey(Schema.String), bot_id: Schema.optionalKey(Schema.String), text: Schema.optionalKey(Schema.String), thread_ts: Schema.optionalKey(Schema.String), channel_type: Schema.optionalKey(Schema.String), subtype: Schema.optionalKey(Schema.String) })
@@ -30,6 +30,22 @@ export interface SlackConnection {
   readonly requireMention: boolean
 }
 
+export interface SlackChannelRecord {
+  readonly is_im?: boolean
+  readonly is_mpim?: boolean
+  readonly is_private?: boolean
+  readonly is_group?: boolean
+  readonly is_channel?: boolean
+}
+
+export interface SlackInboundPorts {
+  readonly installation: SlackInstallation
+  readonly active: Ref.Ref<boolean>
+  lookupChannel(channel: string): Promise<{ readonly channel?: SlackChannelRecord } | undefined>
+  send(target: TargetInfo, content: Content): SendHandlerOutcome!SlackRequestFailed
+  checkPairing?(senderId: string): Promise<{ readonly allowed: boolean; readonly replyMessage?: string } | undefined>
+}
+
 export function decodeSlackText(text: string): string {
   return text.replace(/&(amp|lt|gt);/g, (_entity, name: string) => slackEntityText(name))
 }
@@ -45,12 +61,62 @@ export const slackWriteRetries = {
   onFailedAttempt: (error: Error): Promise<void> => slackRetries("SlackWrite", slackCallFailure(error)) ? Promise.resolve() : Promise.reject(error),
 }
 
-function kindOf(channelType: string | undefined): SlackConversation {
+export function slackConversationOf(channelType: string | undefined, record?: SlackChannelRecord): SlackConversation {
   if (channelType === "im") return "SlackDirect"
+  if (channelType === "app_home") return "SlackHome"
   if (channelType === "mpim") return "SlackGroupDirect"
   if (channelType === "group") return "SlackPrivate"
   if (channelType === "channel") return "SlackPublic"
-  return "SlackUnknownConversation"
+  if (record === undefined) return "SlackUnknownConversation"
+  return record.is_im ? "SlackDirect" : record.is_mpim ? "SlackGroupDirect" : record.is_private || record.is_group ? "SlackPrivate" : record.is_channel ? "SlackPublic" : "SlackUnknownConversation"
+}
+
+export effect function createSlackInbound(runtime: IAgentRuntime, config: SlackConnection, ports: SlackInboundPorts) {
+  const { installation, active } = ports
+  const state = try Ref.make(initial)
+  const admission = try machineOver(() => Ref.get(state), next => Ref.set(state, next))
+  try admission.send({ type: "bindSlack", installation }, "SlackSocket")
+
+  return effect function inbound(input: unknown, requestBody: unknown) {
+    if (!(try Ref.get(active))) return
+    const body = Schema.decodeUnknownEffect(envelope)(requestBody) catch () => undefined
+    const raw = Schema.decodeUnknownEffect(slackEvent)(input) catch () => undefined
+    const messageService = runtime.messageService
+    if (raw === undefined || body === undefined || raw.subtype !== undefined && systemNotices.has(raw.subtype) || !messageService) return
+    const lookup = slackConversationOf(raw.channel_type)
+    const channel = lookup === "SlackUnknownConversation" ? tryPromise(() => ports.lookupChannel(raw.channel)) catch () => undefined : undefined
+    const conversation = lookup === "SlackUnknownConversation" ? slackConversationOf(raw.channel_type, channel?.channel) : lookup
+    const sender = raw.user ?? raw.bot_id ?? ""
+    const text = raw.text ?? ""
+    const event: SlackInbound = { eventAccount: installation.accountId, eventEpoch: installation.epoch, eventTeam: body.team_id ?? "", eventEnterprise: body.enterprise_id ?? "", channelId: raw.channel, messageTs: raw.ts, threadTs: raw.thread_ts ?? "", senderId: sender, conversation, eventKind: raw.type === "app_mention" ? "SlackMention" : "SlackMessage", mentionsBot: text.includes(`<@${installation.botUserId}>`), fromBot: raw.bot_id !== undefined }
+    if (event.eventTeam !== installation.teamId || event.eventEnterprise !== "" && installation.enterpriseId !== "" && event.eventEnterprise !== installation.enterpriseId || sender === installation.botUserId) return
+    const canPair = (conversation === "SlackDirect" || conversation === "SlackHome") && config.dmMode === "SlackDmPairing" && sender !== "" && raw.channel !== "" && raw.ts !== "" && (!event.fromBot || config.allowBots) && !config.directUsers.has(sender)
+    const pairCheck = ports.checkPairing ?? ((senderId: string) => checkPairingAllowed(runtime, { channel: "slack", senderId }))
+    const pairing = canPair ? tryPromise(() => pairCheck(sender)) catch () => undefined : undefined
+    if (pairing?.replyMessage) ports.send({ source: "slack", accountId: installation.accountId, channelId: raw.channel }, { text: pairing.replyMessage }) catch () => undefined
+    const policy: SlackAdmission = { allowBots: config.allowBots, dmMode: config.dmMode, dmEnabled: config.dmMode !== "SlackDmDisabled", dmAllowlisted: config.directUsers.has(sender), dmPaired: pairing?.allowed === true, groupDmEnabled: config.groupDms, groupDmAllowed: config.channels.size === 0 || config.channels.has(raw.channel), channelAllowed: config.channels.size === 0 || config.channels.has(raw.channel), channelUserAllowed: true, requireMention: config.requireMention }
+    const admit = { type: "claimSlack" as const, inbound: event, policy }
+    if (!enabled(try admission.get(), admit, "SlackSocket")) return
+    const target = slackReplyTarget(event)
+    const scope = `slack:${installation.teamId}:${installation.accountId}`
+    const id = try Effect.try(() => createUniqueUuid(runtime, `${scope}:message:${raw.channel}:${raw.ts}`))
+    const roomId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:room:${raw.channel}:${raw.thread_ts ?? ""}`))
+    const worldId = try Effect.try(() => createUniqueUuid(runtime, scope))
+    const entityId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:user:${sender}`))
+    const channelType = conversation === "SlackDirect" || conversation === "SlackHome" ? ChannelType.DM : ChannelType.GROUP
+    try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "slack", channelId: raw.channel, serverId: installation.teamId, type: channelType, metadata: { accountId: config.accountId } }))
+    const claimToken = try Effect.try(() => nextSlackClaim())
+    const memory: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: Math.trunc(Number(raw.ts) * 1000), content: { text: decodeSlackText(text), source: "slack", channelType }, metadata: { type: "message", slackClaimToken: claimToken } }
+    try tryPromise(() => runtime.createMemory(memory, "messages"))
+    const kept = try tryPromise(() => runtime.getMemoryById(id))
+    if (kept?.metadata === undefined || !("slackClaimToken" in kept.metadata) || kept.metadata.slackClaimToken !== claimToken || !(try Ref.get(active))) return
+    const claimed = admission.send(admit, "SlackSocket") catch () => undefined
+    if (claimed === undefined) return
+    try tryPromise(() => messageService.handleMessage(runtime, memory, async reply => {
+      requireConfirmedSendHandlerDelivery(await runPromise(ports.send({ source: "slack", accountId: target.targetAccount, channelId: target.targetChannel, ...(target.targetThread !== "" ? { threadId: target.targetThread } : {}) }, reply)))
+      return []
+    }))
+  }
 }
 
 export effect function connectSlackAccount(runtime: IAgentRuntime, config: SlackConnection) {
@@ -58,11 +124,8 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
   const writer = try Effect.try({ try: () => new webApi.WebClient(Redacted.value(config.botToken), { retryConfig: slackWriteRetries }), catch: () => new SlackRequestFailed({ stage: "client" }) })
   const identity = try tryPromise({ try: () => app.client.auth.test(), catch: () => new SlackRequestFailed({ stage: "auth" }) })
   if (identity.team_id === undefined || identity.user_id === undefined) throw new SlackRequestFailed({ stage: "identity" })
-  const installation = { accountId: config.accountId, teamId: identity.team_id, enterpriseId: identity.enterprise_id ?? "", botUserId: identity.user_id, epoch: 1 }
-  const state = try Ref.make(initial)
+  const installation: SlackInstallation = { accountId: config.accountId, teamId: identity.team_id, enterpriseId: identity.enterprise_id ?? "", botUserId: identity.user_id, epoch: 1 }
   const active = try Ref.make(true)
-  const admission = try machineOver(() => Ref.get(state), next => Ref.set(state, next))
-  try admission.send({ type: "bindSlack", installation }, "SlackSocket")
 
   effect function send(target: TargetInfo, content: Content): SendHandlerOutcome!SlackRequestFailed {
     if (target.accountId !== undefined && target.accountId !== installation.accountId || !(try Ref.get(active))) return { kind: "not_delivered", code: "SLACK_ACCOUNT_GONE", message: "The selected Slack account is no longer active." }
@@ -110,46 +173,12 @@ export effect function connectSlackAccount(runtime: IAgentRuntime, config: Slack
     return result === "SlackSendComplete" ? { kind: "delivered", receipt, memories: [] } : { kind: "partially_delivered", receipt, memories: [], code: "SLACK_PARTIAL_SEND", message: "Slack confirmed only part of the text. Repeating it may duplicate delivery." }
   }
 
-  effect function inbound(input: unknown, requestBody: unknown) {
-    if (!(try Ref.get(active))) return
-    const body = Schema.decodeUnknownEffect(envelope)(requestBody) catch () => undefined
-    const raw = Schema.decodeUnknownEffect(slackEvent)(input) catch () => undefined
-    const messageService = runtime.messageService
-    if (raw === undefined || body === undefined || raw.subtype !== undefined && systemNotices.has(raw.subtype) || !messageService) return
-    const lookup = kindOf(raw.channel_type)
-    const channel = lookup === "SlackUnknownConversation" ? tryPromise(() => app.client.conversations.info({ channel: raw.channel })) catch () => undefined : undefined
-    const record = channel?.channel
-    const conversation = record === undefined ? lookup : record.is_im ? "SlackDirect" : record.is_mpim ? "SlackGroupDirect" : record.is_private || record.is_group ? "SlackPrivate" : "SlackPublic"
-    const sender = raw.user ?? raw.bot_id ?? ""
-    const text = raw.text ?? ""
-    const event: SlackInbound = { eventAccount: installation.accountId, eventEpoch: installation.epoch, eventTeam: body.team_id ?? "", eventEnterprise: body.enterprise_id ?? "", channelId: raw.channel, messageTs: raw.ts, threadTs: raw.thread_ts ?? "", senderId: sender, conversation, eventKind: raw.type === "app_mention" ? "SlackMention" : "SlackMessage", mentionsBot: text.includes(`<@${installation.botUserId}>`), fromBot: raw.bot_id !== undefined }
-    if (event.eventTeam !== installation.teamId || event.eventEnterprise !== "" && installation.enterpriseId !== "" && event.eventEnterprise !== installation.enterpriseId || sender === installation.botUserId) return
-    const pairing = (conversation === "SlackDirect" || conversation === "SlackHome") && config.dmMode === "SlackDmPairing" && !config.directUsers.has(sender) ? tryPromise(() => checkPairingAllowed(runtime, { channel: "slack", senderId: sender })) catch () => undefined : undefined
-    if (pairing?.replyMessage && (!event.fromBot || config.allowBots)) send({ source: "slack", accountId: installation.accountId, channelId: raw.channel }, { text: pairing.replyMessage }) catch () => undefined
-    const policy: SlackAdmission = { allowBots: config.allowBots, dmMode: config.dmMode, dmEnabled: config.dmMode !== "SlackDmDisabled", dmAllowlisted: config.directUsers.has(sender), dmPaired: pairing?.allowed === true, groupDmEnabled: config.groupDms, groupDmAllowed: config.channels.size === 0 || config.channels.has(raw.channel), channelAllowed: config.channels.size === 0 || config.channels.has(raw.channel), channelUserAllowed: true, requireMention: config.requireMention }
-    const admit = { type: "claimSlack" as const, inbound: event, policy }
-    if (!enabled(try admission.get(), admit, "SlackSocket")) return
-    const target = slackReplyTarget(event)
-    const scope = `slack:${installation.teamId}:${installation.accountId}`
-    const id = try Effect.try(() => createUniqueUuid(runtime, `${scope}:message:${raw.channel}:${raw.ts}`))
-    const roomId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:room:${raw.channel}:${raw.thread_ts ?? ""}`))
-    const worldId = try Effect.try(() => createUniqueUuid(runtime, scope))
-    const entityId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:user:${sender}`))
-    const channelType = conversation === "SlackDirect" || conversation === "SlackHome" ? ChannelType.DM : ChannelType.GROUP
-    try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "slack", channelId: raw.channel, serverId: installation.teamId, type: channelType, metadata: { accountId: config.accountId } }))
-    const claimToken = try Effect.try(() => nextSlackClaim())
-    const memory: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: Math.trunc(Number(raw.ts) * 1000), content: { text: decodeSlackText(text), source: "slack", channelType }, metadata: { type: "message", slackClaimToken: claimToken } }
-    try tryPromise(() => runtime.createMemory(memory, "messages"))
-    const kept = try tryPromise(() => runtime.getMemoryById(id))
-    if (kept?.metadata === undefined || !("slackClaimToken" in kept.metadata) || kept.metadata.slackClaimToken !== claimToken || !(try Ref.get(active))) return
-    const claimed = admission.send(admit, "SlackSocket") catch () => undefined
-    if (claimed === undefined) return
-    try tryPromise(() => messageService.handleMessage(runtime, memory, async reply => {
-      requireConfirmedSendHandlerDelivery(await runPromise(send({ source: "slack", accountId: target.targetAccount, channelId: target.targetChannel, ...(target.targetThread !== "" ? { threadId: target.targetThread } : {}) }, reply)))
-      return []
-    }))
-  }
-
+  const inbound = try createSlackInbound(runtime, config, {
+    installation,
+    active,
+    lookupChannel: channel => app.client.conversations.info({ channel }),
+    send: (target, content) => send(target, content),
+  })
   app.event("message", ({ event, body }) => runPromise(inbound(event, body)))
   app.event("app_mention", ({ event, body }) => runPromise(inbound(event, body)))
   try tryPromise({ try: () => app.start(), catch: () => new SlackRequestFailed({ stage: "start" }) })
