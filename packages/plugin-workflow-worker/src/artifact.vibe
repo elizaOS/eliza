@@ -34,6 +34,10 @@ module node {
   const digestPattern = /^[a-f0-9]{64}$/
   const pathPattern = /^[A-Za-z0-9@_.+/-]+$/
 
+  function validRelativePath(path: string): boolean {
+    return pathPattern.test(path) && !path.split("/").some((part) => part === "" || part === "." || part === "..")
+  }
+
   async function exists(path: string): Promise<boolean> {
     try {
       await lstat(path)
@@ -86,7 +90,7 @@ module node {
       let total = manifestBytes.byteLength
       const files: (readonly [string, string])[] = []
       for (const [path, hash] of entries) {
-        if (!pathPattern.test(path) || path.split("/").some((part) => part === "" || part === "." || part === "..") || path === "manifest.json" || !seen.has(path)) {
+        if (!validRelativePath(path) || path === "manifest.json" || !seen.has(path)) {
           return refuse("Invalid or missing worker file")
         }
         const bytes = await readFile(join(root, path))
@@ -130,11 +134,16 @@ module node {
     const keys = Object.keys(exportsField)
     if (keys.every((key) => !key.startsWith("."))) return subpath === "." ? pick(exportsField) : undefined
     if (subpath in exportsField) return pick(Reflect.get(exportsField, subpath))
-    for (const key of keys) {
+    const patternKeys = keys
+      .filter((key) => key.includes("*"))
+      .sort((left, right) => right.indexOf("*") - left.indexOf("*") || right.length - left.length)
+    for (const key of patternKeys) {
       const star = key.indexOf("*")
-      if (star < 0 || !subpath.startsWith(key.slice(0, star)) || !subpath.endsWith(key.slice(star + 1))) continue
+      const prefix = key.slice(0, star)
+      const suffix = key.slice(star + 1)
+      if (subpath.length < prefix.length + suffix.length || !subpath.startsWith(prefix) || !subpath.endsWith(suffix)) continue
       const found = pick(Reflect.get(exportsField, key))
-      return found?.replace("*", subpath.slice(star, subpath.length - (key.length - star - 1)))
+      return found?.replaceAll("*", subpath.slice(prefix.length, subpath.length - suffix.length))
     }
     return undefined
   }
@@ -168,6 +177,18 @@ module node {
     }
   }
 
+  async function isCommonJsModule(path: string): Promise<boolean> {
+    if (path.endsWith(".cjs")) return true
+    if (path.endsWith(".mjs")) return false
+    for (let directory = dirname(path); ; directory = dirname(directory)) {
+      if (await exists(join(directory, "package.json"))) {
+        const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8")) as { type?: unknown }
+        return manifest.type !== "module"
+      }
+      if (dirname(directory) === directory) return true
+    }
+  }
+
   export async function closure(packageDir: string, executable: string): Promise<Checked<WorkerClosure>> {
     const ts = (await import("typescript")).default
     const root = await realpath(resolve(packageDir))
@@ -195,9 +216,16 @@ module node {
       }
       if (!/\.(?:m|c)?js$/.test(current)) continue
       const text = await readFile(current, "utf8")
-      const loads = new Map<string, { specifier: string; mode: ModuleMode }>()
-      const commonJs = current.endsWith(".cjs")
-      const visit = (node: SyntaxNode): void => {
+      const loads = new Map<string, { specifier: string; mode: ModuleMode; optional: boolean }>()
+      const commonJs = await isCommonJsModule(current)
+      const visit = (node: SyntaxNode, tried = false): void => {
+        if (ts.isFunctionLike(node) && !ts.isSourceFile(node)) tried = false
+        if (ts.isTryStatement(node)) {
+          visit(node.tryBlock, tried || node.catchClause !== undefined)
+          if (node.catchClause !== undefined) visit(node.catchClause, tried)
+          if (node.finallyBlock !== undefined) visit(node.finallyBlock, tried)
+          return
+        }
         let argument: SyntaxNode | undefined
         let mode: ModuleMode = "import"
         if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) argument = node.moduleSpecifier
@@ -208,15 +236,22 @@ module node {
             mode = "require"
           }
         }
-        if (argument !== undefined && ts.isStringLiteralLike(argument)) loads.set(`${mode}:${argument.text}`, { specifier: argument.text, mode })
-        ts.forEachChild(node, visit)
+        if (argument !== undefined && ts.isStringLiteralLike(argument)) {
+          const key = `${mode}:${argument.text}`
+          const previous = loads.get(key)
+          loads.set(key, { specifier: argument.text, mode, optional: (previous?.optional ?? true) && mode === "require" && tried })
+        }
+        ts.forEachChild(node, (child) => visit(child, tried))
       }
       visit(ts.createSourceFile(current, text, ts.ScriptTarget.ESNext, false, ts.ScriptKind.JS))
-      for (const { specifier, mode } of loads.values()) {
+      for (const { specifier, mode, optional } of loads.values()) {
         if (specifier.startsWith("node:") || builtinModules.includes(specifier.split("/")[0])) continue
         if (specifier.startsWith(".") || specifier.startsWith("/")) {
           const next = await file(resolve(dirname(current), specifier))
-          if (next === undefined) return refuse(`A worker module is missing: ${specifier}`)
+          if (next === undefined) {
+            if (optional) continue
+            return refuse(`A worker module is missing: ${specifier}`)
+          }
           pending.push(next)
           continue
         }
@@ -224,10 +259,16 @@ module node {
         const name = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]
         const subpath = "." + specifier.slice(name.length)
         const found_ = await packageOf(name, current)
-        if (found_ === undefined) return refuse(`A worker dependency cannot be resolved: ${name}`)
+        if (found_ === undefined) {
+          if (optional) continue
+          return refuse(`A worker dependency cannot be resolved: ${name}`)
+        }
         const mapped = found_.manifest.exports === undefined ? (subpath === "." ? found_.manifest.main ?? "index.js" : subpath) : target(found_.manifest.exports, subpath, mode)
         const next = mapped === undefined ? undefined : await file(join(found_.root, mapped))
-        if (next === undefined) return refuse(`A worker dependency entry cannot be resolved: ${specifier}`)
+        if (next === undefined) {
+          if (optional) continue
+          return refuse(`A worker dependency entry cannot be resolved: ${specifier}`)
+        }
         pending.push(next)
       }
     }
@@ -238,14 +279,14 @@ module node {
   export async function build(input: { outputDir: string; identity: WorkerIdentity; entries: readonly { readonly path: string; readonly from: string }[]; generated: Readonly<Record<string, string>>; compiler: CompilerDescriptor }): Promise<Checked<string>> {
     const output = resolve(input.outputDir)
     if (!isAbsolute(input.outputDir) || await exists(output)) return refuse("The worker artifact output must be fresh")
-    if (input.entries.some((entry) => entry.from === output || entry.from.startsWith(`${output}/`))) return refuse("The worker artifact cannot replace its source")
+    if (input.entries.some((entry) => { const inside = relative(output, entry.from); return inside === "" || (!inside.startsWith("..") && !isAbsolute(inside)) })) return refuse("The worker artifact cannot replace its source")
     if (!await noSymlinks(dirname(output))) return refuse("The worker artifact path contains a symlink")
     try {
       const listed: Record<string, string> = {}
       const all = [...input.entries.map((entry) => ({ path: entry.path, from: entry.from as string | undefined, text: undefined as string | undefined })),
         ...Object.entries(input.generated).map(([path, text]) => ({ path, from: undefined, text }))]
       for (const entry of all.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)) {
-        if (!pathPattern.test(entry.path) || entry.path.split("/").some((part) => part === "" || part === "." || part === "..") || entry.path in listed) return refuse("Invalid worker file name")
+        if (!validRelativePath(entry.path) || entry.path in listed) return refuse("Invalid worker file name")
         await mkdir(dirname(join(output, entry.path)), { recursive: true })
         if (entry.from !== undefined) {
           const info = await lstat(entry.from)
@@ -352,13 +393,18 @@ module node {
   export async function installed(directory: string, packageStamp: string, index: string): Promise<Checked<{ manifestDigest: string; exactIndex: boolean; filesMatch: boolean; pathSafe: boolean; program: boolean; engine: boolean }>> {
     const root = resolve(directory)
     try {
-      const pathSafe = await noSymlinks(root)
+      let pathSafe = await noSymlinks(root)
       const stored = await readFile(join(root, "files.sha256"), "utf8")
       const exactIndex = stored === index && Buffer.byteLength(stored) <= 1024 * 1024
       const lines = stored.split("\n").filter((line) => line !== "").map((line) => line.split("\t"))
       let filesMatch = lines.length > 0
-      for (const [hash, path] of lines) {
-        if (hash === undefined || path === undefined || !pathPattern.test(path)) { filesMatch = false; break }
+      for (const parts of lines) {
+        const [hash, path] = parts
+        if (parts.length !== 2 || hash === undefined || path === undefined || !digestPattern.test(hash) || !validRelativePath(path)) {
+          if (path !== undefined && !validRelativePath(path)) pathSafe = false
+          filesMatch = false
+          break
+        }
         if (sha256(await readFile(join(root, path))) !== hash) { filesMatch = false; break }
       }
       const listed = new Set(lines.map(([, path]) => path))

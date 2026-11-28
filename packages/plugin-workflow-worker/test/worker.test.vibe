@@ -30,19 +30,21 @@ module node {
 }
 import { childPath, readText, scratchDir, writeFiles } from node
 
+const baseWorkerFiles = (mainJs: string, guestJs = "export const g = 1\n"): Record<string, string> => ({
+  "package.json": JSON.stringify({ name: "fake-worker", type: "module" }),
+  "dist/src/worker/main.js": mainJs,
+  "dist/src/worker/protocol.js": 'import "./compiler.js"\nimport "./engine.js"\nexport const p = 1\n',
+  "dist/src/worker/compiler.js": 'export const load = () => import("typescript")\n',
+  "dist/src/worker/engine.js": 'import "./guest.js"\nexport const e = 1\n',
+  "dist/src/worker/guest.js": guestJs,
+  "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "6.0.3", main: "./lib/typescript.js" }),
+  "node_modules/typescript/lib/typescript.js": 'const host = { tryEnableSourceMapsForHost() { try { require("source-map-support").install() } catch {} } }\nmodule.exports = host\n',
+  "node_modules/typescript/lib/lib.es2022.d.ts": "interface Array<T> {}\n",
+})
+
 it.live('Build, verify, stage, and install a workflow worker artifact and reject tampering (spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity")', effect () => {
   const dir = try acquireRelease(promise(() => scratchDir()), (made) => promise(() => made.remove()))
-  try promise(() => writeFiles(dir.path, {
-    "package.json": JSON.stringify({ name: "fake-worker", type: "module" }),
-    "dist/src/worker/main.js": 'import "./protocol.js"\n',
-    "dist/src/worker/protocol.js": 'import "./compiler.js"\nimport "./engine.js"\nexport const p = 1\n',
-    "dist/src/worker/compiler.js": 'export const load = () => import("typescript")\n',
-    "dist/src/worker/engine.js": 'import "./guest.js"\nexport const e = 1\n',
-    "dist/src/worker/guest.js": "export const g = 1\n",
-    "node_modules/typescript/package.json": JSON.stringify({ name: "typescript", version: "6.0.3", main: "./lib/typescript.js" }),
-    "node_modules/typescript/lib/typescript.js": "module.exports = {}\n",
-    "node_modules/typescript/lib/lib.es2022.d.ts": "interface Array<T> {}\n",
-  }))
+  try promise(() => writeFiles(dir.path, baseWorkerFiles('import "./protocol.js"\n')))
   const closure = try workerArtifactClosure(dir.path)
   const identity = { sourceStampSha256: "c".repeat(64), lockSha256: "d".repeat(64) }
   const provenance = try workerProvenance()
@@ -57,5 +59,98 @@ it.live('Build, verify, stage, and install a workflow worker artifact and reject
   try Effect.try(() => assert.deepStrictEqual(
     [closure.dependencies.typescript, built.phase, staged.files > 0, installed.phase, installed.enabled, refused instanceof WorkerArtifactRefused],
     ["6.0.3", "WorkerBuilt", true, "WorkerInstalled", true, true],
+  ))
+})
+
+it.live('Closure traces CommonJS .js require graphs and specific exports patterns, and install rejects parent-segment index entries (spec/workflow/worker.md, "Producer, package and installed tree must each prove their own identity")', effect () => {
+  const dir = try acquireRelease(promise(() => scratchDir()), (made) => promise(() => made.remove()))
+  try promise(() => writeFiles(dir.path, {
+    ...baseWorkerFiles(
+      'import "./protocol.js"\nimport "cjs-dep"\nimport "exports-dep/internal/tool"\nimport "exports-dep/legacy.cjs"\n',
+      'export const g = (neverCalled: boolean) => neverCalled ? require("esm-ignored-require") : 1\n',
+    ),
+    "node_modules/cjs-dep/package.json": JSON.stringify({ name: "cjs-dep", version: "1.2.0", main: "./index.js" }),
+    "node_modules/cjs-dep/index.js": 'try { require("missing-optional-pkg") } catch {}\ntry { require("cjs-optional") } catch {}\nconst sub = require("./lib/helper")\nexport * from "./esm-bridge.mjs"\nmodule.exports = sub\n',
+    "node_modules/cjs-dep/esm-bridge.mjs": 'export const mjsVal = (skip: boolean) => skip ? require("mjs-ignored-require") : 2\n',
+    "node_modules/cjs-dep/lib/helper.js": 'module.exports = require("cjs-leaf")\n',
+    "node_modules/cjs-optional/package.json": JSON.stringify({ name: "cjs-optional", version: "0.1.0", main: "opt.js" }),
+    "node_modules/cjs-optional/opt.js": "module.exports = 7\n",
+    "node_modules/cjs-leaf/package.json": JSON.stringify({ name: "cjs-leaf", version: "0.4.0", main: "leaf.js" }),
+    "node_modules/cjs-leaf/leaf.js": "module.exports = 42\n",
+    "node_modules/exports-dep/package.json": JSON.stringify({
+      name: "exports-dep",
+      version: "2.0.0",
+      type: "module",
+      exports: {
+        "./a*a": "./dist/overlap/*.js",
+        "./*": "./dist/fallback/*.js",
+        "./*.cjs": "./dist/cjs/*.cjs",
+        "./internal/*": { import: "./dist/internal/*/*.js" },
+      },
+    }),
+    "node_modules/exports-dep/dist/overlap/.js": "export const bad = 0\n",
+    "node_modules/exports-dep/dist/cjs/legacy.cjs": 'module.exports = require("cjs-leaf")\n',
+    "node_modules/exports-dep/dist/internal/tool/tool.js": "export const tool = true\n",
+  }))
+  const closure = try workerArtifactClosure(dir.path)
+  const paths = closure.entries.map((entry) => entry.path)
+  const overlapDir = try acquireRelease(promise(() => scratchDir()), (made) => promise(() => made.remove()))
+  try promise(() => writeFiles(overlapDir.path, {
+    "package.json": JSON.stringify({ name: "overlap-worker", type: "module" }),
+    "dist/src/worker/main.js": 'import "only-overlap/a"\n',
+    "node_modules/only-overlap/package.json": JSON.stringify({ name: "only-overlap", version: "1.0.0", type: "module", exports: { "./a*a": "./dist/*.js" } }),
+    "node_modules/only-overlap/dist/.js": "export const x = 1\n",
+  }))
+  const overlapRefused = try Effect.flip(workerArtifactClosure(overlapDir.path))
+  const refusedCjsCases: boolean[] = []
+  for (const cjsSnippet of [
+    'require("missing-unguarded")\n',
+    'try { require("missing-finally") } finally {}\n',
+    'try { const defer = () => require("missing-deferred"); module.exports = defer } catch {}\n',
+    'require("missing-both")\ntry { require("missing-both") } catch {}\n',
+  ]) {
+    const caseDir = try acquireRelease(promise(() => scratchDir()), (made) => promise(() => made.remove()))
+    try promise(() => writeFiles(caseDir.path, {
+      "package.json": JSON.stringify({ name: "cjs-case-worker" }),
+      "dist/src/worker/main.js": cjsSnippet,
+    }))
+    const outcome = try Effect.flip(workerArtifactClosure(caseDir.path))
+    refusedCjsCases.push(outcome instanceof WorkerArtifactRefused)
+  }
+  const identity = { sourceStampSha256: "a".repeat(64), lockSha256: "b".repeat(64) }
+  const provenance = try workerProvenance()
+  const outDir = try Effect.try(() => childPath(dir.path, "out"))
+  const stageDir = try Effect.try(() => childPath(dir.path, "stage"))
+  try provenance.build({ packageDir: dir.path, outputDir: outDir, identity, observeIdentity: () => succeed(identity) })
+  try provenance.stage(outDir, stageDir, "pkg-2", identity)
+  const validIndex = try promise(() => readText(childPath(stageDir, "files.sha256")))
+  const mainLine = validIndex.split("\n").find((line) => line.endsWith("\tsrc/worker/main.js")) ?? ""
+  const mainHash = mainLine.split("\t")[0] ?? ""
+  const tamperedIndex = `${validIndex}${mainHash}\tsrc/../src/worker/main.js\n`
+  try promise(() => writeFiles(stageDir, { "files.sha256": tamperedIndex }))
+  const traversalInstall = try provenance.install(stageDir, "pkg-2", tamperedIndex)
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      hasCjsHelper: paths.includes("node_modules/cjs-dep/lib/helper.js"),
+      hasCjsInModulePkg: paths.includes("node_modules/exports-dep/dist/cjs/legacy.cjs"),
+      cjsLeafVersion: closure.dependencies["cjs-leaf"],
+      cjsOptionalVersion: closure.dependencies["cjs-optional"],
+      hasSpecificExport: paths.includes("node_modules/exports-dep/dist/internal/tool/tool.js"),
+      overlapRejected: overlapRefused instanceof WorkerArtifactRefused,
+      refusedCjsCases,
+      traversalPhase: traversalInstall.phase,
+      traversalEnabled: traversalInstall.enabled,
+    },
+    {
+      hasCjsHelper: true,
+      hasCjsInModulePkg: true,
+      cjsLeafVersion: "0.4.0",
+      cjsOptionalVersion: "0.1.0",
+      hasSpecificExport: true,
+      overlapRejected: true,
+      refusedCjsCases: [true, true, true, true],
+      traversalPhase: "WorkerRefused",
+      traversalEnabled: false,
+    },
   ))
 })
