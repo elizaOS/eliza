@@ -1449,5 +1449,253 @@ describe("Upstream general walkthrough engine (walkthrough-engine.mjs)", () => {
     const recoveredSnap = await flakyTransport.snapshot();
     expect(evalCalls).toBe(2);
     expect(recoveredSnap.title).toBe("Ready");
+
+    // 8. Immediate local STALE_REF re-observe & retry succeeds without burning an extra planner turn
+    let stalePlannerCalls = 0;
+    let staleExecCalls = 0;
+    let staleSnapCalls = 0;
+    const staleEngine = createWalkthroughEngine({
+      goal: { instruction: "Open records" },
+      transport: {
+        snapshot: async () => {
+          staleSnapCalls++;
+          return {
+            snapshotId: `s-${staleSnapCalls}`,
+            url: "https://spa.test/app",
+            title: "App",
+            domRevision: staleSnapCalls,
+            text: staleExecCalls >= 2 ? "Records Loaded" : "Home",
+            blockers: [],
+            elements: [
+              { id: "0", tag: "button", label: "Records", targetSelector: "#records", consequence: "navigate" },
+            ],
+          };
+        },
+        execute: async (cmd) => {
+          staleExecCalls++;
+          if (staleExecCalls === 1) {
+            return { error: { kind: "STALE_REF", message: "DOM updated" } };
+          }
+          expect(cmd.snapshotId).toBe("s-2");
+          return { dispatched: true };
+        },
+      },
+      planner: {
+        plan: async (input) => {
+          stalePlannerCalls++;
+          const text = String((input.observation as { textExcerpt?: string }).textExcerpt ?? "");
+          if (text.includes("Records Loaded")) {
+            return { action: { kind: "complete", summary: "Opened", quotes: ["Records Loaded"] } };
+          }
+          return { action: { kind: "click", ref: "e0", reason: "Open records" } };
+        },
+      },
+    });
+    const staleRes = await staleEngine.run();
+    expect(staleRes.status).toBe("completed");
+    expect(stalePlannerCalls).toBe(2);
+    expect(staleExecCalls).toBe(2);
+
+    // 9. Punctuation-tolerant quote verification matches optional comma differences while rejecting wrong values
+    expect(
+      verifyCompletionQuotes(["Dr. Kara Bickham, M.D."], {
+        title: "Care Team",
+        text: "Primary care: Dr. Kara Bickham M.D.",
+      }).verified,
+    ).toBe(true);
+    expect(
+      verifyCompletionQuotes(["$2,000"], {
+        title: "Benefits",
+        text: "Deductible: $3,000",
+      }).verified,
+    ).toBe(false);
+
+    // 10. createPlaywrightWalkthroughTransport tracks live in-flight fetch/xhr requests after SPA clicks
+    let resolveDelayed!: () => void;
+    const delayedReady = new Promise<void>((resolve) => {
+      resolveDelayed = resolve;
+    });
+    const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+    const emit = (ev: string, arg: unknown) => {
+      for (const fn of listeners.get(ev) ?? []) fn(arg);
+    };
+    const fakeReq = { resourceType: () => "fetch" };
+    let hydrated = false;
+    const netTransport = createPlaywrightWalkthroughTransport(
+      {
+        url: () => "https://spa.test/portal",
+        evaluate: (async (_fn: unknown, [, cmd]: [string, Record<string, unknown>]) => {
+          if (cmd.subaction === "click") {
+            setTimeout(() => {
+              emit("request", fakeReq);
+              setTimeout(() => {
+                hydrated = true;
+                emit("requestfinished", fakeReq);
+                resolveDelayed();
+              }, 80);
+            }, 15);
+            return { dispatched: true };
+          }
+          return { url: "https://spa.test/portal", title: "Portal", text: hydrated ? "Hydrated FHIR Data" : "Loading", elements: [], blockers: [] };
+        }) as never,
+        goto: async () => {},
+        goBack: async () => {},
+        waitForLoadState: async () => {},
+        waitForTimeout: async (ms: number) => new Promise((r) => setTimeout(r, ms)),
+        on: ((ev: string, fn: (...args: unknown[]) => void) => {
+          if (!listeners.has(ev)) listeners.set(ev, new Set());
+          listeners.get(ev)!.add(fn);
+        }) as never,
+        off: ((ev: string, fn: (...args: unknown[]) => void) => {
+          listeners.get(ev)?.delete(fn);
+        }) as never,
+        once: (() => {}) as never,
+      },
+      { settleMs: 10, networkIdleTimeoutMs: 1500, networkQuietMs: 40, useTaskPolicy: false },
+    );
+    await netTransport.execute({ subaction: "click" });
+    expect(hydrated).toBe(true);
+    await delayedReady;
+    const afterNetSnap = await netTransport.snapshot();
+    expect(afterNetSnap.text).toBe("Hydrated FHIR Data");
+    netTransport.dispose();
+
+    // 11. Shadow DOM custom submit button (<custom-submit type="submit"> calling closest('form').requestSubmit()),
+    //     AJAX e.preventDefault() form submit + fetch + location.href redirect, <a download> under follow, and non-text sensitivity=null
+    fixtures[`${portal}/shadow-ajax-download`] = `<!doctype html><body><main>
+      <h1>Shadow Submit &amp; Download</h1>
+      <label><input type="checkbox" id="bank-auth"> I authorize debit from this bank account</label>
+      <label><input type="radio" name="pm" id="card-radio"> Credit or Debit Card</label>
+      <label>Pay from bank account <select id="bank-sel"><option>Checking (...1048)</option></select></label>
+      <form id="shadow-form">
+        <input name="amt" value="50.00">
+        <custom-submit id="sh-cont" type="submit" data-label="Continue"></custom-submit>
+        <custom-submit id="sh-pay" type="submit" data-label="Submit payment"></custom-submit>
+      </form>
+      <form id="ajax-form" action="/ajax-form">
+        <input name="acct" value="1048">
+        <button type="submit" id="ajax-submit">Confirm payment</button>
+      </form>
+      <a id="dl-link" href="/statement.pdf" download="statement.pdf">Download PDF</a>
+      <p id="shadow-result"></p>
+      <script>
+        customElements.define("custom-submit", class extends HTMLElement {
+          connectedCallback() {
+            const s = this.attachShadow({ mode: "open" });
+            s.innerHTML = '<button type="button">' + this.dataset.label + '</button>';
+            s.querySelector("button").addEventListener("click", () => {
+              this.closest("form")?.requestSubmit();
+            });
+          }
+        });
+        let shadowSubmits = 0;
+        document.getElementById("shadow-form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          shadowSubmits++;
+          await fetch("/api/pay", { method: "POST" });
+          document.getElementById("shadow-result").textContent = "shadow-submit:" + shadowSubmits;
+        });
+        document.getElementById("ajax-form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          await fetch("/api/pay", { method: "POST" });
+          location.href = "/receipt";
+        });
+        document.getElementById("dl-link").addEventListener("click", (e) => {
+          e.preventDefault();
+          document.getElementById("shadow-result").textContent = "download-clicked";
+        });
+      </script>
+    </main></body>`;
+
+    await p.goto(`${portal}/shadow-ajax-download`);
+    let sdSnap = await runPageCmd({ subaction: "snapshot" }, "sd-1");
+    const sdEls = sdSnap.elements as Record<string, unknown>[];
+    // Checkbox, radio, and <select> are NEVER classified as raw secret credential fields
+    expect(sdEls.find((e) => e.targetSelector === "#bank-auth")?.sensitive).toBeNull();
+    expect(sdEls.find((e) => e.targetSelector === "#card-radio")?.sensitive).toBeNull();
+    expect(sdEls.find((e) => e.targetSelector === "#bank-sel")?.sensitive).toBeNull();
+
+    // Non-commit Shadow DOM custom submit ("Continue") triggers form submit cleanly
+    const shCont = sdEls.find((e) => e.label === "Continue")!;
+    expect(
+      (
+        await runPageCmd({
+          subaction: "click",
+          snapshotId: "sd-1",
+          nodeId: shCont.id,
+          taskPolicy: makePolicy(portal, String(shCont.targetSelector), "click"),
+        })
+      ).dispatched,
+    ).toBe(true);
+    await p.waitForTimeout(80);
+    sdSnap = await runPageCmd(
+      { subaction: "snapshot", taskPolicy: makePolicy(portal, "#none", "click") },
+      "sd-2",
+    );
+    expect(sdSnap.effectViolation).toBeUndefined();
+    expect(await p.locator("#shadow-result").textContent()).toBe("shadow-submit:1");
+
+    // Commit-granted Shadow DOM custom submit ("Submit payment") triggers form submit cleanly
+    const shPay = (sdSnap.elements as Record<string, unknown>[]).find((e) => e.label === "Submit payment")!;
+    expect(
+      (
+        await runPageCmd({
+          subaction: "click",
+          snapshotId: "sd-2",
+          nodeId: shPay.id,
+          taskPolicy: makePolicy(portal, String(shPay.targetSelector), "click", {
+            commitGrant: {
+              grantId: "g-sh-pay",
+              selector: String(shPay.targetSelector),
+              expiresAt: Date.now() + 30_000,
+            },
+          }),
+        })
+      ).dispatched,
+    ).toBe(true);
+    await p.waitForTimeout(80);
+    sdSnap = await runPageCmd(
+      { subaction: "snapshot", taskPolicy: makePolicy(portal, "#none", "click") },
+      "sd-3",
+    );
+    expect(sdSnap.effectViolation).toBeUndefined();
+    expect(await p.locator("#shadow-result").textContent()).toBe("shadow-submit:2");
+
+    // Same-origin <a download> succeeds under follow (clicks link cleanly)
+    const dlLink = (sdSnap.elements as Record<string, unknown>[]).find((e) => e.label === "Download PDF")!;
+    expect(
+      (
+        await runPageCmd({
+          subaction: "follow",
+          snapshotId: "sd-3",
+          nodeId: dlLink.id,
+          taskPolicy: makePolicy(portal, String(dlLink.targetSelector), "follow"),
+        })
+      ).dispatched,
+    ).toBe(true);
+    expect(await p.locator("#shadow-result").textContent()).toBe("download-clicked");
+
+    // Unpinned commit-granted AJAX form submit calling e.preventDefault() + fetch() + location.href redirects cleanly
+    sdSnap = await runPageCmd({ subaction: "snapshot" }, "sd-4");
+    const ajaxBtn = (sdSnap.elements as Record<string, unknown>[]).find((e) => e.label === "Confirm payment")!;
+    const ajaxNav = p.waitForURL(`${portal}/receipt`);
+    expect(
+      (
+        await runPageCmd({
+          subaction: "click",
+          snapshotId: "sd-4",
+          nodeId: ajaxBtn.id,
+          taskPolicy: makePolicy(portal, String(ajaxBtn.targetSelector), "click", {
+            commitGrant: {
+              grantId: "g-ajax-1",
+              selector: String(ajaxBtn.targetSelector),
+              expiresAt: Date.now() + 30_000,
+            },
+          }),
+        })
+      ).dispatched,
+    ).toBe(true);
+    await ajaxNav;
+    expect(new URL(p.url()).pathname).toBe("/receipt");
   });
 });

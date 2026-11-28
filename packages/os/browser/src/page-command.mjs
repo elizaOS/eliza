@@ -503,9 +503,24 @@ export function pageCommand(
       !(
         is(node, "HTMLInputElement") ||
         is(node, "HTMLTextAreaElement") ||
-        is(node, "HTMLSelectElement") ||
         node.isContentEditable
       )
+    )
+      return null;
+    if (
+      is(node, "HTMLInputElement") &&
+      [
+        "checkbox",
+        "radio",
+        "button",
+        "submit",
+        "reset",
+        "image",
+        "range",
+        "color",
+        "file",
+        "hidden",
+      ].includes(node.type)
     )
       return null;
     const autocomplete = (node.getAttribute("autocomplete") || "")
@@ -557,6 +572,17 @@ export function pageCommand(
       )
     )
       return "government-id";
+    return null;
+  };
+  const closestFormDeep = (el) => {
+    if (el?.form) return el.form;
+    for (let cur = el; cur; ) {
+      if (is(cur, "HTMLFormElement")) return cur;
+      const found = cur.closest?.("form");
+      if (found) return found;
+      const root = cur.getRootNode?.();
+      cur = root && root.host ? root.host : null;
+    }
     return null;
   };
   const submitControl = (element) =>
@@ -803,17 +829,23 @@ export function pageCommand(
       SAFE_DISMISS_INLINE.test(primaryLabel) &&
       (DECLINE_ESCAPE_INLINE.test(primaryLabel) ||
         !DISMISS_AGREES_INLINE.test(primaryLabel));
-    const form = node.form ?? node.closest("form");
+    const form = closestFormDeep(node);
     const formControls = form ? [...form.elements] : [];
     const formHasSensitive = formControls.some((control) =>
       ["password", "payment-card", "bank-account"].includes(
         sensitivity(control),
       ),
     );
+    const shadowHost = node.getRootNode?.()?.host ?? null;
+    const hostSubmits =
+      !!shadowHost &&
+      (shadowHost.getAttribute?.("type") || "").toLowerCase() === "submit";
     const isSubmits =
-      node.matches(
+      (node.matches(
         "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image]",
-      ) && (form !== null || tag === "input");
+      ) ||
+        hostSubmits) &&
+      (form !== null || tag === "input");
     const hostCommit = !!commitPattern?.test(labelText);
     const wordCommit =
       !isSafeDismiss &&
@@ -3308,7 +3340,6 @@ export function pageCommand(
       frameOf(node) !== null ||
       !is(node, "HTMLAnchorElement") ||
       !node.hasAttribute("href") ||
-      node.hasAttribute("download") ||
       (node.target &&
         node.target !== "_self" &&
         policy.allowNewTabFollow !== true) ||
@@ -3361,7 +3392,11 @@ export function pageCommand(
   delete store[key];
   if (destination) {
     store[watchKey]?.stop();
-    location.assign(destination.href);
+    if (node.hasAttribute("download")) {
+      node.click();
+    } else {
+      location.assign(destination.href);
+    }
     return { dispatched: true, requiresReadback: true };
   }
   if (grant) {
@@ -3450,10 +3485,20 @@ export function pageCommand(
     // performance.now() is monotonic and stops while the device sleeps, so
     // timeOrigin + performance.now() falls behind Date.now() by every sleep
     // since the page loaded; the handoff is stamped with Date.now() instead.
+    // The control's enclosing form (crossing open Shadow DOM boundaries for
+    // custom submit components such as <custom-button type="submit">).
+    const enclosingForm = closestFormDeep(node);
+    const shadowSubmitHost = (() => {
+      const host = node.getRootNode?.()?.host ?? null;
+      return host &&
+        enclosingForm !== null &&
+        ((host.getAttribute?.("type") || "").toLowerCase() === "submit" ||
+          submitControl(node))
+        ? host
+        : null;
+    })();
     // The granted control's own form: the only form the grant can send.
-    const grantedForm = grant
-      ? (node.form ?? node.closest("form") ?? null)
-      : null;
+    const grantedForm = grant ? enclosingForm : null;
     const overrides = ["formaction", "formmethod", "formtarget", "formenctype"];
     const sameRequest = (a, b) =>
       a.action === b.action &&
@@ -3461,18 +3506,22 @@ export function pageCommand(
       a.target === b.target &&
       a.enctype === b.enctype;
     // Read before the click, so a script that runs after it cannot move the
-    // granted request. Only a submit button of the granted form has one.
+    // granted request. Only a submit button (or Shadow DOM submit host) of the
+    // granted form has one.
     const grantedRequest =
-      grantedForm !== null && submitControl(node) && node.form === grantedForm
-        ? requestOf(node, grantedForm)
+      grantedForm !== null &&
+      ((submitControl(node) && node.form === grantedForm) ||
+        shadowSubmitHost !== null)
+        ? requestOf(shadowSubmitHost ?? node, grantedForm)
         : null;
     // A submit with no submitter (requestSubmit() with no argument, or an
-    // implicit submission) sends what the granted control would only when that
-    // control is the form's default button and overrides nothing.
+    // implicit submission) sends what the granted control would when it is the
+    // form's default button (without overrides) or a Shadow DOM submit host.
     const implicitAllowed =
       grantedRequest !== null &&
-      defaultButton(grantedForm) === node &&
-      !overrides.some((attribute) => node.hasAttribute(attribute));
+      (shadowSubmitHost !== null ||
+        (defaultButton(grantedForm) === node &&
+          !overrides.some((attribute) => node.hasAttribute(attribute))));
     // The one request the grant consents besides its form's page load. A
     // declared target is matched exactly; a GET form's action by origin and
     // path, since the submit replaces its query.
@@ -3620,6 +3669,8 @@ export function pageCommand(
           grantId: grant.grantId,
           submits: 0,
           pending: false,
+          defaultPrevented: false,
+          submitEvent: null,
           action: "",
           method: "",
           implicit: false,
@@ -3781,6 +3832,7 @@ export function pageCommand(
         ) {
           consent.submits = 1;
           consent.pending = true;
+          consent.submitEvent = event;
           consent.action = sent.action;
           consent.method = sent.method;
           consent.implicit = submitter === null;
@@ -3790,12 +3842,16 @@ export function pageCommand(
           // A page handler that cancels this submit sends no page load, so
           // none may follow it later; one own-site request still may.
           setTimeout(() => {
-            if (event.defaultPrevented) consent.pending = false;
+            if (event.defaultPrevented) {
+              consent.pending = false;
+              consent.defaultPrevented = true;
+            }
           }, 0);
           return;
         }
         // A permitted non-commit wizard/search GET or POST submitter on the same
-        // origin may advance without tripping an unauthorized-commit violation.
+        // origin (including Shadow DOM custom submit buttons) may advance without
+        // tripping an unauthorized-commit violation.
         if (
           command.subaction === "click" &&
           !grant &&
@@ -3804,7 +3860,7 @@ export function pageCommand(
           (sent.method === "get" || sent.method === "post") &&
           sameOrigin(sent.action) &&
           ["", "_self"].includes(sent.target) &&
-          form === node.form &&
+          form === enclosingForm &&
           (submitter === node || submitter === null)
         ) {
           allowedWizardSubmit = {
@@ -3898,6 +3954,24 @@ export function pageCommand(
           (!declared ||
             samePath(event.destination.url, expectedRequest?.url ?? ""))
         ) {
+          consent.spent = true;
+          consentTo("navigation", event.destination.url);
+          return;
+        }
+        // Unpinned commit-granted AJAX form submit whose handler called e.preventDefault(),
+        // performed fetch(), and then redirected via location.href within the same origin.
+        if (
+          consent &&
+          consent.submits === 1 &&
+          !declared &&
+          grant.formHash === undefined &&
+          command.subaction === "click" &&
+          event.formData == null &&
+          sameOrigin(event.destination.url) &&
+          (consent.defaultPrevented ||
+            consent.submitEvent?.defaultPrevented === true)
+        ) {
+          consent.pending = false;
           consent.spent = true;
           consentTo("navigation", event.destination.url);
           return;
@@ -4032,16 +4106,19 @@ export function pageCommand(
               continue;
             }
             // Commit-granted JS/SPA button click (no form action or declared requestTarget)
+            // OR an unpinned commit-granted form submit handled via e.preventDefault() + fetch()
             // may invoke same-origin fetch/XHR to execute and refresh UI state.
             if (
               consent &&
-              !consent.pending &&
-              expectedRequest === null &&
+              !declared &&
               grant.formHash === undefined &&
               command.subaction === "click" &&
               sameOrigin(entry.name) &&
               entry.initiatorType !== "beacon" &&
-              policy.allowSameOriginRequests !== false
+              policy.allowSameOriginRequests !== false &&
+              ((!consent.pending && expectedRequest === null) ||
+                consent.defaultPrevented ||
+                consent.submitEvent?.defaultPrevented === true)
             ) {
               if (!consent.spent) {
                 consent.spent = true;

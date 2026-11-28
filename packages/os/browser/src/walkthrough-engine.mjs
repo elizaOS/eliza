@@ -842,10 +842,14 @@ const extractSnapshotCorpus = (snapshot) => {
   return normalizeWhitespace(corpusParts.join(" ")).toLowerCase();
 };
 
+const stripOptionalPunctuation = (text) =>
+  normalizeWhitespace(text.replace(/[,;:—–]+/g, " ")).toLowerCase();
+
 /**
  * Verifies that claimed completion quotes actually appear on the observed page
  * or across any previously observed snapshots in the trajectory
- * (case-insensitive, whitespace-normalized), preventing hallucinated receipts.
+ * (case-insensitive, whitespace- and punctuation-normalized), preventing
+ * hallucinated receipts.
  */
 export function verifyCompletionQuotes(quotes, snapshotOrCorpus) {
   const list = Array.isArray(quotes)
@@ -855,11 +859,16 @@ export function verifyCompletionQuotes(quotes, snapshotOrCorpus) {
   const corpora = Array.isArray(snapshotOrCorpus)
     ? snapshotOrCorpus.map(extractSnapshotCorpus).filter(Boolean)
     : [extractSnapshotCorpus(snapshotOrCorpus)];
+  const softCorpora = corpora.map(stripOptionalPunctuation);
   const matched = [];
   const missing = [];
   for (const quote of list) {
     const norm = normalizeWhitespace(quote).toLowerCase();
-    if (norm && corpora.some((corpus) => corpus.includes(norm)))
+    const soft = stripOptionalPunctuation(quote);
+    if (
+      (norm && corpora.some((corpus) => corpus.includes(norm))) ||
+      (soft && softCorpora.some((corpus) => corpus.includes(soft)))
+    )
       matched.push(quote);
     else missing.push(quote);
   }
@@ -1301,32 +1310,75 @@ export function createWalkthroughEngine({
   }) => {
     phase = "acting";
     const execStart = Date.now();
-    const finalCommand = commitGrant ? { ...command, commitGrant } : command;
+    let activeBeforeSnapshot = beforeSnapshot;
+    let activeBeforeSanitized = beforeSanitized;
+    let activeTarget = targetElement;
+    let activeCommand = commitGrant ? { ...command, commitGrant } : command;
     let execResult;
-    try {
-      execResult = await transport.execute(finalCommand);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      warnings.push(`Action failed: ${msg}`);
-      history.push({
-        stepIndex,
-        action: actionKind,
-        target: redactSensitiveText(targetElement?.label || targetElement?.inferredLabel || ""),
-        outcome: "error",
-        error: redactSensitiveText(msg),
-      });
-      const telemetryEvent = await emitTelemetry({
-        plannerActionKind: actionKind,
-        targetLabel: targetElement?.label || targetElement?.inferredLabel || null,
-        consequenceClass,
-        gateVerdict: "blocked_policy",
-        latencyMs: plannerLatencyMs + (Date.now() - execStart),
-        tokenUsage,
-        detail: msg,
-      });
-      stepIndex++;
-      return { status: "continue", phase: "verifying", stepIndex, telemetryEvent, state: getState() };
+    const extraForRetry = {
+      ...(command.text !== undefined ? { text: command.text } : {}),
+      ...(command.direction !== undefined ? { direction: command.direction } : {}),
+    };
+    const canLocalRetryStale =
+      !commitGrant &&
+      consequenceClass !== "commit" &&
+      typeof targetElement?.targetSelector === "string" &&
+      targetElement.targetSelector.length > 0;
+    const expectedLabel =
+      targetElement?.label || targetElement?.inferredLabel || "";
+
+    for (let staleAttempt = 0; staleAttempt <= (canLocalRetryStale ? 2 : 0); staleAttempt++) {
+      try {
+        execResult = await transport.execute(activeCommand);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        warnings.push(`Action failed: ${msg}`);
+        history.push({
+          stepIndex,
+          action: actionKind,
+          target: redactSensitiveText(activeTarget?.label || activeTarget?.inferredLabel || ""),
+          outcome: "error",
+          error: redactSensitiveText(msg),
+        });
+        const telemetryEvent = await emitTelemetry({
+          plannerActionKind: actionKind,
+          targetLabel: activeTarget?.label || activeTarget?.inferredLabel || null,
+          consequenceClass,
+          gateVerdict: "blocked_policy",
+          latencyMs: plannerLatencyMs + (Date.now() - execStart),
+          tokenUsage,
+          detail: msg,
+        });
+        stepIndex++;
+        return { status: "continue", phase: "verifying", stepIndex, telemetryEvent, state: getState() };
+      }
+      if (execResult?.error?.kind !== "STALE_REF" || !canLocalRetryStale || staleAttempt === 2)
+        break;
+      const { snapshot: freshSnap, sanitized: freshSan } = await observePage();
+      if (stripUrlQuery(freshSnap?.url ?? "") !== stripUrlQuery(activeBeforeSnapshot?.url ?? ""))
+        break;
+      const matches = (Array.isArray(freshSnap?.elements) ? freshSnap.elements : []).filter(
+        (el) =>
+          el &&
+          !el.disabled &&
+          el.targetSelector === targetElement.targetSelector &&
+          el.tag === targetElement.tag &&
+          (el.label || el.inferredLabel || "") === expectedLabel,
+      );
+      if (matches.length !== 1) break;
+      activeBeforeSnapshot = freshSnap;
+      activeBeforeSanitized = freshSan;
+      activeTarget = matches[0];
+      activeCommand = buildCommandForElement(
+        freshSnap,
+        matches[0],
+        command.subaction ?? actionKind,
+        extraForRetry,
+      );
     }
+    beforeSnapshot = activeBeforeSnapshot;
+    beforeSanitized = activeBeforeSanitized;
+    targetElement = activeTarget;
 
     if (execResult?.error) {
       const kind = execResult.error.kind ?? "ERROR";
@@ -2082,10 +2134,25 @@ export function createWalkthroughEngine({
         return { status: "continue", phase: "verifying", stepIndex, state: getState() };
       }
       const portResult = await fn(action.payload);
+      const portSummary = (() => {
+        if (!portResult || typeof portResult !== "object") return undefined;
+        const parts = [];
+        if (typeof portResult.count === "number") parts.push(`count=${portResult.count}`);
+        if (Array.isArray(portResult.downloads)) parts.push(`downloads=${portResult.downloads.length}`);
+        if (typeof portResult.message === "string" && portResult.message.trim())
+          parts.push(redactSensitiveText(portResult.message.trim()).slice(0, 120));
+        return parts.length > 0 ? parts.join(", ") : undefined;
+      })();
+      if (portResult?.ok === false) {
+        warnings.push(
+          `Host capability port "${action.port}" reported not ready/failed${portSummary ? ` (${portSummary})` : ""}. Perform the required page action first before calling this port again.`,
+        );
+      }
       history.push({
         stepIndex,
         action: `port:${action.port}`,
-        outcome: portResult?.ok === false ? "declined" : "completed",
+        outcome: portResult?.ok === false ? "not_ready" : "completed",
+        ...(portSummary ? { detail: portSummary } : {}),
       });
       const telemetryEvent = await emitTelemetry({
         plannerActionKind: action.kind,
@@ -2093,7 +2160,7 @@ export function createWalkthroughEngine({
         gateVerdict: "allowed",
         latencyMs: plannerLatencyMs,
         tokenUsage,
-        detail: `port:${action.port}`,
+        detail: portSummary ? `port:${action.port} (${portSummary})` : `port:${action.port}`,
       });
       stepIndex++;
       return { status: "continue", phase: "verifying", stepIndex, telemetryEvent, state: getState() };
@@ -2496,11 +2563,43 @@ export function createPlaywrightWalkthroughTransport(
     maxConsequence = "stage",
     useTaskPolicy = true,
     settleMs = 150,
-    networkIdleTimeoutMs = 2500,
+    networkIdleTimeoutMs = 3000,
+    networkQuietMs = 250,
   } = {},
 ) {
   const pageCommandSource = pageCommand.toString();
   let seq = 0;
+
+  // Track live in-flight fetch/xhr/document requests directly because Playwright's
+  // waitForLoadState("networkidle") resolves in 0ms on SPAs after initial load.
+  const trackedTypes = new Set(["fetch", "xhr", "document"]);
+  const inFlight = new Set();
+  let networkActivitySeq = 0;
+  let lastNetworkChangeAt = Date.now();
+  const trackRequests = typeof page.on === "function";
+  const isTrackedReq = (req) => {
+    try {
+      const kind = typeof req?.resourceType === "function" ? req.resourceType() : "";
+      return !kind || trackedTypes.has(kind);
+    } catch {
+      return true;
+    }
+  };
+  const onReqStart = (req) => {
+    if (!isTrackedReq(req)) return;
+    inFlight.add(req);
+    networkActivitySeq++;
+    lastNetworkChangeAt = Date.now();
+  };
+  const onReqEnd = (req) => {
+    if (!inFlight.delete(req)) return;
+    lastNetworkChangeAt = Date.now();
+  };
+  if (trackRequests) {
+    page.on("request", onReqStart);
+    page.on("requestfinished", onReqEnd);
+    page.on("requestfailed", onReqEnd);
+  }
 
   const isContextDestroyed = (error) =>
     /Execution context was destroyed|Cannot find context with specified id/i.test(
@@ -2517,24 +2616,52 @@ export function createPlaywrightWalkthroughTransport(
     );
   };
 
-  const waitLoaded = async (waitNetworkIdle = false) => {
+  const pauseMs = async (ms) => {
+    if (ms <= 0) return;
+    if (typeof page.waitForTimeout === "function") await page.waitForTimeout(ms);
+    else await new Promise((resolve) => setTimeout(resolve, ms));
+  };
+
+  const waitForNetworkQuiet = async (activityBefore) => {
+    if (!trackRequests || networkIdleTimeoutMs <= 0) return;
+    const deadline = Date.now() + networkIdleTimeoutMs;
+    // Brief grace window so async React/SPA effects can initiate fetch() after click.
+    if (inFlight.size === 0 && networkActivitySeq === activityBefore) {
+      await pauseMs(Math.min(60, networkIdleTimeoutMs));
+    }
+    if (inFlight.size === 0 && networkActivitySeq === activityBefore) return;
+    while (Date.now() < deadline) {
+      if (
+        inFlight.size === 0 &&
+        Date.now() - lastNetworkChangeAt >= networkQuietMs
+      ) {
+        return;
+      }
+      await pauseMs(Math.min(50, Math.max(10, deadline - Date.now())));
+    }
+  };
+
+  const waitLoaded = async (waitNetworkIdle = false, activityBefore = networkActivitySeq) => {
     if (typeof page.waitForLoadState === "function") {
       await page
         .waitForLoadState("domcontentloaded", { timeout: 10_000 })
         .catch(() => {});
       if (waitNetworkIdle && networkIdleTimeoutMs > 0) {
         await page
-          .waitForLoadState("networkidle", { timeout: networkIdleTimeoutMs })
+          .waitForLoadState("networkidle", {
+            timeout: Math.min(1000, networkIdleTimeoutMs),
+          })
           .catch(() => {});
       }
     }
+    if (waitNetworkIdle) await waitForNetworkQuiet(activityBefore);
   };
 
   return {
     async snapshot(options = {}) {
       let lastError;
       for (let attempt = 0; attempt < 3; attempt++) {
-        await waitLoaded(attempt > 0);
+        await waitLoaded(attempt > 0 || inFlight.size > 0);
         const snapshotId = `pw-${Date.now()}-${++seq}`;
         try {
           const result = await evalInPage(
@@ -2552,7 +2679,7 @@ export function createPlaywrightWalkthroughTransport(
         } catch (error) {
           lastError = error;
           if (!isContextDestroyed(error) || attempt === 2) throw error;
-          if (settleMs > 0) await page.waitForTimeout?.(settleMs);
+          if (settleMs > 0) await pauseMs(settleMs);
         }
       }
       throw lastError;
@@ -2584,6 +2711,7 @@ export function createPlaywrightWalkthroughTransport(
                 : {}),
             }
           : undefined);
+      const activityBefore = networkActivitySeq;
       let result;
       let downloaded = false;
       const onDownload = () => {
@@ -2604,8 +2732,8 @@ export function createPlaywrightWalkthroughTransport(
         );
       } catch (error) {
         if (command.validateOnly !== true && isContextDestroyed(error)) {
-          await waitLoaded(true);
-          if (settleMs > 0) await page.waitForTimeout?.(settleMs);
+          await waitLoaded(true, activityBefore);
+          if (settleMs > 0) await pauseMs(settleMs);
           if (listenDownload) page.off("download", onDownload);
           return {
             dispatched: true,
@@ -2623,8 +2751,8 @@ export function createPlaywrightWalkthroughTransport(
         const shouldWaitIdle = ["click", "follow", "select"].includes(
           command.subaction,
         );
-        await waitLoaded(shouldWaitIdle);
-        if (settleMs > 0) await page.waitForTimeout?.(settleMs);
+        await waitLoaded(shouldWaitIdle, activityBefore);
+        if (settleMs > 0) await pauseMs(settleMs);
       }
       if (listenDownload) page.off("download", onDownload);
       return downloaded && result && typeof result === "object"
@@ -2632,12 +2760,22 @@ export function createPlaywrightWalkthroughTransport(
         : result;
     },
     async navigate(url) {
+      const activityBefore = networkActivitySeq;
       await page.goto(url, { waitUntil: "domcontentloaded" });
-      await waitLoaded(true);
+      await waitLoaded(true, activityBefore);
     },
     async goBack() {
+      const activityBefore = networkActivitySeq;
       await page.goBack({ waitUntil: "domcontentloaded" });
-      await waitLoaded(true);
+      await waitLoaded(true, activityBefore);
+    },
+    dispose() {
+      if (trackRequests && typeof page.off === "function") {
+        page.off("request", onReqStart);
+        page.off("requestfinished", onReqEnd);
+        page.off("requestfailed", onReqEnd);
+      }
+      inFlight.clear();
     },
   };
 }

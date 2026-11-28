@@ -287,7 +287,13 @@ export interface PlaywrightPageLike {
     options?: { readonly timeout?: number },
   ): Promise<void>;
   once?(event: "download", listener: () => void): unknown;
+  on?(event: "request", listener: (req: { resourceType(): string }) => void): unknown;
+  on?(event: "requestfinished", listener: (req: { resourceType(): string }) => void): unknown;
+  on?(event: "requestfailed", listener: (req: { resourceType(): string }) => void): unknown;
   off?(event: "download", listener: () => void): unknown;
+  off?(event: "request", listener: (req: { resourceType(): string }) => void): unknown;
+  off?(event: "requestfinished", listener: (req: { resourceType(): string }) => void): unknown;
+  off?(event: "requestfailed", listener: (req: { resourceType(): string }) => void): unknown;
 }
 
 export function createPlaywrightWalkthroughTransport(
@@ -300,5 +306,6 @@ export function createPlaywrightWalkthroughTransport(
     readonly useTaskPolicy?: boolean;
     readonly settleMs?: number;
     readonly networkIdleTimeoutMs?: number;
+    readonly networkQuietMs?: number;
   },
-): BrowserTransport;
+): BrowserTransport & { dispose(): void };
