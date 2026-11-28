@@ -3,7 +3,6 @@ import { billingSnapshot, type AllowanceView, type BillingRead } from "../../gen
 import { dunningEndsAt, type CancelControl, type ControlAction, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { AccountStatus as SpecAccountStatus } from "../../gen/cloud__identity__accounts.effect.vibe"
 import type { Period } from "../../gen/cloud__billing__allowance.effect.vibe"
-import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
 import { refused, wireName } from "../http/refusal.vibe"
 import { allowanceStatus, type WireAllowanceState } from "../shared/metering.vibe"
@@ -64,6 +63,7 @@ export interface BillingSnapshot {
   readonly grant: SnapshotGrant | null
   readonly allowance: SnapshotAllowance | null
   readonly funding: Readonly<Record<"inference" | "speech" | "maps", WireFundingLane>>
+  readonly sponsoredInference?: true
 }
 
 error SnapshotUnreadable { organizationId: string; problem: string }
@@ -73,8 +73,6 @@ const accountStatuses: Readonly<Record<AccountStatus, SpecAccountStatus>> = { ac
 const wireAccountStatuses: Readonly<Record<SpecAccountStatus, AccountStatus | null>> = { Unopened: null, Active: "active", Deleting: "deleting", Erased: "erased" }
 
 const controlActions: Readonly<Record<ControlAction, WireControlAction>> = { CancelAction: "cancel", UndoAction: "undo", NoAction: "none" }
-
-const fundingLanes: Readonly<Record<FundingLane, WireFundingLane>> = { AllowanceThenCredits: "allowanceThenCredits", CreditsOnly: "creditsOnly", Refused: "refused" }
 
 function subscriptionView(subscription: Subscription, control: CancelControl): SnapshotSubscription | null {
   if (subscription.status === "NoSubscription") return null
@@ -153,7 +151,7 @@ effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly
   const snapshot = answer.snapshot
   const account = wireAccountStatuses[snapshot.account]
   if (account === null) throw new SnapshotUnreadable({ organizationId: caller.organizationId, problem: "account row" })
-  const lane = fundingLanes[snapshot.lane]
+  const lane = snapshot.lane === "AllowanceThenCredits" ? "allowanceThenCredits" : "creditsOnly"
   return {
     schemaVersion: 3,
     observedAt: snapshot.observedAt,
@@ -163,7 +161,8 @@ effect function readSnapshot(tx: Tx, caller: { readonly userId: string; readonly
     subscription: subscriptionView(read.subscription, snapshot.control),
     grant: try grantView(tx, caller.organizationId, now),
     allowance: allowanceView(period, snapshot.allowance),
-    funding: { inference: lane, speech: lane, maps: lane }
+    funding: { inference: lane, speech: lane, maps: lane },
+    ...(snapshot.policy.sponsoredInference ? { sponsoredInference: true } : {})
   }
 }
 

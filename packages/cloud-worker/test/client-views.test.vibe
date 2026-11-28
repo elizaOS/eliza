@@ -1,6 +1,8 @@
 // spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
+import { operate } from "../src/operator/admin.vibe"
+import { reserveIn } from "../src/shared/metering.vibe"
 import { Store } from "../src/store/store.vibe"
 import { check, testCloud } from "./support/cloud.vibe"
 import { signedIn } from "./support/identity-fixture.ts"
@@ -8,7 +10,7 @@ import { accountUsable, creditFromSnapshot, grantFromSnapshot, planFromSnapshot,
 import { CloudError } from "@elizaos/cloud"
 
 describe("Cloud account views (spec/cloud/client.md, \"Story: Tell an account that needs attention from a failing service\")", () => {
-  it.live("Read a free and a granted account from the snapshots the cloud answers, and refuse a snapshot of another version", () => scoped(effect {
+  it.live("Read free, granted and sponsored accounts from cloud snapshots, and refuse a snapshot of another version", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis
     const signed = try signedIn(cloud, "views@example.com")
@@ -19,6 +21,18 @@ describe("Cloud account views (spec/cloud/client.md, \"Story: Tell an account th
     }
     try cloud.store.transaction((tx) => tx.query("INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('g1', $1, 'pilot', 'plus_monthly', $2, $3, $2)", [signed.organizationId, now - 1000, now + 600_000]))
     const granted = try snapshotFromResponse((try cloud.call("/api/v1/billing/limits", { headers })).body)
+    const sponsor = try signedIn(cloud, "sponsored-views@gmail.com")
+    const sponsoredHeaders = { authorization: `Bearer ${sponsor.accessToken}` }
+    const minted = try cloud.inside(operate(["grants", "mint", "--family", "sponsored-views", "--plan", "pro_monthly", "--count", "1", "--lifetime", "--sponsored-inference"]))
+    const code = minted.kind === "done" ? minted.lines[0] ?? "" : ""
+    const redemption = try cloud.call("/api/v1/subscription/redeem", { headers: sponsoredHeaders, json: { code, idempotencyKey: "views-sponsorship" } })
+    const withAllowance = try snapshotFromResponse((try cloud.call("/api/v1/billing/limits", { headers: sponsoredHeaders })).body)
+    const allowance = withAllowance.allowance?.available ?? 0
+    const reservedAt = try Clock.currentTimeMillis
+    try cloud.store.transaction((tx) => reserveIn(tx, { userId: sponsor.user.id, organizationId: sponsor.organizationId }, {
+      service: "MeteredSpeech", caller: sponsor.organizationId, requestId: "hold-entire-allowance", part: { tag: "WholeRequest" }
+    }, allowance, reservedAt))
+    const sponsored = try snapshotFromResponse((try cloud.call("/api/v1/billing/limits", { headers: sponsoredHeaders })).body)
     const bad = try Effect.flip(snapshotFromResponse({ data: { ...free, schemaVersion: 2 } }))
     const redeemed = try redeemResultFromResponse({ replayed: true, grant: granted.grant, entitlement: { plan: granted.plan } }, now)
     const refusal = redeemFailureForStatus(new CloudError({ failure: { tag: "CloudRefused", code: "SubscriptionGrantPaidPlanActive" } as never, cause: null }))
@@ -26,6 +40,7 @@ describe("Cloud account views (spec/cloud/client.md, \"Story: Tell an account th
       {
         free: [accountUsable(free), planFromSnapshot(free), creditFromSnapshot(free, now).kind, grantFromSnapshot(free, now).kind],
         granted: [accountUsable(granted), planFromSnapshot(granted), creditFromSnapshot(granted, now).kind, grantFromSnapshot(granted, now).kind, subscriptionView(granted, now).admission],
+        sponsored: [redemption.status, sponsored.sponsoredInference, allowance > 0, sponsored.allowance?.available, sponsored.balance.usdMicros, accountUsable(sponsored), subscriptionView(sponsored, reservedAt).admission],
         bad: bad.failure.tag,
         redeemed: [redeemed.kind, redeemed.kind === "redeemed" && redeemed.replayed],
         refusal
@@ -33,6 +48,7 @@ describe("Cloud account views (spec/cloud/client.md, \"Story: Tell an account th
       {
         free: [false, { tag: "PlanNone" }, "zero", "none"],
         granted: [true, { tag: "PlanPaid", planKey: "PlusMonthly", warning: false }, "funded", "active", "Admit"],
+        sponsored: [200, true, true, 0, 0, true, "Admit"],
         bad: "CloudProviderIssue",
         redeemed: ["redeemed", true],
         refusal: { kind: "PaidPlanActive" }

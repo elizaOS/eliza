@@ -3704,11 +3704,14 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
       }
     ))
   }), 30_000)
-  it.live("Delete an account the person asked support to delete: fence it at once, cancel billing and revoke Google once though both replies are lost, retry a phase after a crashed sweep's claim expires, and erase the person (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\"; spec/cloud/operator.md, \"An account deletion starts only for an active account, after the operator confirmed the request with its owner\")", () => scoped(effect {
+  it.live("Delete an account the person asked support to delete: fence it at once, cancel billing and revoke Google once though both replies are lost, retry a phase after a crashed sweep's claim expires, and erase the person (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\"; spec/cloud/identity/deletion.md, \"The account's data is erased once, last, and the erased deletion never changes again\"; spec/cloud/operator.md, \"An account deletion starts only for an active account, after the operator confirmed the request with its owner\")", () => scoped(effect {
     const providers = try Effect.try(() => deletionProviders())
     const cloud = try testCloud({ stripe: providers.stripe, mount: (fakes) => { providers.mount(fakes) } })
     const now = try Clock.currentTimeMillis
     const owner = { userId: "user-leaving", organizationId: "org-leaving" }
+    const assignedAddress = "user-leaving@gmail.com"
+    const assignment = ["grants", "assign", "--email", assignedAddress, "--family", "erase-leaving-assignment"]
+    const scheduled = try printed(operator(cloud, assignment))
     try openAccount(cloud, owner)
     const subscribed = try Effect.try(() => providers.subscribe(catalogPrices[0].priceId))
     const replacement = try Effect.try(() => providers.subscribe(catalogPrices[0].priceId))
@@ -3738,6 +3741,7 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
     const funded = try printed(operator(cloud, ["credits", "add", "--organization", owner.organizationId, "--amount", "1000000", "--request", "pilot-leaving"]))
     const before = try entitlement()
     const unconfirmed = try printed(operator(cloud, remove))
+    try sql(cloud, "UPDATE accounts SET email = $2 WHERE key = $1", [owner.userId, assignedAddress])
     const requested = try printed(operator(cloud, [...remove, "--confirmed-with-owner"]))
     const fenced = try entitlement()
     const status = effect () => (try sql(cloud, "SELECT status, email, phone, name, device_epoch::int FROM accounts WHERE key = $1", [owner.userId]))[0]
@@ -3778,6 +3782,8 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
     const idle = try sweep()
     const again = try printed(operator(cloud, [...remove, "--confirmed-with-owner"]))
     const erased = try status()
+    const scrubbedAssignment = (try sql(cloud, "SELECT disabled, recipient_digest FROM grant_codes WHERE family = 'erase-leaving-assignment'", []))[0]
+    const retriedAssignment = try printed(operator(cloud, assignment))
     const left = try sql(cloud, "SELECT (SELECT count(*) FROM sessions WHERE user_id = $1)::int AS sessions, (SELECT count(*) FROM device_grants WHERE user_id = $1)::int AS devices, (SELECT count(*) FROM google_connections WHERE user_id = $1)::int AS google, (SELECT count(*) FROM cloud_google_connections WHERE account_id = $1)::int AS worker_google, (SELECT count(*) FROM cloud_sign_in_identities WHERE account_id = $1)::int AS identities, (SELECT count(*) FROM credit_entries WHERE organization_id = $2)::int AS ledger, (SELECT count(*) FROM oauth_attempts WHERE google_subject = 'google-leaving')::int AS attempts, (SELECT name FROM organizations WHERE id = $2) AS organization", [owner.userId, owner.organizationId])
     const googleTargets = try sql(cloud, "SELECT target FROM deletion_receipts WHERE user_id=$1 AND step='revoke_google' ORDER BY target", [owner.userId])
     const outside = try Effect.try(() => ({
@@ -3792,7 +3798,7 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
         funded: Exit.isSuccess(funded.exit), before, unconfirmed: shown(unconfirmed), requested: shown(requested), fenced, closing: [closing?.status, closing?.device_epoch],
         sweeps: [billing, whileClaimed, recovered, missingKey, google, erasing, idle], afterBilling, afterRecovery, afterMissingKey, afterGoogle,
         ...outside, pinned, googleTargets: googleTargets.map((row) => row.target), preserved, erased, left: left[0],
-        again: shown(again)
+        again: shown(again), sponsoredAssignment: [shown(scheduled), scrubbedAssignment, shown(retriedAssignment)]
       },
       {
         funded: true, before: [200, undefined], unconfirmed: [false, [], ["invalid_request"]],
@@ -3808,7 +3814,8 @@ describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: 
         preserved: true,
         erased: { status: "erased", email: null, phone: null, name: null, device_epoch: 1 },
         left: { sessions: 0, devices: 0, google: 0, worker_google: 0, identities: 0, ledger: 1, attempts: 0, organization: "Deleted account" },
-        again: [true, ["user user-leaving: already requested; deletion erased at erase_data, 0 of 12 attempts, no provider call"], []]
+        again: [true, ["user user-leaving: already requested; deletion erased at erase_data, 0 of 12 attempts, no provider call"], []],
+        sponsoredAssignment: [[true, ["assignment pending verified sign-in"], []], { disabled: true, recipient_digest: null }, [true, ["assignment retired"], []]]
       }
     ))
   }), 60_000)

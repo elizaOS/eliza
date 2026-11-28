@@ -40,7 +40,9 @@ and `services/models` specify it (`packages/cloud-worker/src/services/chat.vibe`
 The deployment uses the [shared hold](./shared/metering.md) to reserve the
 quote before contacting a provider. A paid period supplies its remaining
 [allowance](./billing/allowance.md) first. Other readable plans use the
-account's [funded credits](./billing/funds.md). An `Idempotency-Key` UUID
+account's [funded credits](./billing/funds.md). An active complimentary
+grant can sponsor inference through the same hold with the deployment as
+the payer. An `Idempotency-Key` UUID
 or the request ID identifies the chat within its organization. A repeated key
 returns `409 already_dispatched` without sending or charging another call. The chat
 request is bounded to 256 KiB and a listed model and prompt are priced before

@@ -9,6 +9,7 @@ lemma ReservedCoversQuote(quote: int)
 
 lemma HoldSplitBounds(lane: cloud__shared__metering_FundingLane, quote: int, allowanceAvailable: int, creditAvailable: int)
   requires cloud__shared__metering_fundable(lane, quote, allowanceAvailable, creditAvailable)
+  requires !lane.SponsoredInference?
   ensures var hold := cloud__shared__metering_holdAmount(lane, quote, allowanceAvailable, creditAvailable);
     var sp := cloud__shared__metering_splitHold(lane, hold, allowanceAvailable);
     quote <= hold && hold <= cloud__shared__metering_laneOffers(lane, allowanceAvailable, creditAvailable)
@@ -30,7 +31,7 @@ lemma CreditChargeBounds(fa: int, fc: int, charged: int, limit: int)
 lemma lawMeteredChargeFitsTheFunds_ensures(lane: cloud__shared__metering_FundingLane, quote: int, allowanceAvailable: int, creditAvailable: int, actual: int, creditFree: int)
   ensures (lawMeteredChargeFitsTheFunds(lane, quote, allowanceAvailable, creditAvailable, actual, creditFree) == true)
 {
-  if cloud__shared__metering_fundable(lane, quote, allowanceAvailable, creditAvailable) && actual >= 0 && creditFree >= 0 {
+  if cloud__shared__metering_fundable(lane, quote, allowanceAvailable, creditAvailable) && actual >= 0 && creditFree >= 0 && !lane.SponsoredInference? {
     HoldSplitBounds(lane, quote, allowanceAvailable, creditAvailable);
     hide cloud__shared__metering_reservedFor, cloud__shared__metering_quotient_cloud__shared__metering, JSFloorDiv, MathAbs;
     var reserved := cloud__shared__metering_reserve(cloud__shared__metering_initial, cloud__shared__metering_holdKeyOf(cloud__shared__metering_initial), quote, lane, allowanceAvailable, creditAvailable, 0);

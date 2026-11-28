@@ -2,7 +2,7 @@
 
 The operator runs a deployment through the `elizaos-cloud` command line only;
 there is no HTTP admin route. The commands are `migrate`, `client
-register|update|apply|disable`, `grants mint|disable|revoke`, `prices set|check`,
+register|update|apply|disable`, `grants mint|assign|disable|revoke`, `prices set|check`,
 `credits add --organization <id> --amount <µUSD> --request <id>` and
 `account delete|devices|revoke-devices --user <id>`; `serve` belongs to
 `deployment`. The organization or user named resolves to its one account
@@ -22,7 +22,7 @@ count or by the operator's own identifiers.
 > their account or sign out a lost device from one command line, so that I
 > never need to open a database row, a token or a provider secret to do it.
 
-### Fourteen commands exist, and only credits add and the three account commands name an account
+### Only credits add and the three account commands require an existing account
 
 Each command goes through the spec that owns its record. `client register`
 registers a client or replaces its registration
@@ -40,7 +40,7 @@ import types.* from "./shared/types"
 import deployment.* from "./deployment"
 import accounts as A from "./identity/accounts"
 type OperatorCommand =
-  Migrate | RegisterClient | DisableClient | MintGrantCodes | DisableGrantCodes | RevokeGrants
+  Migrate | RegisterClient | DisableClient | MintGrantCodes | AssignGrant | DisableGrantCodes | RevokeGrants
   | SetPrices | CheckPrices | AddCredits | RequestDeletion | ListDevices | RevokeDevices
 pure def namesAnAccount(command: OperatorCommand): bool = Set(AddCredits, RequestDeletion, ListDevices, RevokeDevices).contains(command)
 ```
@@ -128,6 +128,20 @@ pure def mintBatchFits(count: int): bool = count >= 1 and count <= maxMintBatch
 pure val countValues = Set(0, 1, maxMintBatch, maxMintBatch + 1)
 pure def lawMintRunsOnlyForABatchThatFits(accepted: bool, identity: StoreIdentity, account: A::AccountStatus, confirmed: bool, count: int): bool =
   runs(decide(accepted, identity, MintGrantCodes, account, confirmed, count)) implies mintBatchFits(count)
+```
+
+### Assignment schedules a sponsored offer even before the intended account exists
+
+`grants assign --email <address> --family <family>` schedules one offer
+identified by the exact verified Gmail address and family. The command
+returns pending or activates it immediately when the address belongs to an
+eligible active account. It returns an existing offer on repeat, and creates
+no user, session or bearer code. `billing/grantCodes` owns the offer terms
+and redemption.
+
+```quint
+pure def lawAssignmentDoesNotRequireAnExistingAccount(accepted: bool, identity: StoreIdentity, account: A::AccountStatus): bool =
+  runs(decide(accepted, identity, AssignGrant, account, false, 0)) iff (accepted and identity == MatchingDatabase)
 ```
 
 ### The device list shows each key only by its name and dates

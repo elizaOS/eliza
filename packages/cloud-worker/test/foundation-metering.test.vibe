@@ -209,14 +209,14 @@ describe("WP0 Foundation: metering and funds", () => {
       const late = try settle(lost.key, { kind: "known", actual: 50_000 })
       const observed = {
           swept: [early, released, charged, after],
-          holds: try numbers(cloud, "SELECT phase, state->'charged' AS charged_amount, state->>'basis' AS charge_basis FROM holds WHERE organization_id = $1 ORDER BY phase", ["org-sweep"]),
+          holds: try numbers(cloud, "SELECT phase, state->'charged' AS charged_amount, state->>'basis' AS charge_basis, (state ? 'sponsored')::int AS has_sponsorship FROM holds WHERE organization_id = $1 ORDER BY phase", ["org-sweep"]),
           late: [late.phase, late.charged],
           usage: try numbers(cloud, "SELECT outcome, charged FROM usage_records WHERE organization_id = $1 ORDER BY outcome", ["org-sweep"]),
           funds: try numbers(cloud, "SELECT f.state->'creditBalance' AS state_credit, f.state->'creditHeld' AS held_credit, o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-sweep"])
         }
       try check(() => assert.deepStrictEqual(observed, {
           swept: [0, 1, 1, 0],
-          holds: [["released", 0, "NotCharged"], ["settled", 200_000, "Quoted"]],
+          holds: [["released", 0, "NotCharged", 0], ["settled", 200_000, "Quoted", 0]],
           late: ["Settled", 200_000],
           usage: [["released", 0], ["unknown", 200_000]],
           funds: [[800_000, 0, 800_000]]

@@ -3,7 +3,7 @@
 A grant code gives an organization a paid plan for a fixed time, or for
 life, without a payment. The operator mints codes with
 `elizaos-cloud grants mint` (`spec/cloud/operator.md`); a person redeems one
-with `POST /api/v1/subscription/redeem` `{code, idempotencyKey}` and gets
+with `POST /api/v1/subscription/redeem` `{code}` and `Idempotency-Key` and gets
 `{replayed, grant, entitlement}`. The grant uses the billing snapshot's
 grant fields. The entitlement contains the effective plan summary as
 `{plan: {key, source, effectiveUntil}}`. The idempotency key has 8 to 128 ASCII
@@ -22,7 +22,9 @@ billing snapshot; another vendors the call and keeps it switched off.
 
 The shell redeems in one store transaction. It locks the organization, the
 account, and the code row in that order. It reads `now` from the store's
-clock once the rows are locked and passes in what the store says about the
+clock once the rows are locked for a bearer code. An automatic claim uses
+the containing request's observation time so its policy read sees the grant.
+The shell passes in what the store says about the
 account, idempotency keys and families of its grants, and an open or unknown
 paid subscription. The
 effective plan, where a paid subscription always comes before an unrevoked
@@ -34,6 +36,19 @@ allowance months a grant opens are `spec/cloud/billing/allowance.md`.
 > As a person given a membership code, I want to redeem it once for my
 > account and get the same answer if I try again, so that I get the plan it
 > promises without being charged and without using it up twice.
+
+### A redeem accepts the idempotency header or a legacy body key and rejects conflicting values
+
+The caller can send `Idempotency-Key` or the legacy `idempotencyKey` body
+field. If both are present and differ, or the key is missing or malformed,
+the request is invalid before any code is used.
+
+```quint
+pure def agreedRequestKey(header: str, body: str): str =
+  if (header == "") body else if (body == "" or header == body) header else ""
+pure def lawNoConflictingRequestKeys(header: str, body: str): bool =
+  (header != "" and body != "" and header != body) implies agreedRequestKey(header, body) == ""
+```
 
 ### A code is 16 Crockford base32 characters, read without case, spaces or hyphens, with I and L read as 1 and O as 0
 
@@ -138,6 +153,27 @@ pure def alwaysAMintedCodeIsWellFormed(c: Code): bool =
 pure def stepTermsNeverChangeOnceMinted(before: Code, after: Code): bool =
   before.status != Unminted implies (after.family == before.family and after.planKey == before.planKey and after.term == before.term
     and after.requiresNoPaidPlan == before.requiresNoPaidPlan and after.maxRedemptions == before.maxRedemptions and after.expiry == before.expiry)
+```
+
+### A sponsored inference offer is lifetime Pro for one account with a verified Gmail address and no open paid plan
+
+An operator can mint a bearer code or assign an offer to one exact Gmail
+address. An assigned offer has no bearer code and can be issued only to the
+active account that proves that address. If the account does not yet exist,
+the offer waits for authenticated billing or inference after that address is
+verified. The deployment stores only the keyed digest of the assigned address
+and a stable key for that address and family. A retry finds the same offer,
+and a refused or interrupted claim leaves the offer pending. The usual family,
+replay and paid-plan rules apply to both kinds of sponsor offer.
+
+```quint
+type GrantAudience = AnyAccount | VerifiedGmail | AssignedGmail
+pure def sponsoredTermsFit(planKey: PlanKey, term: Term, maximum: int, requiresNoPaidPlan: bool): bool =
+  planKey == ProMonthly and term == TermLifetime and maximum == 1 and requiresNoPaidPlan
+pure def recipientFits(audience: GrantAudience, verifiedGmail: bool, exactAssignment: bool): bool =
+  if (audience == AnyAccount) true else verifiedGmail and (audience != AssignedGmail or exactAssignment)
+pure def lawAnAssignedOfferNeedsItsVerifiedGmail(verifiedGmail: bool, exactAssignment: bool): bool =
+  recipientFits(AssignedGmail, verifiedGmail, exactAssignment) iff (verifiedGmail and exactAssignment)
 ```
 
 ### A grant starts when it is redeemed and ends after the code's term, or never for a lifetime code

@@ -218,8 +218,10 @@ In the erasing transaction the shell applies `erase` of `identity/accounts`
 to the account (identities and referral code removed, user and organization
 ids kept) and deletes the person's personal data and sealed secrets: device
 grants and their sealed copies, session families, second factors, Google
-connections and their sealed tokens, mail and calendar receipts. It keeps
-the ledger and invoices, keyed by the organization id.
+connections and their sealed tokens, mail and calendar receipts. It retires
+addressed sponsored offers and removes their email lookup digest. The
+retired record keeps an operator's exact repeat from reissuing the offer.
+It keeps the ledger and invoices, keyed by the organization id.
 
 ```quint
 pure def canEraseData(d: Deletion, billingBoundary: BillingBoundary): bool = isRunning(d, EraseData) and billingSettled(billingBoundary)

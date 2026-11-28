@@ -360,9 +360,10 @@ pure def lawRefreshLeadsExpiry(untilExpiry: Millis): bool =
 ### An account is usable when it is active, funded and its lane is open
 
 The device reads the billing snapshot (`GET /api/v1/billing/limits`) as this
-view. The account is usable for inference when it is Active, its inference
-funding lane (`./shared/metering`) is not refused and its allowance plus its balance is above zero. A
-free plan with credits is billed per request; a paid plan from a
+view. The account is usable for inference when it is Active and its
+inference lane (`./shared/metering`) funds a 1 µUSD quote. The optional
+`sponsoredInference: true` field denotes the sponsored lane. A free
+plan with credits is billed per request, and a paid plan from a
 subscription or a grant shows its key, with a warning while payment is
 late; a free plan with no credits needs a plan. An unread or unreadable
 snapshot admits nothing yet.
@@ -372,7 +373,8 @@ type PlanSource = FromSubscription | FromGrant | FromFree
 type SnapshotView = { accountStatus: A::AccountStatus, balance: Micros, planKey: P::PlanKey, source: PlanSource, subscription: Sub::SubscriptionStatus, allowanceAvailable: Micros, inference: M::FundingLane, observedAt: Millis }
 type PlanView = PlanChecking | PlanUnavailable | PlanOnCredits | PlanPaid({ planKey: P::PlanKey, warning: bool }) | PlanNone
 type PlanAdmission = Admit | AdmitWithWarning | NeedsPlan | AdmissionUnknown
-pure def accountUsable(s: SnapshotView): bool = s.accountStatus == A::Active and s.inference != M::Refused and s.allowanceAvailable + s.balance > 0
+pure def accountUsable(s: SnapshotView): bool =
+  s.accountStatus == A::Active and M::fundable(s.inference, 1, s.allowanceAvailable, s.balance)
 pure def paymentLate(subscription: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(subscription)
 pure def planFromSnapshot(s: SnapshotView): PlanView =
   if (s.source == FromFree) (if (s.balance > 0) PlanOnCredits else PlanNone)
@@ -389,9 +391,13 @@ pure val sValues = Set(
   { accountStatus: A::Active, balance: 5, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::CreditsOnly, observedAt: 1 },
   { accountStatus: A::Active, balance: 0, planKey: P::PlusMonthly, source: FromSubscription, subscription: Sub::PastDue, allowanceAvailable: 10, inference: M::AllowanceThenCredits, observedAt: 1 },
   { accountStatus: A::Deleting, balance: 9, planKey: P::ProMonthly, source: FromGrant, subscription: Sub::NoSubscription, allowanceAvailable: 10, inference: M::AllowanceThenCredits, observedAt: 1 },
-  { accountStatus: A::Active, balance: 9, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::Refused, observedAt: 1 })
+  { accountStatus: A::Active, balance: 9, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::Refused, observedAt: 1 },
+  { accountStatus: A::Active, balance: 0, planKey: P::ProMonthly, source: FromGrant, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::SponsoredInference, observedAt: 1 })
 pure val vValues = Set(PlanChecking, PlanUnavailable, PlanOnCredits, PlanPaid({ planKey: P::PlusMonthly, warning: true }), PlanPaid({ planKey: P::ProMonthly, warning: false }), PlanNone)
-pure def lawAnUnfundedAccountIsNotUsable(s: SnapshotView): bool = s.allowanceAvailable + s.balance <= 0 implies not(accountUsable(s))
+pure def lawAnUnfundedAccountIsNotUsable(s: SnapshotView): bool =
+  (s.inference != M::SponsoredInference and s.allowanceAvailable + s.balance <= 0) implies not(accountUsable(s))
+pure def lawSponsorshipAdmitsAnActiveAccountWithAnEmptyWallet(s: SnapshotView): bool =
+  (s.accountStatus == A::Active and s.inference == M::SponsoredInference and s.allowanceAvailable == 0 and s.balance == 0) implies accountUsable(s)
 pure def lawOnlyAnActiveAccountIsUsable(s: SnapshotView): bool = accountUsable(s) implies s.accountStatus == A::Active
 pure def lawNoPlanAndNoCreditsNeedsAPlan(s: SnapshotView): bool =
   (s.source == FromFree and s.balance <= 0) implies planAdmission(planFromSnapshot(s)) == NeedsPlan

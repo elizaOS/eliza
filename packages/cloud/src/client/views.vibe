@@ -81,7 +81,8 @@ const billingSnapshotSchema = Schema.Struct({
   subscription: Schema.NullOr(snapshotSubscriptionSchema),
   grant: Schema.NullOr(snapshotGrantSchema),
   allowance: Schema.NullOr(snapshotAllowanceSchema),
-  funding: Schema.Struct({ inference: wireFundingLaneSchema, speech: wireFundingLaneSchema, maps: wireFundingLaneSchema })
+  funding: Schema.Struct({ inference: wireFundingLaneSchema, speech: wireFundingLaneSchema, maps: wireFundingLaneSchema }),
+  sponsoredInference: Schema.optionalKey(Schema.Literal(true))
 })
 
 export type SnapshotPlan = typeof snapshotPlanSchema.Type
@@ -210,7 +211,7 @@ export function snapshotView(snapshot: BillingSnapshot): SnapshotView {
     source: planSources[snapshot.plan.source],
     subscription: snapshot.subscription === null ? "NoSubscription" : subscriptionStatuses[snapshot.subscription.status],
     allowanceAvailable: allowance !== null && allowance.state === "open" ? allowance.available : 0,
-    inference: fundingLanes[snapshot.funding.inference],
+    inference: snapshot.sponsoredInference === true ? "SponsoredInference" : fundingLanes[snapshot.funding.inference],
     observedAt: snapshot.observedAt
   }
 }
