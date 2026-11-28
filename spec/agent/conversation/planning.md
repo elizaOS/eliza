@@ -80,14 +80,19 @@ object an action's parameters hold, at any depth, names the fields the
 action's own code reads, or says it takes any keys (a workflow's run input,
 keyed by that workflow's own input names). An array names what it holds. An action with no parameters takes none. No
 key of a representative argument, every field named, is refused by the
-runtime's check as unexpected.
+runtime's check as unexpected. The `cue` field every offered tool carries
+(below) is the planner's own, not the action's: it is taken off each call
+before the call's arguments are checked, the action runs or the action's
+arguments are recorded; the step's record keeps it apart, as its own first
+argument (below).
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 
 The system prompt is the character's: its system text, bio, style and
-message examples, then one fixed rule for the cue written with tool calls
+message examples, then one fixed rule for the cue a tool call carries
 (below), the same text in every call. The offered tools are sent in the order of their
-names, each in the form the turn gives it (below), so they change only
+names, each in the form the turn gives it (below) with the same required
+`cue` field first (below), so they change only
 when what the turn offers does: no action's own check of a message
 changes them, and an action family's description is stated on the first
 of its offered actions by name. Nothing a message carries changes them:
@@ -101,8 +106,8 @@ screen allows, how its views open) reaches the
 model after the history, in the note of the offered action it concerns,
 and a call that message serves in another place is refused before
 dispatch (below). The history follows, then the person's latest message,
-and only after it what this turn adds: the screen context, the clock, the
-device outcomes of this conversation's earlier requests, the notes of
+and only after it what this turn adds: the screen context, the note that
+the message was spoken (below), the clock, the device outcomes of this conversation's earlier requests, the notes of
 offered actions on what this message allows, the task the turn runs for,
 the note that older history is not shown and the earlier exchanges
 recalled for this request. They follow one label saying they are notes
@@ -129,12 +134,12 @@ the phone's earlier calls and its warm-up (below) already cached
 ([binding](../models/binding.md) decides where it is sent).
 
 ```quint
-type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
+type PromptPart = CharacterPrompt | OfferedTools | PriorHistory | LatestMessage | ScreenNote | SpokenNote | DeviceNote | TaskNote | WindowNotice | RecalledExchanges
 pure def promptPosition(p: PromptPart): int = match p {
-  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | DeviceNote => 5 | TaskNote => 6 | WindowNotice => 7 | RecalledExchanges => 8
+  | OfferedTools => 0 | CharacterPrompt => 1 | PriorHistory => 2 | LatestMessage => 3 | ScreenNote => 4 | SpokenNote => 5 | DeviceNote => 6 | TaskNote => 7 | WindowNotice => 8 | RecalledExchanges => 9
 }
-pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == DeviceNote or p == TaskNote or p == WindowNotice or p == RecalledExchanges
-pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
+pure def changesPerTurn(p: PromptPart): bool = p == LatestMessage or p == ScreenNote or p == SpokenNote or p == DeviceNote or p == TaskNote or p == WindowNotice or p == RecalledExchanges
+pure val pValues = Set(CharacterPrompt, OfferedTools, PriorHistory, LatestMessage, ScreenNote, SpokenNote, DeviceNote, TaskNote, WindowNotice, RecalledExchanges)
 pure def lawNothingPerTurnPrecedesTheHistory(p: PromptPart): bool = changesPerTurn(p) implies promptPosition(p) > promptPosition(PriorHistory)
 pure def lawTheConstantPartsLead(p: PromptPart): bool = not(changesPerTurn(p)) implies promptPosition(p) <= promptPosition(PriorHistory)
 pure def hostNoteLabels(hostNotes: int): int = if (hostNotes > 0) 1 else 0
@@ -144,6 +149,29 @@ type ToolFact = LaunchAllowed | DeviceNegotiation | InstallationViews | BrowserC
 pure def shapesTools(f: ToolFact): bool = f == LaunchAllowed or f == DeviceNegotiation or f == InstallationViews or f == BrowserCommanded
 pure def carriedByMessage(f: ToolFact): bool = f == MessageWords or f == ScreenShown or f == ViewDelivery
 pure def lawNothingAMessageCarriesShapesTheTools(f: ToolFact): bool = carriedByMessage(f) implies not(shapesTools(f))
+```
+
+### A spoken message asks the model for one short spoken turn, and a typed message never does
+
+A `VOICE_DM` message was spoken, and its reply is spoken aloud as well as
+shown and saved, so its notes carry one spoken-reply note, an instruction
+to the model on how to write the reply: one concise spoken turn, one to
+three short sentences of about 60 words or fewer holding only the verified
+facts the answer needs, with no unasked briefing, list of every result,
+examples or follow-up menu, and no long address, table or tool detail read
+aloud. The reply is longer only when the person asks for detail, a list, a
+full report or exact text, or when a shorter one would mislead, and it never
+leaves out a limitation, a failed check or uncertainty that matters,
+shortens words the person gave, or puts a progress line in place of the
+answer. The note is never a reply of its own and reads nothing of what the
+person said: only the message's channel decides it. A `DM` message, or one
+with no channel, carries no such note, and the tools and the system prompt
+are the same for both.
+
+```quint
+type ReplyStyleNote = SpokenTurnNote | NoStyleNote
+pure def replyStyleNote(spoken: bool): ReplyStyleNote = if (spoken) SpokenTurnNote else NoStyleNote
+pure def lawOnlyASpokenMessageAsksForASpokenTurn(spoken: bool): bool = (replyStyleNote(spoken) == SpokenTurnNote) iff spoken
 ```
 
 ### A warm-up sends the planner's tools and system prompt once with a one-token cap, at most once every four minutes, and stores and shows nothing
@@ -337,7 +365,12 @@ screen opened or a note was saved reads the same whether a tool did it or
 not. Copying such an earlier reply, the model said a screen had changed
 without calling the tool, and nothing changed. So when a reply is stored,
 the steps of its turn (above) are stored with it, for the model only: each
-step's action, its arguments and how it ended. In the history the model
+step's action, the `cue` the model wrote in its call (empty when it wrote
+none), its arguments in the order the model wrote them, and how it ended.
+The cue comes first, as the model writes it, so an earlier call reads as a
+call the model makes now: every offered tool requires a `cue`, and a
+history of calls without one taught the model to leave it out, so later
+turns of a long chat went silent before their work. In the history the model
 reads, a reply whose turn ran at least one step comes after that record,
 written as the model writes a turn's work: one assistant message calling
 each recorded step's tool with its arguments, under ids that are the
@@ -356,9 +389,17 @@ applied or was proposed and part failed; and `refused, did not run` when it
 was refused before it ran. A step that failed or never ran is never
 recorded as done. The record names at most six steps, in the order they
 ran, and the last tool message says how many more calls followed; it keeps
-at most six arguments of a step, each text value cut to 40 characters, so a
-record stays a few hundred bytes at most. A reply whose turn ran no step, a
+a step's cue cut to 120 characters, the longest a spoken cue can be, and the
+first six arguments of the step besides it, each text value cut to 40
+characters, so a record stays a few hundred bytes at most. The model reads its own call again
+as it made it: the order of a call's arguments changes how it reads its
+earlier work, so a record never reorders them (a record stored before records
+kept that order gives them by name). A reply whose turn ran no step, a
 reply stored before replies kept a record, and a redacted reply carry none.
+Redacting a message ([conversations](./conversations.md)) puts the notice
+in place of each copy of its text in every other reply's record, in a text
+argument or in the JSON form of a number or yes/no argument, which is then
+kept as text, so no later turn sends the text to the model again.
 The record is read only from what was stored with the reply, so the
 history stays the same bytes from turn to turn. It reaches the model only:
 it is never part of the reply's text, so it is never delivered, streamed,
@@ -548,6 +589,26 @@ pure def lawOnlyOpenCallsRunAcrossResponses(previousSettlement: ToolSettlement):
   (toolDispatch(false, previousSettlement) == FreshCall) == (previousSettlement == ToolOpen)
 ```
 
+### Calls of one response run together only when each one only reads, and otherwise one at a time in the model's order
+
+Two or more calls of one response run together only when every one of them
+only reads: an action that declares no effect and only reads, or the reading
+operation of an action that can also change something, such as composing a
+brief. Whether an operation only reads is decided by the operation the call
+names, never by the action's tags alone, so hiding a brief section or setting
+check-in times is never run beside another call. A response with any call
+that may change something runs its calls one at a time in the model's order,
+so each call reads what the one before it wrote and reports its own result.
+Either way, the steps are recorded in call order.
+
+```quint
+type CallRun = RunTogether | RunInOrder
+pure def callRunOf(responseCalls: int, allRead: bool): CallRun = if (responseCalls >= 2 and allRead) RunTogether else RunInOrder
+pure val responseCallsValues = Set(0, 1, 2, 3)
+pure def lawACallThatMayChangeSomethingNeverRunsBesideAnother(responseCalls: int): bool = callRunOf(responseCalls, false) == RunInOrder
+pure def lawOnlySeveralReadsRunTogether(responseCalls: int, allRead: bool): bool = (callRunOf(responseCalls, allRead) == RunTogether) iff (responseCalls >= 2 and allRead)
+```
+
 ### A call that stopped at the model's own output limit ends planning
 
 When the step's own call stops there, the turn answers that the reply was
@@ -572,7 +633,8 @@ later call to the same action can be for another request. An unlinked
 refusal stays open as a call that did not start, even if the action later
 runs. An open proposal is reported as awaiting the owner in the action's own
 copy, whatever the model's prose claims. An open failure is reported as that
-action's failure in the action's own words, except a failure with no
+action's failure: in the model's own words when the model reports it
+(below), and otherwise in the action's own words, except a failure with no
 receipt that a later step may have answered under the rule below.
 
 ```quint
@@ -613,9 +675,39 @@ pure def lawARefusalBeforeDispatchStaysReported(steps: List[PlanStep], earlier: 
 
 ### A reply that leaves a failure unreported is written again once, and the delivered reply still reports open failures and attachment omissions
 
-After planning, an open failure (above) whose own words the reply does not
-hold is unreported, and so is an attached document left out for the turn's
-allowance. A failure's own words are its action's text for the owner, its
+After planning, an open failure (above) is unreported unless the reply
+holds the words its action marked for the owner or reports it itself (words
+written only to the model, held in the reply, report nothing: they are an
+echo), and so is an
+attached document left out for the turn's allowance. A failed step's tool
+result asks the model, when its reply tells the person, to end that reply
+with a line of its own, `[reported S: "…"]`, where S is the step's number in
+the turn. The host takes such lines out of the reply, and out of what it
+streams, and a line reports its step's failure under the same rules as a
+sentence the model gives when asked again (below): one whole sentence of the
+reply's prose, given once, that echoes no host text. When every failure put
+to the model is reported so, and nothing else is unreported or unobserved,
+the turn makes no further call; such a line is the model's own judgment, as
+the sentence of a second answer is. A stop after `Dr.`, `Mr.`, `Mrs.`, `Ms.`,
+`Prof.`, `e.g.` or `i.e.` never ends a sentence; a stop after `p.m.`, `a.m.`,
+`U.S.`, `St.`, `Jr.` or `Sr.` ends it unless the next word starts with a
+lowercase letter, or with a digit after `U.S.` or `St.`; every other stop
+followed by a space ends it. The same rule holds where a sentence the model
+gave stops in its reply: one that stops on such a stop while the reply goes
+on in the same sentence is a fragment. So is one that stops on `!` or `?`
+while the reply goes on with a lowercase word, and one that stops at a line's
+end with no stop while the next line, with no blank line between, starts with
+a lowercase word. A closing mark or bracket between the stop and the word
+that follows changes nothing, and `8p.m.` or `9a.m.` reads as `p.m.` or
+`a.m.`. The rule holds where such a sentence starts, too: one that begins
+after a stop, an `!` or `?`, or a line with no stop, where the reply's text
+before it goes on into it by these rules, is a fragment.
+A reply any sentence of which echoes a failed step's text written to the
+model reports nothing. An answer to
+the call that holds a JSON object anywhere is read as that object, and one
+that starts such an object it cannot finish is no answer at all, so neither
+is ever delivered as written; the schema is asked for only when there are
+points to report. A failure's own words are its action's text for the owner, its
 error or its result text; a call its action's own check declined is
 `unavailableNotice`, and a failure with no words is a sentence that the
 call did not start or did not complete. Of these, only the text its action
@@ -644,20 +736,83 @@ never replaced by a cue), it is not the first reply again, and the clock
 rules hold of it.
 Otherwise, or when the call fails, the first
 reply is kept, or the clock's or the calendar change's own words (below)
-take its place when it stated a time they did not observe. Under the
-model's reply, first or kept second, each remaining open failure whose words
-its action wrote for the owner, and each attachment omission, is reported in
-those words if the reply does not already contain them. Under fixed words,
-the last resort, each remaining open failure whose action wrote words for
-the owner follows in those words, as the rule below allows, if the reply
-does not already contain them. Under any reply, a failure's error, its
-result text that no action marked for the owner, `unavailableNotice` and the
-host's own sentence that a call did not start or did not complete reach the
-model only, and the owner hears such a failure in the model's words alone:
-nothing written to the model is ever added to the owner's reply.
-A reply with nothing unreported and no
-unobserved time makes no further call, a turn cut off at the model's output
-limit is never asked again, and no turn is asked more than once.
+take its place when it stated a time they did not observe. The note numbers
+each failure and omission it names, one point each, and the call asks for
+one JSON object under a fixed schema, with the turn's tools unchanged and
+none to be chosen: the whole reply and, for each point it tells, that point's
+number and the one sentence of the reply that tells it. A model that answers
+in text instead may end it with a line `[reported N: "…"]` per point, read
+the same way, and the host takes every such line out of the answer, in any
+of the forms a model writes it. A
+missing, partial or malformed answer never ends the turn: a malformed reply
+keeps the first reply, and a point with no valid sentence is unreported. The
+host reads each sentence as the model's own judgment, never matching the
+person's words. A point is reported when the model's second answer is kept,
+or when it gives its first reply again word for word (it stands by it), and
+that point's own sentence is one whole sentence of the model's prose in that
+answer (it starts where a sentence starts and ends where that sentence ends)
+and echoes no host text. A sentence that is blank, names no point or another
+point's number, is a fragment (it starts or ends inside a sentence, such as a
+sentence's opening clause before a comma, or words from its middle), spans
+more than one sentence, is a sentence an earlier point already gave, or
+echoes host text reports nothing, and one point's sentence never reports
+another. A sentence echoes host text when it shares a run of five words with
+a host note, with the host's own words of any point's note, or with the text
+written to the model of any failed step of the turn (every field of its
+result that no action marked for the owner: unverified owner text, error,
+result text and the plain words of its data), or holds a token of that text
+written like an identifier, unless that run or token is also in the person's
+own message (six or more characters with a
+capital past the first, a digit, an underscore or an inner dot), such as a
+raw error code or an action's name; a capitalised word, a phone number or a
+product name of the person's own passes. A failure or omission the model
+reports so is told in the model's words alone: no fixed line follows them,
+written or spoken. A failure the model was asked about and did not report,
+under a reply that is the model's (its first or kept second, in a turn not
+cut off and with no clock or change words in its place), needs its telling
+when its action wrote words for the owner, or when it wrote none and no later
+call of the turn may have answered it (a step retried later in the turn that
+the model stands by is answered, never told as failed). A failure that needs
+its telling never lets the model's reply stand, whether the model repeated
+it, kept a second answer that still leaves the failure out or claims it
+happened, or gave no answer: the model's prose gives way, and in its place
+each point put to the model, in order, is told by the sentence the model gave
+for it when it reported it, or else by the words its action wrote for the
+owner, verbatim, while the turn's verified tool copy, an open proposal's own
+copy and review card, and a rendered card stay where composition puts them.
+A failure that needs its telling and has neither is never dropped: its step
+is marked untold in the turn's action results, with no words, and the app
+draws its own in-chat notice of a step that did not happen for it, in the
+transcript, silent in Talk. When everything gave way to such marks the turn
+still delivers its reply, with no text, and never ends as a provider issue,
+so nothing offers a retry. So the person hears neither a success the step
+did not have nor a stock sentence after one, each failure is told on its
+own, and nothing the action composed is lost. When every point is reported,
+the reply stands as the model wrote it. The sentence rule above checks only
+that each report is one whole sentence: a reported sentence that also holds a
+false clause, about another step or about its own, and a separate false
+sentence beside a report, are a known limit of the model's own judgment, and
+nothing here guarantees a reply free of a false success. A failure whose action wrote no words for the
+owner and that a later call of the turn may have answered leaves the model's
+reply as it is when no other failure needs its telling. Each attachment
+omission the model did not report follows the delivered reply in its own
+words, and each open failure the model was not asked about whose action wrote
+words for the owner follows in those words, if the reply does not already
+contain them. When the turn was cut off, or the clock's or the change's
+words take the reply's place, each remaining open failure whose action wrote
+words for the owner follows those words in its own, each one whose action
+wrote none is marked untold, and each attachment omission follows in its own
+words. Under any reply, a failure's error, its result text that no action
+marked for the owner, `unavailableNotice` and the host's own sentence that a
+call did not start or did not complete reach the model only, and the owner
+hears such a failure in the model's words alone or as its marked step:
+nothing written to the model is ever added to the owner's reply. A reply
+with nothing unreported and no unobserved time makes no further call, a turn
+cut off at the model's output limit is never asked again, and no turn is
+asked more than once.
+The reply this decides, with the words that follow it, is the turn's settled
+text: a streamed turn writes it at once, whole and without the provisional
+mark, and nothing it streamed before is ever unmarked ([reply stream](./replyStream.md)).
 
 Safety copy is never rewritten. A failure whose action marks its words as
 safety copy (the emergency refusal of a phone that cannot open its keypad),
@@ -675,6 +830,15 @@ pure def replySource(unreported: bool, ungrounded: bool, cutOff: bool, answered:
 pure def putToTheModel(held: bool, safetyCopy: bool): bool = not(held) and not(safetyCopy)
 pure def reachesTheOwner(ownCopy: bool, follows: bool): bool = ownCopy and follows
 pure def answeredAgain(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and not(sameAsFirst)
+type QuoteSpan = NoQuote | Fragment | Reused | OneSentence
+pure def quoteReports(span: QuoteSpan): bool = span == OneSentence
+type PartInPlace = ModelsReport | ActionsWords | MarkedUntold | NoPart
+type SettledOutcome = Delivered | NoReply
+pure def needsItsTelling(answered: bool, ownerWords: bool, answerable: bool): bool = not(answered) and (ownerWords or not(answerable))
+pure def partInPlace(reported: bool, answered: bool, ownerWords: bool): PartInPlace =
+  if (reported) ModelsReport else if (answered) NoPart else if (ownerWords) ActionsWords else MarkedUntold
+pure def settledOutcome(hasText: bool, marked: bool): SettledOutcome = if (hasText or marked) Delivered else NoReply
+pure def extraCalls(unreported: bool, ungrounded: bool, cutOff: bool): int = if (asksAgain(unreported, ungrounded, cutOff)) 1 else 0
 pure def lawAGroundedReplyMakesNoFurtherCall(cutOff: bool): bool = not(asksAgain(false, false, cutOff))
 pure def lawAGroundedReplyIsTheModels(cutOff: bool, answered: bool, grounded: bool): bool = replySource(false, false, cutOff, answered, grounded) == ModelReply
 pure def lawASecondAnswerThatHoldsIsKept(unreported: bool, ungrounded: bool): bool =
@@ -689,6 +853,15 @@ pure def lawWordsTheReplyHoldsAreNotAskedFor(safetyCopy: bool): bool = not(putTo
 pure def lawACueIsNoSecondAnswer(sameAsFirst: bool): bool = not(answeredAgain(Cue, sameAsFirst)) and not(answeredAgain(Silent, sameAsFirst))
 pure def lawTheFirstReplyAgainIsNoSecondAnswer(draft: Draft): bool = not(answeredAgain(draft, true))
 pure def lawANewAnswerIsASecondAnswer(sameAsFirst: bool): bool = answeredAgain(Answer, sameAsFirst) == not(sameAsFirst)
+pure def lawAReportedPointKeepsTheModelsOwnSentence(answered: bool, ownerWords: bool): bool = partInPlace(true, answered, ownerWords) == ModelsReport
+pure def lawAFailureIsNeverDropped(reported: bool, ownerWords: bool): bool = partInPlace(reported, false, ownerWords) != NoPart
+pure def lawAnUnreportedFailureIsToldInItsActionsWordsOrMarked(ownerWords: bool): bool =
+  partInPlace(false, false, ownerWords) == (if (ownerWords) ActionsWords else MarkedUntold)
+pure def lawAStepALaterCallAnsweredAddsNothingInPlace(ownerWords: bool): bool = partInPlace(false, true, ownerWords) == NoPart
+pure def lawAMarkedFailureIsADeliveredReply(hasText: bool): bool = settledOutcome(hasText, true) == Delivered
+pure def lawATurnMakesAtMostOneExtraCall(unreported: bool, ungrounded: bool, cutOff: bool): bool =
+  extraCalls(unreported, ungrounded, cutOff) <= 1 and (cutOff implies extraCalls(unreported, ungrounded, cutOff) == 0)
+pure def lawAFailureWithoutOwnerWordsNoLaterCallMayHaveAnsweredNeedsItsTelling(ownerWords: bool): bool = needsItsTelling(false, ownerWords, false)
 ```
 
 ### A failure with no receipt that a later step may have answered is the model's to report, and its own words follow the reply unless the model stands by a reply without them
@@ -705,8 +878,8 @@ did not start, or a Files filter proposed to the phone after a call that did
 not start. A later call of another action that had no effect answers
 nothing, and nor does any later call of another action answer a failure
 whose action wrote words for the owner, such as a phone that cannot send a
-text or open its keypad from chat: those words reach the owner beside a
-reminder the turn set, whatever the reply claims. A later call may also
+text or open its keypad from chat: such a failure stays put to the model
+beside a reminder the turn set. A later call may also
 have been for another request, such as a second recipient. A later call can answer a failure only
 when the model saw that failure first, in an earlier planner response. Such
 a failure stays open (above), and only the model can tell whether the later
@@ -716,15 +889,17 @@ naming the actions of the later calls that may have answered it, that when that 
 the failed step was for the model gives its reply exactly as it was, word
 for word, and that otherwise the reply must say the failed step did not
 happen. When the model answers that note with its first reply again, word for word, it stands by
-that reply, and when that reply is delivered, the failure's own words do not
-follow it. Otherwise the failure is reported as any failure is (above): a
-kept second answer reports it in the model's words, followed only by words
-its action wrote for the owner, and those words for the owner, when its
-action wrote any, follow the reply when the call fails, when the model answers with a blank (read as below), when it gives another answer that is not kept, when the failure
-was never put to the model, or when the clock's or the change's words take
-the reply's place. A failure
-with a receipt, a failure in the same planner response as the later call,
-and safety copy are reported as above.
+that reply, and when that reply is delivered as the model's, the failure is
+answered: its own words neither follow nor replace it. A failure with a
+receipt, a failure in the same planner response as the later call, a failure
+no later call may have answered, and every failure when the model does not
+stand by its reply are reported as any failure is (above): in the model's
+words alone when its answer quotes that failure's own report as one whole
+sentence, and otherwise in the words
+its action wrote for the owner, or, when it wrote none, as its step marked
+untold, in place of a reply that is the model's or
+after the clock's or the change's words or a turn cut off. Safety copy is
+reported as above.
 
 ```quint
 pure def answerableLater(receiptless: bool, seenFirst: bool, ranLater: bool): bool = receiptless and seenFirst and ranLater
@@ -733,23 +908,35 @@ pure def mayAnswer(sameAction: bool, ownerWords: bool, laterOutcome: StepOutcome
   else not(ownerWords) and (laterOutcome == Applied or laterOutcome == Proposed)
 pure def gaveAnAnswer(draft: Draft): bool = draft == Answer
 pure def standsBy(draft: Draft, sameAsFirst: bool): bool = gaveAnAnswer(draft) and sameAsFirst
-pure def followsTheReply(answerable: bool, asked: bool, stoodBy: bool, modelsReply: bool, safetyCopy: bool): bool =
-  safetyCopy or not(answerable and asked and stoodBy and modelsReply)
+pure def reportsIt(kept: bool, stoodBy: bool, span: QuoteSpan): bool = (kept or stoodBy) and quoteReports(span)
+pure def failureAnswered(modelsReply: bool, reported: bool, answerable: bool, stoodBy: bool): bool =
+  modelsReply and (reported or (answerable and stoodBy))
+pure def followsTheReply(answered: bool, asked: bool, safetyCopy: bool): bool =
+  safetyCopy or not(asked and answered)
+pure def replacesTheReply(modelsReply: bool, unanswered: bool): bool = modelsReply and unanswered
 pure def lawACueOrSilenceGivesNoAnswer(sameAsFirst: bool): bool =
   not(gaveAnAnswer(Cue)) and not(gaveAnAnswer(Silent)) and not(standsBy(Cue, sameAsFirst)) and not(standsBy(Silent, sameAsFirst))
 pure def lawAnotherAnswerIsNoStandingBy(draft: Draft): bool = not(standsBy(draft, false))
+pure def lawAnAnswerThatQuotesNoSentenceOfItsOwnReportsNothing(kept: bool, stoodBy: bool): bool =
+  not(reportsIt(kept, stoodBy, NoQuote)) and not(reportsIt(kept, stoodBy, Fragment)) and not(reportsIt(kept, stoodBy, Reused))
+pure def lawOnlyTheModelsOwnAnswerReports(span: QuoteSpan): bool = not(reportsIt(false, false, span))
+pure def lawAReportedFailureIsTheModelsWordsAlone(answerable: bool, stoodBy: bool, safetyCopy: bool): bool =
+  followsTheReply(failureAnswered(true, true, answerable, stoodBy), true, safetyCopy) == safetyCopy
 pure def lawAFailureALaterRunMayHaveAnsweredDoesNotFollowAReplyTheModelStandsBy(safetyCopy: bool): bool =
-  followsTheReply(true, true, true, true, safetyCopy) == safetyCopy
-pure def lawUnlessTheModelStandsByItsReplyTheFailureStillFollows(answerable: bool, asked: bool, modelsReply: bool, safetyCopy: bool): bool =
-  followsTheReply(answerable, asked, false, modelsReply, safetyCopy)
-pure def lawAFailureNeverPutToTheModelStillFollows(answerable: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerable, false, stoodBy, modelsReply, false)
-pure def lawUnderTheHostsWordsTheFailureStillFollows(answerable: bool, asked: bool, stoodBy: bool): bool =
-  followsTheReply(answerable, asked, stoodBy, false, false)
-pure def lawAFailureWithAReceiptStillFollows(seenFirst: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(false, seenFirst, ranLater), asked, stoodBy, modelsReply, false)
-pure def lawAFailureInTheSameResponseStillFollows(receiptless: bool, ranLater: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(receiptless, false, ranLater), asked, stoodBy, modelsReply, false)
+  followsTheReply(failureAnswered(true, false, true, true), true, safetyCopy) == safetyCopy
+pure def lawAModelsReplyThatLeavesAFailureUnreportedNeverStands(answerable: bool): bool =
+  replacesTheReply(true, needsItsTelling(failureAnswered(true, false, answerable, false), true, answerable))
+    and partInPlace(false, failureAnswered(true, false, answerable, false), true) == ActionsWords
+pure def lawUnderTheHostsWordsTheFailureStillFollows(reported: bool, answerable: bool, stoodBy: bool, asked: bool): bool =
+  followsTheReply(failureAnswered(false, reported, answerable, stoodBy), asked, false) and not(replacesTheReply(false, true))
+pure def lawAFailureNeverPutToTheModelStillFollows(answered: bool): bool =
+  followsTheReply(answered, false, false)
+pure def lawAFailureWithAReceiptStillNeedsAReport(seenFirst: bool, ranLater: bool): bool =
+  not(failureAnswered(true, false, answerableLater(false, seenFirst, ranLater), true))
+pure def lawAFailureInTheSameResponseStillNeedsAReport(receiptless: bool, ranLater: bool): bool =
+  not(failureAnswered(true, false, answerableLater(receiptless, false, ranLater), true))
+pure def lawWithNoLaterCallThatMayAnswerTheFailureStillNeedsAReport(receiptless: bool, seenFirst: bool): bool =
+  not(failureAnswered(true, false, answerableLater(receiptless, seenFirst, false), true))
 pure def lawALaterRunOfTheSameActionMayAnswer(ownerWords: bool): bool =
   mayAnswer(true, ownerWords, Applied) and mayAnswer(true, ownerWords, Proposed) and mayAnswer(true, ownerWords, NoEffect)
 pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForTheOwner(laterOutcome: StepOutcome): bool =
@@ -757,8 +944,6 @@ pure def lawAnotherActionsAppliedOrProposedCallMayAnswerAFailureWithoutWordsForT
 pure def lawAnotherActionsCallNeverAnswersAFailureWithWordsForTheOwner(laterOutcome: StepOutcome): bool = not(mayAnswer(false, true, laterOutcome))
 pure def lawAFailedOrRefusedCallAnswersNothing(sameAction: bool, ownerWords: bool): bool =
   not(mayAnswer(sameAction, ownerWords, Failed)) and not(mayAnswer(sameAction, ownerWords, Rejected))
-pure def lawWithNoLaterCallThatMayAnswerTheFailureStillFollows(receiptless: bool, seenFirst: bool, asked: bool, stoodBy: bool, modelsReply: bool): bool =
-  followsTheReply(answerableLater(receiptless, seenFirst, false), asked, stoodBy, modelsReply, false)
 ```
 
 ### A coaching response stays in the planner transcript
@@ -780,25 +965,36 @@ pure def lawOrdinaryRefusalsRemainOutcomes(internal: bool): bool =
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
-The system prompt's cue rule asks the model to write, with its first tool
-calls, only a brief cue tagged `[promise]` that it heard the request, in the person's own
-language and its own words rather than a stock phrase. The rule describes
-what a cue is and lists none: a few natural words that the agent is looking
-or about to act, which never name the people, items, places, times, numbers
-or outcome, never ask anything, never say the work is done or under way and
-never repeat the request, and never open with assent after a question. A
+Every offered tool except `RESTORE_CONTEXT` carries a required `cue` field,
+first among its parameters and the same on every call, whose short
+description only points at the system prompt's cue rule, so the field adds
+little to the prompt. The rule asks the model to write in
+the cue field of the first call of its first tool calls only a brief cue,
+tagged `[promise]`, that it heard the request, in the person's own
+language and its own words rather than a stock phrase, and to leave the
+field empty on every other call. A cue is a field the model must fill, not
+text it may choose to write beside a call: a model that writes no text
+beside its native tool calls still fills it, and empty is allowed. The rule describes
+what a cue is and lists none: a few natural words that promise, in the
+future tense, what the agent will do next. The work may still fail or wait
+for the owner's approval (a page the owner opens with a tap, a send held
+for review), so a cue never describes the work as done or in progress
+(`Opening that page.`). It never names the
+people, items, places, days, times, numbers or outcome, never asks anything,
+never repeats the request, and never opens with assent after a question. A
 message asking for several lookups or about several named people or items
 gets a general cue that names no source, and a source is named only for one
 simple lookup; the rule dictates no phrase, so every cue is worded by the
 model. A request only to open one app, with nothing to read, find or
 change there (`Open Maps.`), still calls the tool that opens it, with no
-cue: the model writes nothing with that call, and the reply after it
+cue: the model leaves that call's cue empty, and the reply after it
 confirms the destination (`Maps is open.`). Any question or lookup gets its
 cue, even one about what is on the screen. The cue is left empty, with the
-work still done, when the person asked for silence; later tool calls come
-with no text. A response with no tool call is always the reply, so the rule
-tells the model never to write a cue without calling a tool. When no offered tool can do what was asked,
-the model writes no cue and says plainly, in its own words, that it can't.
+work still done, when the person asked for silence; later tool calls carry
+an empty cue. The rule tells the model to write no text beside tool calls,
+which is never heard. A response with no tool call carries no cue field, so
+it is always the reply. When no offered tool can do what was asked,
+the model calls none and says plainly, in its own words, that it can't.
 The same rule asks the model to say that something was saved, sent,
 opened or changed only when a tool result of this turn shows it.
 
@@ -845,8 +1041,7 @@ Blank text is `Silent`.
 
 The model says itself what its text is. The cue rule asks it to begin
 all text it writes with one tag the person never sees: `[promise]` when the
-text only says it heard the request or will do something, as every cue
-does, or `[answer]` when the text is its complete reply, and to use only
+text only says it heard the request or will do something, or `[answer]` when the text is its complete reply, and to use only
 those two. A tag after nothing but JSON objects or
 bracketed calls counts too, and what came before it is no part of the reply
 (`{"query": "speed of light"}[answer] Light travels…` is delivered as
@@ -891,7 +1086,7 @@ in a row (`[answer][promise] I'll check.`, `[Answer][Question] Which Sam?`)
 say nothing: all of them are taken off and the text is read by its form. Blank text, a cue beside a call
 written as text, and text that holds the agent host's words (below), are
 read by their form whatever the tag, and so is text written with tool
-calls: `[answer]` before an echoed host note is still no answer (whether text with tool calls is spoken is the tag's, below). Text with no tag is read by its form as above, so
+calls: `[answer]` before an echoed host note is still no answer (text with tool calls is never spoken; the cue is the `cue` field, below). Text with no tag is read by its form as above, so
 a model that skips the tag still never ends a turn on a cue-shaped promise
 while tools are offered. In the second answer asked for an unreported
 failure (above), a `[promise]` is never an answer and an `[answer]` is one,
@@ -967,18 +1162,29 @@ pure def lawACueIsSpokenOnlyBeforeWork(draft: Draft, calls: int, earlierCalls: i
 
 The acknowledgment is delivered at most once per turn, as the [reply
 stream](./replyStream.md)'s `acknowledgment` frame, and only before work
-starts. When the owner asks for silence the model writes no cue, so none is
-spoken; the shell never reads the owner's message to decide. A cue at a
-later step is dropped with the rest of that step's text. A blank draft, or
-text with tool calls that is not cue-shaped (it is long, asks a question or
-carries data), is never spoken as acknowledgment. The model says itself
-which text is its cue: text written with the first tool calls is the
-acknowledgment only when the model tagged it `[promise]`, saying it only
-heard the request or will do something. Text with tool calls that has no
-tag or is tagged `[answer]`, such as a claim that the work is done before
-it ran (`Sent.`, `Maps is open.`), is dropped with the step's text and
-never spoken, whatever its form; the tag never makes text that is not
-cue-shaped, or a later step's text, an acknowledgment.
+starts. When the owner asks for silence the model leaves the cue empty, so none is
+spoken; the shell never reads the owner's message to decide. The model says itself
+which text is its cue by writing it in the `cue` field: the turn's cue is
+the first non-empty `cue` among the first response's tool calls, in call
+order (the rule asks for it on the first call). The rule asks the model to
+tag it `[promise]` there too, and the tag is the model's own word that the
+text only promises what it will do and claims no effect, as the v119
+build's `pending` effect status did for its acknowledgment: the tag is taken
+off as anywhere else, and a cue with no tag (`Sent.`) or tagged `[answer]`
+(`[answer] Opening that page.`) is never spoken, so a claim written in the
+field without the tag is never heard before the work runs. The shell keeps
+no list of claim words: whether a cue claims an effect is the model's own
+declaration, checked only by the tag and the form below. A cue in a later step's calls is dropped. An empty
+cue, or one that is not cue-shaped (it is long, asks a question or carries
+data), is never spoken as acknowledgment. Text the model writes beside its
+tool calls is never a cue, whatever its tag or form: such text, such as a
+claim that the work is done before it ran (`Sent.`, `Maps is open.`) or a
+`[promise]` written there instead of in the field, is dropped with the
+step's text and never spoken. The cue is spoken
+only once the response that carries it has arrived whole, its calls complete
+and admitted to run: a response cut off before its end, one stopped at the
+model's output limit, one that restores context and one with competing
+terminal decisions run no work, so none of them speaks a cue.
 
 ```quint
 type DraftShape = Blank | CueShaped | CueBesideCall | CueBesideObject | OtherText | HostText
@@ -1018,6 +1224,17 @@ pure def lawOnlyAPromiseWithTheFirstCallsIsSpoken(shape: DraftShape, calls: int,
 pure def lawAnAnswerOrUntaggedTextWithWorkIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool): bool =
   not(spokenCue(readDraft(shape, calls, toolsWaiting, Undeclared), calls, earlierCalls, Undeclared))
   and not(spokenCue(readDraft(shape, calls, toolsWaiting, DeclaredAnswer), calls, earlierCalls, DeclaredAnswer))
+type CueSource = CueField | BesideCalls
+pure def spokenFrom(source: CueSource, draft: Draft, calls: int, earlierCalls: int, declared: Declared): bool =
+  source == CueField and spokenCue(draft, calls, earlierCalls, declared)
+pure def lawTextBesideCallsIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool, declared: Declared): bool =
+  not(spokenFrom(BesideCalls, readDraft(shape, calls, toolsWaiting, declared), calls, earlierCalls, declared))
+pure def lawOnlyAPromiseInTheFirstCueFieldIsSpoken(source: CueSource, shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool, declared: Declared): bool =
+  spokenFrom(source, readDraft(shape, calls, toolsWaiting, declared), calls, earlierCalls, declared)
+  iff (source == CueField and declared == DeclaredPromise and calls > 0 and earlierCalls == 0 and (shape == CueShaped or shape == CueBesideCall or shape == CueBesideObject))
+pure def lawAnUntaggedOrAnswerCueFieldIsNeverSpoken(shape: DraftShape, calls: int, earlierCalls: int, toolsWaiting: bool): bool =
+  not(spokenFrom(CueField, readDraft(shape, calls, toolsWaiting, Undeclared), calls, earlierCalls, Undeclared))
+  and not(spokenFrom(CueField, readDraft(shape, calls, toolsWaiting, DeclaredAnswer), calls, earlierCalls, DeclaredAnswer))
 pure def lawAnUntaggedCueNeverAnswersAFailureReAsk(sameAsFirst: bool): bool =
   not(answeredAgain(readDraft(CueShaped, 0, true, Undeclared), sameAsFirst)) and answeredAgain(readDraft(CueShaped, 0, true, DeclaredAnswer), false)
 pure def lawAFinishedReplyIsNeverReplacedByACue(sameAsFirst: bool): bool =
@@ -1128,7 +1345,7 @@ written, by the cue rule above as before, and never runs, so an answer that
 shows a call (`[answer] {"action": "VIEWS", "view": "home"}` to "show me
 the JSON to call VIEWS") switches no screen. An untagged response, or one
 tagged `[promise]`, whose object or call line names an offered tool, either
-way, with arguments that fit, and copies nothing it was given, while the
+way, with arguments that fit (a missing `cue` field reads as empty), and copies nothing it was given, while the
 step's call left the model free to call a tool, runs as that one tool call,
 exactly as a call the model made: the same admission, argument checks,
 guards, review cards, step and step bound, with no text beside it, so
@@ -1220,9 +1437,10 @@ pure def lawRefusalsAloneAreNothing(outcomes: List[StepOutcome]): bool =
 A cue is delivered only when the turn's [reply stream](./replyStream.md)
 took it as the turn's acknowledgment: a send with no stream,
 a draft that is not the turn's acknowledgment and a cue the stream refused
-or did not report taking deliver nothing. The planner's transcript keeps the
-text a step wrote beside its tool calls only when that text is the delivered
-cue, so the model never takes text the owner did not receive as said. After the tool calls that came
+or did not report taking deliver nothing. The planner's transcript keeps a
+step's calls without their `cue` field, and gives the step the delivered cue
+as its text, and no text otherwise, so the model never takes text the owner
+did not receive as said. After the tool calls that came
 with a delivered cue have all run and planning goes on, the model is told once, quoting the cue, that
 it was already sent to the owner as progress: the reply does not repeat or
 paraphrase it, goes straight to the result, any blocker or the question the

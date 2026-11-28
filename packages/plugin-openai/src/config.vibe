@@ -1,0 +1,459 @@
+// spec/openai/index.md, "Confidential and capability requirements are routing constraints"
+import { logger, processEnv, type IAgentRuntime } from "@elizaos/core"
+import { openAiBaseUrlAllowedForProvider, openAiModelId, type OpenAiProviderMode } from "../gen/openai.effect.vibe"
+
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "qwen-3.8-27b"
+export const DEFAULT_EVOLINK_TEXT_MODEL = "gpt-5.2"
+export const DEFAULT_OPENAI_SMALL_MODEL = "gpt-5.6-luna"
+export const DEFAULT_OPENAI_LARGE_MODEL = "gpt-5.6-sol"
+
+export type OpenAiUsageProvider = "cerebras" | "evolink" | "openai" | "openrouter"
+export type EndpointSettingReader = (key: string) => string | undefined
+
+const AUTO_ENABLE_ENV_KEYS = ["OPENAI_API_KEY", "CEREBRAS_API_KEY", "EVOLINK_API_KEY"] as const
+
+function readProcessEnv(key: string): string | undefined {
+  const value = processEnv()[key]
+  return value === undefined ? undefined : String(value)
+}
+
+function normalizeEndpointSetting(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized ? normalized : undefined
+}
+
+export function getSetting(runtime: IAgentRuntime, key: string, defaultValue?: string): string | undefined {
+  const value = runtime.getSetting(key)
+  if (value !== undefined && value !== null) {
+    return String(value)
+  }
+  return readProcessEnv(key) ?? defaultValue
+}
+
+export function getTrimmedSetting(runtime: IAgentRuntime, key: string): string {
+  const value = getSetting(runtime, key)
+  return value === undefined ? "" : value.trim()
+}
+
+export function hasNonEmptySetting(runtime: IAgentRuntime, key: string): boolean {
+  return getTrimmedSetting(runtime, key).length > 0
+}
+
+export function getNumericSetting(runtime: IAgentRuntime, key: string, defaultValue: number): number | undefined {
+  const value = getSetting(runtime, key)
+  if (value === undefined || value.trim() === "") return defaultValue
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined
+  return parsed
+}
+
+export function getBooleanSetting(runtime: IAgentRuntime, key: string, defaultValue: boolean): boolean {
+  const value = getSetting(runtime, key)
+  if (value === undefined) return defaultValue
+  const normalized = value.trim().toLowerCase()
+  return normalized === "true" || normalized === "1" || normalized === "yes"
+}
+
+function compatibleProvider(value: string | undefined): "openai" | "cerebras" | "evolink" | undefined {
+  const provider = value?.trim().toLowerCase()
+  return provider === "openai" || provider === "cerebras" || provider === "evolink"
+    ? provider
+    : undefined
+}
+
+function firstPartyHostOwner(baseURL: string): string {
+  try {
+    const hostname = new URL(baseURL).hostname.toLowerCase()
+    if (hostname === "api.openai.com") return "openai"
+    if (hostname === "api.cerebras.ai") return "cerebras"
+    if (hostname === "direct.evolink.ai") return "evolink"
+    return ""
+  } catch {
+    return ""
+  }
+}
+
+function explicitCompatibleBase(baseURL: string | undefined, provider: string | undefined): string | undefined {
+  if (!baseURL || !provider) return baseURL
+  const owner = firstPartyHostOwner(baseURL)
+  return openAiBaseUrlAllowedForProvider(owner, provider) ? baseURL : undefined
+}
+
+export function isCerebrasMode(runtime: IAgentRuntime): boolean {
+  const explicitProvider = compatibleProvider(getSetting(runtime, "ELIZA_PROVIDER"))
+  if (explicitProvider) return explicitProvider === "cerebras"
+  const baseURL = getTrimmedSetting(runtime, "OPENAI_BASE_URL")
+  if (baseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(baseURL)) return true
+  const cerebrasKey = getTrimmedSetting(runtime, "CEREBRAS_API_KEY")
+  if (cerebrasKey && !getTrimmedSetting(runtime, "OPENAI_API_KEY") && !baseURL) return true
+  return false
+}
+
+export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
+  const explicitProvider = compatibleProvider(getSetting(runtime, "ELIZA_PROVIDER"))
+  if (explicitProvider) return explicitProvider === "evolink"
+  const baseURL = getTrimmedSetting(runtime, "OPENAI_BASE_URL")
+  if (baseURL && /(^|\.)evolink\.ai(\/|$)/i.test(baseURL)) return true
+  const evolinkKey = getTrimmedSetting(runtime, "EVOLINK_API_KEY")
+  if (evolinkKey && !getTrimmedSetting(runtime, "OPENAI_API_KEY") && !baseURL) return true
+  return false
+}
+
+export function isOpenCodeGoEndpoint(value: string | undefined): boolean {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return (
+      url.protocol === "https:"
+      && url.hostname.toLowerCase() === "opencode.ai"
+      && (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
+    )
+  } catch {
+    return false
+  }
+}
+
+export function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+  return isOpenCodeGoEndpoint(getBaseURL(runtime))
+}
+
+export function getUsageProvider(runtime: IAgentRuntime): OpenAiUsageProvider {
+  if (isCerebrasMode(runtime)) return "cerebras"
+  if (isEvoLinkMode(runtime)) return "evolink"
+  return "openai"
+}
+
+export function getProviderMode(runtime: IAgentRuntime): OpenAiProviderMode {
+  if (isCerebrasMode(runtime)) return "ProviderCerebras"
+  if (isEvoLinkMode(runtime)) return "ProviderEvoLink"
+  return "ProviderOpenAi"
+}
+
+export function resolveOpenAIBaseURL(readSetting: EndpointSettingReader): string {
+  const read = (key: string): string | undefined => normalizeEndpointSetting(readSetting(key))
+  const explicitProvider = compatibleProvider(read("ELIZA_PROVIDER"))
+  const openAIBaseURL = explicitCompatibleBase(read("OPENAI_BASE_URL"), explicitProvider)
+  const cerebrasMode = explicitProvider
+    ? explicitProvider === "cerebras"
+    : (openAIBaseURL !== undefined && /(^|\.)cerebras\.ai(\/|$)/i.test(openAIBaseURL))
+      || (read("CEREBRAS_API_KEY") !== undefined
+        && read("OPENAI_API_KEY") === undefined
+        && openAIBaseURL === undefined)
+  const evolinkMode = explicitProvider
+    ? explicitProvider === "evolink"
+    : (openAIBaseURL !== undefined && /(^|\.)evolink\.ai(\/|$)/i.test(openAIBaseURL))
+      || (read("EVOLINK_API_KEY") !== undefined
+        && read("OPENAI_API_KEY") === undefined
+        && openAIBaseURL === undefined)
+  return (
+    openAIBaseURL
+    ?? (cerebrasMode ? (read("CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1") : undefined)
+    ?? (evolinkMode ? (read("EVOLINK_BASE_URL") ?? "https://direct.evolink.ai/v1") : undefined)
+    ?? "https://api.openai.com/v1"
+  )
+}
+
+export function getBaseURL(runtime: IAgentRuntime): string {
+  return resolveOpenAIBaseURL((key) => {
+    const runtimeValue = runtime.getSetting(key)
+    const normalizedRuntime = normalizeEndpointSetting(
+      runtimeValue === undefined || runtimeValue === null ? undefined : String(runtimeValue),
+    )
+    return normalizedRuntime ?? readProcessEnv(key)
+  })
+}
+
+export function getApiKey(runtime: IAgentRuntime): string | undefined {
+  if (isCerebrasMode(runtime)) {
+    const cerebrasKey = getTrimmedSetting(runtime, "CEREBRAS_API_KEY")
+    if (cerebrasKey) return cerebrasKey
+  }
+  if (isEvoLinkMode(runtime)) {
+    const evolinkKey = getTrimmedSetting(runtime, "EVOLINK_API_KEY")
+    if (evolinkKey) return evolinkKey
+  }
+  const openaiKey = getTrimmedSetting(runtime, "OPENAI_API_KEY")
+  return openaiKey || undefined
+}
+
+export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
+  const embeddingApiKey = getTrimmedSetting(runtime, "OPENAI_EMBEDDING_API_KEY")
+  if (embeddingApiKey) return embeddingApiKey
+  return getApiKey(runtime)
+}
+
+export function getAuthHeader(runtime: IAgentRuntime, forEmbedding = false): Record<string, string> {
+  const key = forEmbedding ? getEmbeddingApiKey(runtime) : getApiKey(runtime)
+  return key ? { Authorization: `Bearer ${key}` } : {}
+}
+
+export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
+  const embeddingURL = getTrimmedSetting(runtime, "OPENAI_EMBEDDING_URL")
+  if (embeddingURL) return embeddingURL
+  return getBaseURL(runtime)
+}
+
+export function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
+  return hasNonEmptySetting(runtime, "OPENAI_EMBEDDING_URL")
+}
+
+export function hasExplicitEmbeddingDimensions(runtime: IAgentRuntime): boolean {
+  return hasNonEmptySetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS")
+}
+
+export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
+  const imageDescriptionURL = getTrimmedSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL")
+  if (imageDescriptionURL) return imageDescriptionURL
+  return getBaseURL(runtime)
+}
+
+export function getImageDescriptionApiKey(runtime: IAgentRuntime): string | undefined {
+  const imageDescriptionApiKey = getTrimmedSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_API_KEY")
+  if (imageDescriptionApiKey) return imageDescriptionApiKey
+  const imageDescriptionURL = getTrimmedSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL")
+  if (imageDescriptionURL && /(^|\.)openai\.com(\/|$)/i.test(imageDescriptionURL)) {
+    const openaiKey = getTrimmedSetting(runtime, "OPENAI_API_KEY")
+    return openaiKey || undefined
+  }
+  return getApiKey(runtime)
+}
+
+export function getImageDescriptionAuthHeader(runtime: IAgentRuntime): Record<string, string> {
+  const key = getImageDescriptionApiKey(runtime)
+  return key ? { Authorization: `Bearer ${key}` } : {}
+}
+
+export function hasCustomBaseURL(resolvedAddress: string): boolean {
+  return firstPartyHostOwner(resolvedAddress) === ""
+}
+
+function getCerebrasSmallModel(runtime: IAgentRuntime): string {
+  if (!isCerebrasMode(runtime)) return ""
+  return (
+    getTrimmedSetting(runtime, "CEREBRAS_SMALL_MODEL")
+    || getTrimmedSetting(runtime, "CEREBRAS_MODEL")
+    || DEFAULT_CEREBRAS_TEXT_MODEL
+  )
+}
+
+function getCerebrasLargeModel(runtime: IAgentRuntime): string {
+  if (!isCerebrasMode(runtime)) return ""
+  return (
+    getTrimmedSetting(runtime, "CEREBRAS_LARGE_MODEL")
+    || getTrimmedSetting(runtime, "CEREBRAS_MODEL")
+    || DEFAULT_CEREBRAS_TEXT_MODEL
+  )
+}
+
+function getEvoLinkModel(runtime: IAgentRuntime): string {
+  if (!isEvoLinkMode(runtime)) return ""
+  return getTrimmedSetting(runtime, "EVOLINK_MODEL") || DEFAULT_EVOLINK_TEXT_MODEL
+}
+
+export function getSmallModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_SMALL_MODEL"),
+    getCerebrasSmallModel(runtime)
+      || getEvoLinkModel(runtime)
+      || getTrimmedSetting(runtime, "SMALL_MODEL")
+      || getTrimmedSetting(runtime, "OPENAI_MODEL"),
+    DEFAULT_OPENAI_SMALL_MODEL,
+  )
+}
+
+export function getNanoModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_NANO_MODEL"),
+    getCerebrasSmallModel(runtime)
+      || getEvoLinkModel(runtime)
+      || getTrimmedSetting(runtime, "NANO_MODEL"),
+    getSmallModel(runtime),
+  )
+}
+
+export function getMediumModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_MEDIUM_MODEL"),
+    getCerebrasSmallModel(runtime)
+      || getEvoLinkModel(runtime)
+      || getTrimmedSetting(runtime, "MEDIUM_MODEL"),
+    getSmallModel(runtime),
+  )
+}
+
+export function getLargeModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_LARGE_MODEL"),
+    getCerebrasLargeModel(runtime)
+      || getEvoLinkModel(runtime)
+      || getTrimmedSetting(runtime, "LARGE_MODEL")
+      || getTrimmedSetting(runtime, "OPENAI_MODEL"),
+    DEFAULT_OPENAI_LARGE_MODEL,
+  )
+}
+
+export function getMegaModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_MEGA_MODEL"),
+    getTrimmedSetting(runtime, "MEGA_MODEL"),
+    getLargeModel(runtime),
+  )
+}
+
+export function getResponseHandlerModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_RESPONSE_HANDLER_MODEL")
+      || getTrimmedSetting(runtime, "OPENAI_SHOULD_RESPOND_MODEL"),
+    getCerebrasSmallModel(runtime)
+      || getEvoLinkModel(runtime)
+      || getTrimmedSetting(runtime, "RESPONSE_HANDLER_MODEL")
+      || getTrimmedSetting(runtime, "SHOULD_RESPOND_MODEL"),
+    getSmallModel(runtime),
+  )
+}
+
+export function getActionPlannerModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_ACTION_PLANNER_MODEL")
+      || getTrimmedSetting(runtime, "OPENAI_PLANNER_MODEL"),
+    getCerebrasSmallModel(runtime)
+      || getEvoLinkModel(runtime)
+      || getTrimmedSetting(runtime, "ACTION_PLANNER_MODEL")
+      || getTrimmedSetting(runtime, "PLANNER_MODEL"),
+    getMediumModel(runtime),
+  )
+}
+
+export function getReasoningSmallModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_REASONING_SMALL_MODEL"),
+    getTrimmedSetting(runtime, "REASONING_SMALL_MODEL"),
+    getSmallModel(runtime),
+  )
+}
+
+export function getReasoningLargeModel(runtime: IAgentRuntime): string {
+  return openAiModelId(
+    getTrimmedSetting(runtime, "OPENAI_REASONING_LARGE_MODEL"),
+    getTrimmedSetting(runtime, "REASONING_LARGE_MODEL"),
+    getLargeModel(runtime),
+  )
+}
+
+export function getEmbeddingModel(runtime: IAgentRuntime): string {
+  return getTrimmedSetting(runtime, "OPENAI_EMBEDDING_MODEL") || "text-embedding-3-small"
+}
+
+export function getImageDescriptionModel(runtime: IAgentRuntime): string {
+  return getTrimmedSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_MODEL") || "gpt-5-mini"
+}
+
+export function getTranscriptionModel(runtime: IAgentRuntime): string {
+  return getTrimmedSetting(runtime, "OPENAI_TRANSCRIPTION_MODEL") || "gpt-5-mini-transcribe"
+}
+
+export function getTTSModel(runtime: IAgentRuntime): string {
+  return getTrimmedSetting(runtime, "OPENAI_TTS_MODEL") || "gpt-5-mini-tts"
+}
+
+export function getTTSVoice(runtime: IAgentRuntime): string {
+  return getTrimmedSetting(runtime, "OPENAI_TTS_VOICE") || "nova"
+}
+
+export function getTTSInstructions(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "OPENAI_TTS_INSTRUCTIONS") ?? ""
+}
+
+export function getImageModel(runtime: IAgentRuntime): string {
+  return getTrimmedSetting(runtime, "OPENAI_IMAGE_MODEL") || "dall-e-3"
+}
+
+export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
+  return getBooleanSetting(runtime, "OPENAI_EXPERIMENTAL_TELEMETRY", false)
+}
+
+export function getResearchModel(runtime: IAgentRuntime): string {
+  return getTrimmedSetting(runtime, "OPENAI_RESEARCH_MODEL") || "o3-deep-research"
+}
+
+export function getResearchTimeout(runtime: IAgentRuntime): number {
+  return getNumericSetting(runtime, "OPENAI_RESEARCH_TIMEOUT", 3600000) ?? 3600000
+}
+
+export function shouldEnable(env: Record<string, string | undefined>): boolean {
+  return AUTO_ENABLE_ENV_KEYS.some((key) => {
+    const value = env[key]
+    return typeof value === "string" && value.trim() !== ""
+  })
+}
+
+export function warnWhenApiKeyIsMissing(runtime: IAgentRuntime): void {
+  if (getApiKey(runtime)) return
+  logger.warn(
+    "[OpenAI] No API key is configured for the selected OpenAI-compatible endpoint; model calls will fail until credentials are provided",
+  )
+}
+
+export function buildPluginConfig(): Record<string, string | null> {
+  const env = processEnv()
+  const keys = [
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "CEREBRAS_API_KEY",
+    "CEREBRAS_BASE_URL",
+    "CEREBRAS_MODEL",
+    "CEREBRAS_SMALL_MODEL",
+    "CEREBRAS_LARGE_MODEL",
+    "CEREBRAS_FALLBACK_MODEL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_FALLBACK_MODEL",
+    "OPENROUTER_BASE_URL",
+    "EVOLINK_API_KEY",
+    "EVOLINK_BASE_URL",
+    "EVOLINK_MODEL",
+    "OPENAI_MODEL",
+    "OPENAI_FALLBACK_MODEL",
+    "OPENAI_REASONING_EFFORT",
+    "OPENAI_CONFIDENTIAL",
+    "OPENAI_NANO_MODEL",
+    "OPENAI_MEDIUM_MODEL",
+    "OPENAI_SMALL_MODEL",
+    "OPENAI_LARGE_MODEL",
+    "OPENAI_MEGA_MODEL",
+    "OPENAI_RESPONSE_HANDLER_MODEL",
+    "OPENAI_SHOULD_RESPOND_MODEL",
+    "OPENAI_ACTION_PLANNER_MODEL",
+    "OPENAI_PLANNER_MODEL",
+    "OPENAI_REASONING_SMALL_MODEL",
+    "OPENAI_REASONING_LARGE_MODEL",
+    "NANO_MODEL",
+    "MEDIUM_MODEL",
+    "SMALL_MODEL",
+    "LARGE_MODEL",
+    "MEGA_MODEL",
+    "RESPONSE_HANDLER_MODEL",
+    "SHOULD_RESPOND_MODEL",
+    "ACTION_PLANNER_MODEL",
+    "PLANNER_MODEL",
+    "OPENAI_EMBEDDING_MODEL",
+    "OPENAI_EMBEDDING_API_KEY",
+    "OPENAI_EMBEDDING_URL",
+    "OPENAI_EMBEDDING_DIMENSIONS",
+    "OPENAI_IMAGE_MODEL",
+    "OPENAI_IMAGE_DESCRIPTION_API_KEY",
+    "OPENAI_IMAGE_DESCRIPTION_BASE_URL",
+    "OPENAI_IMAGE_DESCRIPTION_MODEL",
+    "OPENAI_TRANSCRIPTION_MODEL",
+    "OPENAI_TTS_MODEL",
+    "OPENAI_TTS_VOICE",
+    "OPENAI_TTS_INSTRUCTIONS",
+    "OPENAI_EXPERIMENTAL_TELEMETRY",
+    "OPENAI_RESEARCH_MODEL",
+    "OPENAI_RESEARCH_TIMEOUT",
+  ]
+  const config: Record<string, string | null> = {}
+  for (const key of keys) {
+    config[key] = env[key] ?? null
+  }
+  return config
+}

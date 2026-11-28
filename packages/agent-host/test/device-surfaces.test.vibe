@@ -207,9 +207,9 @@ module node {
         types: firstOffer.types, camera: firstOffer.description.includes("camera_capture_photo takes one still image"),
         photos: firstOffer.description.includes("use the one item the owner has open in the Photos viewer instead of ids"), capabilitiesNamed: negotiated.filter((name) => firstOffer.tools.includes(name)),
       },
-      staleMaps: [staleMaps.startsWith(`${retold}\n\n`), staleMapsTold.includes("Select the place or route in Maps")], hiddenMaps: [hiddenMaps.startsWith(`${retold}\n\n`), hiddenMapsTold.includes("Select the place or route in Maps")],
-      notShown: [notShown.startsWith(`${retold}\n\n`), notShownTold.includes("Open the photo in Photos first")], guessed: [guessed.startsWith(`${retold}\n\n`), guessedTold.includes("couldn't tell which photos you meant")],
-      searched, staleRevision: [staleRevision.startsWith(`${retold}\n\n`), staleRevisionTold.includes("couldn't tell which photos you meant")],
+      staleMaps: [staleMapsTold.includes(`own report: ${JSON.stringify(staleMaps)}`), staleMapsTold.includes("Select the place or route in Maps")], hiddenMaps: [hiddenMapsTold.includes(`own report: ${JSON.stringify(hiddenMaps)}`), hiddenMapsTold.includes("Select the place or route in Maps")],
+      notShown: [notShownTold.includes(`own report: ${JSON.stringify(notShown)}`), notShownTold.includes("Open the photo in Photos first")], guessed: [guessedTold.includes(`own report: ${JSON.stringify(guessed)}`), guessedTold.includes("couldn't tell which photos you meant")],
+      searched, staleRevision: [staleRevisionTold.includes(`own report: ${JSON.stringify(staleRevision)}`), staleRevisionTold.includes("couldn't tell which photos you meant")],
       navigating: {
         sameTools: navigating.tools === firstOffer.tools, openView: navigating.types.includes("open_view"),
         views: navigating.note.includes("Open app views with VIEWS (mode show) on this message"), offered: navigating.views,
@@ -223,7 +223,7 @@ module node {
         summarized: summarized.includes(reviewText),
         saved, learned: remembered.includes('\\"operation\\":\\"create_note\\"') && remembered.includes('\\"label\\":\\"Milk\\"'),
       },
-      profile: { refused: [disabled.startsWith(`${retold}\n\n`), disabledTold.includes("That view isn't turned on for your phone.")], told: profiled.description.includes('allows open_view only for ["home","photos"]') },
+      profile: { refused: [disabledTold.includes(`own report: ${JSON.stringify(disabled)}`), disabledTold.includes("That view isn't turned on for your phone.")], told: profiled.description.includes('allows open_view only for ["home","photos"]') },
       proposed: (await proposals())
         .map(({ payload, state }) => ({ operation: payload.operation, bound: payload.requestMessageId !== undefined, state }))
         .toSorted((a, b) => a.operation.type.localeCompare(b.operation.type) || Number(a.bound) - Number(b.bound) ||
@@ -236,11 +236,11 @@ module node {
     await client.call("POST", "/api/client-devices/register", { capabilities: negotiated, workflowProtocol: 1 })
     const { conversation } = (await client.host("POST", "/api/conversations", {})).json as { conversation: { id: string } }
     const proposals = async () => ((await client.call("GET", "/api/client-devices/proposals")).json as { proposals: readonly Proposal[] }).proposals
-    const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata?: object) => {
+    const say = async (calls: readonly { readonly name: string; readonly arguments: unknown }[], metadata?: object, ...after: readonly CloudReply[]) => {
       const before = (await proposals()).length
-      cloud.script(toolCalls("", ...calls), answer("Which view?"))
+      cloud.script(toolCalls("", ...calls), answer("Which view?"), ...after)
       const turn = (await client.call("POST", `/api/conversations/${conversation.id}/messages`, { text: "Open my files", ...(metadata === undefined ? {} : { metadata }) })).json as Turn
-      const seen = offered(cloud, 2)
+      const seen = offered(cloud, 2 + Math.max(0, after.length - 1))
       const asked = cloud.calls.filter(({ path }) => path.endsWith("/chat/completions"))
       const told = JSON.stringify(((asked.at(-1)?.body as Completion | undefined)?.messages ?? []).filter(({ role }) => role === "tool").map(({ content }) => content))
       return {
@@ -262,7 +262,7 @@ module node {
     const views = { name: "VIEWS", arguments: { action: "show", view: "files" } }
     const { tools: typedTools, ...typed } = await say([views])
     const { tools: deliveredTools, ...delivered } = await say([openView], direct)
-    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound)
+    const { tools: rendererTools, ...rendererOnly } = await say([views], rendererBound, text(JSON.stringify({ reply: "Which view? I couldn't open Files here.", told: [{ point: 1, sentence: "I couldn't open Files here." }] })))
     const { tools: againTools, ...typedAgain } = await say([openView])
     const { tools: bothTools, ...wrongHomeFirst } = await say([{ name: "VIEWS", arguments: { action: "show", view: "photos" } }, propose({ type: "open_view", view: "photos" })])
     return { sameTools: new Set([typedTools, deliveredTools, rendererTools, againTools, bothTools]).size === 1, typed, delivered, rendererOnly, typedAgain, wrongHomeFirst }
@@ -352,7 +352,7 @@ module node {
       photo: {
         lead: photo.note.includes("The owner's whole message asks for a photo now"), ranFirst: photo.ranFirst,
         captured: photo.fresh.map(({ payload }) => ({ operation: payload.operation, bound: payload.requestMessageId === photo.userMessageId })),
-        viewsRefused: photo.toolText.includes("ROUTE_REFUSED"), switched: photo.toolText.includes("Prepared the switch"),
+        viewsRefused: photo.toolText.includes("ROUTE_REFUSED"), switched: photo.toolText.includes("once this reply is shown"),
         otherRefused: photo.toolText.includes("DEVICE_OPERATION_ROUTED"),
         reply: photo.reply, toldThePhoneWords: photo.toolText.includes("Opening Camera to take the photo."),
       },
@@ -375,7 +375,7 @@ module node {
       refused: {
         noteElsewhere: { code: noteElsewhere.toolText.includes("DEVICE_OPERATION_NOT_AVAILABLE_NOW"), sent: noteElsewhere.fresh.length, reply: noteElsewhere.reply },
         noSelection: { code: noSelection.toolText.includes("MAPS_SELECTION_UNAVAILABLE"), sent: noSelection.fresh.length },
-        guessedId: { sent: guessedId.fresh.length, reply: [guessedId.reply.startsWith(`${retold}\n\n`), guessedId.told.includes("couldn't tell which photos you meant")] },
+        guessedId: { sent: guessedId.fresh.length, reply: [guessedId.told.includes(`own report: ${JSON.stringify(guessedId.reply)}`), guessedId.told.includes("couldn't tell which photos you meant")] },
       },
     }
   }
@@ -430,7 +430,7 @@ it.live(`A device message opens a view in one place under the same tools: VIEWS 
     sameTools: true,
     typed: { viewsHere: false, viewsNotHere: true, proposed: 0, refused: ["VIEWS"], reply: "Which view?" },
     delivered: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: ["open_view"], reply: "Which view?" },
-    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "Which view?" },
+    rendererOnly: { viewsHere: true, viewsNotHere: false, proposed: 0, refused: [], reply: "Which view? I couldn't open Files here." },
     typedAgain: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: [], reply: reviewText },
     wrongHomeFirst: { viewsHere: false, viewsNotHere: true, proposed: 1, refused: ["VIEWS"], reply: reviewText },
   }))

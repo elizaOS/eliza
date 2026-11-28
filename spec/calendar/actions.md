@@ -150,7 +150,8 @@ pure val dayCountValues = Set(0, 1, 370, 371)
 
 ### A read with no connected calendar account says that none is connected, never only that the calendar is empty
 
-The agent's own resident calendar is always listed; a connected account
+The agent's own resident calendar is always listed, named Eliza
+Calendar, and its events carry that name; a connected account
 (the managed Google calendar, another provider, the phone's own calendar)
 lists calendars beside it. When the active account lists no calendar but
 the resident one and no provider failed to list its calendars, a read,

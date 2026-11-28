@@ -968,6 +968,7 @@ it.effect(`A read with no connected calendar account says that none is connected
   const unbookedHour = try read(free)
   const dentist = try runCalendarAction(host, { ...ask, id: "dentist" }, { subaction: "create_event", title: "Dentist", startAt: "2030-03-04T15:00:00Z", endAt: "2030-03-04T16:00:00Z", timeZone: "UTC", reviewBeforeCreate: false, statedClock: "none" })
   const residentEvent = try read(today)
+  const residentName = [(try host.calendars())?.map((row) => row.summary), (try host.search({ timeMin: Date.parse("2030-03-04T00:00:00Z"), timeMax: Date.parse("2030-03-05T00:00:00Z") }))?.events.map((event) => event.calendarSummary)]
   const google = googleCalendar()
   try host.register(google.port)
   try host.bindAccount(owner)
@@ -982,11 +983,12 @@ it.effect(`A read with no connected calendar account says that none is connected
   const contextUnconnected = try context(try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined }))
   const contextConnected = try context(host)
 
-  assert.deepStrictEqual({ empty, unbookedHour, created: dentist.success, residentEvent: [residentEvent.connection, residentEvent.events, (residentEvent.text ?? "").endsWith(notConnected)], connected, connectedFree, contextUnconnected, contextConnected }, {
+  assert.deepStrictEqual({ empty, unbookedHour, created: dentist.success, residentEvent: [residentEvent.connection, residentEvent.events, (residentEvent.text ?? "").endsWith(notConnected)], residentName, connected, connectedFree, contextUnconnected, contextConnected }, {
     empty: { text: `No events match in that range.${notConnected}`, connection: "none", events: 0 },
     unbookedHour: { text: `You're free Mon, Mar 4, 9:00\u2009\u2013\u200910:00 AM UTC.${notConnected}`, connection: "none", events: undefined },
     created: true,
     residentEvent: ["none", 1, true],
+    residentName: [["Eliza Calendar"], ["Eliza Calendar"]],
     connected: { text: "No events match in that range.", connection: "connected", events: 0 },
     connectedFree: { text: "You're free Mon, Mar 4, 9:00\u2009\u2013\u200910:00 AM UTC.", connection: "connected", events: undefined },
     contextUnconnected: { text: `No calendar events in the next 24 hours.${notConnected}`, connection: "none" },

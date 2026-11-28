@@ -1,4 +1,4 @@
-// spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"
+// spec/os/agentService/lifecycle.md, "Story: Start the agent when I sign in and stop it when I sign out"; spec/os/agentService/lifecycle.md, "Story: Hand a new device key of the same account to the running agent"; spec/os/agentService/config.md, "Only a cloud launch is framed with the device key, and an own-key launch with the owner's provider key or none"; spec/os/android/taskKeys.md, "The current account's key is released only as the storage key of a launch newer than every earlier one"
 package ai.eliza.os.agent;
 
 public interface AgentCredentials {
@@ -16,14 +16,20 @@ public interface AgentCredentials {
     @Override public String toString() { return "AgentCredentials.Active(" + version + ")"; }
   }
 
+  interface StorageKey extends AutoCloseable {
+    /** The key, or null once custody retired it (a sign-out or an account change), which frames the launch without it. */
+    String value();
+    @Override void close();
+  }
+
   AgentCredentials NONE = new AgentCredentials() {
     @Override public Active current() { return null; }
-    @Override public String storageKey(Account account) { return null; }
+    @Override public StorageKey storageKey(Account account, long epoch) { return null; }
   };
 
   Active current() throws Exception;
 
-  String storageKey(Account account) throws Exception;
+  StorageKey storageKey(Account account, long epoch) throws Exception;
 
   default LaunchFrame.Credential providerKey() throws Exception { return null; }
 }

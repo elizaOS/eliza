@@ -1,7 +1,7 @@
 // spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"
 import { Arbitrary, Effect, Exit, Schema } from "effect";
 import { contract } from "vibestack/testing";
-import { decryptStringValue, encryptStringValue } from "./settings.vibe";
+import { decryptStringValue, encryptStringValue, saltSettingValueOrThrow, unsaltSettingValueOrThrow } from "./settings.vibe";
 
 const text = Arbitrary.schema(Schema.String).pipe(Arbitrary.map((s) => s.toWellFormed()));
 const setting = Arbitrary.all({ value: text.pipe(Arbitrary.map((s) => `p${s}`)), salt: text });
@@ -23,4 +23,91 @@ export const aSealedSettingOpensUnderItsSaltAndIsNotSealedTwice = contract({
   run: seal,
   invariant: ({ value }, { sealed, opened, resealed }) =>
     sealed !== null && sealed.startsWith("v2:") && opened === value && resealed === sealed,
+});
+
+const sealEmpty = ({ salt }: { salt: string }) => seal({ value: "", salt });
+
+export const aSealedEmptySettingOpensAsEmptyAndIsNotSealedTwice = contract({
+  input: Arbitrary.all({ salt: text }),
+  run: sealEmpty,
+  invariant: (_input, { sealed, opened, resealed }) =>
+    sealed !== null && sealed.startsWith("v2:") && opened === "" && resealed === sealed,
+});
+
+const malformedV2Envelopes = [
+  "v2:0123456789abcdef01234567!:abcd:0123456789abcdef0123456789abcdef",
+  "v2:0123456789abcdef01234567:abcd:0123456789abcdef0123456789abcdef!",
+  "v2:0123456789abcdef01234567:abc:0123456789abcdef0123456789abcdef",
+  "v2:0123456789abcdef01234567:not-hex:0123456789abcdef0123456789abcdef",
+] as const;
+
+const malformed = ({ salt }: { salt: string }) =>
+  malformedV2Envelopes.map((value) => ({
+    value,
+    opened: succeeded(decryptStringValue(value, salt)),
+    sealed: succeeded(encryptStringValue(value, salt)),
+  }));
+
+export const aMalformedV2EnvelopeStaysPlaintext = contract({
+  input: Arbitrary.all({ salt: text }),
+  run: malformed,
+  invariant: (_input, checked) =>
+    checked.every(
+      ({ value, opened, sealed }) =>
+        opened === value && sealed !== null && sealed !== value && sealed.startsWith("v2:"),
+    ),
+});
+
+const secretSetting = (value: string) => ({
+  name: "api-key",
+  description: "api-key",
+  usageDescription: "",
+  value,
+  required: false,
+  secret: true,
+  dependsOn: [],
+});
+
+const storedWithWhitespace = ({ value, salt }: { value: string; salt: string }) => {
+  const sealed = succeeded(encryptStringValue(value, salt));
+  if (sealed === null) {
+    return {
+      trailing: null,
+      opened: null,
+      resealed: null,
+      spaced: null,
+      openedSpace: null,
+      resealedSpace: null,
+      broken: null,
+      openedBreak: null,
+      resealedBreak: null,
+    };
+  }
+  const parts = sealed.split(":");
+  const broken = [parts[0], parts[1], parts[2].slice(0, 2) + "\n" + parts[2].slice(2), parts[3]].join(":");
+  const trailing = sealed + "\n";
+  const spaced = sealed + " ";
+  return {
+    trailing,
+    opened: unsaltSettingValueOrThrow(secretSetting(trailing), salt).value,
+    resealed: saltSettingValueOrThrow(secretSetting(trailing), salt).value,
+    spaced,
+    openedSpace: unsaltSettingValueOrThrow(secretSetting(spaced), salt).value,
+    resealedSpace: saltSettingValueOrThrow(secretSetting(spaced), salt).value,
+    broken,
+    openedBreak: unsaltSettingValueOrThrow(secretSetting(broken), salt).value,
+    resealedBreak: saltSettingValueOrThrow(secretSetting(broken), salt).value,
+  };
+};
+
+export const aStoredSealedSettingWithWhitespaceStillOpensAndIsNotSealedTwice = contract({
+  input: setting,
+  run: storedWithWhitespace,
+  invariant: ({ value }, { trailing, opened, resealed, spaced, openedSpace, resealedSpace, broken, openedBreak, resealedBreak }) =>
+    opened === value &&
+    resealed === trailing &&
+    openedSpace === value &&
+    resealedSpace === spaced &&
+    openedBreak === value &&
+    resealedBreak === broken,
 });

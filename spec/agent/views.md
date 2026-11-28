@@ -179,7 +179,16 @@ completedActionHandoffId, navigationPrepared: true, navigationBinding}`
 and no other key (core views parses them). The turn's completed action
 includes the validated prepared handoff in its reply's action data, so the
 renderer can claim the request using that exact binding. A refusal carries
-no prepared handoff.
+no prepared handoff. The renderer applies the navigation only after the
+reply is shown, and a screen that cannot show the view stays where it is,
+so the show action's text says the view opens once the reply is shown and
+is not open yet: the reply then never says the view already opened.
+When the turn's renderer says which views it can show now (`uiViews`,
+`spec/agent/conversation/turnContext.md`), a view outside that list, a
+saved Notes editor included as the Notes view, is refused before anything
+is prepared, with text saying that screen cannot show it, so the reply
+says so instead of promising an open that will not happen. A renderer that
+says nothing keeps every declared view.
 
 ```quint
 pure def targets(h: ViewHost, target: str): List[DeclaredView] = h.views.select(d => namesOf(d).includes(target))
@@ -188,6 +197,11 @@ pure def canShowView(h: ViewHost, requestId: str, clientId: str, target: str): b
 pure def showView(h: ViewHost, requestId: str, clientId: str, target: str): ViewHost =
   prepareNavigation(h, requestId, clientId, targets(h, target).nthOr(0, noView).viewId)
 pure val targetValues = Set("Notes", "home", "nowhere")
+pure def screenCanShow(stated: bool, screenViews: List[str], viewId: str): bool = not(stated) or screenViews.includes(viewId)
+pure def lawAViewTheScreenCannotShowIsNeverPrepared(stated: bool): bool =
+  stated implies not(screenCanShow(stated, List("home", "notes"), "messages"))
+pure def lawASilentRendererKeepsEveryView(stated: bool): bool =
+  not(stated) implies screenCanShow(stated, List(), "messages")
 ```
 
 ### The model is told every declared view by its names, and on a bound turn the view the owner's screen showed
@@ -213,7 +227,9 @@ pure def screenTold(h: ViewHost, observed: str): bool = targets(h, observed).len
 The model opens one saved note, in whatever words the owner asked for it,
 by calling VIEWS with `view: "notes-editor"` and `note` set to the note's
 title or text, or to the ID the lookup read it by, only after a unique
-successful `NOTES_GET` in the same turn.
+successful `NOTES_GET` in the same turn. A note a successful `NOTES_LIST` of
+the same turn returned is found the same way when `note` is that note's
+exact ID, unless a `NOTES_GET` of the turn found several notes.
 The canonical resident collection must still match that `note` uniquely to
 the note the lookup found. A note the same turn created with `NOTES_CREATE`
 is found exactly by that creation instead: `note` names its title, the

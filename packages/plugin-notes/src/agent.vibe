@@ -8,7 +8,7 @@ import { notesDeviceFamily } from "./device-proposals.vibe"
 import {
   json, findNoteFolder, noteFolderId, readNoteFolders, noteIdPattern, noteLimits, notesContext, projectNoteForModel, reconstructNoteContent, type NotesSnapshot, type StickyNote,
 } from "@elizaos/plugin-notes-client"
-import { notesNamedIn, ownerRequestText, titleAppearsAsNamedPhrase } from "./lookup.vibe"
+import { notesNamedIn, titleAppearsAsNamedPhrase } from "./lookup.vibe"
 import {
   notesCollection, notesServiceClass, notesStateUpdatedEvent, runtimeNotesHost,
   type NotesCollection, type NotesFailure, type NotesOptions,
@@ -287,7 +287,7 @@ function readAction(notes: NotesCollection): Action[] {
           success: true,
           text: [`notesRevision: ${revision}. Matching notes: ${found.length}.`, ...found.map((note) => `- ${noteRow(note)} created ${note.createdAt} updated ${note.updatedAt}${local(note)}`)].join("\n"),
           data: {
-            op: "list", readOnlyOperation: true, notes: found.map(projectNoteForModel), notesRevision: revision,
+            actionName: "NOTES_LIST", op: "list", readOnlyOperation: true, notes: found.map(projectNoteForModel), notesRevision: revision,
             ...(query.dateRange === undefined ? {} : { dateRange: { ...query.dateRange } }), ...(times.length === 0 ? {} : { noteTimestampDisplay: times }),
           },
           ...(empty === undefined ? {} : { emptyTrackedState: empty }),
@@ -346,7 +346,7 @@ function writeActions(notes: NotesCollection): Action[] {
     notesAction(notes, {
       name: "NOTES_CREATE",
       writes: true,
-      description: `Save a note verbatim (punctuation/whitespace/newlines); never expand, reformat, or turn prose into checklists/tasks/headings unless asked. Strip outer delimiting quotes only; ask if an unquoted trailing phrase could be an app instruction. A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist, at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it. Does not open Notes.`,
+      description: `Save a note verbatim (punctuation/whitespace/newlines); never expand, reformat, or turn prose into checklists/tasks/headings unless asked. Strip outer delimiting quotes only; ask if an unquoted trailing phrase could be an app instruction. A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist, at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. Adding an item to a named list that has no note yet (e.g. add milk to my shopping list) creates that list as a checklist: its name alone in content, the item in checklist. When the owner gave the checklist no title, ask what to call it instead of creating it. Does not open Notes.`,
       parameters: [
         { name: "content", description: "Exact text (line 1=title) or checklist title alone.", required: true, schema: { type: "string", maxLength: 20_241 } },
         { name: "body", description: "Exact body when content is title only.", required: false, schema: { type: "string" } },
@@ -468,16 +468,6 @@ const unavailable: ProviderResult = {
 
 const ownerNotes = { position: -5, contexts: ["notes", "general", "memory"], roleGate: { minRole: "OWNER" } } satisfies Partial<Provider>
 
-type Snapshot = Effect.Success<ReturnType<NotesCollection["snapshot"]>>
-
-function namedGet(notes: NotesCollection, answer: (words: string, snapshot: Snapshot, message: Memory) => ProviderResult, fallback: () => ProviderResult): Provider["get"] {
-  return (_runtime, message) => runPromise(Effect.orElseSucceed(effect {
-    const words = try ownerRequestText(message)
-    if (words === "") return { text: "", values: {}, data: {} } satisfies ProviderResult
-    return answer(words, try notes.snapshot(), message)
-  }, fallback))
-}
-
 function providers(notes: NotesCollection): Provider[] {
   const savedNotes: Provider = {
     name: "SAVED_NOTES",
@@ -501,44 +491,7 @@ function providers(notes: NotesCollection): Provider[] {
       } satisfies ProviderResult
     }, () => unavailable)),
   }
-  const namedNotes: Provider = {
-    name: "NAMED_NOTES",
-    description: "Current records whose titles the owner names this turn.",
-    alwaysInResponseState: true,
-    ...ownerNotes,
-    get: namedGet(notes, (words, snapshot, message) => {
-      const named = notesNamedIn(words, snapshot.notes)
-      const deleted = (snapshot.trash ?? []).filter((entry) => notesNamedIn(words, [entry.note]).length > 0)
-        .map((entry) => ({ noteId: entry.note.id, title: entry.note.title, deletedAt: entry.deletedAt }))
-      if (named.length === 0 && deleted.length === 0) return { text: "", values: {}, data: {} } satisfies ProviderResult
-      return {
-        text: [
-          "# Current named notes",
-          `notesRevision: ${snapshot.revision}. These are every current record whose title this message names. Each JSON row is [exact ID, complete note text, optional authored rich content]. Distinct records with the same title need the owner's choice before an edit.`,
-          ...named.map((note) => `- ${noteRow(note)}`),
-          ...(named.length > 0 ? folderLines(message, named) : []),
-          ...(deleted.length > 0 ? ["# Deleted named notes", "Rows in Recently deleted. Bring one back with NOTES_RESTORE and its noteId.", ...deleted.map((row) => json(row))] : []),
-        ].join("\n"),
-        values: {},
-        data: { namedNotes: named.map(projectNoteForModel), ...(deleted.length > 0 ? { namedDeletedNotes: deleted } : {}), notesRevision: snapshot.revision },
-      } satisfies ProviderResult
-    }, () => ({ text: "Current named notes could not be read. Do not claim current note contents from history.", values: {}, data: { namedNotes: null } } satisfies ProviderResult)),
-  }
-  const namedNoteRouting: Provider = {
-    ...namedNotes,
-    name: "NAMED_NOTE_ROUTING",
-    description: "Fresh authorized exact-name availability for lean context routing.",
-    alwaysInResponseState: false,
-    get: namedGet(notes, (words, snapshot) => {
-      const available = notesNamedIn(words, [...snapshot.notes, ...(snapshot.trash ?? []).map((entry) => entry.note)]).length > 0
-      return {
-        text: available ? "Fresh exact named-note reference available in the Notes context. Availability alone does not determine current, historical, or mixed intent." : "",
-        values: {},
-        data: { namedNoteMatchAvailable: available },
-      } satisfies ProviderResult
-    }, () => ({ text: "Current named-note match availability is unconfirmed.", values: {}, data: { namedNoteMatchAvailable: null } } satisfies ProviderResult)),
-  }
-  return [savedNotes, namedNotes, namedNoteRouting]
+  return [savedNotes]
 }
 
 function noteTargetParameters(

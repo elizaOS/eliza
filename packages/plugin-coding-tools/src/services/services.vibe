@@ -1,6 +1,6 @@
 // spec/codingTools/index.md, "Sandbox path policy blocks sensitive locations, pseudo-descriptors, and escapes outside configured roots"; spec/codingTools/fileSession.md, "Reading a file records its current revision and binds a resumable reference"; spec/codingTools/shellSession.md, "Background shell sessions enforce concurrency caps and monotone incremental output polling"; spec/codingTools/worktree.md, "Entering and exiting a worktree keeps the directory stack and dynamic sandbox roots in lockstep"
 import { Service, type IAgentRuntime } from "@elizaos/core"
-import { pathAllowed } from "../../gen/codingTools.effect.vibe"
+import { mayEditFile, mayReadFile, pathAllowed, type WorkspaceAccess } from "../../gen/codingTools.effect.vibe"
 import {
   canCreateNewFile,
   canEditFile,
@@ -39,7 +39,7 @@ import {
   type WorktreeSession,
 } from "../../gen/codingTools__worktree.effect.vibe"
 import { invalidateFileReadReferences } from "../lib/artifacts.vibe"
-import { readStringSetting } from "../lib/format.vibe"
+import { DEFAULT_OUTPUT_MAX_BYTES, DEFAULT_OUTPUT_MAX_LINES, readStringSetting, truncateHead } from "../lib/format.vibe"
 import {
   currentProcessCwd,
   defaultBlockedPaths,
@@ -51,11 +51,14 @@ import {
   newUuid,
   osPlatform,
   pathDirname,
+  pathRelative,
   pathResolve,
+  classifyStdinTarget,
   redactShellText,
   resolveRealPathNode,
   splitShellArgs,
   traversesBlockedPath,
+  type StdinTarget,
 } from "../lib/security.vibe"
 import {
   BACKGROUND_SHELL_SERVICE,
@@ -110,12 +113,16 @@ module node {
     }
   }
 
+  export type ExecOutcome = "exited" | "timed_out" | "spawn_failed" | "output_overflow" | "signaled"
+
   export interface ExecProcessOutput {
+    readonly outcome: ExecOutcome
     readonly exitCode: number
     readonly stdout: string
     readonly stderr: string
     readonly timedOut: boolean
     readonly signal: string | null
+    readonly errorCode?: string
   }
 
   export function execFileNode(
@@ -135,18 +142,31 @@ module node {
         },
         (error, stdout, stderr) => {
           if (!error) {
-            resolve({ exitCode: 0, stdout: String(stdout), stderr: String(stderr), timedOut: false, signal: null })
+            resolve({ outcome: "exited", exitCode: 0, stdout: String(stdout), stderr: String(stderr), timedOut: false, signal: null })
             return
           }
           const killed = Boolean((error as { killed?: boolean }).killed)
           const signal = (error as { signal?: string | null }).signal ?? null
-          const code = typeof (error as { code?: unknown }).code === "number" ? Number((error as { code?: number }).code) : 1
+          const rawCode = (error as { code?: unknown }).code
+          const errorCode = typeof rawCode === "string" ? rawCode : undefined
+          const timedOut = killed && signal === "SIGTERM" && errorCode === undefined
+          const outcome: ExecOutcome = typeof rawCode === "number"
+            ? "exited"
+            : errorCode === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+              ? "output_overflow"
+              : timedOut
+                ? "timed_out"
+                : errorCode !== undefined
+                  ? "spawn_failed"
+                  : "signaled"
           resolve({
-            exitCode: code,
+            outcome,
+            exitCode: typeof rawCode === "number" ? rawCode : errorCode === "ENOENT" ? 127 : errorCode === "EACCES" ? 126 : -1,
             stdout: String(stdout),
             stderr: String(stderr || error.message),
-            timedOut: killed && signal === "SIGTERM",
+            timedOut,
             signal,
+            ...(errorCode === undefined ? {} : { errorCode }),
           })
         },
       )
@@ -207,6 +227,7 @@ module node {
 
   export async function fallbackGrepWalkNode(params: {
     readonly root: string
+    readonly admit: (filePath: string) => Promise<boolean>
     readonly regex: RegExp
     readonly glob?: string
     readonly mode: "content" | "files_with_matches" | "count"
@@ -227,6 +248,7 @@ module node {
 
     async function searchFile(filePath: string): Promise<void> {
       if (linesOut.length >= params.headLimit) return
+      if (!(await params.admit(filePath))) return
       let bytes: Buffer
       try {
         bytes = await fs.readFile(filePath)
@@ -279,7 +301,7 @@ module node {
       entries.sort((a, b) => a.name.localeCompare(b.name))
       for (const entry of entries) {
         if (linesOut.length >= params.headLimit) return
-        if (excluded.has(entry.name)) continue
+        if (excluded.has(entry.name) || entry.name.startsWith(".")) continue
         const full = path.join(current, entry.name)
         if (entry.isDirectory()) {
           await walk(full)
@@ -317,12 +339,13 @@ import {
   spawnBgShellNode,
   statPathNode,
   writeJsonFileSafeNode,
+  type ExecOutcome,
   type ExecProcessOutput,
   type FileStatInfo,
   type SpawnedBgChild,
 } from node
 
-export { runShellProcessNode, statPathNode, type ExecProcessOutput, type FileStatInfo }
+export { runShellProcessNode, statPathNode, type ExecOutcome, type ExecProcessOutput, type FileStatInfo }
 
 function parseCsvList(raw: string | undefined): string[] {
   if (!raw) return []
@@ -334,8 +357,16 @@ function dedupeStrings(items: readonly string[]): string[] {
 }
 
 export type SandboxValidation =
-  | { readonly ok: true; readonly resolved: string }
+  | { readonly ok: true; readonly resolved: string; readonly root: string }
   | { readonly ok: false; readonly reason: "blocked" | "invalid"; readonly message: string }
+
+export function workspaceAccess(root: string, ownerConfirmed = false): WorkspaceAccess {
+  return { authorizedRoot: root, ownerConfirmed, canWrite: true, canRunCommands: true }
+}
+
+function isProtectedSegment(segment: string): boolean {
+  return segment === ".git" || segment === ".ssh" || segment === ".env" || segment.startsWith(".env.")
+}
 
 export class SandboxService extends Service {
   static override serviceType = SANDBOX_SERVICE
@@ -412,7 +443,8 @@ export class SandboxService extends Service {
     const blockedConfigured = this.blockedPaths.some((root) => isWithin(root, resolved))
     const activeRoots = await Promise.all(this.getAllowedRoots(conversationId).map((r) => resolveRealPathNode(r)))
     const hasAllowRoots = activeRoots.length > 0
-    const withinAllowedRoot = !hasAllowRoots || activeRoots.some((root) => isWithin(root, resolved))
+    const root = activeRoots.filter((candidate) => isWithin(candidate, resolved)).sort((a, b) => b.length - a.length)[0]
+    const withinAllowedRoot = root !== undefined
     const allowed = pathAllowed({
       isEmpty,
       hasNul,
@@ -422,16 +454,26 @@ export class SandboxService extends Service {
       hasAllowRoots,
       withinAllowedRoot,
     })
-    if (!allowed) {
+    if (!allowed || root === undefined) {
       return {
         ok: false,
         reason: "blocked",
         message: blockedPseudo || blockedConfigured || traverses
           ? `path is blocked by sandbox policy: ${inputPath}`
-          : `path is outside allowed workspace roots: ${inputPath}`,
+          : hasAllowRoots
+            ? `path is outside allowed workspace roots: ${inputPath}`
+            : `no workspace root is configured (CODING_TOOLS_WORKSPACE_ROOTS); refusing ${inputPath}`,
       }
     }
-    return { ok: true, resolved }
+    const protectedPath = pathRelative(root, resolved).split(/[\\/]/).some(isProtectedSegment)
+    if (!mayReadFile(workspaceAccess(root), { workspaceKey: root, fileKey: resolved, revision: "", protectedPath })) {
+      return { ok: false, reason: "blocked", message: `path is protected (.env, .git, .ssh): ${inputPath}` }
+    }
+    return { ok: true, resolved, root }
+  }
+
+  mayEdit(root: string, resolved: string, currentRevision: string, readRevision: string): boolean {
+    return mayEditFile(workspaceAccess(root), { workspaceKey: root, fileKey: resolved, revision: currentRevision, protectedPath: false }, readRevision)
   }
 }
 
@@ -445,7 +487,8 @@ interface TrackedFileEntry {
 }
 
 export type WritableGate =
-  | { readonly ok: true; readonly exists: boolean; readonly currentRevision?: string }
+  | { readonly ok: true; readonly exists: false }
+  | { readonly ok: true; readonly exists: true; readonly currentRevision: string; readonly readRevision: string }
   | { readonly ok: false; readonly reason: "stale_read" | "unread"; readonly message: string }
 
 export class FileStateService extends Service {
@@ -547,7 +590,48 @@ export class FileStateService extends Service {
         message: `file changed on disk since last read (${entry.meta.revision} != ${currentRevision}); re-read ${absPath} first`,
       }
     }
-    return { ok: true, exists: true, currentRevision }
+    return { ok: true, exists: true, currentRevision, readRevision: entry.meta.revision }
+  }
+
+  private deviceKey(devicePath: string): string {
+    return `device:${devicePath}`
+  }
+
+  recordDeviceRead(conversationId: string, devicePath: string, revision: string, size: number): FileMeta {
+    const key = this.deviceKey(devicePath)
+    const map = this.convMap(conversationId)
+    const prev = map.get(key)
+    let nextSession = prev ? prev.session : initialFileSession
+    if (!nextSession.fileExists) {
+      nextSession = canCreateNewFile(nextSession, false) ? createNewFile(nextSession, false) : initialFileSession
+    }
+    if (prev && prev.meta.revision !== revision && nextSession.fileExists) {
+      nextSession = externalModify(nextSession)
+    }
+    if (canReadFile(nextSession)) {
+      nextSession = stepReadFile(nextSession)
+    }
+    return this.saveEntry(map, key, { exists: true, isFile: true, isDirectory: false, ino: 0, size, mtimeMs: 0 }, revision, nextSession)
+  }
+
+  deviceReadMatches(conversationId: string, devicePath: string, currentRevision: string): boolean {
+    const entry = this.sessions.get(conversationId)?.get(this.deviceKey(devicePath))
+    return entry !== undefined && entry.session.hasRead && entry.meta.revision === currentRevision
+  }
+
+  recordDeviceWrite(conversationId: string, devicePath: string, revision: string, size: number, existed: boolean): FileMeta {
+    const key = this.deviceKey(devicePath)
+    const map = this.convMap(conversationId)
+    const prev = map.get(key)
+    let nextSession = prev ? prev.session : existed ? initialFileSession : deleteExternally(initialFileSession)
+    if (existed && canWriteExistingFile(nextSession, true, false)) {
+      nextSession = writeExistingFile(nextSession, true, false)
+    } else if (!existed && canCreateNewFile(nextSession, false)) {
+      nextSession = createNewFile(nextSession, false)
+    } else {
+      nextSession = stepReadFile(initialFileSession)
+    }
+    return this.saveEntry(map, key, { exists: true, isFile: true, isDirectory: false, ino: 0, size, mtimeMs: 0 }, revision, nextSession)
   }
 
   invalidate(conversationId: string, absPath: string): void {
@@ -618,6 +702,12 @@ export class SessionCwdService extends Service {
     return specCurrentCwd(current)
   }
 
+  peekWorktree(conversationId: string): { readonly entered: string; readonly previousCwd: string } | undefined {
+    const current = this.sessionFor(conversationId)
+    if (!canExitWorktree(current)) return undefined
+    return { entered: specCurrentCwd(current), previousCwd: specCurrentCwd(specExitWorktree(current, false)) }
+  }
+
   popWorktree(conversationId: string, cleanup = false): { readonly entered: string; readonly previousCwd: string } | undefined {
     const current = this.sessionFor(conversationId)
     if (!canExitWorktree(current)) return undefined
@@ -679,16 +769,61 @@ export interface RipgrepOptions {
   readonly headLimit?: number
 }
 
-export interface RipgrepResult {
-  readonly exitCode: number
-  readonly stdout: string
-  readonly stderr: string
-  readonly engine: "rg" | "fallback"
+export type RipgrepResult =
+  | { readonly ok: true; readonly exitCode: 0 | 1; readonly stdout: string; readonly engine: "rg" | "fallback" }
+  | { readonly ok: false; readonly reason: "timeout" | "invalid_param" | "io_error"; readonly message: string }
+
+const PROTECTED_SEARCH_GLOBS: readonly string[] = [".git", ".ssh", ".env", ".env.*"]
+
+async function admitRipgrepOutput(
+  stdout: string,
+  mode: RipgrepMode,
+  showLineNumbers: boolean,
+  admit: (filePath: string) => Promise<boolean>,
+): Promise<string> {
+  const verdicts = new Map<string, boolean>()
+  const admitted = async (filePath: string): Promise<boolean> => {
+    const known = verdicts.get(filePath)
+    if (known !== undefined) return known
+    const verdict = filePath.length > 0 && (await admit(filePath))
+    verdicts.set(filePath, verdict)
+    return verdict
+  }
+  if (mode === "files_with_matches") {
+    const kept: string[] = []
+    for (const filePath of stdout.split("\0")) {
+      const trimmed = filePath.replace(/^\n+|\n+$/g, "")
+      if (trimmed && (await admitted(trimmed))) kept.push(trimmed)
+    }
+    return kept.length > 0 ? `${kept.join("\n")}\n` : ""
+  }
+  const lines: string[] = []
+  for (const line of stdout.split("\n")) {
+    const nul = line.indexOf("\0")
+    if (nul === -1) {
+      if (line === "--" && lines.length > 0 && lines[lines.length - 1] !== "--") lines.push("--")
+      continue
+    }
+    const filePath = line.slice(0, nul)
+    if (!(await admitted(filePath))) continue
+    const rest = line.slice(nul + 1)
+    if (mode === "count") {
+      lines.push(`${filePath}:${rest}`)
+      continue
+    }
+    const numbered = /^(\d+)([:-])/.exec(rest)
+    if (!numbered) continue
+    const separator = numbered[2]!
+    const text = rest.slice(numbered[0].length)
+    lines.push(showLineNumbers ? `${filePath}${separator}${numbered[1]}${separator}${text}` : `${filePath}${separator}${text}`)
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "--") lines.pop()
+  return lines.length > 0 ? `${lines.join("\n")}\n` : ""
 }
 
 export class RipgrepService extends Service {
   static override serviceType = RIPGREP_SERVICE
-  override capabilityDescription = "Fast content search over workspace files via ripgrep with pure-Node fallback."
+  override capabilityDescription = "Fast content search over workspace files via ripgrep, with a sandboxed pure-Node walk only where ripgrep is not installed."
 
   static override async start(runtime: IAgentRuntime): Promise<RipgrepService> {
     return new RipgrepService(runtime)
@@ -696,13 +831,16 @@ export class RipgrepService extends Service {
 
   override async stop(): Promise<void> {}
 
-  async search(options: RipgrepOptions, mode: RipgrepMode): Promise<RipgrepResult> {
-    const args: string[] = ["--color=never", "--no-heading"]
+  async search(
+    options: RipgrepOptions,
+    mode: RipgrepMode,
+    sandbox: { readonly blockedPaths: readonly string[]; readonly admit: (filePath: string) => Promise<boolean> },
+  ): Promise<RipgrepResult> {
+    const args: string[] = ["--color=never", "--no-heading", "--null"]
     if (mode === "files_with_matches") args.push("--files-with-matches")
-    else if (mode === "count") args.push("--count")
+    else if (mode === "count") args.push("--count", "--with-filename")
     else {
-      args.push("--with-filename")
-      if (options.showLineNumbers !== false) args.push("--line-number")
+      args.push("--with-filename", "--line-number")
       if (options.contextAround !== undefined && options.contextAround > 0) args.push("-C", String(options.contextAround))
       else {
         if (options.contextBefore !== undefined && options.contextBefore > 0) args.push("-B", String(options.contextBefore))
@@ -713,17 +851,34 @@ export class RipgrepService extends Service {
     if (options.multiline) args.push("-U", "--multiline-dotall")
     if (options.glob) args.push("--glob", options.glob)
     if (options.type) args.push("--type", options.type)
-    args.push("--glob", "!node_modules/**", "--glob", "!.git/**", "--glob", "!dist/**", "--glob", "!.turbo/**")
+    args.push("--glob", "!node_modules/**", "--glob", "!dist/**", "--glob", "!.turbo/**")
+    for (const name of PROTECTED_SEARCH_GLOBS) args.push("--glob", `!${name}`)
+    for (const blocked of sandbox.blockedPaths) {
+      if (blocked !== options.path && isWithin(options.path, blocked)) {
+        args.push("--glob", `!/${pathRelative(options.path, blocked).replace(/\\/g, "/")}/**`)
+      }
+    }
     args.push("-e", options.pattern, options.path)
 
     const rgOut = await execFileNode("rg", args, { cwd: pathDirname(options.path), timeoutMs: 20_000 })
-    if (rgOut.exitCode === 0 || rgOut.exitCode === 1) {
-      return { exitCode: rgOut.exitCode, stdout: rgOut.stdout, stderr: rgOut.stderr, engine: "rg" }
+    if (rgOut.outcome === "exited" && (rgOut.exitCode === 0 || rgOut.exitCode === 1)) {
+      const admitted = await admitRipgrepOutput(rgOut.stdout, mode, options.showLineNumbers !== false, sandbox.admit)
+      return { ok: true, exitCode: admitted.length > 0 ? 0 : 1, stdout: admitted, engine: "rg" }
     }
-    const flags = `${options.caseInsensitive ? "i" : ""}${options.multiline ? "s" : ""}`
-    const regex = new RegExp(options.pattern, flags)
+    if (rgOut.outcome === "timed_out") return { ok: false, reason: "timeout", message: "ripgrep timed out after 20000ms; narrow path or glob" }
+    if (rgOut.outcome === "output_overflow") return { ok: false, reason: "io_error", message: "ripgrep output exceeded the 8 MiB buffer; narrow path, glob or pattern" }
+    if (rgOut.outcome !== "spawn_failed" || rgOut.errorCode !== "ENOENT") {
+      return { ok: false, reason: "invalid_param", message: `ripgrep failed (${rgOut.errorCode ?? `exit ${rgOut.exitCode}`}): ${rgOut.stderr.trim()}` }
+    }
+    let regex: RegExp
+    try {
+      regex = new RegExp(options.pattern, `${options.caseInsensitive ? "i" : ""}${options.multiline ? "s" : ""}`)
+    } catch (err) {
+      return { ok: false, reason: "invalid_param", message: `invalid pattern: ${err instanceof Error ? err.message : String(err)}` }
+    }
     const fallback = await fallbackGrepWalkNode({
       root: options.path,
+      admit: sandbox.admit,
       regex,
       glob: options.glob,
       mode,
@@ -732,18 +887,15 @@ export class RipgrepService extends Service {
       contextAfter: options.contextAfter ?? options.contextAround ?? 0,
       headLimit: options.headLimit ?? 500,
     })
-    return {
-      exitCode: fallback.matchCount > 0 ? 0 : 1,
-      stdout: fallback.stdout,
-      stderr: "",
-      engine: "fallback",
-    }
+    return { ok: true, exitCode: fallback.matchCount > 0 ? 0 : 1, stdout: fallback.stdout, engine: "fallback" }
   }
 }
 
 const MAX_BG_SESSIONS_PER_CONV = 16
 const MAX_BG_SESSIONS_GLOBAL = 128
 const MAX_BG_BUFFER_CHARS = 1_000_000
+const MAX_BG_RETAINED_ENDED = 64
+const BG_ENDED_RETENTION_MS = 30 * 60 * 1000
 
 export interface BackgroundShellSessionSnapshot {
   readonly handle: string
@@ -758,14 +910,22 @@ export interface BackgroundShellSessionSnapshot {
   readonly signal: string | null
   readonly stdoutTotalChars: number
   readonly stderrTotalChars: number
+  readonly stdoutDroppedChars: number
+  readonly stderrDroppedChars: number
+}
+
+export interface BackgroundShellStreamPage {
+  readonly text: string
+  readonly offset: number
+  readonly nextOffset: number
+  readonly totalChars: number
+  readonly hasMore: boolean
 }
 
 export interface BackgroundShellPollResult {
   readonly snapshot: BackgroundShellSessionSnapshot
-  readonly stdout: string
-  readonly stderr: string
-  readonly nextStdoutOffset: number
-  readonly nextStderrOffset: number
+  readonly stdout: BackgroundShellStreamPage
+  readonly stderr: BackgroundShellStreamPage
 }
 
 interface InternalBgSession {
@@ -781,7 +941,14 @@ interface InternalBgSession {
   signal: string | null
   stdoutBuf: string
   stderrBuf: string
+  stdoutDropped: number
+  stderrDropped: number
   specState: ShellSession
+}
+
+function appendBounded(current: string, chunk: string): { readonly buf: string; readonly dropped: number } {
+  const room = Math.max(0, MAX_BG_BUFFER_CHARS - current.length)
+  return { buf: current + chunk.slice(0, room), dropped: Math.max(0, chunk.length - room) }
 }
 
 export class BackgroundShellService extends Service {
@@ -809,8 +976,10 @@ export class BackgroundShellService extends Service {
     readonly command: string
     readonly cwd: string
   }): { readonly ok: true; readonly snapshot: BackgroundShellSessionSnapshot } | { readonly ok: false; readonly message: string } {
-    if (this.sessions.size >= MAX_BG_SESSIONS_GLOBAL) {
-      return { ok: false, message: `global background shell cap reached (${MAX_BG_SESSIONS_GLOBAL})` }
+    this.evictEnded(Date.now())
+    const running = [...this.sessions.values()].filter((s) => s.status === "running").length
+    if (running >= MAX_BG_SESSIONS_GLOBAL) {
+      return { ok: false, message: `global background shell cap reached (${MAX_BG_SESSIONS_GLOBAL} running)` }
     }
     const convRunning = [...this.sessions.values()].filter(
       (s) => s.conversationId === args.conversationId && s.status === "running",
@@ -833,23 +1002,25 @@ export class BackgroundShellService extends Service {
       signal: null,
       stdoutBuf: "",
       stderrBuf: "",
+      stdoutDropped: 0,
+      stderrDropped: 0,
       specState,
       child: spawnBgShellNode(
         args.command,
         args.cwd,
         (chunk) => {
-          if (session.stdoutBuf.length + chunk.length <= MAX_BG_BUFFER_CHARS) {
-            session.stdoutBuf += chunk
-            const delta = Math.min(Math.max(1, chunk.length), 1000)
-            if (canAppendBgOutput(session.specState, delta)) {
-              session.specState = appendBgOutput(session.specState, delta)
-            }
+          const next = appendBounded(session.stdoutBuf, chunk)
+          session.stdoutBuf = next.buf
+          session.stdoutDropped += next.dropped
+          const delta = Math.min(Math.max(1, chunk.length), 1000)
+          if (canAppendBgOutput(session.specState, delta)) {
+            session.specState = appendBgOutput(session.specState, delta)
           }
         },
         (chunk) => {
-          if (session.stderrBuf.length + chunk.length <= MAX_BG_BUFFER_CHARS) {
-            session.stderrBuf += chunk
-          }
+          const next = appendBounded(session.stderrBuf, chunk)
+          session.stderrBuf = next.buf
+          session.stderrDropped += next.dropped
         },
         (code, sig) => {
           if (session.status === "running") {
@@ -866,6 +1037,31 @@ export class BackgroundShellService extends Service {
     }
     this.sessions.set(handle, session)
     return { ok: true, snapshot: this.toSnapshot(session) }
+  }
+
+  private evictEnded(now: number): void {
+    const ended = [...this.sessions.values()]
+      .filter((s) => s.status !== "running")
+      .sort((a, b) => (a.endedAt ?? 0) - (b.endedAt ?? 0))
+    const excess = Math.max(0, ended.length - MAX_BG_RETAINED_ENDED)
+    ended.forEach((s, index) => {
+      if (index < excess || now - (s.endedAt ?? now) > BG_ENDED_RETENTION_MS) this.sessions.delete(s.handle)
+    })
+  }
+
+  private pageStream(buf: string, requestedOffset: number | undefined, maxLines: number, maxBytes: number): BackgroundShellStreamPage {
+    const offset = Math.max(0, Math.min(Math.floor(requestedOffset ?? 0), buf.length))
+    const raw = buf.slice(offset)
+    const window = truncateHead(raw, maxLines, maxBytes)
+    const consumed = window.text.length + (window.truncated && raw[window.text.length] === "\n" ? 1 : 0)
+    const nextOffset = window.truncated ? offset + consumed : buf.length
+    return {
+      text: redactShellText(this.runtime, window.text),
+      offset,
+      nextOffset,
+      totalChars: buf.length,
+      hasMore: nextOffset < buf.length,
+    }
   }
 
   private lookupSession(
@@ -888,24 +1084,31 @@ export class BackgroundShellService extends Service {
     const found = this.lookupSession(args.conversationId, args.handle)
     if (!found.ok) return found
     const { session } = found
-    const stdoutOffset = Math.max(0, Math.min(Math.floor(args.stdoutOffset ?? 0), session.stdoutBuf.length))
-    const stderrOffset = Math.max(0, Math.min(Math.floor(args.stderrOffset ?? 0), session.stderrBuf.length))
-    const specOffset = Math.min(stdoutOffset, session.specState.bgStdoutTotal)
+    const stdout = this.pageStream(session.stdoutBuf, args.stdoutOffset, DEFAULT_OUTPUT_MAX_LINES, DEFAULT_OUTPUT_MAX_BYTES)
+    const stderr = this.pageStream(session.stderrBuf, args.stderrOffset, 80, 4096)
+    const specOffset = Math.min(stdout.offset, session.specState.bgStdoutTotal)
     if (canPollBackground(session.specState, specOffset)) {
       session.specState = pollBackground(session.specState, specOffset)
     }
-    const rawStdout = session.stdoutBuf.slice(stdoutOffset)
-    const rawStderr = session.stderrBuf.slice(stderrOffset)
-    return {
-      ok: true,
-      result: {
-        snapshot: this.toSnapshot(session),
-        stdout: redactShellText(this.runtime, rawStdout),
-        stderr: redactShellText(this.runtime, rawStderr),
-        nextStdoutOffset: session.stdoutBuf.length,
-        nextStderrOffset: session.stderrBuf.length,
-      },
-    }
+    return { ok: true, result: { snapshot: this.toSnapshot(session), stdout, stderr } }
+  }
+
+  describe(args: {
+    readonly conversationId: string
+    readonly handle: string
+  }): { readonly ok: true; readonly snapshot: BackgroundShellSessionSnapshot } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    return { ok: true, snapshot: this.toSnapshot(found.session) }
+  }
+
+  stdinTarget(args: {
+    readonly conversationId: string
+    readonly handle: string
+  }): { readonly ok: true; readonly target: StdinTarget } | { readonly ok: false; readonly message: string } {
+    const found = this.lookupSession(args.conversationId, args.handle)
+    if (!found.ok) return found
+    return { ok: true, target: classifyStdinTarget(found.session.command) }
   }
 
   write(args: {
@@ -963,6 +1166,8 @@ export class BackgroundShellService extends Service {
       signal: session.signal,
       stdoutTotalChars: session.stdoutBuf.length,
       stderrTotalChars: session.stderrBuf.length,
+      stdoutDroppedChars: session.stdoutDropped,
+      stderrDroppedChars: session.stderrDropped,
     }
   }
 }

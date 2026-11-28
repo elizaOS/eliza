@@ -1,0 +1,48 @@
+// spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact"
+import { assert, it } from "@effect/vitest"
+import { mergeStrongerFactMetadata } from "../src/runtime/fact-write-dedupe.vibe"
+import { stringToUuid, type Memory } from "../src/index.vibe"
+
+const factWithEvidence = (evidence: unknown): Memory => ({
+  id: stringToUuid("fact-write-dedupe-test"),
+  entityId: stringToUuid("fact-write-dedupe-entity"),
+  roomId: stringToUuid("fact-write-dedupe-room"),
+  content: { text: "Balance: -10 USD" },
+  metadata: { type: "custom", extractionEvidenceIds: evidence } as Memory["metadata"],
+})
+
+const mergedEvidence = (existing: Memory, incoming: Memory): unknown => {
+  const merged = mergeStrongerFactMetadata(existing, incoming)
+  return merged === null
+    ? null
+    : (merged as { extractionEvidenceIds?: unknown }).extractionEvidenceIds ?? null
+}
+
+it('A merge preserves new evidence when the stored list repeats an id (spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact")', () => {
+  assert.deepStrictEqual(
+    mergedEvidence(factWithEvidence(["evidence-a", "evidence-a"]), factWithEvidence(["evidence-b"])),
+    ["evidence-a", "evidence-b"],
+  )
+})
+
+it('A merge preserves new evidence when the stored list holds a non-string entry (spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact")', () => {
+  assert.deepStrictEqual(
+    mergedEvidence(factWithEvidence(["evidence-a", 42]), factWithEvidence(["evidence-b"])),
+    ["evidence-a", "evidence-b"],
+  )
+})
+
+it('A merge still accumulates evidence onto a clean stored list, and reports no upgrade when nothing is new (spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact")', () => {
+  assert.deepStrictEqual(
+    mergedEvidence(factWithEvidence(["evidence-a"]), factWithEvidence(["evidence-b"])),
+    ["evidence-a", "evidence-b"],
+  )
+  assert.deepStrictEqual(
+    mergedEvidence(factWithEvidence(["evidence-a", "evidence-b"]), factWithEvidence(["evidence-b"])),
+    null,
+  )
+  assert.deepStrictEqual(
+    mergedEvidence(factWithEvidence(["evidence-a", "evidence-a"]), factWithEvidence(["evidence-a"])),
+    null,
+  )
+})

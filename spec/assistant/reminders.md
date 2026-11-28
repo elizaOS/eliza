@@ -388,6 +388,10 @@ an ordinary reminder is saved here, and a phone reminder is proposed only
 when the turn's nonsensitive screen selects a phone reminder or a phone
 reminder list. A reminder named from Home is no exception. Otherwise the
 proposal is refused before anything is offered, naming `OWNER_REMINDERS`.
+The turn's note that says so also says an alarm is never made a reminder,
+so a wake-up or alarm the owner asks for stays the alarm it is, as the old
+phone's agent was told; which tool a request needs stays the model's to
+decide.
 
 ```quint
 pure def phoneReminderProposed(assistantKeepsReminders: bool, phoneReminderSelected: bool): bool =

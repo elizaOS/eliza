@@ -5,6 +5,9 @@ import { cutOff, text } from "./support/cloud-fake.ts"
 import { cloudFake, deviceKey, host, startInProcess } from "./support/kernel.vibe"
 import { deviceActionsModuleName } from "../src/device-actions/proposal/module.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
+import { directRequests } from "../src/device-actions/proposal/family.vibe"
+import { negotiation } from "@elizaos/agent"
+import type { Memory, UUID } from "@elizaos/core"
 
 module node {
   import { Effect, Result } from "effect"
@@ -359,7 +362,7 @@ it.live(`An owner's chat request becomes one reviewed device proposal in its own
     notHere: { grouped: true, reasonsSaid: 1 },
     proposalReply: "Review the reminder “Milk” on your phone.",
     milk: { state: "pending", payload: expectedPayload },
-    refusalReply: ["I didn't set that one. What should the reminder say?\n\nTell me what to remind you of.", true], afterRefusal: 1,
+    refusalReply: ["Tell me what to remind you of.", true], afterRefusal: 1,
     askedAgain: { refused: true, afterAskedAgain: 1 },
     held: { reply: true, afterHeld: 2 },
     hostOnlyOffered: false,
@@ -414,3 +417,19 @@ it.live(`A warm-up the enrolled phone asks for sends the system prompt, tools an
     caps: [warm?.max_tokens, turn?.max_tokens],
   }, { warmed: 202, answered: 200, sameSystem: true, sameTools: true, deviceTool: true, sameKey: true, caps: [1, undefined] }))
 }, 120_000)
+
+it(`A Browser open grounded as asked carries the owner's message only on a phone that negotiated opening it at once, and that capability binds no other operation or family (spec/agent/deviceActions/index.md, "A proposal carries the owner's message only for a live turn that asked for it directly, so otherwise the phone shows its card")`, () => {
+  const message = (metadata: unknown) => ({ id: "00000000-0000-4000-8000-000000000021" as UUID, content: { text: "Open https://www.alphacompute.ai/ in Browser.", metadata } }) as unknown as Memory & { readonly id: UUID }
+  const opens = negotiation(true, "files.browser.v1,browser.open-direct.v1")
+  const reviews = negotiation(true, "files.browser.v1")
+  const plain = message({})
+  const filesOnly = message({ voiceUi: { viewDelivery: "completed-action", uiClientId: "renderer-1", agentActionMode: "direct-files-v1" } })
+  assert.deepStrictEqual({
+    opensAtOnce: directRequests({ message: plain, negotiation: opens }, "browser", "browser_navigate"),
+    reviewedWithout: directRequests({ message: plain, negotiation: reviews }, "browser", "browser_navigate"),
+    searchStaysReviewed: directRequests({ message: plain, negotiation: opens }, "browser", "browser_search"),
+    otherFamily: directRequests({ message: plain, negotiation: opens }, "telephony", "sms_send"),
+    filesStillDirect: directRequests({ message: filesOnly, negotiation: opens }, "files", "files_open"),
+    filesModeOpensNothing: directRequests({ message: filesOnly, negotiation: reviews }, "browser", "browser_navigate"),
+  }, { opensAtOnce: true, reviewedWithout: false, searchStaysReviewed: false, otherFamily: false, filesStillDirect: true, filesModeOpensNothing: false })
+})

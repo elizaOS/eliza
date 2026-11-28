@@ -1,0 +1,526 @@
+// spec/embeddings/index.md, "Story: Embed every input in the configured vector space"
+import {
+  logger,
+  ModelType,
+  toWellFormedUnicode,
+  type IAgentRuntime,
+  type TextEmbeddingParams,
+} from "@elizaos/core"
+import { Cause, Schema } from "effect"
+import {
+  Machine,
+  embeddingAdmission,
+  machine,
+  type EmbeddingAttempt,
+  type VectorObservation,
+} from "../gen/embeddings.effect.vibe"
+import {
+  DEFAULT_EMBEDDING_DIMENSIONS,
+  getEmbeddingApiKey,
+  getEmbeddingBaseURL,
+  getEmbeddingFallbackApiKey,
+  getEmbeddingFallbackBaseURL,
+  getEmbeddingFallbackModel,
+  getEmbeddingModel,
+  getEndpointAuthHeader,
+  hasExplicitDimensions,
+  resolveEmbeddingDimension,
+  type VectorDimension,
+} from "./config.vibe"
+import { EmbeddingProviderFailed, providerFailure } from "./errors.vibe"
+import { emitModelUsageEvent } from "./events.vibe"
+
+const EMBEDDING_TIMEOUT_MS = 30_000
+const MISSING_ENDPOINT_MESSAGE = "No embedding endpoint configured. Set EMBEDDING_BASE_URL."
+
+schema EmbeddingUsageWire {
+  readonly prompt_tokens?: number
+  readonly total_tokens?: number
+}
+
+schema EmbeddingRowWire {
+  readonly index: number
+  readonly embedding: readonly number[]
+}
+
+schema EmbeddingReplyWire {
+  readonly data: readonly EmbeddingRowWire[]
+  readonly usage?: EmbeddingUsageWire | null
+}
+
+const decodeReply = Schema.decodeUnknownEffect(EmbeddingReplyWire)
+
+interface EndpointConfig {
+  readonly role: "primary" | "fallback"
+  readonly baseUrl: string
+  readonly apiKey: string | undefined
+  readonly model: string
+}
+
+interface EndpointReply {
+  readonly vectors: number[][]
+  readonly observations: VectorObservation[]
+  readonly usage: EmbeddingUsageWire | undefined
+}
+
+type EmbedRequest =
+  | { readonly kind: "EmbedOne"; readonly text: string }
+  | { readonly kind: "EmbedBatch"; readonly texts: readonly string[] }
+
+module node {
+  import { fetchWithConfidentialInference } from "@elizaos/core"
+
+  /** @throws {never} */
+  export function requestEmbedding(
+    url: string,
+    model: string,
+    headers: Record<string, string>,
+    input: string | readonly string[],
+    width: number | undefined,
+    signal: AbortSignal,
+    callerSignal: AbortSignal | undefined,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const signals = callerSignal === undefined
+      ? [signal, AbortSignal.timeout(timeoutMs)]
+      : [signal, callerSignal, AbortSignal.timeout(timeoutMs)]
+    return fetchWithConfidentialInference(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          model,
+          input,
+          ...(width === undefined ? {} : { dimensions: width }),
+        }),
+        redirect: "error",
+        signal: AbortSignal.any(signals),
+      },
+      globalThis.fetch,
+    )
+  }
+
+  /** @throws {never} */
+  export function readResponseHeaders(response: Response): Record<string, string> {
+    const out: Record<string, string> = {}
+    response.headers.forEach((value, key) => {
+      out[key.toLowerCase()] = value
+    })
+    return out
+  }
+
+  /** @throws {never} */
+  export function extractErrorInfo(cause: unknown): {
+    readonly message: string
+    readonly code: string | undefined
+    readonly status: number | undefined
+  } {
+    const message = cause instanceof Error ? cause.message : String(cause)
+    let code: string | undefined
+    let status: number | undefined
+    let current: unknown = cause
+    for (let depth = 0; depth < 6 && typeof current === "object" && current !== null; depth += 1) {
+      const record = current as { code?: unknown; status?: unknown; statusCode?: unknown; cause?: unknown }
+      if (code === undefined && typeof record.code === "string" && record.code.length > 0) {
+        code = record.code
+      }
+      if (status === undefined) {
+        const candidate = typeof record.statusCode === "number"
+          ? record.statusCode
+          : typeof record.status === "number"
+            ? record.status
+            : undefined
+        if (candidate !== undefined && Number.isFinite(candidate) && candidate > 0) {
+          status = candidate
+        }
+      }
+      current = record.cause
+    }
+    return { message, code, status }
+  }
+}
+import { extractErrorInfo, readResponseHeaders, requestEmbedding } from node
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "")
+}
+
+function isConfidentialDenial(code: string | undefined): boolean {
+  return code !== undefined && code.startsWith("CONFIDENTIAL_INFERENCE_")
+}
+
+function resolveEndpoint(runtime: IAgentRuntime, attempt: EmbeddingAttempt): EndpointConfig | undefined {
+  if (attempt === "PrimaryAttempt") {
+    const baseUrl = getEmbeddingBaseURL(runtime)
+    if (baseUrl === undefined) return undefined
+    return {
+      role: "primary",
+      baseUrl: normalizeBaseUrl(baseUrl),
+      apiKey: getEmbeddingApiKey(runtime),
+      model: getEmbeddingModel(runtime),
+    }
+  }
+  const fallbackBaseUrl = getEmbeddingFallbackBaseURL(runtime)
+  if (fallbackBaseUrl === undefined) return undefined
+  return {
+    role: "fallback",
+    baseUrl: normalizeBaseUrl(fallbackBaseUrl),
+    apiKey: getEmbeddingFallbackApiKey(runtime),
+    model: getEmbeddingFallbackModel(runtime),
+  }
+}
+
+function abortFailure(callerSignal: AbortSignal | undefined): EmbeddingProviderFailed {
+  const cause = callerSignal?.reason
+  const detail = cause instanceof Error && cause.message.length > 0
+    ? cause.message
+    : "The embedding request was aborted."
+  return providerFailure({
+    reason: detail,
+    code: "ABORT_ERR",
+    cause,
+  })
+}
+
+effect function requestEndpoint(
+  endpoint: EndpointConfig,
+  wireInput: string | readonly string[],
+  expectedCount: number,
+  width: VectorDimension,
+  explicitWidth: boolean,
+  callerSignal: AbortSignal | undefined,
+): EndpointReply!EmbeddingProviderFailed {
+  const url = `${endpoint.baseUrl}/embeddings`
+  logger.debug(`[Embeddings] POST ${url} model=${endpoint.model} role=${endpoint.role}`)
+  const response = try tryPromise({
+    try: (signal) =>
+      requestEmbedding(
+        url,
+        endpoint.model,
+        getEndpointAuthHeader(endpoint.apiKey),
+        wireInput,
+        explicitWidth ? width : undefined,
+        signal,
+        callerSignal,
+        EMBEDDING_TIMEOUT_MS,
+      ),
+    catch: (cause) => {
+      if (callerSignal?.aborted) return abortFailure(callerSignal)
+      const info = extractErrorInfo(cause)
+      return providerFailure({
+        reason: info.message || "The embedding endpoint could not be reached.",
+        ...(info.status === undefined ? {} : { status: info.status, statusCode: info.status }),
+        ...(info.code === undefined ? {} : { code: info.code }),
+        url,
+        cause,
+      })
+    },
+  })
+  if (!response.ok) {
+    const errorText = tryPromise(() => response.text()) catch () => "Unknown error"
+    throw providerFailure({
+      reason: `${endpoint.role} embedding API HTTP ${response.status} ${response.statusText} - ${errorText}`,
+      status: response.status,
+      statusCode: response.status,
+      responseHeaders: readResponseHeaders(response),
+      responseBody: errorText,
+      url,
+    })
+  }
+  const body: unknown = try tryPromise({
+    try: () => response.json(),
+    catch: (cause) =>
+      providerFailure({
+        reason: `${endpoint.role} embedding reply was not valid JSON.`,
+        url,
+        cause,
+      }),
+  })
+  const decoded = decodeReply(body) catch effect (cause) => {
+    throw providerFailure({
+      reason: `${endpoint.role} embedding reply had an invalid response shape.`,
+      url,
+      cause,
+    })
+  }
+  if (decoded.data.length !== expectedCount) {
+    throw providerFailure({
+      reason: `${endpoint.role} embedding API returned ${decoded.data.length} vectors, expected ${expectedCount}`,
+      url,
+    })
+  }
+  const ordered: Array<number[] | undefined> = new Array<number[] | undefined>(expectedCount)
+  const observations: VectorObservation[] = new Array<VectorObservation>(expectedCount)
+  for (const item of decoded.data) {
+    const idx = item.index
+    if (!Number.isSafeInteger(idx) || idx < 0 || idx >= expectedCount) {
+      throw providerFailure({
+        reason: `${endpoint.role} embedding API returned out-of-range index ${String(idx)} (expected 0..${expectedCount - 1})`,
+        url,
+      })
+    }
+    if (ordered[idx] !== undefined) {
+      throw providerFailure({
+        reason: `${endpoint.role} embedding API returned duplicate index ${idx}; a vector slot would be left unfilled`,
+        url,
+      })
+    }
+    if (item.embedding.length !== width) {
+      throw providerFailure({
+        reason: `${endpoint.role} embedding dimension mismatch: got ${item.embedding.length}, expected ${width}. Check EMBEDDING_DIMENSIONS / EMBEDDING_MODEL.`,
+        url,
+      })
+    }
+    const invalidComponent = item.embedding.findIndex((value) => !Number.isFinite(value))
+    if (invalidComponent !== -1) {
+      throw providerFailure({
+        reason: `${endpoint.role} embedding API returned a non-numeric or non-finite vector component at vector ${idx}, component ${invalidComponent}`,
+        url,
+      })
+    }
+    ordered[idx] = [...item.embedding]
+    observations[idx] = {
+      inputIndex: idx,
+      vectorWidth: item.embedding.length,
+      finiteCoordinates: true,
+    }
+  }
+  const vectors: number[][] = []
+  for (let index = 0; index < expectedCount; index += 1) {
+    const vector = ordered[index]
+    if (vector === undefined) {
+      throw providerFailure({
+        reason: `${endpoint.role} embedding API omitted vector slot ${index}`,
+        url,
+      })
+    }
+    vectors.push(vector)
+  }
+  return {
+    vectors,
+    observations,
+    usage: decoded.usage ?? undefined,
+  }
+}
+
+effect function embed(
+  runtime: IAgentRuntime,
+  request: EmbedRequest,
+  callerSignal: AbortSignal | undefined,
+): number[][]!EmbeddingProviderFailed {
+  if (request.kind === "EmbedBatch" && request.texts.length === 0) {
+    const empty = embeddingAdmission("EmbedBatch", 0, "", DEFAULT_EMBEDDING_DIMENSIONS, false)
+    if (empty.tag === "NoInputs") return []
+  }
+  const width = try resolveEmbeddingDimension(runtime)
+  const explicitWidth = hasExplicitDimensions(runtime)
+  let wireInput: string | string[]
+  let inputCount: number
+  let promptLabel: string
+  if (request.kind === "EmbedOne") {
+    const trimmed = request.text.trim()
+    if (trimmed.length === 0) {
+      throw providerFailure({ reason: "Cannot generate embedding for empty text" })
+    }
+    const wellFormed = toWellFormedUnicode(trimmed)
+    wireInput = wellFormed
+    inputCount = 1
+    promptLabel = wellFormed
+  } else {
+    const prepared: string[] = []
+    for (let index = 0; index < request.texts.length; index += 1) {
+      const raw = request.texts[index]
+      if (typeof raw !== "string" || raw.trim().length === 0) {
+        throw providerFailure({ reason: `Cannot generate embedding for empty text at index ${index}` })
+      }
+      prepared.push(toWellFormedUnicode(raw.trim()))
+    }
+    wireInput = prepared
+    inputCount = prepared.length
+    promptLabel = `batch:${prepared.length}`
+  }
+  const primaryBaseUrl = getEmbeddingBaseURL(runtime) ?? ""
+  const admitted = embeddingAdmission(
+    request.kind,
+    inputCount,
+    primaryBaseUrl,
+    width,
+    explicitWidth,
+  )
+  if (admitted.tag === "MissingEndpoint") {
+    throw providerFailure({ reason: MISSING_ENDPOINT_MESSAGE })
+  }
+  if (admitted.tag !== "RequestVectors") {
+    throw providerFailure({ reason: "Embedding text or configured vector width is invalid." })
+  }
+  const hasFallback = getEmbeddingFallbackBaseURL(runtime) !== undefined
+  provide machine() {
+    const run = try Machine
+    let snapshot = run.send({
+      type: "beginEmbedding",
+      inputCount: admitted.count,
+      width: admitted.expectedWidth,
+      hasFallback,
+    }) catch effect () => {
+      throw providerFailure({ reason: "Could not start embedding attempt." })
+    }
+    if (callerSignal?.aborted) {
+      uninterruptible {
+        run.send({ type: "cancelEmbedding" }) catch () => snapshot
+      }
+      throw abortFailure(callerSignal)
+    }
+    const failures: string[] = []
+    while (snapshot.phase === "Awaiting") {
+      const endpoint = resolveEndpoint(runtime, snapshot.attempt)
+      if (endpoint === undefined) {
+        throw providerFailure({ reason: MISSING_ENDPOINT_MESSAGE })
+      }
+      const attempt = snapshot.attempt
+      const outcome = try Effect.exit(effect {
+        const reply = try requestEndpoint(
+          endpoint,
+          wireInput,
+          admitted.count,
+          width,
+          admitted.sendWidth,
+          callerSignal,
+        )
+        run.send({
+          type: "finishEmbedding",
+          attempt,
+          rows: reply.observations,
+        }) catch effect () => {
+          throw providerFailure({
+            reason: `${endpoint.role} embedding response did not match expected vector layout.`,
+            url: `${endpoint.baseUrl}/embeddings`,
+          })
+        }
+        return reply
+      })
+      if (outcome._tag === "Success") {
+        const { vectors, usage } = outcome.value
+        if (usage !== undefined) {
+          emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, promptLabel, {
+            promptTokens: usage.prompt_tokens,
+            completionTokens: 0,
+            totalTokens: usage.total_tokens,
+          })
+        }
+        return vectors
+      }
+      if (Cause.hasInterrupts(outcome.cause) || callerSignal?.aborted) {
+        uninterruptible {
+          run.send({ type: "cancelEmbedding" }) catch () => snapshot
+        }
+        throw abortFailure(callerSignal)
+      }
+      const squashed = Cause.squash(outcome.cause)
+      const failure = squashed instanceof EmbeddingProviderFailed
+        ? squashed
+        : providerFailure({
+            reason: squashed instanceof Error ? squashed.message : String(squashed),
+            url: `${endpoint.baseUrl}/embeddings`,
+            cause: squashed,
+          })
+      failures.push(`${endpoint.role} ${endpoint.baseUrl}: ${failure.reason}`)
+      const allowFallback = !isConfidentialDenial(failure.code)
+      snapshot = run.send({
+        type: "failEmbedding",
+        attempt,
+        allowFallback,
+      }) catch effect () => {
+        throw failure
+      }
+      if (callerSignal?.aborted) {
+        uninterruptible {
+          run.send({ type: "cancelEmbedding" }) catch () => snapshot
+        }
+        throw abortFailure(callerSignal)
+      }
+      if (snapshot.phase === "Awaiting") {
+        logger.warn(
+          { error: failure },
+          "[Embeddings] Primary embedding endpoint failed; retrying fallback endpoint",
+        )
+        continue
+      }
+      const label = hasFallback && allowFallback
+        ? "Embedding endpoints failed"
+        : "Embedding API error"
+      throw providerFailure({
+        reason: `${label}: ${failures.join(" | ")}`,
+        ...(failure.status === undefined ? {} : { status: failure.status }),
+        ...(failure.statusCode === undefined ? {} : { statusCode: failure.statusCode }),
+        ...(failure.responseHeaders === undefined ? {} : { responseHeaders: failure.responseHeaders }),
+        ...(failure.responseBody === undefined ? {} : { responseBody: failure.responseBody }),
+        ...(failure.url === undefined ? {} : { url: failure.url }),
+        ...(failure.code === undefined ? {} : { code: failure.code }),
+        cause: failure.cause ?? failure,
+      })
+    }
+    throw providerFailure({ reason: "The embedding request did not complete." })
+  }
+}
+
+effect function probeWidth(runtime: IAgentRuntime): number[]!EmbeddingProviderFailed {
+  const width = try resolveEmbeddingDimension(runtime)
+  const admitted = embeddingAdmission(
+    "ProbeWidth",
+    0,
+    getEmbeddingBaseURL(runtime) ?? "",
+    width,
+    hasExplicitDimensions(runtime),
+  )
+  if (admitted.tag === "MissingEndpoint") {
+    throw providerFailure({ reason: MISSING_ENDPOINT_MESSAGE })
+  }
+  if (admitted.tag !== "ReturnWidth") {
+    throw providerFailure({ reason: "No usable embedding shape is configured." })
+  }
+  logger.debug("[Embeddings] Returning init-probe vector")
+  return Array.from({ length: admitted.width }, (_item, index) => (index === 0 ? 0.1 : 0))
+}
+
+function extractText(params: TextEmbeddingParams | string | null): string | null | undefined {
+  if (params === null) return null
+  if (typeof params === "string") return params
+  if (typeof params === "object" && typeof params.text === "string") return params.text
+  return undefined
+}
+
+function extractSignal(params: TextEmbeddingParams | string | null): AbortSignal | undefined {
+  return typeof params === "object" && params !== null ? params.signal : undefined
+}
+
+export async function handleTextEmbedding(
+  runtime: IAgentRuntime,
+  params: TextEmbeddingParams | string | null,
+): Promise<number[]> {
+  const text = extractText(params)
+  if (text === undefined) {
+    throw providerFailure({
+      reason: "Invalid embedding params: expected string, { text: string }, or null",
+    })
+  }
+  if (text === null) {
+    return await runPromise(probeWidth(runtime))
+  }
+  const signal = extractSignal(params)
+  const [vector] = await runPromise(embed(runtime, { kind: "EmbedOne", text }, signal))
+  if (vector === undefined) {
+    throw providerFailure({ reason: "Embedding provider returned no vector for the input" })
+  }
+  return vector
+}
+
+export async function handleBatchTextEmbedding(
+  runtime: IAgentRuntime,
+  texts: string[],
+): Promise<number[][]> {
+  if (!Array.isArray(texts) || texts.length === 0) {
+    return []
+  }
+  return await runPromise(embed(runtime, { kind: "EmbedBatch", texts }, undefined))
+}

@@ -1,6 +1,6 @@
 // spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "A later grant for the same Google subject, or a native code for a new one, replaces the connection's tokens and scopes and makes it active"
-// spec/cloud/identity/federatedSignIn.md, "A native connect stores tokens only for the signed-in account's own Google identity and only the scopes Google granted"
-import { nativeConnectAttempts, nativeConnectStores, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../../../gen/cloud__identity__federatedSignIn.effect.vibe"
+// spec/cloud/identity/federatedSignIn.md, "A native connect stores tokens only for the signed-in account's own Google identity and only the selected scopes Google granted"
+import { everyNativeGoogleScope, nativeConnectAttempts, nativeConnectStores, nativeConnectStoresAny, nativeConnectWindowSeconds } from "../../../gen/cloud__identity__federatedSignIn.effect.vibe"
 import { millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
 import type { Signed } from "../../http/request-auth.vibe"
 import { refused } from "../../http/refusal.vibe"
@@ -132,7 +132,7 @@ effect function linkNativeGoogle(owner: Owner, code: string, authority: LinkAuth
     return { connected: true, ...stored, displayName: landing.displayName ?? null, scopes: landing.grantedScopes } as const
   }
   const granted = landing.grantedScopes
-  const consent = nativeConnectStores(authority.subject, landing.subject, landing.tokens.refreshToken !== "", {
+  const consent = nativeConnectStores(authority.subject, landing.subject, landing.tokens.refreshToken !== "", everyNativeGoogleScope, {
     readMail: holds(granted, "google.gmail.triage"),
     sendMail: holds(granted, "google.gmail.send"),
     trashMail: holds(granted, "google.gmail.manage"),

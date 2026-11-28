@@ -20,7 +20,7 @@ export type CloudReply =
   | { readonly kind: "hang" }
   | { readonly kind: "partial"; readonly chunks: readonly string[] }
   | { readonly kind: "held"; readonly gate: Promise<void>; readonly reply: CloudReply }
-  | { readonly kind: "tools"; readonly content: string; readonly calls: readonly { readonly name: string; readonly arguments: unknown }[] };
+  | { readonly kind: "tools"; readonly content: string; readonly calls: readonly { readonly name: string; readonly arguments: unknown }[]; readonly cut?: boolean };
 
 export type ScriptedReply = () => CloudReply;
 
@@ -82,6 +82,7 @@ export const gateway = (status: number): CloudReply => ({ kind: "gateway", statu
 export const partial = (...chunks: string[]): CloudReply => ({ kind: "partial", chunks });
 export const echoImages = (): CloudReply => ({ kind: "images" });
 export const toolCalls = (content: string, ...calls: { name: string; arguments: unknown }[]): CloudReply => ({ kind: "tools", content, calls });
+export const cutToolCalls = (content: string, ...calls: { name: string; arguments: unknown }[]): CloudReply => ({ kind: "tools", content, calls, cut: true });
 export const held = (gate: Promise<void>, reply: CloudReply): CloudReply => ({ kind: "held", gate, reply });
 export const answerJson = (body: unknown, status = 200): RouteReply => ({ kind: "json", status, body });
 export const answerStatus = (status: number): RouteReply => ({ kind: "status", status });
@@ -232,6 +233,10 @@ function answerCompletion(response: ServerResponse, reply: CloudReply, body: unk
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
       if (reply.content) response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: reply.content }, finish_reason: null }] })}\n\n`);
       response.write(`data: ${JSON.stringify({ id: "chatcmpl-fake", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { tool_calls: calls.map((call, index) => ({ index, ...call })) }, finish_reason: null }] })}\n\n`);
+      if (reply.cut) {
+        response.end();
+        return;
+      }
       return endStream(response, body, model, "tool_calls", usage);
     }
     default: {

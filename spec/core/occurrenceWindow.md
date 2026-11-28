@@ -2,7 +2,7 @@
 
 The window after which a scheduled occurrence is recorded as missed rather
 than run, from `isMissedScheduledOccurrence` and
-`SCHEDULED_OCCURRENCE_WINDOW_MS` in `services/trigger-scheduling.ts`. The
+`SCHEDULED_OCCURRENCE_WINDOW_MS` in `packages/core/src/services/trigger-scheduling.vibe`. The
 agent's prompt triggers and scheduled tasks, and every plugin schedule, use
 this window; [scheduling](./scheduling.md) runs the occurrences.
 

@@ -577,7 +577,9 @@ never by the model: the whole address, or the number's last four digits,
 or that the Inbox holds no incoming SMS, or that the newest sender has no
 readable number; a read the phone could not run says it could not be read.
 The model's guidance for proposing the read follows the negotiation: with
-`sms.latest-sender.v2` it may ask for the whole address and then propose
+`sms.latest-sender.v2` a question about who sent the newest SMS reads the
+last four digits, and the model asks for the whole address only when the
+owner asks for the whole number or to text that sender, and then proposes
 an `sms_compose` draft to that exact number, which the owner sends;
 otherwise it learns that only the suffix comes back, and that no message
 body, history, MMS or cloud inbox is read.

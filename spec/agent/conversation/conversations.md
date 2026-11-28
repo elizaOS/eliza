@@ -50,8 +50,10 @@ pure def alwaysOneRecordPerConversation(s: Conversations): bool = s.conversation
 
 ### Messages and model-call log rows arrive only in a published conversation
 
-A turn stores a nonempty message, no earlier than the last one, which
-marks its conversation updated, and model-call log rows holding its text.
+A turn stores a message with a subject (typed text, images, or an accepted
+reviewed email or voice-note transcript context; [turn context](./turnContext.md)),
+no earlier than the last one, which marks its conversation updated, and
+model-call log rows holding its text.
 
 ```quint
 pure def isPublished(s: Conversations, conversationId: int): bool = s.conversations.some(c => c.id == conversationId and c.publication == Published)
@@ -119,14 +121,21 @@ stored with what ended its turn also carries `abortCause`, and `stopReason`
 when it has one. A reply stored with Cloud's own funds code (`cloudCode`,
 [turns](./turns.md)) carries it too, and only beside a failure kind, so a
 reopened conversation shows an account out of plan allowance and credits
-the same way the live reply did. A row never carries the other side's
-fields, and carries none when its message has none.
+the same way the live reply did. A reply whose turn marked failed steps
+untold ([planning](./planning.md)) carries `untold`, the actions of those
+steps in order, so a reopened conversation draws the same notices for them
+as the live reply did, whatever its text, an empty text included. A row
+never carries the other side's fields, and carries none when its message
+has none.
 
 ```quint
 type RowMarks = { sendKey: str, failed: str, cause: str, cloudCode: str }
 pure def rowMarks(author: Author, sendKey: str, failed: str, cause: str, cloudCode: str): RowMarks =
   if (author == User) { sendKey: sendKey, failed: "", cause: "", cloudCode: "" }
   else { sendKey: "", failed: failed, cause: cause, cloudCode: if (failed == "") "" else cloudCode }
+pure def rowUntold(author: Author, untold: List[str]): List[str] = if (author == User) List() else untold
+pure def lawOnlyTheAgentsRowCarriesUntoldSteps(untold: List[str]): bool = rowUntold(User, untold) == List() and rowUntold(Agent, untold) == untold
+pure val untoldValues = Set(List(), List("BOOK_TABLE"), List("BOOK_TABLE", "SCHEDULE_EVENT"))
 pure val sendKeyValues = Set("", "m-1")
 pure val failedValues = Set("", "aborted", "insufficient_credits")
 pure val causeValues = Set("", "client_left")
@@ -328,7 +337,9 @@ removed with it. A redacted reply keeps no record of its turn's tools
 ([planning](./planning.md)), and in any other reply of that conversation
 the record's copies of the text show the notice in their place, as in a
 log row, a copy the record cut short (the text's first characters and
-`…`) included.
+`…`) included. A number or yes/no argument whose JSON form (`602214`,
+`true`) holds the text is a copy too: it is kept as that form written as
+text, with the notice in the text's place.
 
 ```quint
 type RedactAnswer = RedactUnknown | RedactTextChanged | RedactUnchanged | RedactNow

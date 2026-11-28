@@ -1,0 +1,453 @@
+// spec/anthropic/index.md, "Prompt caching and strict tool budgets stay within Anthropic wire limits"
+import {
+  ElizaError,
+  deepToWellFormedUnicode,
+  logger,
+  thrown,
+  toWellFormedUnicode,
+  type GenerateTextParams,
+} from "@elizaos/core"
+import {
+  anthropicResponseSchemaAllowed,
+  anthropicStrictToolsAllowed,
+} from "../gen/anthropic.effect.vibe"
+import type { AnthropicCacheControl } from "./config.vibe"
+
+export const ANTHROPIC_MAX_STRICT_TOOLS = 20
+export const ANTHROPIC_MAX_STRICT_TOOL_OPTIONAL_PARAMS = 24
+
+const AI_SDK_SCHEMA_SYMBOL = Symbol.for("vercel.ai.schema")
+
+const NESTED_SCHEMA_KEYS = [
+  "additionalProperties",
+  "additionalItems",
+  "contains",
+  "propertyNames",
+  "if",
+  "then",
+  "else",
+  "not",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+] as const
+
+const NESTED_SCHEMA_COLLECTION_KEYS = [
+  "anyOf",
+  "oneOf",
+  "allOf",
+  "prefixItems",
+  "$defs",
+  "definitions",
+  "patternProperties",
+  "dependentSchemas",
+] as const
+
+export type ToolInputValidator = (
+  value: unknown,
+) => { readonly success: true; readonly value: unknown } | { readonly success: false; readonly error: unknown }
+
+export interface NormalizedAnthropicTool {
+  readonly name: string
+  readonly description?: string
+  readonly inputSchema: Record<string, unknown>
+  readonly strict?: boolean
+  readonly cacheControl?: AnthropicCacheControl
+  readonly validate?: ToolInputValidator
+}
+
+export type AnthropicWireToolChoice =
+  | { readonly type: "auto" }
+  | { readonly type: "none" }
+  | { readonly type: "any" }
+  | { readonly type: "tool"; readonly name: string }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+export function countOptionalParams(schema: unknown): number {
+  if (!isRecord(schema)) return 0
+  let count = 0
+  const properties = isRecord(schema.properties) ? schema.properties : undefined
+  if (properties) {
+    const required = new Set(
+      Array.isArray(schema.required) ? (schema.required as unknown[]).map(String) : [],
+    )
+    for (const [key, child] of Object.entries(properties)) {
+      if (!required.has(key)) count += 1
+      count += countOptionalParams(child)
+    }
+  }
+  if (isRecord(schema.items)) count += countOptionalParams(schema.items)
+  if (Array.isArray(schema.items)) {
+    for (const item of schema.items) count += countOptionalParams(item)
+  }
+  for (const key of NESTED_SCHEMA_KEYS) {
+    count += countOptionalParams(schema[key])
+  }
+  for (const key of NESTED_SCHEMA_COLLECTION_KEYS) {
+    const child = schema[key]
+    if (Array.isArray(child)) {
+      for (const item of child) count += countOptionalParams(item)
+    } else if (isRecord(child)) {
+      for (const item of Object.values(child)) count += countOptionalParams(item)
+    }
+  }
+  return count
+}
+
+export effect function assertAnthropicResponseSchemaBudgetEffect(responseSchema: unknown): void!ElizaError {
+  const schema =
+    isRecord(responseSchema) && "schema" in responseSchema ? responseSchema.schema : responseSchema
+  const optionalParams = countOptionalParams(schema)
+  if (!anthropicResponseSchemaAllowed(optionalParams)) {
+    throw new ElizaError("Anthropic response schema exceeds the optional-parameter limit", {
+      code: "ANTHROPIC_RESPONSE_SCHEMA_LIMIT",
+      context: { optionalParams, limit: ANTHROPIC_MAX_STRICT_TOOL_OPTIONAL_PARAMS },
+    })
+  }
+}
+
+export const assertAnthropicResponseSchemaBudget = thrown(assertAnthropicResponseSchemaBudgetEffect)
+
+effect function sanitizeDeepEffect<T>(value: T): T!ElizaError {
+  return try Effect.try({
+    try: () => deepToWellFormedUnicode(value),
+    catch: (cause) =>
+      cause instanceof ElizaError
+        ? cause
+        : new ElizaError("Value cannot be sanitized safely for Anthropic wire serialization", {
+            code: "WELL_FORMED_UNSAFE_VALUE",
+            cause,
+          }),
+  })
+}
+
+effect function readOwnDataDescriptor(
+  target: object,
+  key: PropertyKey,
+  errorCode: string,
+  propertyName?: string,
+): { readonly present: boolean; readonly value: unknown }!ElizaError {
+  const descriptor = try Effect.try({
+    try: () => Object.getOwnPropertyDescriptor(target, key),
+    catch: (cause) =>
+      new ElizaError("[Anthropic] Tool descriptor inspection failed.", {
+        code: errorCode,
+        severity: "fatal",
+        ...(propertyName !== undefined ? { context: { propertyName } } : {}),
+        cause,
+      }),
+  })
+  if (!descriptor) return { present: false, value: undefined }
+  if (!("value" in descriptor)) {
+    throw new ElizaError(
+      propertyName !== undefined
+        ? "[Anthropic] Tool field is an enumerable accessor."
+        : "[Anthropic] Tool set container has an accessor entry.",
+      {
+        code: errorCode,
+        severity: "fatal",
+        ...(propertyName !== undefined ? { context: { propertyName } } : {}),
+      },
+    )
+  }
+  return { present: true, value: descriptor.value }
+}
+
+function readExplicitCacheControl(tool: Record<string, unknown>): AnthropicCacheControl | undefined {
+  const providerOptions = isRecord(tool.providerOptions) ? tool.providerOptions : undefined
+  const anthropic = providerOptions && isRecord(providerOptions.anthropic) ? providerOptions.anthropic : undefined
+  const cacheControl = anthropic && isRecord(anthropic.cacheControl) ? anthropic.cacheControl : undefined
+  if (!cacheControl || cacheControl.type !== "ephemeral") return undefined
+  return cacheControl.ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" }
+}
+
+effect function sanitizeSdkToolEffect(
+  tool: unknown,
+): {
+  readonly description?: string
+  readonly inputSchema: Record<string, unknown>
+  readonly strict?: boolean
+  readonly cacheControl?: AnthropicCacheControl
+  readonly validate?: ToolInputValidator
+}!ElizaError {
+  if (!isRecord(tool)) {
+    throw new ElizaError("[Anthropic] Native tool set contains a non-object tool entry.", {
+      code: "ANTHROPIC_INVALID_TOOL_ENTRY",
+      severity: "ephemeral",
+    })
+  }
+  const source = tool as Record<string | symbol, unknown>
+  const descDescriptor = Object.getOwnPropertyDescriptor(source, "description")
+  if (descDescriptor && !("value" in descDescriptor)) {
+    try sanitizeDeepEffect(source)
+  }
+  const schemaDescriptor = Object.getOwnPropertyDescriptor(source, "inputSchema")
+  if (schemaDescriptor && !("value" in schemaDescriptor)) {
+    try sanitizeDeepEffect(source)
+  }
+  let candidateToWalk: Record<string | symbol, unknown> = source
+  let extractedSchema: Record<string, unknown> | undefined
+  let validateFn: ToolInputValidator | undefined
+
+  if (schemaDescriptor && "value" in schemaDescriptor && isRecord(schemaDescriptor.value)) {
+    const wrapped = schemaDescriptor.value as Record<string | symbol, unknown>
+    const markerDescriptor = Object.getOwnPropertyDescriptor(wrapped, AI_SDK_SCHEMA_SYMBOL)
+    if (markerDescriptor && "value" in markerDescriptor && markerDescriptor.value === true) {
+      const plainSchema = try Effect.try({
+        try: () => (wrapped as { jsonSchema?: unknown }).jsonSchema,
+        catch: (cause) =>
+          new ElizaError("Failed to read wrapped tool schema", {
+            code: "WELL_FORMED_UNSAFE_VALUE",
+            cause,
+          }),
+      })
+      const validateDesc = Object.getOwnPropertyDescriptor(wrapped, "validate")
+      if (validateDesc && "value" in validateDesc && typeof validateDesc.value === "function") {
+        validateFn = validateDesc.value as ToolInputValidator
+      }
+      if (isRecord(plainSchema)) {
+        const sanitizedSchema = try sanitizeDeepEffect(plainSchema)
+        extractedSchema = sanitizedSchema
+        const rebuiltWrapper = Object.create(Object.getPrototypeOf(wrapped) as object | null) as Record<
+          string | symbol,
+          unknown
+        >
+        Object.defineProperties(rebuiltWrapper, Object.getOwnPropertyDescriptors(wrapped))
+        Object.defineProperty(rebuiltWrapper, "jsonSchema", {
+          value: sanitizedSchema,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        })
+        const clone = Object.create(Object.getPrototypeOf(source) as object | null) as Record<
+          string | symbol,
+          unknown
+        >
+        Object.defineProperties(clone, Object.getOwnPropertyDescriptors(source))
+        Object.defineProperty(clone, "inputSchema", {
+          ...schemaDescriptor,
+          value: rebuiltWrapper,
+        })
+        candidateToWalk = clone
+      }
+    }
+  }
+
+  const walked = (try sanitizeDeepEffect(candidateToWalk)) as Record<string, unknown>
+  const description = typeof walked.description === "string" ? walked.description : undefined
+  const fnRecord = isRecord(walked.function) ? walked.function : undefined
+  const strict = walked.strict === true || fnRecord?.strict === true ? true : undefined
+  const inputSchema =
+    extractedSchema
+    ?? (isRecord(walked.inputSchema)
+      ? walked.inputSchema
+      : isRecord(walked.parameters)
+        ? walked.parameters
+        : isRecord(walked.input_schema)
+          ? walked.input_schema
+          : isRecord(fnRecord?.parameters)
+            ? fnRecord.parameters
+            : { type: "object" })
+  return {
+    ...(description !== undefined ? { description } : {}),
+    inputSchema,
+    ...(strict ? { strict: true } : {}),
+    cacheControl: readExplicitCacheControl(walked),
+    ...(validateFn ? { validate: validateFn } : {}),
+  }
+}
+
+export effect function readToolSetEffect(
+  value: GenerateTextParams["tools"] | Record<string, unknown> | undefined,
+): (NormalizedAnthropicTool[] | undefined)!ElizaError {
+  if (!value) return undefined
+  const isArr = Array.isArray(value)
+  const container = value as unknown as Record<string | symbol, unknown>
+  const entries: Array<[string, unknown]> = []
+
+  let keys: string[]
+  if (isArr) {
+    const lengthField = try readOwnDataDescriptor(container, "length", "ANTHROPIC_UNSAFE_TOOL_CONTAINER")
+    if (!lengthField.present || typeof lengthField.value !== "number") return undefined
+    keys = Array.from({ length: lengthField.value }, (_, index) => String(index))
+  } else if (typeof value === "object") {
+    keys = try Effect.try({
+      try: () => Object.keys(container),
+      catch: (cause) =>
+        new ElizaError("[Anthropic] Tool set container keys could not be read.", {
+          code: "ANTHROPIC_UNSAFE_TOOL_CONTAINER",
+          severity: "fatal",
+          cause,
+        }),
+    })
+  } else {
+    return undefined
+  }
+  for (const key of keys) {
+    const entry = try readOwnDataDescriptor(container, key, "ANTHROPIC_UNSAFE_TOOL_CONTAINER")
+    if (!entry.present) {
+      throw new ElizaError("[Anthropic] Tool set container has an accessor entry.", {
+        code: "ANTHROPIC_UNSAFE_TOOL_CONTAINER",
+        severity: "fatal",
+      })
+    }
+    entries.push([key, entry.value])
+  }
+
+  const namedKeys = new Set<string>()
+  for (const [, rawTool] of entries) {
+    if (!isRecord(rawTool)) continue
+    const nameField = try readOwnDataDescriptor(rawTool, "name", "ANTHROPIC_UNSAFE_TOOL_FIELD", "name")
+    if (nameField.present && typeof nameField.value === "string" && nameField.value.length > 0) {
+      namedKeys.add(nameField.value)
+    }
+  }
+
+  const byKey = new Map<string, NormalizedAnthropicTool>()
+  const sourceBySanitizedKey = new Map<string, string>()
+  let sawNamedTool = false
+  let sawUnsupportedEntry = false
+
+  const claimKey = effect (sanitizedKey: string, sourceKey: string): string!ElizaError => {
+    const previous = sourceBySanitizedKey.get(sanitizedKey)
+    if (previous !== undefined && previous !== sourceKey) {
+      throw new ElizaError("[Anthropic] Native tool names collide after Unicode normalization.", {
+        code: "ANTHROPIC_TOOL_NAME_COLLISION",
+        severity: "ephemeral",
+      })
+    }
+    sourceBySanitizedKey.set(sanitizedKey, sourceKey)
+    return sanitizedKey
+  }
+
+  for (const [origKey, rawTool] of entries) {
+    if (!isRecord(rawTool)) {
+      sawUnsupportedEntry = true
+      continue
+    }
+    const nameField = try readOwnDataDescriptor(rawTool, "name", "ANTHROPIC_UNSAFE_TOOL_FIELD", "name")
+    const name = nameField.present && typeof nameField.value === "string" ? nameField.value : ""
+    if (name) {
+      sawNamedTool = true
+      const parametersField = try readOwnDataDescriptor(rawTool, "parameters", "ANTHROPIC_UNSAFE_TOOL_FIELD", "parameters")
+      const inputSchemaField = try readOwnDataDescriptor(rawTool, "inputSchema", "ANTHROPIC_UNSAFE_TOOL_FIELD", "inputSchema")
+      const inputSchemaUnderField = try readOwnDataDescriptor(rawTool, "input_schema", "ANTHROPIC_UNSAFE_TOOL_FIELD", "input_schema")
+      const descriptionField = try readOwnDataDescriptor(rawTool, "description", "ANTHROPIC_UNSAFE_TOOL_FIELD", "description")
+      const strictField = try readOwnDataDescriptor(rawTool, "strict", "ANTHROPIC_UNSAFE_TOOL_FIELD", "strict")
+      const providerOptionsField = try readOwnDataDescriptor(rawTool, "providerOptions", "ANTHROPIC_UNSAFE_TOOL_FIELD", "providerOptions")
+
+      const rawSchema = isRecord(parametersField.value)
+        ? parametersField.value
+        : isRecord(inputSchemaField.value)
+          ? inputSchemaField.value
+          : isRecord(inputSchemaUnderField.value)
+            ? inputSchemaUnderField.value
+            : { type: "object" }
+      const sanitizedName = toWellFormedUnicode(name)
+      const sanitizedSchema = try sanitizeDeepEffect(rawSchema)
+      const claimed = try claimKey(sanitizedName, name)
+      const explicitCache = isRecord(providerOptionsField.value)
+        ? readExplicitCacheControl({ providerOptions: providerOptionsField.value })
+        : undefined
+      byKey.set(claimed, {
+        name: claimed,
+        ...(descriptionField.present && typeof descriptionField.value === "string"
+          ? { description: toWellFormedUnicode(descriptionField.value) }
+          : {}),
+        inputSchema: sanitizedSchema,
+        ...(strictField.present && strictField.value === true ? { strict: true } : {}),
+        ...(explicitCache ? { cacheControl: explicitCache } : {}),
+      })
+    } else if (!isArr && !namedKeys.has(origKey)) {
+      const sanitizedKey = toWellFormedUnicode(origKey)
+      const claimed = try claimKey(sanitizedKey, origKey)
+      const parsed = try sanitizeSdkToolEffect(rawTool)
+      byKey.set(claimed, {
+        name: claimed,
+        ...parsed,
+      })
+    }
+  }
+
+  if (!isArr && !sawNamedTool && sawUnsupportedEntry) {
+    throw new ElizaError("[Anthropic] Native tool set contains a non-object tool entry.", {
+      code: "ANTHROPIC_INVALID_TOOL_ENTRY",
+      severity: "ephemeral",
+    })
+  }
+
+  const list = [...byKey.values()]
+  return list.length > 0 ? list : undefined
+}
+
+export const readToolSet = thrown(readToolSetEffect)
+
+export function enforceAnthropicStrictToolBudget(
+  tools: readonly NormalizedAnthropicTool[] | undefined,
+): NormalizedAnthropicTool[] | undefined {
+  if (!tools || tools.length === 0) return tools ? [...tools] : undefined
+  const strictEntries = tools.filter((tool) => tool.strict === true)
+  if (strictEntries.length === 0) return [...tools]
+  const optionalParams = strictEntries.reduce(
+    (total, tool) => total + countOptionalParams(tool.inputSchema),
+    0,
+  )
+  if (anthropicStrictToolsAllowed(strictEntries.length, optionalParams)) {
+    return [...tools]
+  }
+  logger.warn(
+    {
+      src: "plugin:anthropic",
+      strictTools: strictEntries.length,
+      maxStrictTools: ANTHROPIC_MAX_STRICT_TOOLS,
+      optionalParams,
+      maxOptionalParams: ANTHROPIC_MAX_STRICT_TOOL_OPTIONAL_PARAMS,
+    },
+    "Strict tool surface exceeds Anthropic's grammar caps; sending tools non-strict for this request",
+  )
+  return tools.map((tool) => {
+    if (!tool.strict) return tool
+    const { strict: _dropped, ...rest } = tool
+    return rest
+  })
+}
+
+export function readToolChoice(value: GenerateTextParams["toolChoice"]): AnthropicWireToolChoice | undefined {
+  if (!value) return undefined
+  if (typeof value === "string") {
+    if (value === "auto") return { type: "auto" }
+    if (value === "none") return { type: "none" }
+    if (value === "required") return { type: "any" }
+    return undefined
+  }
+  if (!isRecord(value)) return undefined
+  const rec = value as Record<string, unknown>
+  if (rec.type === "tool" && typeof rec.name === "string") {
+    return { type: "tool", name: toWellFormedUnicode(rec.name) }
+  }
+  if (rec.type === "function" && isRecord(rec.function) && typeof rec.function.name === "string") {
+    return { type: "tool", name: toWellFormedUnicode(rec.function.name) }
+  }
+  return typeof rec.name === "string"
+    ? { type: "tool", name: toWellFormedUnicode(rec.name) }
+    : undefined
+}
+
+export function serializeToolsForWire(
+  tools: readonly NormalizedAnthropicTool[],
+  cacheControl: AnthropicCacheControl | undefined,
+): Array<Record<string, unknown>> {
+  return tools.map((tool, index) => {
+    const isLast = index === tools.length - 1
+    const effectiveCache = tool.cacheControl ?? (isLast ? cacheControl : undefined)
+    return {
+      name: tool.name,
+      ...(tool.description !== undefined ? { description: tool.description } : {}),
+      input_schema: tool.inputSchema,
+      ...(tool.strict === true ? { strict: true } : {}),
+      ...(effectiveCache !== undefined ? { cache_control: effectiveCache } : {}),
+    }
+  })
+}

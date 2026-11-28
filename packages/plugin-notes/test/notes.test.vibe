@@ -3,13 +3,12 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { negotiation, validate, type DeviceOperation, type LocalRoute } from "@elizaos/agent"
 import type { DeviceTurn, EarlierRequest } from "@elizaos/agent-host"
-import { bindIncomingMessagePersistence, satisfiesContextGate, stringToUuid, validateToolArgs, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { satisfiesContextGate, stringToUuid, validateToolArgs, type Content, type IAgentRuntime, type Memory } from "@elizaos/core"
 import { noteChangeResult, notesPlugin, notesRefusalResult, notesRoutes } from "../src/agent.vibe"
 import { notesDeviceFamily } from "../src/device-proposals.vibe"
 import {
   createNotesClient, noteScheduleText, recordNoteOriginFor, authoredNoteText, noteShareText, parseNoteFormat, decodeNotesOrganizeOperation, findNoteFolder, isNotesOrganizeType, notesOrganizeContextAllowed, notesOrganizeOffered, notesOrganizeRunsDirectly, readNoteFolders, noteLimits, type NotesOrganizeType, NotesReadRefused, selectedNotes, StoredDocument, type NotesAuthority, type NotesClaim, type NotesOwner, type NotesReadOperation, type NotesReadPorts, type NotesTarget, type StickyNote,
 } from "@elizaos/plugin-notes-client"
-import { ownerRequestText } from "../src/lookup.vibe"
 import { notesCollection, notesServiceClass, type NotesFailure, type NotesHost, type VerifyRecordingCleanup } from "../src/service.vibe"
 import type { NotesStorage } from "../src/store.vibe"
 
@@ -153,9 +152,6 @@ it.effect(`Keep notes as one collection edited only on the owner's words (spec/n
     [false, "NOTES_AMBIGUOUS_NOTE", [draft.value.note.id, "note-1"], true, "NOTES_AMBIGUOUS_NOTE", [draft.value.note.id, "note-1"]])
   const picked = try deleting(message("the one with just milk", undefined, turnId(2)), { noteId: draft.value.note.id })
   assert.deepEqual([picked.success, picked.data?.noteId, try live()], [true, draft.value.note.id, ["note-1"]])
-  const wrapped = message("Contextual documents: Groceries FAQ")
-  try Effect.try(() => bindIncomingMessagePersistence(wrapped, message("delete my trip note")))
-  assert.equal(try ownerRequestText(wrapped), "delete my trip note")
   const closest = try deleting(message("get rid of the grocery note"), { content: "oat milk" })
   assert.deepEqual([closest.success, closest.data?.code, closest.data?.candidateIds, closest.text?.includes('"Groceries"')], [false, "NOTES_DELETE_NAME_MISMATCH", ["note-1"], true])
   const trip = try notes.create({ content: "Trip\npack the tent" })
@@ -215,11 +211,9 @@ it.effect(`Keep notes as one collection edited only on the owner's words (spec/n
     try action(plugin, "NOTES_GET")(message("when did I write note-1", { voiceUi: { uiTimeZone: "Nowhere/Land" } }), { noteId: "note-1" })]
   const shownTimes = zoned.map((read) => read.data?.noteTimestampDisplay as { readonly timeZone: string; readonly createdAt: string } | undefined)
   assert.deepEqual(shownTimes.map((times) => [times?.timeZone, times?.createdAt.startsWith("Nov 21, 2026")]), [["Pacific/Kiritimati", true], [undefined, undefined], [undefined, undefined]])
-  assert.deepEqual([listed.success, listed.data?.op, listed.effectReceipts, listed.emptyTrackedState, { ...none.emptyTrackedState, observedAt: "" }],
-    [true, "list", undefined, undefined, { resource: "notes", scope: "entire_current_inventory", count: 0, revision: 0, observedAt: "" }])
-  const routing = (plugin.providers ?? []).find((provider) => provider.name === "NAMED_NOTE_ROUTING")
-  const availability = try promise(() => routing!.get(undefined as never, message("what is in my trip note"), undefined as never))
-  assert.equal(availability.data?.namedNoteMatchAvailable, true)
+  assert.deepEqual([listed.success, listed.data?.actionName, listed.data?.op, listed.effectReceipts, listed.emptyTrackedState, { ...none.emptyTrackedState, observedAt: "" }],
+    [true, "NOTES_LIST", "list", undefined, undefined, { resource: "notes", scope: "entire_current_inventory", count: 0, revision: 0, observedAt: "" }])
+  assert.deepEqual((plugin.providers ?? []).map((provider) => provider.name), ["SAVED_NOTES"])
   const saved = (plugin.providers ?? []).find((provider) => provider.name === "SAVED_NOTES")
   const savedText = (try promise(() => saved!.get(undefined as never, message("what is in my trip note"), undefined as never))).text ?? ""
   assert.include(savedText, "If no row has the note title the owner asked for, read by that title with NOTES_GET instead of citing another note.")
@@ -274,11 +268,12 @@ it.effect(`Keep notes as one collection edited only on the owner's words (spec/n
   const described = (name: string) => (plugin.actions ?? []).find((candidate) => candidate.name === name)
   assert.deepEqual([
     described("NOTES_CREATE")?.description.includes("A new checklist the owner asks for is a creation, never items added to a checklist already saved: put the title the owner gave it alone in content and the owner's items, in their order, in checklist"),
-    described("NOTES_CREATE")?.description.includes(`at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each. When the owner gave the checklist no title, ask what to call it instead of creating it.`),
+    described("NOTES_CREATE")?.description.includes(`at most ${noteLimits.checklistItems} items of at most ${noteLimits.checklistItem} characters each.`) && described("NOTES_CREATE")?.description.includes("When the owner gave the checklist no title, ask what to call it instead of creating it."),
+    described("NOTES_CREATE")?.description.includes("Adding an item to a named list that has no note yet (e.g. add milk to my shopping list) creates that list as a checklist: its name alone in content, the item in checklist."),
     described("NOTES_CREATE")?.parameters?.some((parameter) => parameter.name === "checklist" && parameter.schema.items?.maxLength === noteLimits.checklistItem),
     described("NOTES_UPDATE")?.description.includes("adds one list item in the note's own form, to a note the owner named, never as a new checklist the owner asked for (that is NOTES_CREATE with checklist)"),
     described("NOTES_GET")?.description.includes("A title no saved note has reads nothing and never cites another note in its place: when one saved note's title holds those words, it names that note's noteId, which you read to answer about, show or open the note when it is plainly the note meant; before changing or deleting it, or when it may not be the one, ask the owner which note they mean."),
-  ], [true, true, true, true, true])
+  ], [true, true, true, true, true, true])
   const getting = action(plugin, "NOTES_GET")
   const weekend = try notes.create({ content: "Weekend\nbring the gear bag" })
   const absentTitle = try getting(message("what's in my gear note"), { title: "gear" })

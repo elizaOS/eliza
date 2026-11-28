@@ -1,4 +1,4 @@
-// spec/agentOrchestrator/sessionAdmission.md, "Disk budget, spend allowance, and subscription attendance fail closed"; spec/agentOrchestrator/lanesAndRouting.md, "Backend routing follows strict precedence while honoring operator allow-lists"
+// spec/agentOrchestrator/sessionAdmission.md, "Disk budget and subscription attendance fail closed"; spec/agentOrchestrator/lanesAndRouting.md, "Backend routing follows strict precedence while honoring operator allow-lists"
 module node {
   import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
   import { lookup } from "node:dns/promises"
@@ -32,6 +32,22 @@ module node {
   export async function resolveRealPath(target: string, ensureDir: boolean): Promise<string> {
     if (ensureDir) await mkdir(target, { recursive: true })
     return realpath(target)
+  }
+
+  export async function resolveCandidatePath(target: string): Promise<string> {
+    const missing: string[] = []
+    let current = path.resolve(target)
+    for (;;) {
+      try {
+        const real = await realpath(current)
+        return path.join(real, ...missing.reverse())
+      } catch (error) {
+        const parent = path.dirname(current)
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT" || parent === current) throw error
+        missing.push(path.basename(current))
+        current = parent
+      }
+    }
   }
 
   export async function pathExists(target: string): Promise<boolean> {
@@ -80,15 +96,14 @@ import {
   pathSep,
   randomHex,
   readEnvMap,
+  resolveCandidatePath,
   resolveRealPath,
   runFetch,
   safeHashEqual,
   sha256Hex,
 } from node
 import {
-  evaluateSpendAllowance,
   isAttendanceAuthValid,
-  type SpendVerdict,
 } from "../gen/agentOrchestrator__sessionAdmission.effect.vibe"
 import {
   SsrfBlockedError,
@@ -473,7 +488,7 @@ export effect function resolveAllowedWorkdir(
     throw new WorkspaceOperationError({ workspaceId: candidate, code: "INVALID_WORKDIR", reason: "Workdir path is invalid." })
   }
   const resolvedCandidate = try tryPromise({
-    try: () => resolveRealPath(trimmed, ensureDir),
+    try: () => resolveCandidatePath(trimmed),
     catch: () => new WorkspaceOperationError({ workspaceId: candidate, code: "WORKDIR_UNRESOLVED", reason: "Unable to resolve workdir path." }),
   })
   const sep = pathSep()
@@ -484,7 +499,15 @@ export effect function resolveAllowedWorkdir(
     })
     const prefix = resolvedRoot.endsWith(sep) ? resolvedRoot : `${resolvedRoot}${sep}`
     if (resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(prefix)) {
-      return resolvedCandidate
+      if (!ensureDir) return resolvedCandidate
+      const created = try tryPromise({
+        try: () => resolveRealPath(resolvedCandidate, true),
+        catch: () => new WorkspaceOperationError({ workspaceId: candidate, code: "WORKDIR_UNRESOLVED", reason: "Unable to create workdir." }),
+      })
+      if (created !== resolvedRoot && !created.startsWith(prefix)) {
+        throw new WorkspaceOperationError({ workspaceId: candidate, code: "WORKDIR_OUTSIDE_ALLOWED_ROOTS", reason: "Workdir is outside allowed workspace roots." })
+      }
+      return created
     }
   }
   throw new WorkspaceOperationError({
@@ -605,40 +628,6 @@ export function subscriptionExecutionAuthorizationFromMetadata(
   }
 }
 
-export interface SpendDecisionInput {
-  readonly spentUsd: number
-  readonly estimatedUsd: number
-  readonly capUsd: number
-  readonly highRisk: boolean
-  readonly userApproved: boolean
-}
-
-export interface SpendDecision {
-  readonly allowed: boolean
-  readonly verdict: SpendVerdict
-  readonly remainingUsd: number
-}
-
-export function decideSpendAuthorization(input: SpendDecisionInput): SpendDecision {
-  const spentCents = Math.round(input.spentUsd * 100)
-  const estimatedCents = Math.round(input.estimatedUsd * 100)
-  const capCents = Math.round(input.capUsd * 100)
-  const verdict = evaluateSpendAllowance(spentCents, estimatedCents, capCents, input.highRisk, input.userApproved)
-  return {
-    allowed: verdict === "SpendAllow",
-    verdict,
-    remainingUsd: Math.max(0, (capCents - spentCents) / 100),
-  }
-}
-
-const ROLE_ORDER: Readonly<Record<string, number>> = {
-  GUEST: 0,
-  USER: 1,
-  MODERATOR: 2,
-  ADMIN: 3,
-  OWNER: 4,
-}
-
 export function resolveServerAllowedWorkdirRoots(
   env: Readonly<Record<string, string | undefined>> = readEnvMap(),
 ): readonly string[] {
@@ -649,15 +638,4 @@ export function resolveServerAllowedWorkdirRoots(
   return [...new Set([defaultWorkspacesRoot(), ...extra])]
 }
 
-export function requireTaskAgentAccess(
-  role: string | undefined,
-  action: "create" | "interact",
-): { readonly allowed: boolean; readonly reason?: string } {
-  const normalized = (role ?? "USER").trim().toUpperCase()
-  const rank = ROLE_ORDER[normalized] ?? 0
-  const minRank = action === "create" ? ROLE_ORDER.USER : ROLE_ORDER.USER
-  if (rank < minRank) {
-    return { allowed: false, reason: `Role ${normalized} cannot ${action} coding tasks.` }
-  }
-  return { allowed: true }
-}
+

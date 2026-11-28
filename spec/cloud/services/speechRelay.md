@@ -340,7 +340,7 @@ pure def lawMissingConsentNeverMints(s: Session, tokenDigest: str, expiresAt: Mi
 pure def sometimesSessionMinted(s: Session): bool = s.phase == Minted
 pure val tokenDigestValues = Set("session-digest")
 pure val nowValues = Set(0, 1, 59999, 60000, 119999, 120000)
-pure val expiresAtValues = Set(1, 60000, 120000, 180000)
+pure val expiresAtValues = Set(1, 60000, 119999, 120000, 180000)
 pure val credentialExpiresAtValues = Set(60000, 120000, 180000)
 ```
 
@@ -378,6 +378,12 @@ session is active and before its deadline without reserving or counting it
 again. An expired or settled window cannot be reopened. A failed admission
 rolls back its own funding; it never releases another attempt's holds.
 
+The first window ends at the session's deadline. A later window ends one
+window after the moment it is admitted, never past the credential, so a
+renewal asked for before the live window ends never reaches further than one
+window: the device refuses an `extended` end further away than that and its
+clock slack, and ends the session as a protocol error.
+
 Discovered during boundary review: reserving shared hold keys before the
 winning window transaction let a competing attempt release the winner's
 funding, and locking an absent usage row did not serialize first admissions.
@@ -385,11 +391,11 @@ The generated guard consumes actual funding and allowance observations;
 atomic database persistence remains a shell boundary checked by journeys.
 
 ```quint
-pure def nextWindowDeadline(s: Session, window: int): Millis =
-  if (window == 1) s.expiresAt else if (s.expiresAt + windowLength < s.credentialExpiresAt) s.expiresAt + windowLength else s.credentialExpiresAt
+pure def nextWindowDeadline(s: Session, window: int, now: Millis): Millis =
+  if (window == 1) s.expiresAt else if (now + windowLength < s.credentialExpiresAt) now + windowLength else s.credentialExpiresAt
 pure def windowRequestAdmitted(s: Session, window: int, expiresAt: Millis, now: Millis): bool =
   (s.phase == Starting or s.phase == Active) and sessionLive(s, now)
-  and window == s.admittedWindows + 1 and expiresAt == nextWindowDeadline(s, window) and expiresAt > now
+  and window == s.admittedWindows + 1 and expiresAt == nextWindowDeadline(s, window, now) and expiresAt > now
   and (window == 1 or expiresAt > s.expiresAt)
 pure def canAdmitWindow(s: Session, window: int, expiresAt: Millis, now: Millis, funded: bool, allowanceAvailable: bool): bool =
   windowRequestAdmitted(s, window, expiresAt, now) and funded and allowanceAvailable
@@ -406,9 +412,16 @@ pure def lawRefusedFundingNeverAdmits(s: Session, window: int, expiresAt: Millis
   not(canAdmitWindow(s, window, expiresAt, now, false, allowanceAvailable))
 pure def lawRefusedAllowanceNeverAdmits(s: Session, window: int, expiresAt: Millis, now: Millis, funded: bool): bool =
   not(canAdmitWindow(s, window, expiresAt, now, funded, false))
+pure def lawARenewedWindowEndsWithinOneWindowOfItsAdmission(s: Session, window: int, expiresAt: Millis, now: Millis): bool =
+  (window >= 2 and windowRequestAdmitted(s, window, expiresAt, now)) implies expiresAt <= now + windowLength
 pure def sometimesSessionActive(s: Session): bool = s.phase == Active
 pure def sometimesSessionExtended(s: Session): bool = s.admittedWindows >= 2
 pure val windowValues = Set(0, 1, 2, 3)
+pure val sValues = Set(
+  { ...initial, phase: Starting, tokenDigest: "session-digest", expiresAt: 60000, credentialExpiresAt: 180000 },
+  { ...initial, phase: Active, tokenDigest: "session-digest", expiresAt: 60000, credentialExpiresAt: 180000, admittedWindows: 1 },
+  { ...initial, phase: Active, tokenDigest: "session-digest", expiresAt: 60000, credentialExpiresAt: 120000, admittedWindows: 1 },
+  { ...initial, phase: Active, tokenDigest: "session-digest", expiresAt: 119999, credentialExpiresAt: 180000, admittedWindows: 2, settledWindows: Set(1) })
 pure val weight_admitWindow = 5
 ```
 

@@ -146,6 +146,18 @@ export interface AndroidCalendarPlugin {
   dispatchDeletion(input: AndroidCalendarDeletionTarget): Promise<AndroidCalendarDeletionReply>;
 }
 
+export const ANDROID_CALENDAR_METHODS = Object.keys({
+  checkPermissions: true,
+  requestAccess: true,
+  list: true,
+  open: true,
+  insertHandoff: true,
+  inspect: true,
+  save: true,
+  inspectDeletion: true,
+  dispatchDeletion: true,
+} satisfies Record<keyof AndroidCalendarPlugin, true>) as ReadonlyArray<keyof AndroidCalendarPlugin>;
+
 export type CalendarTicket = number & { readonly __brand: "CalendarTicket" };
 
 export interface CalendarRange {

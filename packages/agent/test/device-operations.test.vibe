@@ -135,6 +135,8 @@ it('A renderer reads operations, results and the latest-sender answer from the b
     other: renderer.latestSenderReplyFor({ kind: "phone-dial", status: "handed-off", handler: null, contact: false }),
     suffixGuidance: renderer.latestSenderGuidance(renderer.negotiation(true, "sms.latest-sender.v1")).includes("suffix only"),
     draftGuidance: renderer.latestSenderGuidance(renderer.negotiation(true, "sms.latest-sender.v2")).includes("sms_compose"),
+    whoSentReadsLastFour: renderer.latestSenderGuidance(renderer.negotiation(true, "sms.latest-sender.v2"))
+      .includes("who sent the latest SMS: disclosure=last-four, or address only when owner asks for the whole number or to text them"),
     digests: [renderer.bindingHash({}), renderer.bindingHash(["Café ☕", "𝄞"])],
   }, {
     dial: { kind: "number", number: "+15551234567" },
@@ -148,6 +150,7 @@ it('A renderer reads operations, results and the latest-sender answer from the b
     other: undefined,
     suffixGuidance: true,
     draftGuidance: true,
+    whoSentReadsLastFour: true,
     digests: ["44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", "8164d545310d674864d9c03d58f655b9181710f373d0d1ec64fe7b23c5e5ae0c"],
   })
 })

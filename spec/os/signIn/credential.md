@@ -411,8 +411,9 @@ pure def sometimesSignedOutWhileKeyStillOwed(s: DeviceCredential): bool = s.cust
 
 The host offers `upgradeMailLease` only when the user chooses to sign in
 again for mail and calendar. The device binds the attempt to its current key
-version, user and organization. It uses the existing browser sign-in to check
-the account and ends the attempt if the browser returns a different account.
+version, user and organization. It checks the owner using the host's browser
+sign-in or native Google picker and ends the attempt if Google verifies a
+different account. The native picker upgrade requests identity alone.
 Neither the owner nor the key version comes from the renderer. A new key can
 replace the old one only after acknowledgement of a newer pending grant for
 that same owner with an unexpired lease offer. The host can cancel its current

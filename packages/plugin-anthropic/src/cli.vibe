@@ -1,0 +1,402 @@
+// spec/anthropic/index.md, "Transport must support the request and keeps the requested output budget"; spec/anthropic/index.md, "Completion follows the provider terminal reason"
+import {
+  ElizaError,
+  assertModelOutputComplete,
+  createPreparedModelRequestGuard,
+  logger,
+  processEnv,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  type IAgentRuntime,
+  type ModelTypeName,
+  type TokenUsage,
+} from "@elizaos/core"
+import { AnthropicFailed } from "./errors.vibe"
+import { emitModelUsageEvent } from "./events.vibe"
+
+export const CLAUDE_CLI_TIMEOUT_MS = 180_000
+export const CLAUDE_CLI_MAX_STDIO_BYTES = 8 * 1024 * 1024
+
+interface ClaudeCliModelUsage {
+  readonly inputTokens: number
+  readonly outputTokens: number
+}
+
+interface ClaudeCliJsonOutput {
+  readonly result?: string
+  readonly duration_ms?: number
+  readonly duration_api_ms?: number
+  readonly modelUsage?: Record<string, ClaudeCliModelUsage>
+  readonly stop_reason?: string
+}
+
+module node {
+  import { spawn } from "node:child_process"
+  import { createInterface } from "node:readline"
+  import { ElizaError } from "@elizaos/core"
+
+  /** @throws {never} */
+  export function buildCliArgs(
+    prompt: string,
+    modelName: string,
+    systemPrompt: string | undefined,
+    streaming: boolean,
+  ): string[] {
+    const args = [
+      "-p",
+      "--model",
+      modelName,
+      "--output-format",
+      streaming ? "stream-json" : "json",
+      "--tools",
+      "",
+    ]
+    if (streaming) args.push("--verbose", "--include-partial-messages")
+    if (systemPrompt) args.push("--system-prompt", systemPrompt)
+    args.push("--", prompt)
+    return args
+  }
+
+  /** @throws {unknown} */
+  export function runClaudeCliWhole(options: {
+    args: string[]
+    env: Record<string, string | undefined>
+    signal: AbortSignal
+    timeoutMs: number
+    maxBytes: number
+  }): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    return new Promise((resolve, reject) => {
+      const combined = AbortSignal.any([options.signal, AbortSignal.timeout(options.timeoutMs)])
+      const child = spawn("claude", options.args, {
+        env: options.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      const stdoutChunks: Buffer[] = []
+      const stderrChunks: Buffer[] = []
+      let stdoutBytes = 0
+      let stderrBytes = 0
+      let settled = false
+
+      const finish = (fn: () => void) => {
+        if (settled) return
+        settled = true
+        combined.removeEventListener("abort", onAbort)
+        if (child.exitCode === null) child.kill()
+        fn()
+      }
+
+      const onAbort = () => {
+        const timedOut = !options.signal.aborted
+        finish(() =>
+          reject(
+            timedOut
+              ? new ElizaError(`[Anthropic CLI] claude -p timed out after ${options.timeoutMs}ms`, {
+                  code: "ANTHROPIC_CLI_TIMEOUT",
+                  context: { timeoutMs: options.timeoutMs },
+                  severity: "ephemeral",
+                })
+              : options.signal.reason instanceof Error
+                ? options.signal.reason
+                : new Error("Anthropic CLI request aborted"),
+          ),
+        )
+      }
+      combined.addEventListener("abort", onAbort, { once: true })
+
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdoutBytes += chunk.byteLength
+        if (stdoutBytes > options.maxBytes) {
+          finish(() =>
+            reject(
+              new ElizaError(
+                `[Anthropic CLI] stdout exceeded ${options.maxBytes} bytes (got ${stdoutBytes})`,
+                {
+                  code: "ANTHROPIC_CLI_OUTPUT_LIMIT",
+                  context: { label: "stdout", maxBytes: options.maxBytes, observedBytes: stdoutBytes },
+                },
+              ),
+            ),
+          )
+          return
+        }
+        stdoutChunks.push(chunk)
+      })
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderrBytes += chunk.byteLength
+        if (stderrBytes > options.maxBytes) {
+          finish(() =>
+            reject(
+              new ElizaError(
+                `[Anthropic CLI] stderr exceeded ${options.maxBytes} bytes (got ${stderrBytes})`,
+                {
+                  code: "ANTHROPIC_CLI_OUTPUT_LIMIT",
+                  context: { label: "stderr", maxBytes: options.maxBytes, observedBytes: stderrBytes },
+                },
+              ),
+            ),
+          )
+          return
+        }
+        stderrChunks.push(chunk)
+      })
+
+      child.once("error", (error) => {
+        finish(() => reject(error))
+      })
+
+      child.once("close", (code) => {
+        finish(() =>
+          resolve({
+            stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
+            stderr: Buffer.concat(stderrChunks).toString("utf-8"),
+            exitCode: code ?? 1,
+          }),
+        )
+      })
+    })
+  }
+
+  /** @throws {never} */
+  export function spawnClaudeCliSseResponse(options: {
+    args: string[]
+    env: Record<string, string | undefined>
+    signal: AbortSignal
+    timeoutMs: number
+    maxBytes: number
+  }): Response {
+    const child = spawn("claude", options.args, {
+      signal: AbortSignal.any([options.signal, AbortSignal.timeout(options.timeoutMs)]),
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    const stderrChunks: Buffer[] = []
+    let stderrBytes = 0
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderrBytes <= options.maxBytes) {
+        stderrBytes += chunk.byteLength
+        stderrChunks.push(chunk)
+      }
+    })
+    const ended = new Promise<number>((resolve) => {
+      child.once("error", () => resolve(1))
+      child.once("close", (code) => resolve(code ?? 1))
+    })
+    const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        let terminal: string | undefined
+        let completed = false
+        let bytes = 0
+        try {
+          for await (const line of lines) {
+            bytes += Buffer.byteLength(line, "utf8")
+            if (line.length > 1048576 || bytes > options.maxBytes) {
+              throw new ElizaError(`[Anthropic CLI] stdout exceeded ${options.maxBytes} bytes`, {
+                code: "ANTHROPIC_CLI_OUTPUT_LIMIT",
+                context: { label: "stdout", maxBytes: options.maxBytes, observedBytes: bytes },
+              })
+            }
+            if (!line.startsWith("{")) continue
+            const value: unknown = JSON.parse(line)
+            if (typeof value !== "object" || value === null || !("type" in value)) continue
+            if (value.type === "result") {
+              const rec = value as {
+                subtype?: unknown
+                is_error?: unknown
+                stop_reason?: unknown
+                modelUsage?: Record<string, { inputTokens?: number; outputTokens?: number }>
+              }
+              completed = rec.subtype === "success" && rec.is_error !== true
+              const usageEntry = rec.modelUsage ? Object.values(rec.modelUsage)[0] : undefined
+              if (usageEntry && typeof usageEntry.inputTokens === "number" && typeof usageEntry.outputTokens === "number") {
+                const usageDelta = {
+                  type: "message_delta",
+                  delta: { stop_reason: typeof rec.stop_reason === "string" ? rec.stop_reason : "end_turn" },
+                  usage: { input_tokens: usageEntry.inputTokens, output_tokens: usageEntry.outputTokens },
+                }
+                controller.enqueue(encoder.encode("data: " + JSON.stringify(usageDelta) + "\n\n"))
+              }
+              continue
+            }
+            if (
+              value.type !== "stream_event"
+              || !("event" in value)
+              || typeof value.event !== "object"
+              || value.event === null
+              || !("type" in value.event)
+            ) {
+              continue
+            }
+            const data = "data: " + JSON.stringify(value.event) + "\n\n"
+            if (value.event.type === "message_stop") terminal = data
+            else controller.enqueue(encoder.encode(data))
+          }
+          const exitCode = await ended
+          if (exitCode !== 0 || !completed || terminal === undefined) {
+            const stderrText = Buffer.concat(stderrChunks).toString("utf-8")
+            throw new Error(
+              `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${stderrText.slice(0, 500)}`,
+            )
+          }
+          controller.enqueue(encoder.encode(terminal))
+          controller.close()
+        } catch (cause) {
+          controller.error(cause)
+        } finally {
+          lines.close()
+          if (child.exitCode === null) child.kill()
+        }
+      },
+      cancel() {
+        lines.close()
+        if (child.exitCode === null) child.kill()
+      },
+    })
+    return new Response(stream, { headers: { "Content-Type": "text/event-stream" } })
+  }
+}
+import { buildCliArgs, runClaudeCliWhole, spawnClaudeCliSseResponse } from node
+
+function parseCliUsage(
+  modelUsage: Record<string, ClaudeCliModelUsage> | undefined,
+): TokenUsage | undefined {
+  const entry = modelUsage ? Object.values(modelUsage)[0] : undefined
+  if (!entry || typeof entry.inputTokens !== "number" || typeof entry.outputTokens !== "number") {
+    return undefined
+  }
+  return {
+    promptTokens: entry.inputTokens,
+    completionTokens: entry.outputTokens,
+    totalTokens: entry.inputTokens + entry.outputTokens,
+  }
+}
+
+function buildCliEnv(maxTokens: number | undefined): Record<string, string | undefined> {
+  const base = processEnv()
+  return maxTokens === undefined
+    ? base
+    : { ...base, CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(maxTokens) }
+}
+
+effect function assertCliPreparedGuard(
+  args: string[],
+  modelName: string,
+  maxTokens: number,
+): void!(AnthropicFailed | ElizaError) {
+  try Effect.try({
+    try: () => {
+      const guard = createPreparedModelRequestGuard({
+        provider: "anthropic-cli",
+        model: modelName,
+        projectRequest: () => ({ argv: ["claude", ...args] }),
+        outputReserveTokens: maxTokens,
+      })
+      guard.assertBeforeAttempt()
+    },
+    catch: (cause) =>
+      cause instanceof ElizaError
+        ? cause
+        : new AnthropicFailed({ reason: "Anthropic CLI prepared-request guard failed.", cause }),
+  })
+}
+
+function buildCliInvocation(
+  args: string[],
+  maxTokens: number,
+  signal: AbortSignal,
+  userSignal: AbortSignal | undefined,
+): {
+  args: string[]
+  env: Record<string, string | undefined>
+  signal: AbortSignal
+  timeoutMs: number
+  maxBytes: number
+} {
+  return {
+    args,
+    env: buildCliEnv(maxTokens),
+    signal: userSignal ? AbortSignal.any([signal, userSignal]) : signal,
+    timeoutMs: CLAUDE_CLI_TIMEOUT_MS,
+    maxBytes: CLAUDE_CLI_MAX_STDIO_BYTES,
+  }
+}
+
+export effect function runCliWholeEffect(options: {
+  runtime: IAgentRuntime
+  prompt: string
+  modelName: string
+  modelType: ModelTypeName
+  maxTokens: number
+  systemPrompt: string | undefined
+  signal: AbortSignal | undefined
+}): { readonly text: string; readonly usage: TokenUsage | undefined; readonly stopReason: string | undefined }!(AnthropicFailed | ElizaError) {
+  const args = buildCliArgs(options.prompt, options.modelName, options.systemPrompt, false)
+  logger.debug(`[Anthropic CLI] ${String(options.modelType)} -> ${options.modelName}`)
+  try assertCliPreparedGuard(args, options.modelName, options.maxTokens)
+  const output = try tryPromise({
+    try: (signal) => runClaudeCliWhole(buildCliInvocation(args, options.maxTokens, signal, options.signal)),
+    catch: (cause) =>
+      cause instanceof ElizaError
+        ? cause
+        : new AnthropicFailed({ reason: "The Anthropic CLI did not complete the request.", cause }),
+  })
+  if (output.exitCode !== 0) {
+    throw new AnthropicFailed({
+      reason: `[Anthropic CLI] claude -p failed (exit ${output.exitCode}): ${truncateWellFormed(toWellFormedUnicode(output.stderr), 500)}`,
+    })
+  }
+  const parsed = try Effect.try({
+    try: () => JSON.parse(output.stdout) as ClaudeCliJsonOutput,
+    catch: (cause) =>
+      new AnthropicFailed({
+        reason: `[Anthropic CLI] Failed to parse JSON. Raw: ${truncateWellFormed(toWellFormedUnicode(output.stdout), 500)}`,
+        cause,
+      }),
+  })
+  const usage = parseCliUsage(parsed.modelUsage)
+  if (usage) {
+    emitModelUsageEvent(options.runtime, options.modelType, usage, options.modelName)
+  }
+  try Effect.try({
+    try: () =>
+      assertModelOutputComplete({
+        finishReason: parsed.stop_reason,
+        provider: "anthropic",
+        model: options.modelName,
+        maxTokens: options.maxTokens,
+        usage,
+      }),
+    catch: (cause) =>
+      cause instanceof ElizaError
+        ? cause
+        : new AnthropicFailed({ reason: "Anthropic CLI output did not complete.", cause }),
+  })
+  const text = typeof parsed.result === "string" ? parsed.result : ""
+  if (text === "") {
+    throw new AnthropicFailed({ reason: "The Anthropic CLI returned no output." })
+  }
+  return { text, usage, stopReason: parsed.stop_reason }
+}
+
+export effect function openCliStreamEffect(options: {
+  prompt: string
+  modelName: string
+  modelType: ModelTypeName
+  maxTokens: number
+  systemPrompt: string | undefined
+  signal: AbortSignal | undefined
+}): Response!(AnthropicFailed | ElizaError) {
+  const args = buildCliArgs(options.prompt, options.modelName, options.systemPrompt, true)
+  logger.debug(`[Anthropic CLI] streaming ${String(options.modelType)} -> ${options.modelName}`)
+  try assertCliPreparedGuard(args, options.modelName, options.maxTokens)
+  return try tryPromise({
+    try: async (signal) =>
+      spawnClaudeCliSseResponse(buildCliInvocation(args, options.maxTokens, signal, options.signal)),
+    catch: (cause) =>
+      cause instanceof ElizaError
+        ? cause
+        : new AnthropicFailed({ reason: "The Anthropic CLI could not start.", cause }),
+  })
+}

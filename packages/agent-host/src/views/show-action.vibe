@@ -1,7 +1,7 @@
 // spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"; spec/agent/views.md, "A specific saved Notes editor is prepared only after a matching current lookup on a supported renderer"; spec/agent/deviceActions/surfaces.md, "An app view opens with VIEWS where views arrive as completed actions, else with open_view as the installation's profile enables it"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/agent/conversation/planning.md, "Every call of a turn is one the model chose, and a call this message serves in another place is refused before it runs and is no step of the turn"
 import type { Action, ActionResult, HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core"
 import { viewsShowsOnDevice } from "../../gen/agent__deviceActions__surfaces.ts"
-import { declaredAt, namesOf, savedNotePreparationAllowed, type DeclaredView } from "../../gen/agent__views.effect.vibe"
+import { declaredAt, namesOf, savedNotePreparationAllowed, screenCanShow, type DeclaredView } from "../../gen/agent__views.effect.vibe"
 import { turnElsewhere, turnNotes } from "../conversation/planning.vibe"
 import { readTurnContext } from "@elizaos/agent"
 import { completedActionRenderer, deviceTurnFor } from "../device-actions/proposal/turn.vibe"
@@ -27,14 +27,37 @@ function offersEditor(message: Memory, clientId: string, noteNamed: boolean, loo
     voiceUi?.uiNotesEditor === "saved-note-v1", !/^(?:note|legacy-app-notes-)/u.test(kind), observation?.sensitive === true, lookupConfirmed)
 }
 
-function resolvedNote(options: HandlerOptions | undefined): string | undefined {
-  const reads = options?.actionContext?.previousResults.filter((result) => result.data?.actionName === "NOTES_GET") ?? []
-  if (reads.length === 0 || reads.some((result) => result.data?.code === "NOTES_AMBIGUOUS_NOTE")) return undefined
+/** The one declared view `target` names (the Notes view for a saved Notes editor), if any. */
+function viewNamed(declared: readonly DeclaredView[], target: string): DeclaredView | undefined {
+  const named = declared.filter((view) => target === savedNoteEditor ? view.viewId === "notes" : namesOf(view).includes(target))
+  return named.length === 1 ? named[0] : undefined
+}
+
+// spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"
+/** Whether this turn's screen can show `view`: every declared view unless its renderer said which it can show now. */
+function screenShows(message: Memory, view: DeclaredView): boolean {
+  const stated = readTurnContext(message).voiceUi?.uiViews
+  return screenCanShow(stated !== undefined, [...stated ?? []], view.viewId)
+}
+
+function listedIds(results: readonly ActionResult[]): Set<string> {
+  return new Set(results.filter((result) => result.success && result.data?.actionName === "NOTES_LIST").flatMap((result) => {
+    const notes: unknown = result.data?.notes
+    return Array.isArray(notes) ? notes.flatMap((note: unknown) =>
+      typeof note === "object" && note !== null && "id" in note && typeof note.id === "string" && noteIdPattern.test(note.id) ? [note.id] : []) : []
+  }))
+}
+
+function resolvedNote(options: HandlerOptions | undefined, query: string | undefined): string | undefined {
+  const results = options?.actionContext?.previousResults ?? []
+  const reads = results.filter((result) => result.data?.actionName === "NOTES_GET")
+  if (reads.some((result) => result.data?.code === "NOTES_AMBIGUOUS_NOTE")) return undefined
   const ids = [...new Set(reads.flatMap((result) => {
     const id = result.data?.noteId
     return result.success && typeof id === "string" && noteIdPattern.test(id) ? [id] : []
   }))]
-  return ids.length === 1 ? ids[0] : undefined
+  if (ids.length > 0) return ids.length === 1 ? ids[0] : undefined
+  return query !== undefined && listedIds(results).has(query) ? query : undefined
 }
 
 function sameTitle(a: string, b: string): boolean {
@@ -86,11 +109,16 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   const target = targetOf(options)
   if (target === undefined) return refused("Name the view to show by its id, label or alias.")
   const exact = target === savedNoteEditor
+  const named = viewNamed((try views.current()).views, target)
+  if (named !== undefined && !screenShows(message, named)) {
+    const label = labels.get(named.viewId) ?? named.label
+    return refused(`The owner's screen here has no ${label}, so it was not opened and will not open on this screen.`)
+  }
   const query = exact ? parameterOf(options, "note") : undefined
   if (exact && !offersEditor(message, clientId, true, true)) return refused("This turn cannot open a saved Notes editor.")
   if (exact && query === undefined) return coached("Name the saved note to open with note: the content argument given to NOTES_GET, or the title of the note this turn created with NOTES_CREATE.")
   const created = exact ? createdNote(options, query) : undefined
-  const noteId = exact ? created ?? resolvedNote(options) : undefined
+  const noteId = exact ? created ?? resolvedNote(options, query) : undefined
   if (exact && noteId === undefined) return coached("Read the exact current note with NOTES_GET first. If several notes match, ask which one.")
   if (noteId !== undefined && query !== undefined) {
     const confirmed = tryPromise(() => created === undefined ? noteIsCurrent(runtime, noteId, query) : noteIsHeld(runtime, noteId)) catch () => false
@@ -110,7 +138,7 @@ effect function show(views: ViewHost.Shape, labels: ReadonlyMap<string, string>,
   }
   return {
     success: true,
-    text: `Prepared the switch to ${label}.`,
+    text: `The screen opens ${label} once this reply is shown. It is not open yet, and a screen that cannot show ${label} stays where it is.`,
     values: {
       mode: "show", viewId: view.viewId, viewPath: view.path, viewType: "gui", label,
       ...(noteId === undefined ? {} : { subview: "saved-note-v1" }),
@@ -154,7 +182,7 @@ export function viewsShowAction(views: ViewHost.Shape, labels: ReadonlyMap<strin
     parameters: [
       { name: "action", description: "", required: false, schema: { type: "string", enum: ["show"] } },
       { name: "view", description: "View id, label, or alias.", required: true, schema: { type: "string" } },
-      { name: "note", description: "For view=notes-editor only: exact content arg or noteId given to NOTES_GET this turn, or title created by NOTES_CREATE this turn.", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
+      { name: "note", description: "For view=notes-editor only: exact content arg or noteId given to NOTES_GET this turn, a noteId NOTES_LIST returned this turn, or title created by NOTES_CREATE this turn.", required: false, schema: { type: "string", minLength: 1, maxLength: 20_000 } },
     ],
     validate: async (runtime, message) => {
       const turn = deviceTurnFor(runtime, message)

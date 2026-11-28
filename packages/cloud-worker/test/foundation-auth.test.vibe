@@ -1084,6 +1084,7 @@ describe("Speech session funding (spec/cloud/services/speechRelay.md, \"Story: S
       const firstWindows = try sql(cloud, "SELECT number FROM speech_windows WHERE session_id = $1", [first.sessionId])
       try check(() => assert.deepStrictEqual({ admission: duplicate.map((answer) => answer.kind), holds: held.map((row) => row.phase), usage: firstUsage.map((row) => Number(row.used_ms)), windows: firstWindows.map((row) => Number(row.number)) }, { admission: ["admitted", "admitted"], holds: ["reserved", "reserved"], usage: [minuteMs], windows: [1] }))
       try sql(cloud, "UPDATE speech_usage_days SET used_ms = $2 WHERE user_id = $1", ["speech-rich", 119 * minuteMs])
+      try sync(() => clock.set(now + 50_000))
       const capped = try Effect.all([cloud.inside(admitWindow(first.sessionId, 2)), cloud.inside(admitWindow(second.sessionId, 1))], { concurrency: "unbounded" })
       const cappedUsage = try sql(cloud, "SELECT used_ms FROM speech_usage_days WHERE user_id = $1", ["speech-rich"])
       const unfunded = try cloud.inside(admitWindow(poor.sessionId, 1))

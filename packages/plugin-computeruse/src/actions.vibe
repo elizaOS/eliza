@@ -1,5 +1,6 @@
 // spec/computerUse/index.md, "Story: Control an authorized computer session"; spec/computerUse/batching.md, "Story: Execute a bounded sequence of desktop actions in a single LLM turn"; spec/computerUse/approvals.md, "Story: Gate computer-use commands by approval mode and operator decisions"
 import {
+  ElizaError,
   logger,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -94,10 +95,19 @@ function approvalCallbackValue(approvalId: string, decision: "approve" | "deny",
   return ownerId ? `cua:${approvalId}:${decision}:u${ownerId}` : `cua:${approvalId}:${decision}`
 }
 
+function renderApprovalParameters(parameters: Readonly<Record<string, unknown>>): string {
+  const keys = Object.keys(parameters).filter((key) => parameters[key] !== undefined).sort()
+  if (keys.length === 0) return "(no parameters)"
+  return keys.map((key) => `${key}: ${JSON.stringify(parameters[key])}`).join("\n")
+}
+
 export function buildApprovalPromptContent(approval: PendingApproval, options: ApprovalRelayOptions = {}): Content {
   return {
     text: [
-      `Computer-use approval requested for \`${approval.command}\`.`,
+      `Computer-use approval requested for \`${approval.command}\` with these parameters (data from the request, shown verbatim):`,
+      "```json-lines",
+      renderApprovalParameters(approval.parameters).replaceAll("```", "\\`\\`\\`"),
+      "```",
       `[CHOICE:computeruse-approval id=${approval.id}]`,
       `${approvalCallbackValue(approval.id, "approve", options.ownerId)}=Approve`,
       `${approvalCallbackValue(approval.id, "deny", options.ownerId)}=Deny`,
@@ -187,7 +197,6 @@ const DESKTOP_ACTION_ENUM = [
   "mouse_up",
   "ocr",
   "open",
-  "resolve_approval",
   "right_click",
   "screenshot",
   "scroll",
@@ -227,19 +236,7 @@ interface ApprovalDecision {
   readonly ownerMismatch?: boolean
 }
 
-function parseApprovalDecision(
-  params: Record<string, unknown>,
-  message: Memory,
-): ApprovalDecision | null {
-  if (params.action === "resolve_approval") {
-    const approvalId = typeof params.approvalId === "string" ? params.approvalId.trim() : ""
-    if (!approvalId || typeof params.approved !== "boolean") return null
-    return {
-      approvalId,
-      approved: params.approved,
-      ...(typeof params.reason === "string" ? { reason: params.reason } : {}),
-    }
-  }
+function parseApprovalDecision(message: Memory): ApprovalDecision | null {
   const text = typeof message.content?.text === "string" ? message.content.text.trim() : ""
   const compact = /^cua:([^:]+):(approve|deny)(?::u([^:]+))?$/.exec(text)
   if (compact) {
@@ -326,20 +323,6 @@ export const useComputerAction: Action = {
       descriptionCompressed: "Launch args.",
       required: false,
       schema: { type: "array", items: { type: "string" } },
-    },
-    {
-      name: "approvalId",
-      description: "Pending approval id for resolve_approval.",
-      descriptionCompressed: "Approval id.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "approved",
-      description: "Decision boolean for resolve_approval.",
-      descriptionCompressed: "Approve bool.",
-      required: false,
-      schema: { type: "boolean" },
     },
     {
       name: "button",
@@ -462,7 +445,7 @@ export const useComputerAction: Action = {
     return getComputerUseService(runtime) !== null
   },
   handler: createComputerUseHandler(async ({ service, raw: rawParams, message, signal, callback, runRelayed }) => {
-    const approvalDecision = parseApprovalDecision(rawParams, message)
+    const approvalDecision = parseApprovalDecision(message)
     if (approvalDecision) {
       if (approvalDecision.ownerMismatch) {
         return { success: false, error: approvalDecision.reason, text: approvalDecision.reason ?? "Owner mismatch." }
@@ -481,7 +464,11 @@ export const useComputerAction: Action = {
         data: { source: "computeruse", computerUseAction: "resolve_approval", resolution: resolved },
       }
     }
-    const action = (typeof rawParams.action === "string" ? rawParams.action : "screenshot") as DesktopActionType
+    const requested = typeof rawParams.action === "string" ? rawParams.action : "screenshot"
+    if (!(DESKTOP_ACTION_ENUM as readonly string[]).includes(requested)) {
+      return { success: false, error: `Unsupported COMPUTER_USE action "${requested}"`, text: `Unsupported COMPUTER_USE action "${requested}".` }
+    }
+    const action = requested as DesktopActionType
     const desktopParams: DesktopActionParams = { ...(rawParams as Omit<DesktopActionParams, "action">), action }
     const result = await runRelayed(() => service.executeDesktopAction(desktopParams, signal))
     const text = result.success
@@ -548,7 +535,7 @@ export const windowAction: Action = {
   name: "WINDOW",
   contexts: ["automation", "screen_time"],
   contextGate: { anyOf: ["automation", "screen_time"] },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
   modelClass: "TEXT_SMALL",
   toolSchemaStrict: true,
   similes: ["MANAGE_WINDOW", "USE_WINDOW", "WINDOW", "WINDOW_ACTION"],
@@ -622,7 +609,7 @@ export const clipboardAction: Action = {
   name: "CLIPBOARD",
   contexts: ["automation", "files", "screen_time"],
   contextGate: { anyOf: ["automation", "files", "screen_time"] },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
   modelClass: "TEXT_SMALL",
   toolSchemaStrict: true,
   similes: ["CLIPBOARD", "CLIPBOARD_ACTION", "READ_CLIPBOARD", "USE_CLIPBOARD", "WRITE_CLIPBOARD"],
@@ -715,7 +702,7 @@ export interface ComputerUseAgentReport {
   readonly goal: string
   readonly steps: readonly ComputerUseAgentStepProgress[]
   readonly finished: boolean
-  readonly reason: "finish" | "max_steps" | "error" | "budget" | "cancelled" | "repeated_action"
+  readonly reason: "finish" | "max_steps" | "error" | "budget" | "cancelled" | "repeated_action" | "approval_denied"
   readonly error?: string
   readonly tokensSaved: number
 }
@@ -734,16 +721,25 @@ export interface ComputerUseAgentDeps {
   readonly onCompactStepProgress?: (content: Content) => Promise<void> | void
 }
 
-function serviceAsComputerInterface(service: ComputerUseService): ComputerInterface {
+function serviceAsComputerInterface(service: ComputerUseService, signal?: AbortSignal): ComputerInterface {
+  const perform = async (params: DesktopActionParams): Promise<void> => {
+    const result = await service.executeDesktopAction(params, signal)
+    if (!result.success) {
+      throw new ElizaError(result.error ?? `Desktop action ${params.action} failed`, {
+        code: result.errorCode ?? "computer_action_failed",
+        context: { action: params.action },
+      })
+    }
+  }
   return {
-    leftClick: async (pt) => { await service.executeDesktopAction({ action: "click", coordinate: [pt.x, pt.y], displayId: pt.displayId }) },
-    doubleClick: async (pt) => { await service.executeDesktopAction({ action: "double_click", coordinate: [pt.x, pt.y], displayId: pt.displayId }) },
-    rightClick: async (pt) => { await service.executeDesktopAction({ action: "right_click", coordinate: [pt.x, pt.y], displayId: pt.displayId }) },
-    typeText: async ({ text }) => { await service.executeDesktopAction({ action: "type", text }) },
-    pressKey: async ({ key }) => { await service.executeDesktopAction({ action: "key", key }) },
-    hotkey: async ({ keys }) => { await service.executeDesktopAction({ action: "key_combo", key: keys.join("+") }) },
-    scroll: async (args) => { await service.executeDesktopAction({ action: "scroll", coordinate: [args.x, args.y], displayId: args.displayId, scrollDirection: args.dy >= 0 ? "up" : "down", scrollAmount: Math.max(1, Math.abs(args.dy)) }) },
-    drag: async (args) => { await service.executeDesktopAction({ action: "drag", startCoordinate: [args.startX, args.startY], coordinate: [args.endX, args.endY], displayId: args.displayId }) },
+    leftClick: (pt) => perform({ action: "click", coordinate: [pt.x, pt.y], displayId: pt.displayId }),
+    doubleClick: (pt) => perform({ action: "double_click", coordinate: [pt.x, pt.y], displayId: pt.displayId }),
+    rightClick: (pt) => perform({ action: "right_click", coordinate: [pt.x, pt.y], displayId: pt.displayId }),
+    typeText: ({ text }) => perform({ action: "type", text }),
+    pressKey: ({ key }) => perform({ action: "key", key }),
+    hotkey: ({ keys }) => perform({ action: "key_combo", key: keys.join("+") }),
+    scroll: (args) => perform({ action: "scroll", coordinate: [args.x, args.y], displayId: args.displayId, scrollDirection: args.dy >= 0 ? "up" : "down", scrollAmount: Math.max(1, Math.abs(args.dy)) }),
+    drag: (args) => perform({ action: "drag", startCoordinate: [args.startX, args.startY], coordinate: [args.endX, args.endY], displayId: args.displayId }),
   }
 }
 
@@ -758,7 +754,7 @@ export async function runComputerUseAgentLoop(
   const maxSteps = Math.max(1, Math.min(30, params.maxSteps ?? 10))
   const brain = deps.brain ?? new Brain({ runtime, imagePolicy: params.imagePolicy ?? service.getConfig().brainImagePolicy })
   const cascade = new Cascade({ brain, actor: getRegisteredActor() })
-  const iface = deps.computerInterface ?? serviceAsComputerInterface(service)
+  const iface = deps.computerInterface ?? serviceAsComputerInterface(service, params.signal)
   const trajectorySink: Array<Record<string, unknown>> = []
   const middlewares: AgentMiddleware[] = deps.middleware
     ? [...deps.middleware]
@@ -790,7 +786,17 @@ export async function runComputerUseAgentLoop(
       }
     }
 
-    const scene = await service.refreshScene("agent-turn")
+    const observed = await service.refreshScene("agent-turn", params.signal).then(
+      (value) => ({ ok: true as const, value }),
+      (err: unknown) => ({ ok: false as const, err }),
+    )
+    if (!observed.ok) {
+      const failure = observed.err
+      if (!(failure instanceof ElizaError) || failure.code !== "approval_denied") throw failure
+      for (const mw of middlewares) mw.onRunEnd?.({ goal: params.goal, steps: steps.length, reason: "approval_denied" })
+      return { goal: params.goal, steps, finished: false, reason: "approval_denied", error: failure.message, tokensSaved: brain.getStats().estimatedTokensSaved }
+    }
+    const scene = observed.value
     let captures: readonly DisplayCapture[] = deps.captureAll
       ? await deps.captureAll()
       : []
@@ -857,6 +863,18 @@ export async function runComputerUseAgentLoop(
           error: dispatchRes.error?.message,
         }),
       )
+    }
+
+    if (dispatchRes.error?.code === "approval_denied") {
+      for (const mw of middlewares) mw.onRunEnd?.({ goal: params.goal, steps: steps.length, reason: "approval_denied" })
+      return {
+        goal: params.goal,
+        steps,
+        finished: false,
+        reason: "approval_denied",
+        error: dispatchRes.error.message,
+        tokensSaved: brain.getStats().estimatedTokensSaved,
+      }
     }
 
     if (proposed.kind === "finish") {

@@ -4,9 +4,9 @@
 // spec/agent/conversation/turns.md, "A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain"
 // spec/agent/conversation/turns.md, "An interrupted reply keeps proof of an applied effect"; spec/agent/conversation/turns.md, "An aborted reply records what ended its turn, and never in its text"
 // spec/agent/schedule/triggers.md, "An event trigger runs once for each event of its name a conversation turn raises, never for a trigger run's events"
-// spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"
+// spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "A Browser page is kept only when every field is valid, it is the Browser tab the kept observation selects at that revision on a screen not sensitive, and it fits 16,384 bytes"; spec/agent/conversation/turnContext.md, "A reviewed email is kept only when every field is valid and it fits 48,000 bytes"; spec/agent/conversation/turnContext.md, "A voice-note transcript flag is kept only when true and bound to a selected canonical note on a non-sensitive screen"
 // spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
-// spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"
+// spec/agent/conversation/replyStream.md, "Only a message that starts its own turn streams text, a repeat waits for its reply, and a refusal opens no stream"; spec/agent/conversation/replyStream.md, "A frame marks its text provisional while any of it may be taken back, and only a whole text clears the mark"; spec/agent/conversation/planning.md, "A turn acknowledges at most once, with a cue that comes with its first tool calls"
 // spec/agent/tasks/wire.md, "A chat turn names a task only while the host presents it at that epoch"
 // spec/agent/deviceActions/index.md, "A proposal is offered only on an owner turn of the enrolled device, as its family grounded it, and re-admitted under the turn's negotiation"; spec/agent/deviceActions/index.md, "An unclaimed offer retires at its deadline or at the end of its turn"
 // spec/agent/conversation/turns.md, "A quoted reply uses only the selected message from this conversation"
@@ -20,7 +20,7 @@ module node {
   import { warmUpDeadlineMs, warmUpStarts } from "../../gen/agent__conversation__planning.ts"
   import { plannerWarmUps } from "./message-service.vibe"
   import { abortCauseOf, admitsReplyTarget, cloudCodeOn, decide, planActionOf, providerWaitMs, publishesCutOffEffect, receiptRetentionMs, stopConfirmMs, stopWindowOpen, turnDeadlineMs, type Admission, type KeyView, type ReplyKind, type TurnEnder } from "../../gen/agent__conversation__turns.ts"
-  import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeVoiceUiContext } from "@elizaos/agent"
+  import { type LocalRoute, decodeBrowserPage, decodeObservation, decodeReviewedEmail, decodeSelectedVoiceNoteTranscript, decodeVoiceUiContext, emptyTextTurnAccepted } from "@elizaos/agent"
   import type { VoiceAction } from "../../gen/agent__conversation__planning.ts"
   import { voiceActionLabel } from "./reply-text.vibe"
   import type { DeviceTurnPort, DeviceTurnSession } from "../device-actions/proposal/turn.vibe"
@@ -90,23 +90,37 @@ module node {
     const clientId = parseViewInteractionClientId(sent)
     if (sent !== undefined && clientId === undefined) return { kind: "refused", status: 400, error: "invalid_client_id" }
     const parsed = turnBody(body)
-    if (parsed._tag !== "Some" || (!parsed.value.text && !parsed.value.images?.length)) {
+    if (parsed._tag !== "Some") {
       return { kind: "refused", status: 400, error: "invalid_message" }
     }
     const metadata = parsed.value.metadata
-    if (metadata === undefined) return { kind: "input", body: parsed.value, clientId }
-    const { observation, voiceUi, browserPage, ...rest } = metadata
-    const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
-    if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused", status: 400, error: "VOICE_UI_CONTEXT_INVALID" }
+    if (metadata === undefined) {
+      if (!parsed.value.text && !parsed.value.images?.length) return { kind: "refused", status: 400, error: "invalid_message" }
+      return { kind: "input", body: parsed.value, clientId }
+    }
+    const { observation, voiceUi, browserPage, reviewedEmail, useSelectedVoiceNoteTranscript, ...rest } = metadata
     const seen = observation === undefined ? undefined : Effect.runSync(Effect.result(decodeObservation(observation)))
     const kept = seen !== undefined && Result.isSuccess(seen) ? seen.success : undefined
     const page = browserPage === undefined ? undefined : Effect.runSync(Effect.result(decodeBrowserPage(browserPage, kept)))
+    const email = reviewedEmail === undefined ? undefined : Effect.runSync(Effect.result(decodeReviewedEmail(reviewedEmail)))
+    const voiceNote = useSelectedVoiceNoteTranscript === undefined ? undefined : Effect.runSync(Effect.result(decodeSelectedVoiceNoteTranscript(useSelectedVoiceNoteTranscript, kept)))
+    const hasSubject = emptyTextTurnAccepted(
+      Boolean(parsed.value.text),
+      Boolean(parsed.value.images?.length),
+      email !== undefined && Result.isSuccess(email),
+      voiceNote !== undefined && Result.isSuccess(voiceNote),
+    )
+    if (!hasSubject) return { kind: "refused", status: 400, error: "invalid_message" }
+    const voice = voiceUi === undefined ? undefined : Effect.runSync(Effect.result(decodeVoiceUiContext(voiceUi, clientId)))
+    if (voice !== undefined && Result.isFailure(voice)) return { kind: "refused", status: 400, error: "VOICE_UI_CONTEXT_INVALID" }
     return {
       kind: "input", body: parsed.value, clientId, metadata: {
         ...rest,
         ...(voice === undefined ? {} : { voiceUi: voice.success }),
         ...(kept === undefined ? {} : { observation: kept }),
         ...(page !== undefined && Result.isSuccess(page) ? { browserPage: page.success } : {}),
+        ...(email !== undefined && Result.isSuccess(email) ? { reviewedEmail: email.success } : {}),
+        ...(voiceNote !== undefined && Result.isSuccess(voiceNote) ? { useSelectedVoiceNoteTranscript: voiceNote.success } : {}),
       } as JsonObject,
     }
   }
@@ -127,6 +141,7 @@ module node {
 
   export interface TurnDisplay {
     readonly restart: (fullText: string) => void
+    readonly settle?: (fullText: string) => void
     readonly acknowledge: (text: string) => boolean | void
     readonly tool: (name: string, label: string) => void
     readonly ready: (fullText: string, ran: TurnReply["actionResults"]) => void
@@ -232,7 +247,8 @@ module node {
       let taskEnding: ChatTaskEnding | undefined
       const storeReply = async (content: Content): Promise<Memory[]> => {
         const kind = storedFailure(content)
-        if (!content.text?.trim() && kind === undefined) return []
+        const marked = Array.isArray(content.untoldActions) && content.untoldActions.length > 0
+        if (!content.text?.trim() && kind === undefined && !marked) return []
         if (kind === undefined && options.taskPresentation !== undefined) {
           taskEnding = await options.taskPresentation.end(signal)
           signal.throwIfAborted()
@@ -276,7 +292,8 @@ module node {
             onActivityStatus: ({ actionName, label }: { actionName: string; label: string }) => options.display?.tool(actionName, label),
           }),
           ...(options.taskPresentation === undefined
-            ? { onReplyStored: (fullText: string, ran: readonly ActionResult[]) => options.display?.ready(fullText, turnActions(ran)) }
+            ? { onReplyStored: (fullText: string, ran: readonly ActionResult[]) => options.display?.ready(fullText, turnActions(ran)),
+              ...(options.display?.settle === undefined ? {} : { onReplySettled: options.display.settle }) }
             : { taskContext: options.taskPresentation.context }),
         }
         const handle = () => service.handleMessage(runtime, input, storeReply, processing)
@@ -456,7 +473,8 @@ module node {
           deadline, ...(key === undefined ? {} : { key }), ...(attached === undefined ? {} : {
             onStreamChunk: (chunk: string) => attached.writer.append(chunk, true),
             display: {
-              restart: (fullText: string) => attached.writer.restart(fullText, true), acknowledge: (cue: string) => attached.writer.acknowledge(cue),
+              restart: (fullText: string) => attached.writer.restart(fullText, true), settle: (fullText: string) => attached.writer.restart(fullText, false),
+              acknowledge: (cue: string) => attached.writer.acknowledge(cue),
               tool: (name: string, label: string) => attached.writer.tool(name, label),
               ready: attached.writer.ready,
             },
@@ -469,13 +487,15 @@ module node {
         const failed = storedFailure(reply?.content)
         if (failed !== undefined && reply?.id !== undefined) return answer(reply.content.text ?? "", reply.id, result.userMessageId, liveFailure(failed, result.responseContent))
         if (result.taskEnding?.kind === "Refused") return failure(result.taskEnding.status, result.taskEnding.error)
-        if (!result.didRespond || !result.responseContent?.text || reply?.id === undefined) return failure(503, "ASSISTANT_RESPONSE_UNAVAILABLE")
+        const repliedText = result.responseContent?.text
+        const marked = Array.isArray(result.responseContent?.untoldActions) && result.responseContent.untoldActions.length > 0
+        if (!result.didRespond || typeof repliedText !== "string" || (repliedText === "" && !marked) || reply?.id === undefined) return failure(503, "ASSISTANT_RESPONSE_UNAVAILABLE")
         const shown = taskPresentation === undefined ? undefined
           : replayTaskChoices(await taskPresentation.end(turnSignal), reply.content.taskPresentationReceipt)
         if (shown?.kind === "Refused") return failure(shown.status, shown.error)
         const ran = turnActions(result.actionResults ?? [])
-        return answer(result.responseContent.text, reply.id, result.userMessageId, undefined, shown?.choices, ran,
-          voiceActionLabel(channelType === ChannelType.VOICE_DM, result.responseContent.text, ran.map(({ action }) => action)))
+        return answer(repliedText, reply.id, result.userMessageId, undefined, shown?.choices, ran,
+          voiceActionLabel(channelType === ChannelType.VOICE_DM, repliedText, ran.map(({ action }) => action)))
       }
 
       if (busy) return sendOwned(signal)
