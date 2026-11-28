@@ -699,6 +699,39 @@ export function pageCommand(
     !value.startsWith("0000-") &&
     !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
     new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  const parseDateText = (raw, preferMdy = false) => {
+    const text = String(raw ?? "").trim();
+    if (isValidIsoDate(text)) {
+      const [y, m, d] = text.split("-").map(Number);
+      return { iso: text, year: y, month: m, day: d };
+    }
+    const slashed = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+    if (slashed) {
+      const first = slashed[1].padStart(2, "0");
+      const second = slashed[2].padStart(2, "0");
+      const year = slashed[3];
+      const candidates = preferMdy
+        ? [
+            { month: first, day: second },
+            { month: second, day: first },
+          ]
+        : [
+            { month: second, day: first },
+            { month: first, day: second },
+          ];
+      for (const { month, day } of candidates) {
+        const iso = `${year}-${month}-${day}`;
+        if (isValidIsoDate(iso))
+          return {
+            iso,
+            year: Number(year),
+            month: Number(month),
+            day: Number(day),
+          };
+      }
+    }
+    return null;
+  };
   const classifyNode = (node, subaction = "click", commitPattern = null) => {
     const reasons = [];
     if (subaction === "scroll")
@@ -2656,9 +2689,20 @@ export function pageCommand(
       is(inputReadback.node, "HTMLInputElement") &&
       ["text", "tel"].includes(inputReadback.node.type) &&
       inputReadback.node.value !== inputReadback.text &&
-      /^\d{2,32}$/.test(inputReadback.text) &&
-      /^[\d(][\d ()/-]*$/.test(inputReadback.node.value) &&
-      inputReadback.node.value.replace(/[ ()/-]/g, "") === inputReadback.text;
+      ((/^\d{2,32}$/.test(inputReadback.text) &&
+        /^[\d(][\d ()/-]*$/.test(inputReadback.node.value) &&
+        inputReadback.node.value.replace(/[ ()/-]/g, "") ===
+          inputReadback.text) ||
+        (() => {
+          const preferMdy = (
+            inputReadback.node.getAttribute("placeholder") || ""
+          )
+            .toLowerCase()
+            .includes("mm/dd/yyyy");
+          const a = parseDateText(inputReadback.text, preferMdy);
+          const b = parseDateText(inputReadback.node.value, preferMdy);
+          return a !== null && b !== null && a.iso === b.iso;
+        })());
     return {
       ...(policy &&
       clickReadback &&
@@ -3077,39 +3121,6 @@ export function pageCommand(
           })();
     if (matches.length !== 1 || isDisabled(matches[0])) return null;
     return matches[0];
-  };
-  const parseDateText = (raw, preferMdy = false) => {
-    const text = String(raw ?? "").trim();
-    if (isValidIsoDate(text)) {
-      const [y, m, d] = text.split("-").map(Number);
-      return { iso: text, year: y, month: m, day: d };
-    }
-    const slashed = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
-    if (slashed) {
-      const first = slashed[1].padStart(2, "0");
-      const second = slashed[2].padStart(2, "0");
-      const year = slashed[3];
-      const candidates = preferMdy
-        ? [
-            { month: first, day: second },
-            { month: second, day: first },
-          ]
-        : [
-            { month: second, day: first },
-            { month: first, day: second },
-          ];
-      for (const { month, day } of candidates) {
-        const iso = `${year}-${month}-${day}`;
-        if (isValidIsoDate(iso))
-          return {
-            iso,
-            year: Number(year),
-            month: Number(month),
-            day: Number(day),
-          };
-      }
-    }
-    return null;
   };
   const findAriaOptionElements = (host) => {
     const role = (host.getAttribute("role") || "").toLowerCase();
@@ -3739,7 +3750,7 @@ export function pageCommand(
     // The last submit event, so the form data it sends is not taken for a
     // script form.submit(), which sends no submit event.
     let lastSubmit = null;
-    let allowedGetSubmit = null;
+    let allowedWizardSubmit = null;
     watched.addEventListener(
       "submit",
       (event) => {
@@ -3783,20 +3794,24 @@ export function pageCommand(
           }, 0);
           return;
         }
-        // A permitted non-commit wizard/search GET submitter on the same origin
-        // may advance without tripping an unauthorized-commit violation.
+        // A permitted non-commit wizard/search GET or POST submitter on the same
+        // origin may advance without tripping an unauthorized-commit violation.
         if (
           command.subaction === "click" &&
           !grant &&
           clickedConsequence !== "commit" &&
           sent &&
-          sent.method === "get" &&
+          (sent.method === "get" || sent.method === "post") &&
           sameOrigin(sent.action) &&
           ["", "_self"].includes(sent.target) &&
           form === node.form &&
           (submitter === node || submitter === null)
         ) {
-          allowedGetSubmit = { form, action: sent.action };
+          allowedWizardSubmit = {
+            form,
+            action: sent.action,
+            method: sent.method,
+          };
           return;
         }
         report("submit", event);
@@ -3847,11 +3862,10 @@ export function pageCommand(
           return;
         if (event.destination.sameDocument) {
           // Recorded, not stopped: the page's own state has already moved.
-          // Permitted SPA navigation/staging clicks may transition hash/history routes.
+          // Permitted SPA clicks (including granted commits) may transition hash/history routes.
           if (
             command.subaction === "click" &&
-            !grant &&
-            clickedConsequence !== "commit" &&
+            (grant || clickedConsequence !== "commit") &&
             policy.allowSameDocumentNavigation !== false
           )
             return;
@@ -3859,15 +3873,45 @@ export function pageCommand(
           return;
         }
         if (
-          allowedGetSubmit &&
-          event.formData == null &&
+          allowedWizardSubmit &&
           sameOrigin(event.destination.url) &&
-          samePath(event.destination.url, allowedGetSubmit.action) &&
+          samePath(event.destination.url, allowedWizardSubmit.action) &&
+          (allowedWizardSubmit.method === "post"
+            ? event.formData != null
+            : event.formData == null) &&
           (event.sourceElement === node ||
-            event.sourceElement === allowedGetSubmit.form ||
+            event.sourceElement === allowedWizardSubmit.form ||
             !("sourceElement" in event))
         ) {
-          allowedGetSubmit = null;
+          allowedWizardSubmit = null;
+          return;
+        }
+        // Commit-granted non-form button navigating within the same origin (e.g. location.href).
+        if (
+          consent &&
+          !consent.spent &&
+          !consent.pending &&
+          grantedForm === null &&
+          command.subaction === "click" &&
+          event.formData == null &&
+          sameOrigin(event.destination.url) &&
+          (!declared ||
+            samePath(event.destination.url, expectedRequest?.url ?? ""))
+        ) {
+          consent.spent = true;
+          consentTo("navigation", event.destination.url);
+          return;
+        }
+        // Permitted non-commit main-frame button click navigating within the same origin.
+        if (
+          command.subaction === "click" &&
+          !grant &&
+          clickedConsequence !== "commit" &&
+          frameOf(node) === null &&
+          event.formData == null &&
+          sameOrigin(event.destination.url) &&
+          policy.allowSameOriginNavigation !== false
+        ) {
           return;
         }
         // A form submission's source is its submitter, or the form itself
@@ -3987,6 +4031,36 @@ export function pageCommand(
               consentTo("request", entry.name);
               continue;
             }
+            // Commit-granted JS/SPA button click (no form action or declared requestTarget)
+            // may invoke same-origin fetch/XHR to execute and refresh UI state.
+            if (
+              consent &&
+              !consent.pending &&
+              expectedRequest === null &&
+              grant.formHash === undefined &&
+              command.subaction === "click" &&
+              sameOrigin(entry.name) &&
+              entry.initiatorType !== "beacon" &&
+              policy.allowSameOriginRequests !== false
+            ) {
+              if (!consent.spent) {
+                consent.spent = true;
+                consentTo("request", entry.name);
+              }
+              continue;
+            }
+            // Permitted non-commit click or select may trigger same-origin SPA fetch/XHR
+            // (e.g. tab loading, cart updates, dependent dropdowns); fill/code-fill stays watched.
+            if (
+              !grant &&
+              ["click", "select"].includes(command.subaction) &&
+              clickedConsequence !== "commit" &&
+              sameOrigin(entry.name) &&
+              entry.initiatorType !== "beacon" &&
+              policy.allowSameOriginRequests !== false
+            ) {
+              continue;
+            }
             record("request");
             break;
           }
@@ -4002,6 +4076,151 @@ export function pageCommand(
     );
     store[watchKey] = watch;
   }
+  const commitCustomDateWidget = (target, parsedDate, rawText = null) => {
+    const targetView = realmOf(target);
+    const dispatchKey = (el, type, key, keyCode) => {
+      try {
+        el.dispatchEvent(
+          new targetView.KeyboardEvent(type, {
+            key,
+            code: key,
+            keyCode,
+            which: keyCode,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          }),
+        );
+      } catch {
+        el.dispatchEvent(
+          new targetView.Event(type, { bubbles: true, composed: true }),
+        );
+      }
+    };
+    const setVal = (el, val) => {
+      Object.getOwnPropertyDescriptor(
+        targetView.HTMLInputElement.prototype,
+        "value",
+      ).set.call(el, val);
+      el.dispatchEvent(
+        new targetView.Event("input", { bubbles: true, composed: true }),
+      );
+      el.dispatchEvent(
+        new targetView.Event("change", { bubbles: true, composed: true }),
+      );
+    };
+    const ph = (target.getAttribute?.("placeholder") || "").toLowerCase();
+    const formattedDate = ph.includes("dd/mm/yyyy")
+      ? `${String(parsedDate.day).padStart(2, "0")}/${String(parsedDate.month).padStart(2, "0")}/${parsedDate.year}`
+      : ph.includes("mm/dd/yyyy")
+        ? `${String(parsedDate.month).padStart(2, "0")}/${String(parsedDate.day).padStart(2, "0")}/${parsedDate.year}`
+        : rawText && String(rawText).trim()
+          ? String(rawText).trim()
+          : parsedDate.iso;
+    try {
+      target.focus?.();
+    } catch {}
+    try {
+      target.dispatchEvent(
+        new targetView.FocusEvent("focus", { bubbles: false }),
+      );
+      target.dispatchEvent(
+        new targetView.FocusEvent("focusin", { bubbles: true, composed: true }),
+      );
+    } catch {}
+    target.click?.();
+    if (is(target, "HTMLInputElement")) {
+      setVal(target, formattedDate);
+      // Bootstrap Datepicker / jQuery UI sync the visible calendar month/year & .active cell on keyup.
+      dispatchKey(target, "keyup", "0", 48);
+    }
+    const searchRoots = [
+      target,
+      ...(target.shadowRoot ? [target.shadowRoot] : []),
+      target.getRootNode(),
+      document,
+    ];
+    const isVisibleEl = (el) =>
+      el.checkVisibility?.({ checkVisibilityCSS: true }) !== false &&
+      el.getBoundingClientRect?.().width > 0 &&
+      el.getBoundingClientRect?.().height > 0;
+    const findDateCell = () => {
+      for (const root of searchRoots) {
+        const exact = findDeep(root, `[data-date="${parsedDate.iso}"]`).find(
+          (el) =>
+            isVisibleEl(el) &&
+            !el.matches(":disabled,[aria-disabled=true],.disabled"),
+        );
+        if (exact) return exact;
+      }
+      for (const selector of [
+        ".datepicker-days td.day.active:not(.disabled),.flatpickr-day.selected:not(.disabled),.ui-datepicker-calendar a.ui-state-active",
+        ".datepicker-days td.day:not(.disabled):not(.old):not(.new),.flatpickr-day:not(.disabled),.ui-datepicker-calendar td:not(.ui-datepicker-unselectable) a",
+        "[role=gridcell]:not([aria-disabled=true])",
+      ]) {
+        for (const root of searchRoots) {
+          const cells = findDeep(root, selector).filter(
+            (el) =>
+              isVisibleEl(el) &&
+              (el.textContent || "").trim() === String(parsedDate.day),
+          );
+          if (cells.length === 1) return cells[0];
+        }
+      }
+      return null;
+    };
+    const cell = findDateCell();
+    if (cell) {
+      cell.click();
+    } else if (is(target, "HTMLInputElement")) {
+      dispatchKey(target, "keydown", "Enter", 13);
+      dispatchKey(target, "keyup", "Enter", 13);
+    }
+    try {
+      target.blur?.();
+    } catch {}
+    try {
+      target.dispatchEvent(
+        new targetView.FocusEvent("blur", { bubbles: false }),
+      );
+      target.dispatchEvent(
+        new targetView.FocusEvent("focusout", { bubbles: true, composed: true }),
+      );
+    } catch {}
+    if (is(target, "HTMLInputElement") && target.value === "") {
+      setVal(target, formattedDate);
+      dispatchKey(target, "keydown", "Enter", 13);
+      dispatchKey(target, "keyup", "Enter", 13);
+    }
+    // Dismiss any still-open JS datepicker popup without losing the committed date value.
+    const openPopup = findDeep(
+      document,
+      ".datepicker-dropdown,.datepicker,.flatpickr-calendar.open,#ui-datepicker-div,.react-datepicker",
+    ).find(isVisibleEl);
+    if (openPopup && (!is(target, "HTMLInputElement") || target.value !== "")) {
+      const committed = is(target, "HTMLInputElement") ? target.value : null;
+      dispatchKey(target, "keydown", "Escape", 27);
+      dispatchKey(target, "keyup", "Escape", 27);
+      if (isVisibleEl(openPopup)) {
+        try {
+          document.body?.dispatchEvent(
+            new targetView.MouseEvent("mousedown", { bubbles: true }),
+          );
+          document.body?.dispatchEvent(
+            new targetView.MouseEvent("mouseup", { bubbles: true }),
+          );
+        } catch {}
+      }
+      if (
+        committed &&
+        is(target, "HTMLInputElement") &&
+        target.value === ""
+      ) {
+        setVal(target, committed);
+      }
+    }
+    return is(target, "HTMLInputElement") ? target.value !== "" : !!cell;
+  };
   if (command.subaction === "click") {
     // Only text changed during this exact synchronous activation is eligible.
     // Timers and later requests are not attributed to this click. Retain the
@@ -4147,7 +4366,20 @@ export function pageCommand(
         until,
       };
     } else {
-      write(node, command.text, true);
+      const preferMdy = (node.getAttribute?.("placeholder") || "")
+        .toLowerCase()
+        .includes("mm/dd/yyyy");
+      const parsedFillDate =
+        isDateWidget &&
+        is(node, "HTMLInputElement") &&
+        node.type !== "date"
+          ? parseDateText(command.text, preferMdy)
+          : null;
+      if (parsedFillDate) {
+        commitCustomDateWidget(node, parsedFillDate, command.text);
+      } else {
+        write(node, command.text, true);
+      }
       if (policy && !sensitivity(node))
         monitor.inputReadback = {
           node,
@@ -4264,82 +4496,8 @@ export function pageCommand(
           innerDate.blur?.();
         } catch {}
       } else {
-        try {
-          target.focus?.();
-        } catch {}
-        target.click();
-        const searchRoots = [
-          target,
-          ...(target.shadowRoot ? [target.shadowRoot] : []),
-          target.getRootNode(),
-          document,
-        ];
-        const findDateCell = () => {
-          for (const root of searchRoots) {
-            const exact = findDeep(
-              root,
-              `[data-date="${parsedDate.iso}"]`,
-            ).find(
-              (el) =>
-                el.checkVisibility?.({ checkVisibilityCSS: true }) !== false &&
-                !el.matches(":disabled,[aria-disabled=true],.disabled"),
-            );
-            if (exact) return exact;
-          }
-          for (const selector of [
-            ".datepicker-days td.day:not(.disabled):not(.old):not(.new),.flatpickr-day:not(.disabled)",
-            "[role=gridcell]:not([aria-disabled=true])",
-          ]) {
-            for (const root of searchRoots) {
-              const cells = findDeep(root, selector).filter(
-                (el) =>
-                  el.checkVisibility?.({ checkVisibilityCSS: true }) !==
-                    false &&
-                  (el.textContent || "").trim() === String(parsedDate.day),
-              );
-              if (cells.length === 1) return cells[0];
-            }
-          }
-          return null;
-        };
-        const cell = findDateCell();
-        if (cell) {
-          cell.click();
-        } else if (is(target, "HTMLInputElement")) {
-          const ph = (target.getAttribute("placeholder") || "").toLowerCase();
-          const formattedDate = ph.includes("dd/mm/yyyy")
-            ? `${String(parsedDate.day).padStart(2, "0")}/${String(parsedDate.month).padStart(2, "0")}/${parsedDate.year}`
-            : ph.includes("mm/dd/yyyy")
-              ? `${String(parsedDate.month).padStart(2, "0")}/${String(parsedDate.day).padStart(2, "0")}/${parsedDate.year}`
-              : parsedDate.iso;
-          Object.getOwnPropertyDescriptor(
-            view.HTMLInputElement.prototype,
-            "value",
-          ).set.call(target, formattedDate);
-          target.dispatchEvent(
-            new view.Event("input", { bubbles: true, composed: true }),
-          );
-          target.dispatchEvent(
-            new view.Event("change", { bubbles: true, composed: true }),
-          );
-          try {
-            target.blur?.();
-          } catch {}
-          if (target.value === "") {
-            Object.getOwnPropertyDescriptor(
-              view.HTMLInputElement.prototype,
-              "value",
-            ).set.call(target, formattedDate);
-            target.dispatchEvent(
-              new view.Event("input", { bubbles: true, composed: true }),
-            );
-            target.dispatchEvent(
-              new view.Event("change", { bubbles: true, composed: true }),
-            );
-          }
-        } else {
+        if (!commitCustomDateWidget(target, parsedDate, command.text))
           return denied();
-        }
       }
     } else {
       return denied();

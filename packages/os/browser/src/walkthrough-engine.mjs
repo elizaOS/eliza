@@ -563,6 +563,10 @@ export function sanitizeObservationForPlanner(
       kind: b.kind,
       covers: b.covers,
       overlay: b.overlay === true,
+      autoDismissible:
+        b.kind === "cookie-consent"
+          ? Boolean(b.rejectRef)
+          : b.kind !== "captcha" && b.kind !== "paywall" && Boolean(b.ref),
       ...(b.ref ? { ref: mapRef(b.ref) } : {}),
       ...(b.rejectRef ? { rejectRef: mapRef(b.rejectRef) } : {}),
       ...(b.text ? { text: redactSensitiveText(b.text).slice(0, 180) } : {}),
@@ -687,63 +691,62 @@ export function parsePlannerAction(raw) {
     typeof obj.reason === "string" && obj.reason.trim()
       ? obj.reason.trim()
       : "Planner step";
+  const rawNote =
+    typeof obj.note === "string"
+      ? obj.note
+      : typeof obj.remember === "string"
+        ? obj.remember
+        : "";
+  const note = rawNote.trim() ? rawNote.trim().slice(0, 240) : undefined;
+  const ok = (action) => ({
+    ok: true,
+    action: note ? { ...action, note } : action,
+  });
 
   switch (kind) {
     case "click":
     case "follow":
       if (typeof obj.ref !== "string" || !obj.ref.trim())
         return { ok: false, error: `${kind} requires a non-empty ref.` };
-      return {
-        ok: true,
-        action: {
-          kind,
-          ref: normalizeRef(obj.ref),
-          reason,
-          ...(typeof obj.expectedEffect === "string"
-            ? { expectedEffect: obj.expectedEffect.trim() }
-            : {}),
-        },
-      };
+      return ok({
+        kind,
+        ref: normalizeRef(obj.ref),
+        reason,
+        ...(typeof obj.expectedEffect === "string"
+          ? { expectedEffect: obj.expectedEffect.trim() }
+          : {}),
+      });
     case "fill":
     case "select":
       if (typeof obj.ref !== "string" || !obj.ref.trim())
         return { ok: false, error: `${kind} requires a non-empty ref.` };
       if (typeof obj.text !== "string")
         return { ok: false, error: `${kind} requires a string text.` };
-      return {
-        ok: true,
-        action: { kind, ref: normalizeRef(obj.ref), text: obj.text, reason },
-      };
+      return ok({ kind, ref: normalizeRef(obj.ref), text: obj.text, reason });
     case "scroll":
       if (typeof obj.direction !== "string" || !VALID_DIRECTIONS.has(obj.direction))
         return {
           ok: false,
           error: "scroll requires direction: up | down | left | right.",
         };
-      return {
-        ok: true,
-        action: {
-          kind,
-          direction: obj.direction,
-          ...(typeof obj.ref === "string" && obj.ref.trim()
-            ? { ref: normalizeRef(obj.ref) }
-            : {}),
-          reason,
-        },
-      };
+      return ok({
+        kind,
+        direction: obj.direction,
+        ...(typeof obj.ref === "string" && obj.ref.trim()
+          ? { ref: normalizeRef(obj.ref) }
+          : {}),
+        reason,
+      });
     case "dismiss_blocker":
-      return {
-        ok: true,
-        action: {
-          kind,
-          ...(Number.isInteger(obj.blockerIndex)
-            ? { blockerIndex: obj.blockerIndex }
-            : {}),
-          reason,
-        },
-      };
+      return ok({
+        kind,
+        ...(Number.isInteger(obj.blockerIndex)
+          ? { blockerIndex: obj.blockerIndex }
+          : {}),
+        reason,
+      });
     case "go_back":
-      return { ok: true, action: { kind, reason } };
+      return ok({ kind, reason });
     case "request_handoff":
       if (
         typeof obj.handoffKind !== "string" ||
@@ -753,24 +756,21 @@ export function parsePlannerAction(raw) {
           ok: false,
           error: `request_handoff requires valid handoffKind, got ${String(obj.handoffKind)}`,
         };
-      return {
-        ok: true,
-        action: {
-          kind,
-          handoffKind: obj.handoffKind,
-          summary:
-            typeof obj.summary === "string" && obj.summary.trim()
-              ? obj.summary.trim()
-              : reason,
-          ...(typeof obj.ref === "string" && obj.ref.trim()
-            ? { ref: normalizeRef(obj.ref) }
-            : {}),
-          ...(obj.details && typeof obj.details === "object"
-            ? { details: obj.details }
-            : {}),
-          reason,
-        },
-      };
+      return ok({
+        kind,
+        handoffKind: obj.handoffKind,
+        summary:
+          typeof obj.summary === "string" && obj.summary.trim()
+            ? obj.summary.trim()
+            : reason,
+        ...(typeof obj.ref === "string" && obj.ref.trim()
+          ? { ref: normalizeRef(obj.ref) }
+          : {}),
+        ...(obj.details && typeof obj.details === "object"
+          ? { details: obj.details }
+          : {}),
+        reason,
+      });
     case "ask_user": {
       const question =
         typeof obj.question === "string" ? obj.question.trim() : "";
@@ -778,24 +778,18 @@ export function parsePlannerAction(raw) {
         ? obj.options.filter((o) => typeof o === "string" && o.trim()).slice(0, 6)
         : [];
       if (!question) return { ok: false, error: "ask_user requires a question." };
-      return {
-        ok: true,
-        action: { kind, question, options, reason },
-      };
+      return ok({ kind, question, options, reason });
     }
     case "request_host_port":
       if (typeof obj.port !== "string" || !VALID_PORTS.has(obj.port))
         return { ok: false, error: `Unsupported host port: ${String(obj.port)}` };
-      return {
-        ok: true,
-        action: {
-          kind,
-          port: obj.port,
-          payload:
-            obj.payload && typeof obj.payload === "object" ? obj.payload : {},
-          reason,
-        },
-      };
+      return ok({
+        kind,
+        port: obj.port,
+        payload:
+          obj.payload && typeof obj.payload === "object" ? obj.payload : {},
+        reason,
+      });
     case "complete": {
       const summary =
         typeof obj.summary === "string" ? obj.summary.trim() : "";
@@ -805,44 +799,31 @@ export function parsePlannerAction(raw) {
             .map((q) => q.trim())
         : [];
       if (!summary) return { ok: false, error: "complete requires a summary." };
-      return {
-        ok: true,
-        action: {
-          kind,
-          summary,
-          quotes,
-          ...(obj.extractedFacts && typeof obj.extractedFacts === "object"
-            ? { extractedFacts: obj.extractedFacts }
-            : {}),
-        },
-      };
+      return ok({
+        kind,
+        summary,
+        quotes,
+        ...(obj.extractedFacts && typeof obj.extractedFacts === "object"
+          ? { extractedFacts: obj.extractedFacts }
+          : {}),
+      });
     }
     case "block":
-      return {
-        ok: true,
-        action: {
-          kind,
-          reason,
-          ...(typeof obj.handoffKind === "string" &&
-          HANDOFF_KINDS.includes(obj.handoffKind)
-            ? { handoffKind: obj.handoffKind }
-            : {}),
-        },
-      };
+      return ok({
+        kind,
+        reason,
+        ...(typeof obj.handoffKind === "string" &&
+        HANDOFF_KINDS.includes(obj.handoffKind)
+          ? { handoffKind: obj.handoffKind }
+          : {}),
+      });
     default:
       return { ok: false, error: `Unhandled action kind: ${kind}` };
   }
 }
 
-/**
- * Verifies that claimed completion quotes actually appear on the observed page
- * (case-insensitive, whitespace-normalized), preventing hallucinated receipts.
- */
-export function verifyCompletionQuotes(quotes, snapshot) {
-  const list = Array.isArray(quotes)
-    ? quotes.filter((q) => typeof q === "string" && q.trim().length > 0)
-    : [];
-  if (list.length === 0) return { verified: true, matched: [], missing: [] };
+const extractSnapshotCorpus = (snapshot) => {
+  if (typeof snapshot === "string") return normalizeWhitespace(snapshot).toLowerCase();
   const corpusParts = [
     String(snapshot?.title ?? ""),
     String(snapshot?.text ?? ""),
@@ -858,12 +839,28 @@ export function verifyCompletionQuotes(quotes, snapshot) {
       corpusParts.push((c.textLines ?? []).join(" "));
     }
   }
-  const normalizedCorpus = normalizeWhitespace(corpusParts.join(" ")).toLowerCase();
+  return normalizeWhitespace(corpusParts.join(" ")).toLowerCase();
+};
+
+/**
+ * Verifies that claimed completion quotes actually appear on the observed page
+ * or across any previously observed snapshots in the trajectory
+ * (case-insensitive, whitespace-normalized), preventing hallucinated receipts.
+ */
+export function verifyCompletionQuotes(quotes, snapshotOrCorpus) {
+  const list = Array.isArray(quotes)
+    ? quotes.filter((q) => typeof q === "string" && q.trim().length > 0)
+    : [];
+  if (list.length === 0) return { verified: true, matched: [], missing: [] };
+  const corpora = Array.isArray(snapshotOrCorpus)
+    ? snapshotOrCorpus.map(extractSnapshotCorpus).filter(Boolean)
+    : [extractSnapshotCorpus(snapshotOrCorpus)];
   const matched = [];
   const missing = [];
   for (const quote of list) {
     const norm = normalizeWhitespace(quote).toLowerCase();
-    if (norm && normalizedCorpus.includes(norm)) matched.push(quote);
+    if (norm && corpora.some((corpus) => corpus.includes(norm)))
+      matched.push(quote);
     else missing.push(quote);
   }
   return { verified: missing.length === 0, matched, missing };
@@ -906,16 +903,33 @@ Allowed JSON actions:
 
 Strict rules:
 1. Reference controls ONLY by their exact short ref from the controls list (e.g. "e0", "e1"). NEVER use CSS selectors, element names, or HTML id attributes as refs.
-2. Never fill passwords, payment card numbers, bank account numbers, SSNs, or one-time verification codes directly: emit request_handoff (NeedsPrivateSignIn or NeedsMFA).
+2. Never fill passwords, payment card numbers, bank account numbers, SSNs, or one-time verification codes directly: emit request_handoff (NeedsPrivateSignIn or NeedsMFA) ONLY when those sensitive fields are still empty (hasInput is false or omitted). Once sensitive fields show hasInput=true or recentHistory shows handoff:NeedsPrivateSignIn/NeedsMFA completed, do NOT emit request_handoff again — proceed directly to submit/continue.
 3. Never click or attempt to solve CAPTCHAs: emit request_handoff (NeedsCaptcha).
-4. For file uploads (<input type="file"> or upload triggers), emit request_handoff (NeedsFileUpload) or request_host_port (file_upload).
+4. For file uploads (<input type="file"> or upload triggers), emit request_handoff (NeedsFileUpload) or request_host_port (file_upload) unless hasFiles is already true.
 5. Avoid dark-pattern traps unless the user goal explicitly asks for them:
    - Skip Sponsored/Promoted/Ad listings and choose organic matching results.
    - Prefer One-Time Purchase over pre-selected Subscribe & Save or recurring plans.
    - Prefer free/standard shipping or zero-fee payment methods over paid defaults.
    - Uncheck pre-checked AutoPay/paperless/warranty/marketing opt-in boxes and decline upsell modals.
 6. Controls marked consequence="commit" (final Submit payment, Place order, Confirm appointment, Send message, Cancel service) are safety-gated; click them only when all details are verified on screen and ready for explicit human approval.
-7. Only emit "complete" when the goal is truly accomplished on the current page, and include verbatim "quotes" copied exactly from visible page text (such as confirmation numbers, balances, or requested facts).`;
+7. Only emit "complete" when the goal is truly accomplished, and include verbatim "quotes" copied exactly from text observed on the visited page(s) (such as confirmation numbers, balances, or requested facts).
+8. On multi-tab or multi-page tasks, include an optional "note" field on any action to record concise verified facts from the current view before leaving it (e.g. {"kind":"click","ref":"e3","reason":"Open next section","note":"Observed item X and value Y"}). Saved notes are returned in memoryNotes on later turns so you never need to revisit a tab you already inspected.`;
+
+const RETRYABLE_HTTP_STATUSES = new Set([429, 502, 503, 504]);
+
+const parseRetryAfterMs = (headerValue) => {
+  if (!headerValue) return null;
+  const seconds = Number(headerValue);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(15_000, Math.max(250, Math.round(seconds * 1000)));
+  }
+  const timestamp = Date.parse(headerValue);
+  if (!Number.isNaN(timestamp)) {
+    const delta = timestamp - Date.now();
+    if (delta > 0) return Math.min(15_000, Math.max(250, delta));
+  }
+  return null;
+};
 
 /**
  * Provider-agnostic OpenAI-compatible chat-completions planner (works with
@@ -930,6 +944,9 @@ export function createOpenAICompatiblePlanner({
   temperature = 0,
   maxTokens = 2048,
   timeoutMs = 45000,
+  maxRetries = 3,
+  retryBaseDelayMs = 1000,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   responseFormat = "json_object",
   disableReasoning,
   reasoningEffort,
@@ -956,8 +973,9 @@ export function createOpenAICompatiblePlanner({
         goal: input.goal,
         step: `${input.stepIndex + 1}/${input.maxSteps}`,
         observation: input.observation,
+        ...(input.memoryNotes?.length ? { memoryNotes: input.memoryNotes } : {}),
         ...(input.warnings?.length ? { warnings: input.warnings } : {}),
-        ...(input.history?.length ? { recentHistory: input.history.slice(-6) } : {}),
+        ...(input.history?.length ? { recentHistory: input.history.slice(-12) } : {}),
         ...(input.userAnswers?.length ? { userAnswers: input.userAnswers } : {}),
       };
       const body = {
@@ -986,68 +1004,101 @@ export function createOpenAICompatiblePlanner({
           ? extraHeaders
           : {}),
       };
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const response = await fetchImpl(endpoint, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-        const latencyMs = Date.now() - started;
-        if (!response.ok) {
-          return {
-            action: null,
-            parseError: `Planner HTTP ${response.status}`,
-            latencyMs,
-            tokenUsage: null,
-          };
-        }
-        const data = await response.json();
-        const choice = data?.choices?.[0];
-        const rawText = choice?.message?.content ?? "";
-        const usage = data?.usage
-          ? {
-              promptTokens: data.usage.prompt_tokens ?? 0,
-              completionTokens: data.usage.completion_tokens ?? 0,
-              totalTokens: data.usage.total_tokens ?? 0,
+      const retries = Math.max(0, Number.isInteger(maxRetries) ? maxRetries : 3);
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetchImpl(endpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            if (
+              RETRYABLE_HTTP_STATUSES.has(response.status) &&
+              attempt < retries
+            ) {
+              const retryAfter = parseRetryAfterMs(
+                response.headers?.get?.("retry-after"),
+              );
+              const delayMs =
+                retryAfter ??
+                Math.min(
+                  15_000,
+                  retryBaseDelayMs * 2 ** attempt +
+                    Math.floor(Math.random() * Math.min(250, retryBaseDelayMs)),
+                );
+              clearTimeout(timer);
+              await sleep(delayMs);
+              continue;
             }
-          : null;
-        if (!String(rawText).trim() && choice?.finish_reason === "length") {
+            return {
+              action: null,
+              parseError: `Planner HTTP ${response.status}`,
+              latencyMs: Date.now() - started,
+              tokenUsage: null,
+            };
+          }
+          const data = await response.json();
+          const latencyMs = Date.now() - started;
+          const choice = data?.choices?.[0];
+          const rawText = choice?.message?.content ?? "";
+          const usage = data?.usage
+            ? {
+                promptTokens: data.usage.prompt_tokens ?? 0,
+                completionTokens: data.usage.completion_tokens ?? 0,
+                totalTokens: data.usage.total_tokens ?? 0,
+              }
+            : null;
+          if (!String(rawText).trim() && choice?.finish_reason === "length") {
+            return {
+              action: null,
+              parseError:
+                "Planner output truncated (finish_reason=length); increase maxTokens or disable reasoning.",
+              latencyMs,
+              tokenUsage: usage,
+            };
+          }
+          const parsed = parsePlannerAction(rawText);
+          if (!parsed.ok) {
+            return {
+              action: null,
+              parseError: parsed.error,
+              latencyMs,
+              tokenUsage: usage,
+            };
+          }
+          return {
+            action: parsed.action,
+            latencyMs,
+            tokenUsage: usage,
+          };
+        } catch (error) {
+          if (attempt < retries) {
+            const delayMs = Math.min(15_000, retryBaseDelayMs * 2 ** attempt);
+            clearTimeout(timer);
+            await sleep(delayMs);
+            continue;
+          }
           return {
             action: null,
             parseError:
-              "Planner output truncated (finish_reason=length); increase maxTokens or disable reasoning.",
-            latencyMs,
-            tokenUsage: usage,
+              error instanceof Error ? error.message : String(error),
+            latencyMs: Date.now() - started,
+            tokenUsage: null,
           };
+        } finally {
+          clearTimeout(timer);
         }
-        const parsed = parsePlannerAction(rawText);
-        if (!parsed.ok) {
-          return {
-            action: null,
-            parseError: parsed.error,
-            latencyMs,
-            tokenUsage: usage,
-          };
-        }
-        return {
-          action: parsed.action,
-          latencyMs,
-          tokenUsage: usage,
-        };
-      } catch (error) {
-        return {
-          action: null,
-          parseError:
-            error instanceof Error ? error.message : String(error),
-          latencyMs: Date.now() - started,
-          tokenUsage: null,
-        };
-      } finally {
-        clearTimeout(timer);
       }
+      return {
+        action: null,
+        parseError: "Planner failed after retries.",
+        latencyMs: Date.now() - started,
+        tokenUsage: null,
+      };
     },
   };
 }
@@ -1101,9 +1152,26 @@ export function createWalkthroughEngine({
   const history = [];
   const warnings = [];
   const userAnswers = [];
+  const memoryNotes = [];
+  const observedCorpus = [];
+  const seenCorpusHashes = new Set();
   const actionAttempts = new Map();
   const telemetry = [];
   const resolvedHandoffKeys = new Set();
+
+  const recordMemoryNote = (rawNote, heading = null) => {
+    if (typeof rawNote !== "string" || !rawNote.trim()) return;
+    const clean = redactSensitiveText(normalizeWhitespace(rawNote)).slice(0, 240);
+    if (!clean) return;
+    const entry =
+      heading && !clean.toLowerCase().includes(String(heading).toLowerCase())
+        ? `[${redactSensitiveText(String(heading)).slice(0, 60)}] ${clean}`
+        : clean;
+    if (!memoryNotes.includes(entry)) {
+      memoryNotes.push(entry);
+      if (memoryNotes.length > 24) memoryNotes.shift();
+    }
+  };
 
   const emitTelemetry = async (event) => {
     const clean = {
@@ -1174,6 +1242,15 @@ export function createWalkthroughEngine({
     const snapshot = await transport.snapshot({ structuredRegions: true });
     lastSnapshot = snapshot;
     lastSanitized = sanitizeObservationForPlanner(snapshot, options.sanitize);
+    const hash = lastSanitized.observation.contentHash;
+    if (!seenCorpusHashes.has(hash)) {
+      seenCorpusHashes.add(hash);
+      const corpus = extractSnapshotCorpus(snapshot);
+      if (corpus) {
+        observedCorpus.push(corpus);
+        if (observedCorpus.length > 40) observedCorpus.shift();
+      }
+    }
     if (snapshot?.url) {
       try {
         const origin = new URL(snapshot.url).origin;
@@ -1219,6 +1296,8 @@ export function createWalkthroughEngine({
     tokenUsage = null,
     commitGrant = undefined,
     gateVerdict = "allowed",
+    attemptKey = undefined,
+    note = undefined,
   }) => {
     phase = "acting";
     const execStart = Date.now();
@@ -1270,6 +1349,32 @@ export function createWalkthroughEngine({
             tokenUsage,
           },
         );
+      }
+      if (kind === "STALE_REF") {
+        if (attemptKey) {
+          const prev = actionAttempts.get(attemptKey) ?? 0;
+          if (prev > 0) actionAttempts.set(attemptKey, prev - 1);
+        }
+        warnings.push(
+          `The page updated while executing ${actionKind} on "${redactSensitiveText(targetElement?.label || "")}" (STALE_REF). A fresh snapshot has been observed; choose the updated ref if still needed.`,
+        );
+        history.push({
+          stepIndex,
+          action: actionKind,
+          target: redactSensitiveText(targetElement?.label || ""),
+          outcome: "stale_ref",
+        });
+        const telemetryEvent = await emitTelemetry({
+          plannerActionKind: actionKind,
+          targetLabel: targetElement?.label ?? null,
+          consequenceClass,
+          gateVerdict: "stale_ref",
+          latencyMs: plannerLatencyMs + (Date.now() - execStart),
+          tokenUsage,
+          detail: `${kind}: ${reason}`,
+        });
+        stepIndex++;
+        return { status: "continue", phase: "verifying", stepIndex, telemetryEvent, state: getState() };
       }
       warnings.push(`Browser refused ${actionKind} (${kind}): ${reason}`);
       history.push({
@@ -1348,7 +1453,17 @@ export function createWalkthroughEngine({
       };
     }
 
-    if (!urlChanged && !domChanged && actionKind !== "scroll") {
+    const confirmedSameValue =
+      (actionKind === "fill" || actionKind === "select") &&
+      readbackVerified === true;
+    const downloaded = execResult?.downloaded === true;
+    if (
+      !urlChanged &&
+      !domChanged &&
+      actionKind !== "scroll" &&
+      !confirmedSameValue &&
+      !downloaded
+    ) {
       stagnantSteps++;
       warnings.push(
         `Previous ${actionKind} on "${redactSensitiveText(targetElement?.label || "")}" produced no observable page change.`,
@@ -1363,7 +1478,17 @@ export function createWalkthroughEngine({
       target: redactSensitiveText(
         targetElement?.label || targetElement?.inferredLabel || "",
       ),
-      outcome: "dispatched",
+      ...((actionKind === "fill" || actionKind === "select") &&
+      !targetElement?.sensitive &&
+      typeof command.text === "string"
+        ? { value: redactSensitiveText(command.text).slice(0, 100) }
+        : {}),
+      ...(downloaded ? { downloaded: true } : {}),
+      ...(beforeSanitized?.observation?.pageHeading
+        ? { fromHeading: beforeSanitized.observation.pageHeading }
+        : {}),
+      ...(note ? { note: redactSensitiveText(note) } : {}),
+      outcome: downloaded ? "downloaded" : "dispatched",
       urlChanged,
       domChanged,
       readbackVerified,
@@ -1431,15 +1556,36 @@ export function createWalkthroughEngine({
       return { status: "blocked", phase, stepIndex, reason, telemetryEvent, state: getState() };
     }
 
-    if (handoff.kind === "NeedsUntrustedOriginApproval" && resolution.allowOrigin) {
-      allowedOrigins.add(resolution.allowOrigin);
+    if (handoff.kind === "NeedsUntrustedOriginApproval") {
+      if (resolution.allowOrigin) allowedOrigins.add(resolution.allowOrigin);
+      history.push({
+        stepIndex,
+        action: "handoff:NeedsUntrustedOriginApproval",
+        target: redactSensitiveText(handoff.targetOrigin || handoff.summary || ""),
+        outcome: "approved",
+      });
+      stepIndex++;
+      phase = "observing";
+      return { status: "continue", phase, stepIndex, state: getState() };
     }
-    if (handoff.kind === "NeedsUserDisambiguation" && resolution.answer) {
+    if (handoff.kind === "NeedsUserDisambiguation") {
+      const answerText = resolution.answer
+        ? redactSensitiveText(String(resolution.answer))
+        : "Proceed with goal";
       userAnswers.push({
         question: handoff.summary,
-        answer: redactSensitiveText(String(resolution.answer)),
+        answer: answerText,
       });
-      resolvedHandoffKeys.add(`disambig:${handoff.summary}`);
+      resolvedHandoffKeys.add(
+        `disambig:${normalizeWhitespace(handoff.summary).toLowerCase()}`,
+      );
+      history.push({
+        stepIndex,
+        action: "handoff:NeedsUserDisambiguation",
+        target: redactSensitiveText(handoff.summary).slice(0, 120),
+        outcome: "answered",
+      });
+      stepIndex++;
       phase = "observing";
       return { status: "continue", phase, stepIndex, state: getState() };
     }
@@ -1449,10 +1595,29 @@ export function createWalkthroughEngine({
       handoff.kind === "NeedsCaptcha" ||
       handoff.kind === "NeedsFileUpload"
     ) {
-      resolvedHandoffKeys.add(`${handoff.kind}:${stripUrlQuery(lastSnapshot?.url ?? "")}`);
+      const beforeUrlPath = stripUrlQuery(lastSnapshot?.url ?? "");
+      resolvedHandoffKeys.add(`${handoff.kind}:${beforeUrlPath}`);
+      if (handoff.targetSelector) {
+        resolvedHandoffKeys.add(
+          `${handoff.kind}:${beforeUrlPath}:${handoff.targetSelector}`,
+        );
+      }
       stagnantSteps = 0;
       phase = "observing";
-      await observePage();
+      const { snapshot: afterSnap, sanitized: afterSan } = await observePage();
+      const afterUrlPath = stripUrlQuery(afterSnap?.url ?? "");
+      resolvedHandoffKeys.add(
+        `${handoff.kind}:${afterUrlPath}:${afterSan.observation.contentHash}`,
+      );
+      history.push({
+        stepIndex,
+        action: `handoff:${handoff.kind}`,
+        target: redactSensitiveText(
+          handoff.targetLabel || handoff.summary || "",
+        ).slice(0, 120),
+        outcome: "human_completed",
+      });
+      stepIndex++;
       return { status: "continue", phase, stepIndex, state: getState() };
     }
     if (handoff.kind === "NeedsCommitApproval") {
@@ -1626,6 +1791,7 @@ export function createWalkthroughEngine({
       stepIndex,
       maxSteps,
       observation: sanitized.observation,
+      memoryNotes,
       history,
       warnings: stepWarnings,
       userAnswers,
@@ -1659,14 +1825,20 @@ export function createWalkthroughEngine({
     const action = planResult.action;
     const plannerLatencyMs = planResult.latencyMs ?? 0;
     const tokenUsage = planResult.tokenUsage ?? null;
+    if (typeof action.note === "string" && action.note.trim()) {
+      recordMemoryNote(action.note, sanitized.observation.pageHeading);
+    }
 
     // 5. Handle non-DOM planner actions
     if (action.kind === "complete") {
-      const quoteCheck = verifyCompletionQuotes(action.quotes, snapshot);
+      const quoteCheck = verifyCompletionQuotes(
+        action.quotes,
+        observedCorpus.length > 0 ? observedCorpus : snapshot,
+      );
       if (!quoteCheck.verified && unverifiedCompletionRetries < 1) {
         unverifiedCompletionRetries++;
         warnings.push(
-          `Completion rejected: claimed quotes were not found verbatim on the current page (${quoteCheck.missing.join("; ")}). Quote only text visible in the current observation.`,
+          `Completion rejected: claimed quotes were not found verbatim on any visited page (${quoteCheck.missing.join("; ")}). Quote only text actually observed during the walkthrough.`,
         );
         const telemetryEvent = await emitTelemetry({
           plannerActionKind: "complete",
@@ -1726,10 +1898,92 @@ export function createWalkthroughEngine({
       const targetElement = action.ref
         ? resolveElement(sanitized, action.ref)
         : null;
+      const urlPath = stripUrlQuery(currentUrl);
+      const stateHandoffKey = `${action.handoffKind}:${urlPath}:${sanitized.observation.contentHash}`;
+      const targetHandoffKey = targetElement?.targetSelector
+        ? `${action.handoffKind}:${urlPath}:${targetElement.targetSelector}`
+        : null;
+      const pageElements = Array.isArray(snapshot?.elements)
+        ? snapshot.elements
+        : [];
+      const editableSensitive = pageElements.filter(
+        (el) =>
+          !el.scrollOnly &&
+          !el.disabled &&
+          !el.readOnly &&
+          (action.handoffKind === "NeedsMFA"
+            ? el.sensitive === "one-time-code"
+            : ["password", "payment-card", "bank-account", "government-id"].includes(
+                el.sensitive,
+              )),
+      );
+      const allSensitiveFilled =
+        (action.handoffKind === "NeedsPrivateSignIn" ||
+          action.handoffKind === "NeedsMFA") &&
+        editableSensitive.length > 0 &&
+        editableSensitive.every((el) => el.hasInput === true);
+      const targetAlreadySatisfied =
+        ((action.handoffKind === "NeedsPrivateSignIn" ||
+          action.handoffKind === "NeedsMFA") &&
+          targetElement?.hasInput === true) ||
+        (action.handoffKind === "NeedsFileUpload" &&
+          targetElement?.fileInput?.hasFiles === true);
+      const allFilesUploaded =
+        action.handoffKind === "NeedsFileUpload" &&
+        sanitized.observation.fileInputs.length > 0 &&
+        sanitized.observation.fileInputs.every((fi) => fi.hasFiles === true);
+      const alreadyCompletedOnState =
+        resolvedHandoffKeys.has(stateHandoffKey) ||
+        (targetHandoffKey !== null &&
+          resolvedHandoffKeys.has(targetHandoffKey) &&
+          targetAlreadySatisfied);
+      if (
+        allSensitiveFilled ||
+        targetAlreadySatisfied ||
+        allFilesUploaded ||
+        alreadyCompletedOnState
+      ) {
+        warnings.push(
+          `The user already completed ${action.handoffKind} and the sensitive/upload fields on this page are already filled (hasInput=true). Do NOT call request_handoff again — proceed directly to submit, continue, or the next step.`,
+        );
+        const telemetryEvent = await emitTelemetry({
+          plannerActionKind: action.kind,
+          targetLabel: targetElement?.label ?? null,
+          consequenceClass: "observe",
+          gateVerdict: "blocked_loop",
+          handoffKind: action.handoffKind,
+          latencyMs: plannerLatencyMs,
+          tokenUsage,
+          detail: `handoff-already-completed:${action.handoffKind}`,
+        });
+        stepIndex++;
+        stagnantSteps++;
+        if (stagnantSteps >= maxStagnantSteps) {
+          phase = "blocked";
+          return {
+            status: "blocked",
+            phase,
+            stepIndex,
+            reason: `Loop fence triggered after repeated ${action.handoffKind} requests on already-completed fields.`,
+            telemetryEvent,
+            state: getState(),
+          };
+        }
+        return {
+          status: "continue",
+          phase: "verifying",
+          stepIndex,
+          telemetryEvent,
+          state: getState(),
+        };
+      }
       return pauseForHandoff(
         {
           kind: action.handoffKind,
           summary: redactSensitiveText(action.summary),
+          ...(targetElement?.label
+            ? { targetLabel: redactSensitiveText(targetElement.label) }
+            : {}),
           ...(targetElement?.targetSelector
             ? { targetSelector: targetElement.targetSelector }
             : {}),
@@ -1747,6 +2001,41 @@ export function createWalkthroughEngine({
     }
 
     if (action.kind === "ask_user") {
+      const qKey = `disambig:${normalizeWhitespace(action.question).toLowerCase()}`;
+      if (resolvedHandoffKeys.has(qKey) || userAnswers.length >= 3) {
+        warnings.push(
+          "The user already answered your question (see userAnswers). Do NOT call ask_user again — act directly on the user's answer or goal.",
+        );
+        const telemetryEvent = await emitTelemetry({
+          plannerActionKind: action.kind,
+          consequenceClass: "observe",
+          gateVerdict: "blocked_loop",
+          handoffKind: "NeedsUserDisambiguation",
+          latencyMs: plannerLatencyMs,
+          tokenUsage,
+          detail: "repeated-ask-user",
+        });
+        stepIndex++;
+        stagnantSteps++;
+        if (stagnantSteps >= maxStagnantSteps) {
+          phase = "blocked";
+          return {
+            status: "blocked",
+            phase,
+            stepIndex,
+            reason: "Loop fence triggered after repeated ask_user prompts.",
+            telemetryEvent,
+            state: getState(),
+          };
+        }
+        return {
+          status: "continue",
+          phase: "verifying",
+          stepIndex,
+          telemetryEvent,
+          state: getState(),
+        };
+      }
       return pauseForHandoff(
         {
           kind: "NeedsUserDisambiguation",
@@ -1835,9 +2124,43 @@ export function createWalkthroughEngine({
     if (action.kind === "dismiss_blocker") {
       const plan = dismissBlockerCommand(snapshot, { preferReject: true });
       if (!plan) {
-        warnings.push("No safely dismissible blocker found on this page.");
+        stagnantSteps++;
+        warnings.push(
+          "No automatic reject/close control exists for this blocker. Do NOT call dismiss_blocker again — either click a visible banner button directly (e.g. Manage preferences or Accept) or proceed directly with the page controls.",
+        );
+        history.push({
+          stepIndex,
+          action: "dismiss_blocker",
+          outcome: "no_auto_dismiss",
+        });
+        const telemetryEvent = await emitTelemetry({
+          plannerActionKind: "dismiss_blocker",
+          consequenceClass: "observe",
+          gateVerdict: "blocked_policy",
+          latencyMs: plannerLatencyMs,
+          tokenUsage,
+          detail: "no-auto-dismiss-control",
+        });
         stepIndex++;
-        return { status: "continue", phase: "verifying", stepIndex, state: getState() };
+        if (stagnantSteps >= maxStagnantSteps) {
+          phase = "blocked";
+          return {
+            status: "blocked",
+            phase,
+            stepIndex,
+            reason:
+              "Walkthrough stalled calling dismiss_blocker with no auto-dismissible blocker.",
+            telemetryEvent,
+            state: getState(),
+          };
+        }
+        return {
+          status: "continue",
+          phase: "verifying",
+          stepIndex,
+          telemetryEvent,
+          state: getState(),
+        };
       }
       return executeAndVerify({
         beforeSnapshot: snapshot,
@@ -1854,12 +2177,29 @@ export function createWalkthroughEngine({
     // 6. DOM actions (click, fill, select, scroll, follow)
     let targetElement = null;
     if (action.kind === "scroll") {
-      targetElement = action.ref
+      const requested = action.ref
         ? resolveElement(sanitized, action.ref)
-        : (snapshot.elements ?? []).find((el) => el.scroll) ?? null;
+        : null;
+      targetElement =
+        (requested?.scroll ? requested : null) ??
+        (snapshot.elements ?? []).find((el) => el.scroll) ??
+        null;
       if (!targetElement) {
-        warnings.push("No scrollable container found on this page.");
+        stagnantSteps++;
+        warnings.push(
+          "No scrollable container found on this page; the page content is already visible.",
+        );
         stepIndex++;
+        if (stagnantSteps >= maxStagnantSteps) {
+          phase = "blocked";
+          return {
+            status: "blocked",
+            phase,
+            stepIndex,
+            reason: "Walkthrough stalled attempting to scroll a non-scrollable page.",
+            state: getState(),
+          };
+        }
         return { status: "continue", phase: "verifying", stepIndex, state: getState() };
       }
       return executeAndVerify({
@@ -2057,6 +2397,8 @@ export function createWalkthroughEngine({
             plannerLatencyMs,
             tokenUsage,
             commitGrant: grantReply.commitGrant,
+            attemptKey,
+            note: action.note,
           });
         }
         if (grantReply?.humanCompleted === true) {
@@ -2092,6 +2434,8 @@ export function createWalkthroughEngine({
       consequenceClass: classified.consequenceClass,
       plannerLatencyMs,
       tokenUsage,
+      attemptKey,
+      note: action.note,
     });
   }
 
@@ -2123,6 +2467,7 @@ export function createWalkthroughEngine({
       urlOriginPath: stripUrlQuery(lastSnapshot?.url ?? ""),
       pendingHandoff,
       history: [...history],
+      memoryNotes: [...memoryNotes],
       allowedOrigins: [...allowedOrigins],
     };
   }
@@ -2151,10 +2496,16 @@ export function createPlaywrightWalkthroughTransport(
     maxConsequence = "stage",
     useTaskPolicy = true,
     settleMs = 150,
+    networkIdleTimeoutMs = 2500,
   } = {},
 ) {
   const pageCommandSource = pageCommand.toString();
   let seq = 0;
+
+  const isContextDestroyed = (error) =>
+    /Execution context was destroyed|Cannot find context with specified id/i.test(
+      error instanceof Error ? error.message : String(error),
+    );
 
   const evalInPage = async (command, snapshotId) => {
     return page.evaluate(
@@ -2166,30 +2517,45 @@ export function createPlaywrightWalkthroughTransport(
     );
   };
 
-  const waitLoaded = async () => {
+  const waitLoaded = async (waitNetworkIdle = false) => {
     if (typeof page.waitForLoadState === "function") {
       await page
         .waitForLoadState("domcontentloaded", { timeout: 10_000 })
         .catch(() => {});
+      if (waitNetworkIdle && networkIdleTimeoutMs > 0) {
+        await page
+          .waitForLoadState("networkidle", { timeout: networkIdleTimeoutMs })
+          .catch(() => {});
+      }
     }
   };
 
   return {
     async snapshot(options = {}) {
-      await waitLoaded();
-      const snapshotId = `pw-${Date.now()}-${++seq}`;
-      const result = await evalInPage(
-        {
-          subaction: "snapshot",
-          structuredRegions: options.structuredRegions !== false,
-          ...(options.statementRegions === true
-            ? { statementRegions: true }
-            : {}),
-          ...(options.taskPolicy ? { taskPolicy: options.taskPolicy } : {}),
-        },
-        snapshotId,
-      );
-      return { ...result, snapshotId };
+      let lastError;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await waitLoaded(attempt > 0);
+        const snapshotId = `pw-${Date.now()}-${++seq}`;
+        try {
+          const result = await evalInPage(
+            {
+              subaction: "snapshot",
+              structuredRegions: options.structuredRegions !== false,
+              ...(options.statementRegions === true
+                ? { statementRegions: true }
+                : {}),
+              ...(options.taskPolicy ? { taskPolicy: options.taskPolicy } : {}),
+            },
+            snapshotId,
+          );
+          return { ...result, snapshotId };
+        } catch (error) {
+          lastError = error;
+          if (!isContextDestroyed(error) || attempt === 2) throw error;
+          if (settleMs > 0) await page.waitForTimeout?.(settleMs);
+        }
+      }
+      throw lastError;
     },
     async execute(command) {
       const origin = new URL(page.url()).origin;
@@ -2219,6 +2585,15 @@ export function createPlaywrightWalkthroughTransport(
             }
           : undefined);
       let result;
+      let downloaded = false;
+      const onDownload = () => {
+        downloaded = true;
+      };
+      const listenDownload =
+        command.validateOnly !== true &&
+        typeof page.once === "function" &&
+        typeof page.off === "function";
+      if (listenDownload) page.once("download", onDownload);
       try {
         result = await evalInPage(
           {
@@ -2228,34 +2603,41 @@ export function createPlaywrightWalkthroughTransport(
           null,
         );
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        if (
-          command.validateOnly !== true &&
-          /Execution context was destroyed/i.test(msg)
-        ) {
-          await waitLoaded();
+        if (command.validateOnly !== true && isContextDestroyed(error)) {
+          await waitLoaded(true);
           if (settleMs > 0) await page.waitForTimeout?.(settleMs);
+          if (listenDownload) page.off("download", onDownload);
           return {
             dispatched: true,
             completed: false,
             requiresReadback: true,
             navigated: true,
+            ...(downloaded ? { downloaded: true } : {}),
           };
         }
+        if (listenDownload) page.off("download", onDownload);
         throw error;
       }
       if (command.validateOnly === true) return result;
       if (!result?.error) {
-        await waitLoaded();
+        const shouldWaitIdle = ["click", "follow", "select"].includes(
+          command.subaction,
+        );
+        await waitLoaded(shouldWaitIdle);
         if (settleMs > 0) await page.waitForTimeout?.(settleMs);
       }
-      return result;
+      if (listenDownload) page.off("download", onDownload);
+      return downloaded && result && typeof result === "object"
+        ? { ...result, downloaded: true }
+        : result;
     },
     async navigate(url) {
       await page.goto(url, { waitUntil: "domcontentloaded" });
+      await waitLoaded(true);
     },
     async goBack() {
       await page.goBack({ waitUntil: "domcontentloaded" });
+      await waitLoaded(true);
     },
   };
 }

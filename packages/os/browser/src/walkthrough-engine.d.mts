@@ -62,7 +62,7 @@ export interface WalkthroughGoal {
   readonly requireApprovalForCommit?: boolean;
 }
 
-export type PlannerAction =
+export type PlannerAction = (
   | { readonly kind: "click"; readonly ref: string; readonly reason: string; readonly expectedEffect?: string }
   | { readonly kind: "fill"; readonly ref: string; readonly text: string; readonly reason: string }
   | { readonly kind: "select"; readonly ref: string; readonly text: string; readonly reason: string }
@@ -74,7 +74,8 @@ export type PlannerAction =
   | { readonly kind: "ask_user"; readonly question: string; readonly options: readonly string[]; readonly reason: string }
   | { readonly kind: "request_host_port"; readonly port: "file_upload" | "observe_download" | "calendar_reminder" | "verification_channel"; readonly payload: Record<string, unknown>; readonly reason: string }
   | { readonly kind: "complete"; readonly summary: string; readonly quotes: readonly string[]; readonly extractedFacts?: Record<string, unknown> }
-  | { readonly kind: "block"; readonly reason: string; readonly handoffKind?: HandoffKind };
+  | { readonly kind: "block"; readonly reason: string; readonly handoffKind?: HandoffKind }
+) & { readonly note?: string };
 
 export interface TokenUsage {
   readonly promptTokens: number;
@@ -181,6 +182,7 @@ export interface WalkthroughState {
   readonly urlOriginPath: string;
   readonly pendingHandoff: WalkthroughHandoff | null;
   readonly history: readonly Record<string, unknown>[];
+  readonly memoryNotes: readonly string[];
   readonly allowedOrigins: readonly string[];
 }
 
@@ -201,6 +203,9 @@ export interface OpenAICompatiblePlannerConfig {
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly timeoutMs?: number;
+  readonly maxRetries?: number;
+  readonly retryBaseDelayMs?: number;
+  readonly sleep?: (ms: number) => Promise<void>;
   readonly responseFormat?: "json_object" | Record<string, unknown> | null;
   readonly disableReasoning?: boolean;
   readonly reasoningEffort?: string;
@@ -252,7 +257,7 @@ export function parsePlannerAction(
 ): { readonly ok: true; readonly action: PlannerAction } | { readonly ok: false; readonly error: string };
 export function verifyCompletionQuotes(
   quotes: readonly string[],
-  snapshot: Record<string, unknown>,
+  snapshotOrCorpus: Record<string, unknown> | readonly (Record<string, unknown> | string)[],
 ): { readonly verified: boolean; readonly matched: readonly string[]; readonly missing: readonly string[] };
 export function formatTelemetryJsonl(events: readonly TrajectoryTelemetryEvent[]): string;
 export function createOpenAICompatiblePlanner(config: OpenAICompatiblePlannerConfig): WalkthroughPlanner;
@@ -281,6 +286,8 @@ export interface PlaywrightPageLike {
     state?: "load" | "domcontentloaded" | "networkidle",
     options?: { readonly timeout?: number },
   ): Promise<void>;
+  once?(event: "download", listener: () => void): unknown;
+  off?(event: "download", listener: () => void): unknown;
 }
 
 export function createPlaywrightWalkthroughTransport(
@@ -292,5 +299,6 @@ export function createPlaywrightWalkthroughTransport(
     readonly maxConsequence?: "observe" | "navigate" | "stage";
     readonly useTaskPolicy?: boolean;
     readonly settleMs?: number;
+    readonly networkIdleTimeoutMs?: number;
   },
 ): BrowserTransport;

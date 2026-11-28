@@ -1096,4 +1096,358 @@ describe("Upstream general walkthrough engine (walkthrough-engine.mjs)", () => {
       }),
     ).toHaveLength(1);
   });
+
+  it("handles POST wizard submits, SPA fetch+navigation commits, custom datepicker fill, handoff repeat fencing, multi-tab memory/quotes, prefilled fills, scroll fallback, 429 retries, and snapshot context-destroyed retries", async () => {
+    const p = await ensureBrowser();
+
+    // 1. Custom JS datepicker fill() commits value across blur & closes popup
+    await p.goto(`${portal}/widgets`);
+    const wSnap = await runPageCmd({ subaction: "snapshot" }, "snap-dp-fill");
+    const visitDateEl = (wSnap.elements as Record<string, unknown>[]).find(
+      (e) => e.label === "Visit date",
+    )!;
+    const fillDateRes = await runPageCmd({
+      subaction: "fill",
+      snapshotId: "snap-dp-fill",
+      nodeId: visitDateEl.id,
+      text: "15/12/2026",
+      taskPolicy: makePolicy(portal, String(visitDateEl.targetSelector), "fill"),
+    });
+    expect(fillDateRes.dispatched).toBe(true);
+    expect(await p.locator("#visit-date").inputValue()).toBe("15/12/2026");
+    expect(await p.locator(".datepicker-days").isVisible()).toBe(false);
+
+    // 2. Permitted POST wizard submit, SPA fetch on non-commit & commit-granted buttons, and commit-granted location.href navigation
+    fixtures[`${portal}/post-wizard`] = `<!doctype html><body><main>
+      <h1>Wizard Step 1</h1>
+      <form method="post" action="/post-step2"><input name="a" value="1"><button type="submit" id="post-cont">Proceed to Payment</button></form>
+      <button type="button" id="spa-tab">Load Benefits</button>
+      <button type="button" id="spa-commit">Submit payment</button>
+      <button type="button" id="nav-commit">Confirm</button>
+      <p id="spa-out"></p>
+      <script>
+        document.getElementById("spa-tab").addEventListener("click", async () => {
+          await fetch("/api/benefits");
+          document.getElementById("spa-out").textContent = "Loaded benefits";
+        });
+        document.getElementById("spa-commit").addEventListener("click", async () => {
+          await fetch("/api/pay", { method: "POST" });
+          await fetch("/api/state");
+          location.hash = "#paid";
+          document.getElementById("spa-out").textContent = "Paid via SPA";
+        });
+        document.getElementById("nav-commit").addEventListener("click", () => {
+          location.href = "/receipt";
+        });
+      </script>
+    </main></body>`;
+    fixtures[`${portal}/post-step2`] = `<!doctype html><body><main><h1>Wizard Step 2</h1></main></body>`;
+    fixtures[`${portal}/receipt`] = `<!doctype html><body><main><h1>Receipt Confirmed</h1></main></body>`;
+    fixtures[`${portal}/api/benefits`] = `{"plan":"Gold"}`;
+    fixtures[`${portal}/api/pay`] = `{"ok":true}`;
+    fixtures[`${portal}/api/state`] = `{"status":"paid"}`;
+
+    await p.goto(`${portal}/post-wizard`);
+    // 2a. Non-commit SPA fetch click produces zero effectViolation
+    let snap = await runPageCmd({ subaction: "snapshot" }, "pw-s1");
+    const spaTab = (snap.elements as Record<string, unknown>[]).find((e) => e.label === "Load Benefits")!;
+    expect(
+      (
+        await runPageCmd({
+          subaction: "click",
+          snapshotId: "pw-s1",
+          nodeId: spaTab.id,
+          taskPolicy: makePolicy(portal, String(spaTab.targetSelector), "click"),
+        })
+      ).dispatched,
+    ).toBe(true);
+    await p.waitForTimeout(80);
+    const afterSpaTab = await runPageCmd(
+      { subaction: "snapshot", taskPolicy: makePolicy(portal, "#none", "click") },
+      "pw-s2",
+    );
+    expect(afterSpaTab.effectViolation).toBeUndefined();
+    expect(await p.locator("#spa-out").textContent()).toBe("Loaded benefits");
+
+    // 2b. Commit-granted SPA click calling POST /api/pay + GET /api/state + location.hash produces zero effectViolation
+    const spaCommit = (afterSpaTab.elements as Record<string, unknown>[]).find((e) => e.label === "Submit payment")!;
+    expect(
+      (
+        await runPageCmd({
+          subaction: "click",
+          snapshotId: "pw-s2",
+          nodeId: spaCommit.id,
+          taskPolicy: makePolicy(portal, String(spaCommit.targetSelector), "click", {
+            commitGrant: {
+              grantId: "g-spa-1",
+              selector: String(spaCommit.targetSelector),
+              expiresAt: Date.now() + 30_000,
+            },
+          }),
+        })
+      ).dispatched,
+    ).toBe(true);
+    await p.waitForTimeout(80);
+    const afterSpaCommit = await runPageCmd(
+      { subaction: "snapshot", taskPolicy: makePolicy(portal, "#none", "click") },
+      "pw-s3",
+    );
+    expect(afterSpaCommit.effectViolation).toBeUndefined();
+    expect(await p.locator("#spa-out").textContent()).toBe("Paid via SPA");
+
+    // 2c. Permitted non-commit POST wizard submit navigates cleanly to /post-step2
+    const postCont = (afterSpaCommit.elements as Record<string, unknown>[]).find((e) => e.label === "Proceed to Payment")!;
+    const postWait = p.waitForURL(`${portal}/post-step2`);
+    expect(
+      (
+        await runPageCmd({
+          subaction: "click",
+          snapshotId: "pw-s3",
+          nodeId: postCont.id,
+          taskPolicy: makePolicy(portal, String(postCont.targetSelector), "click"),
+        })
+      ).dispatched,
+    ).toBe(true);
+    await postWait;
+    expect(new URL(p.url()).pathname).toBe("/post-step2");
+
+    // 2d. Commit-granted non-form button navigating via location.href reaches /receipt
+    await p.goto(`${portal}/post-wizard`);
+    snap = await runPageCmd({ subaction: "snapshot" }, "pw-s4");
+    const navCommit = (snap.elements as Record<string, unknown>[]).find((e) => e.label === "Confirm")!;
+    const receiptWait = p.waitForURL(`${portal}/receipt`);
+    expect(
+      (
+        await runPageCmd({
+          subaction: "click",
+          snapshotId: "pw-s4",
+          nodeId: navCommit.id,
+          taskPolicy: makePolicy(portal, String(navCommit.targetSelector), "click", {
+            commitGrant: {
+              grantId: "g-nav-1",
+              selector: String(navCommit.targetSelector),
+              expiresAt: Date.now() + 30_000,
+            },
+          }),
+        })
+      ).dispatched,
+    ).toBe(true);
+    await receiptWait;
+    expect(new URL(p.url()).pathname).toBe("/receipt");
+
+    // 3. NeedsPrivateSignIn resume increments stepIndex, records history, and fences duplicate handoff once hasInput=true
+    let passwordFilled = false;
+    let handoffCalls = 0;
+    let planTurn = 0;
+    const handoffEngine = createWalkthroughEngine({
+      goal: { instruction: "Register account", maxSteps: 10 },
+      transport: {
+        snapshot: async () => ({
+          url: "https://portal.test/register",
+          title: "Register",
+          domRevision: passwordFilled ? 2 : 1,
+          text: passwordFilled ? "Password entered. Ready to Register." : "Enter password to register.",
+          blockers: [],
+          elements: [
+            {
+              id: "0",
+              tag: "input",
+              type: "password",
+              label: "Password",
+              sensitive: "password",
+              hasInput: passwordFilled,
+              targetSelector: "#pw",
+            },
+            { id: "1", tag: "button", label: "Continue", targetSelector: "#go", consequence: "navigate" },
+          ],
+        }),
+        execute: async () => ({ dispatched: true }),
+      },
+      planner: {
+        plan: async (input) => {
+          planTurn++;
+          if (planTurn <= 2) {
+            return {
+              action: {
+                kind: "request_handoff",
+                handoffKind: "NeedsPrivateSignIn",
+                ref: "e0",
+                summary: "Fill password",
+                reason: "Sensitive password",
+              },
+            };
+          }
+          expect((input.warnings as string[]).some((w) => /already completed/i.test(w))).toBe(true);
+          expect((input.history as { action: string }[]).some((h) => h.action === "handoff:NeedsPrivateSignIn")).toBe(true);
+          return {
+            action: { kind: "complete", summary: "Done", quotes: ["Ready to Register"] },
+          };
+        },
+      },
+      ports: {
+        onHandoff: async () => {
+          handoffCalls++;
+          passwordFilled = true;
+          return { kind: "approved", humanCompleted: true };
+        },
+      },
+    });
+    const handoffRes = await handoffEngine.run();
+    expect(handoffRes.status).toBe("completed");
+    expect(handoffCalls).toBe(1);
+    expect(handoffRes.stepIndex).toBeGreaterThanOrEqual(2);
+
+    // 4. Multi-tab memoryNotes + cumulative trajectory-wide verifyCompletionQuotes
+    let tabIndex = 0;
+    let capturedNotes: string[] = [];
+    const tabs = [
+      { heading: "Allergies", text: "Active Allergy: Pollen" },
+      { heading: "Care Team", text: "Primary Doctor: Dr. Kara Bickham" },
+      { heading: "Test Results", text: "Lab Result: Urea nitrogen Abnormal" },
+    ];
+    const multiTabEngine = createWalkthroughEngine({
+      goal: { instruction: "Check allergies, care team, and test results" },
+      transport: {
+        snapshot: async () => ({
+          url: "https://spa.test/portal",
+          title: "Patient Portal",
+          domRevision: tabIndex + 1,
+          text: tabs[tabIndex].text,
+          blockers: [],
+          structuredRegions: { pageHeading: tabs[tabIndex].heading },
+          elements: [
+            { id: "0", tag: "button", label: "Next Tab", targetSelector: "#next", consequence: "navigate" },
+          ],
+        }),
+        execute: async () => {
+          tabIndex = Math.min(tabIndex + 1, tabs.length - 1);
+          return { dispatched: true };
+        },
+      },
+      planner: {
+        plan: async (input) => {
+          capturedNotes = (input.memoryNotes as string[]) ?? [];
+          if (tabIndex === 0)
+            return {
+              action: { kind: "click", ref: "e0", reason: "Next", note: "Allergy: Pollen" },
+            };
+          if (tabIndex === 1)
+            return {
+              action: { kind: "click", ref: "e0", reason: "Next", note: "Doctor: Dr. Kara Bickham" },
+            };
+          return {
+            action: {
+              kind: "complete",
+              summary: "Found Pollen, Dr. Kara Bickham, Urea nitrogen",
+              quotes: ["Pollen", "Dr. Kara Bickham", "Urea nitrogen"],
+            },
+          };
+        },
+      },
+    });
+    const mtRes = await multiTabEngine.run();
+    expect(mtRes.status).toBe("completed");
+    expect(mtRes.quotesVerified).toBe(true);
+    expect(capturedNotes).toEqual([
+      "[Allergies] Allergy: Pollen",
+      "[Care Team] Doctor: Dr. Kara Bickham",
+    ]);
+
+    // 5. Prefilled fill (readbackVerified=true, unchanged DOM) does not trigger stagnation, scroll falls back to container, dismiss_blocker without rejectRef fences cleanly
+    let execLog: Record<string, unknown>[] = [];
+    let scriptStep = 0;
+    const edgeEngine = createWalkthroughEngine({
+      goal: { instruction: "Verify amount and scroll", maxStagnantSteps: 2 },
+      transport: {
+        snapshot: async () => ({
+          url: "https://edge.test/pay",
+          title: "Pay",
+          domRevision: 1,
+          text: "Amount $118.40",
+          blockers: [{ kind: "cookie-consent", covers: "partial", text: "Cookies" }],
+          elements: [
+            { id: "0", tag: "input", type: "text", label: "Amount", hasInput: true, targetSelector: "#amt" },
+            { id: "1", tag: "button", label: "Not Scrollable", targetSelector: "#btn" },
+            { id: "2", tag: "div", label: "Scroller", scroll: { y: true }, scrollOnly: true, targetSelector: "#scroll" },
+          ],
+        }),
+        execute: async (cmd) => {
+          execLog.push(cmd);
+          return { dispatched: true };
+        },
+      },
+      planner: {
+        plan: async () => {
+          scriptStep++;
+          if (scriptStep === 1)
+            return { action: { kind: "fill", ref: "e0", text: "118.40", reason: "Confirm amount" } };
+          if (scriptStep === 2)
+            return { action: { kind: "scroll", direction: "down", ref: "e1", reason: "Scroll page" } };
+          return { action: { kind: "dismiss_blocker", reason: "Try dismiss" } };
+        },
+      },
+    });
+    const eStep1 = await edgeEngine.step();
+    expect(eStep1.state.stagnantSteps).toBe(0);
+    const eStep2 = await edgeEngine.step();
+    expect(eStep2.status).toBe("continue");
+    expect(execLog[1]?.expectedSelector).toBe("#scroll");
+    await edgeEngine.step();
+    const eStep4 = await edgeEngine.step();
+    expect(eStep4.status).toBe("blocked");
+    expect(eStep4.reason).toMatch(/dismiss_blocker/i);
+
+    // 6. OpenAI-compatible planner retries HTTP 429 & 503 with backoff and succeeds
+    let fetchAttempts = 0;
+    const retryPlanner = createOpenAICompatiblePlanner({
+      baseUrl: "https://llm.example/v1",
+      model: "test-model",
+      retryBaseDelayMs: 5,
+      sleep: async () => {},
+      fetch: (async () => {
+        fetchAttempts++;
+        if (fetchAttempts === 1) return new Response("rate limited", { status: 429, headers: { "retry-after": "0" } });
+        if (fetchAttempts === 2) return new Response("unavailable", { status: 503 });
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ kind: "click", ref: "e0", reason: "Recovered", note: "OK" }) } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as typeof globalThis.fetch,
+    });
+    const retryOut = await retryPlanner.plan({
+      goal: { instruction: "Test", constraints: [] },
+      stepIndex: 0,
+      maxSteps: 5,
+      observation: {},
+      memoryNotes: ["Saved fact"],
+      history: [],
+      warnings: [],
+      userAnswers: [],
+    });
+    expect(fetchAttempts).toBe(3);
+    expect(retryOut.action).toEqual({ kind: "click", ref: "e0", reason: "Recovered", note: "OK" });
+
+    // 7. createPlaywrightWalkthroughTransport.snapshot() retries transparently on Execution context was destroyed
+    let evalCalls = 0;
+    const flakyTransport = createPlaywrightWalkthroughTransport(
+      {
+        url: () => "https://spa.test/redirecting",
+        evaluate: (async () => {
+          evalCalls++;
+          if (evalCalls === 1) throw new Error("page.evaluate: Execution context was destroyed, most likely because of a navigation");
+          return { url: "https://spa.test/ready", title: "Ready", text: "Loaded", elements: [], blockers: [] };
+        }) as never,
+        goto: async () => {},
+        goBack: async () => {},
+        waitForLoadState: async () => {},
+        waitForTimeout: async () => {},
+      },
+      { settleMs: 0, networkIdleTimeoutMs: 0 },
+    );
+    const recoveredSnap = await flakyTransport.snapshot();
+    expect(evalCalls).toBe(2);
+    expect(recoveredSnap.title).toBe("Ready");
+  });
 });

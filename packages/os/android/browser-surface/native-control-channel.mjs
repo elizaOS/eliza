@@ -126,6 +126,10 @@ function installControlChannel(pageCommand, pageGuidance) {
             typeof policy.allowNewTabFollow !== "boolean") ||
           (policy.allowSameDocumentNavigation !== undefined &&
             typeof policy.allowSameDocumentNavigation !== "boolean") ||
+          (policy.allowSameOriginNavigation !== undefined &&
+            typeof policy.allowSameOriginNavigation !== "boolean") ||
+          (policy.allowSameOriginRequests !== undefined &&
+            typeof policy.allowSameOriginRequests !== "boolean") ||
           (policy.maxConsequence !== undefined &&
             !["observe", "navigate", "stage"].includes(
               policy.maxConsequence,
