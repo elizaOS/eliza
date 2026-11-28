@@ -859,8 +859,15 @@ it.effect('The forbidden-command list matches tokens through quoting, operators,
     "env -S 'rm -rf /'",
     "r\\\nm -rf /",
     "eval rm -rf /",
+    "rm -rf /..",
+    "rm -rf /../",
+    "rm -rf /./",
+    "chmod -R 777 /",
+    "chmod -R 0777 /",
+    "chmod -R 777 /..",
+    "dd if=/dev/./zero of=/dev/sda",
   ]
-  const allowedForms = ["ls /", "echo \"rm -rf /\"", "rm -rf ./build", "git status", "grep -r shutdown src"]
+  const allowedForms = ["ls /", "echo \"rm -rf /\"", "rm -rf ./build", "rm -rf ../build", "rm -rf a/../build", "git status", "grep -r shutdown src"]
   try check(() => {
     for (const command of forbiddenForms) assert.notEqual(isForbiddenCommand(command), undefined, command)
     for (const command of allowedForms) assert.equal(isForbiddenCommand(command), undefined, command)
