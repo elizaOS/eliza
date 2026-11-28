@@ -214,13 +214,21 @@ export effect function saveScopedEdit(rows: readonly CalendarRow[], selected: Re
   const { kept, moved } = splitStarts([...parent.excluded ?? []], splitAt)
   const following = rows.filter((stored) => stored.seriesId === parent.id && stored.id !== row.id && (stored.occurrenceBegin ?? stored.begin) >= splitAt)
   const head: CalendarRow = { ...parent, until: splitAt, excluded: kept, revision: mint() }
-  const tail: CalendarRow = { ...withoutExclusions(parent), ...fields, id: newSeriesId, begin, end, revision: mint(), repeat: parent.repeat,
+  const tailBegin = fields.begin ?? splitAt
+  const tailEnd = fields.end ?? splitAt + parent.end - parent.begin
+  const tail: CalendarRow = { ...withoutExclusions(parent), ...fields, id: newSeriesId, begin: tailBegin, end: tailEnd, revision: mint(), repeat: parent.repeat,
     ...(parent.until === undefined ? {} : { until: parent.until }) }
   const excluded = try remapExclusions(following, { ...parent, begin: splitAt, excluded: moved }, tail)
   const movedIds = new Set(following.map((stored) => stored.id))
   const remaining = rows.filter((stored) => stored.id !== row.id)
     .map((stored) => stored.id === parent.id ? head : movedIds.has(stored.id) ? { ...stored, seriesId: newSeriesId } : stored)
-  return { rows: [...remaining, { ...tail, excluded }], selected: occurrenceId(newSeriesId, begin) }
+  const merged = storedRow(rows, row) ? { ...withoutExclusions(row), ...fields, begin, end } : undefined
+  const pruned = merged === undefined || merged.responses === undefined ? merged
+    : { ...merged, responses: Object.fromEntries(Object.entries(merged.responses).filter(([person]) => merged.who?.includes(person) === true)) }
+  const keptOverride: CalendarRow | undefined = pruned === undefined ? undefined
+    : { ...pruned, id: row.id, seriesId: newSeriesId, occurrenceBegin: tailBegin, repeat: "none", revision: mint() }
+  return { rows: [...remaining, { ...tail, excluded }, ...(keptOverride === undefined ? [] : [keptOverride])],
+    selected: keptOverride === undefined ? occurrenceId(newSeriesId, tailBegin) : row.id }
 }
 
 export effect function removeScoped(rows: readonly CalendarRow[], selected: ReviewedRow, scope: CalendarWriteScope, mint: () => string): CalendarRow[]!(SeriesChanged | ScopeMismatch) {
