@@ -229,15 +229,16 @@ pure val ownerValues = Set("app", "dock")
 pure val keyValues = Set("account1", "account2")
 ```
 
-### A page's load state is reported as it was when sent, and a refused certificate is a security block that only a new address ends
+### Navigation reports the page's current load state and a refused certificate blocks that load
 
 A certificate error is never passed. One on the main-frame request, an
 HTTPS address, makes the page a security block at that address, reported
-at once; one on a subresource only fails that resource (shell). A main-frame load error
-makes the page failed; a finished load reports the page. A new page start
-at another address ends the block; the error page of the blocked address,
-which starts at that address, keeps it. A navigate or reload the renderer
-asks for (`commands.md`) ends it too.
+at once; one on a subresource only fails that resource (shell). A
+main-frame load error makes the page failed; a finished load reports the
+page. A new page start at another address ends the block; the error page
+of the blocked address, which starts at that address, keeps it. The
+native shell also clears its security block on an explicit navigate or
+reload from the renderer, before it asks WebView to load again.
 
 ```quint
 pure def reported(s: SurfaceHost, id: str): List[SurfaceNotice] = s.surfaces.select(x => x.id == id).listMap(x =>

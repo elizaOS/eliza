@@ -111,8 +111,8 @@ pure def lawAKeptReceiptIsNeverSavedAgain(r: AttachmentReplay): bool = r.receipt
 
 ### A workflow reads its Files source whole and unchanged, or not at all
 
-A workflow reads either the 20 most recently changed files or every file,
-at most 2000. A text file is read whole up to 16,000 bytes; a larger text
+A workflow reads either up to 20 of the most recently changed visible
+files, or all visible files if there are at most 2,000. A text file is read whole up to 16,000 bytes; a larger text
 file refuses the whole read, never part of it. The files are read again
 after the read, and a source that changed meanwhile is refused so the step
 runs again.

@@ -272,6 +272,37 @@ it.effect(`Open the file I asked for, and only from what I was shown (spec/files
   })
 })
 
+it.effect('A discarded Files review cannot pin a later review of the same proposal (spec/files/reviewPin.md, "Story: Change only the file I reviewed")', effect () => {
+  const oldStarted = try Deferred.make<void>()
+  const newStarted = try Deferred.make<void>()
+  const finishOld = try Deferred.make<void>()
+  const finishNew = try Deferred.make<void>()
+  const runner: FilesAgentRunner = {
+    shownPaths: (shown) => effect {
+      const old = shown[0] === 1
+      try Deferred.succeed(old ? oldStarted : newStarted, undefined)
+      try Deferred.await(old ? finishOld : finishNew)
+      return [old ? "Download/old.pdf" : "Download/new.pdf"]
+    },
+    reviewedIdentities: () => succeed([]),
+    run: () => succeed({ status: "succeeded", summary: "" }),
+  }
+  const reviews = try filesReviews(runner, both)
+  const old = try forkChild(reviews.review("proposal", "digest", { type: "files_share", shown: [1] }))
+  try Deferred.await(oldStarted)
+  try reviews.retain([])
+  const current = try forkChild(reviews.review("proposal", "digest", { type: "files_share", shown: [2] }))
+  try Deferred.await(newStarted)
+  try Deferred.succeed(finishOld, undefined)
+  const discarded = try Fiber.join(old)
+  try Deferred.succeed(finishNew, undefined)
+  const reviewed = try Fiber.join(current)
+  try check(() => {
+    assert.equal(discarded.kind, "notice")
+    assert.deepEqual(reviewed.kind === "card" && reviewed.operation, { type: "files_share", paths: ["Download/new.pdf"] })
+  })
+})
+
 it.effect('Name what Files shows without leaking or guessing a file (spec/files/shownTargets.md, "Story: Name what Files shows without leaking or guessing a file"; spec/files/shownTargets.md, "A Files operation the owner asks for in chat is proposed within the Files bounds as the peer negotiated it, wherever the owner is"; spec/files/shownTargets.md, "A Files card is reviewed, and a direct filter or open runs, only on the unlocked phone, and a change only with Files on screen"; spec/files/shownTargets.md, "A card for shown positions exists only when every position resolved to one path, and it executes those paths"; spec/files/shownTargets.md, "A move or trash binds the identity of each reviewed file, and a share binds none"); spec/files/shownTargets.md, "A client that shows no review card is proposed only a filter or an open, which it runs directly"', effect () => {
   provide NodeServices.layer {
     try scoped(effect {

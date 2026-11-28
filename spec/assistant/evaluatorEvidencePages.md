@@ -61,8 +61,9 @@ pure def lawMissingCursorHasNoPage(ordered: List[EvidenceRow], cursor: str, maxB
 
 The accepted cursor must occur in selected or previously restored evidence.
 The same cursor cannot be used twice. The complete preceding page must exist.
-Restoration charges the actual serialized reference collection against four
-times the page budget, including the literal JSON framing. Its accepted
+Restoration charges the UTF-8 size of the JSON array of projected references
+against four times the page budget, including its brackets and separators. A
+zero previous byte count represents a collection that has yet to be opened. Its accepted
 records retain their original revisions and belong to reference context.
 
 ```quint

@@ -192,13 +192,12 @@ for the account that consented. The device lease is read-only. Only an
 authorized browser session may use the provider's write capabilities.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
-pending consent authorizations. Browser and native inference credentials
-have separate permissions: every mail and calendar route refuses the device
-key with `403 device_key_not_allowed`, even beside a browser session, except
-the five the device itself calls with its key: inbox arrival notices,
-attachment handoff redemption, its reminder schedule, native connect and, on
-the Grace Google mount (`deployment`), disconnecting its own owner's
-connection. A device key never disconnects another account's connection. A
+pending consent authorizations. The mail-access guard refuses an inference
+device key with `403 device_key_not_allowed`. Routes that require a signed
+browser session refuse that key with `401 credential_unknown`. The device
+key has separate permissions for inbox arrival notices, attachment handoff
+redemption, its reminder schedule, native connect, and its own owner's
+disconnect on the Grace Google mount (`deployment`). A device key never disconnects another account's connection. A
 request that carries an `Authorization` header is authenticated by that
 header alone, never by a cookie. The owner can search Inbox, Sent, Drafts or Trash.
 Counts show the provider’s unread Inbox messages and total draft messages across
@@ -223,7 +222,7 @@ pure def canReadCloudGoogle(ownerSessionOrLeaseActive: bool, connectionPresent: 
 ### Managed mail dispatch requires separate consent and explicit approval
 
 The owner may separately grant permission to send email. A request from the
-owner's browser session or the device's mail lease dispatches one reviewed
+owner's active browser session dispatches one reviewed
 plain-text draft to one exact address through the current Gmail connection.
 A reply is threaded only after Cloud re-reads the
 selected message and matches the reviewed recipient and subject. Cloud builds
@@ -233,18 +232,18 @@ acceptance by message ID. An unknown outcome cannot cause the operation to be
 dispatched again.
 
 ```quint
-pure def canSendCloudGoogle(ownerSessionOrLeaseActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
-  ownerSessionOrLeaseActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
+pure def canSendCloudGoogle(ownerSessionActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
+  ownerSessionActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
 ```
 
 ### Trash and calendar changes require their own permissions
 
 Moving a message to Trash and undoing that change requires Gmail modify
-permission and the owner's browser session or the device's mail lease. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
+permission and the owner's active browser session. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
 provider revision. Cloud offers no permanent deletion here.
 
-Creating, changing or removing an appointment requires Calendar event
-permission for calendars their account owns. Changes target the primary
+Creating, changing or removing an appointment requires the owner's active
+browser session and Calendar event permission for calendars the account owns. Changes target the primary
 calendar and appointments without guests. A new series can repeat weekly or
 monthly. Timed series retain the reviewed local time in the named time zone.
 Cloud verifies the recurrence and time zone on the saved series before
@@ -254,8 +253,8 @@ reviewed event version, and Google must accept that version. Cloud reports
 success only after provider evidence matches the selected event.
 
 ```quint
-pure def canChangeCloudGoogle(ownerSessionOrLeaseActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
-  ownerSessionOrLeaseActive and grantMatches and allowed and reviewedTarget and versionMatches
+pure def canChangeCloudGoogle(ownerSessionActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
+  ownerSessionActive and grantMatches and allowed and reviewedTarget and versionMatches
 ```
 
 ### A device reminder follows the reviewed event occurrence
@@ -549,8 +548,9 @@ a twenty-five-second Worker AI wait and time for transport.
 The deployment's Workers AI binding enables Clef decisions with
 `@cf/cloudflare/clef-flash`. An unavailable binding or invalid
 answer yields a typed unavailable result. Each dispatch counts against
-thirty calls per minute per account and two thousand per day per
-organization. An unavailable limiter blocks dispatch.
+thirty calls per minute per account and the organization quota under
+the funding and subscription rules below. An unavailable limiter blocks
+dispatch.
 
 
 ### A parsed decision request stays within its text and candidate bounds

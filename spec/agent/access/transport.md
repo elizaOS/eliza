@@ -199,7 +199,7 @@ pure def sometimesHungUpMidRequest(s: Transport): bool = s.exchanges.some(e => e
 
 ### A dispatched request settles at the latest at its deadline
 
-A subscription is not a request: it stays open until a hang-up or a stop.
+A subscription has no request deadline. It ends when its connection closes.
 
 ```quint
 pure val fair_expire = "weak"
@@ -249,8 +249,9 @@ pure def sometimesStreaming(s: Transport): bool = s.exchanges.some(e => e.stage 
 
 ### A subscription is confirmed once, carries events in order, and at most two are open
 
-A subscription beyond the second open one is refused as busy. It ends
-only when the peer hangs up or the agent stops; it is never replayed.
+A subscription beyond the second open one is refused as busy. It ends when
+the peer hangs up, the agent stops or the [event feed](../conversation/events.md)
+closes its connection. A subscription is never replayed.
 
 ```quint
 pure def canPublish(s: Transport, conn: int): bool = inStage(s, conn, Feeding)

@@ -14,6 +14,8 @@ As a requester, I receive records within my agent, world, verified room membersh
 
 Memory records without a scope use author-private access. Artifacts without a scope use owner-private access. An unresolved memory actor reads no scope. Artifact owner and admin access precedes explicit grants, and a redacted grant narrows other actors even on an open scope. These functions receive normalized scopes, with malformed memory scopes rejected at decoding.
 
+A supplied world ID limits reads to records in that world even when the caller supplies no room selection. When both are supplied, a record must satisfy both restrictions.
+
 ```quint
 type Role = Unresolved | Guest | User | Admin | Owner | Agent | Runtime
 type Scope = Shared | Room | Global | Private | UserPrivate | OwnerPrivate | AgentPrivate
@@ -33,13 +35,15 @@ pure def artifactDisclosure(scope: Scope, role: Role, sameEntity: bool, hasEntit
   else if (role == Unresolved) { if (scope == Shared or scope == Room or scope == Global) Full else None }
   else if (memoryReadable(scope, role, sameEntity, hasEntity, false, false)) Full else None
 pure def locationReadable(agentMatches: bool, roomsSupplied: bool, roomMatches: bool, worldSupplied: bool, worldMatches: bool): bool =
-  agentMatches and (not(roomsSupplied) or (roomMatches and (not(worldSupplied) or worldMatches)))
+  agentMatches and (not(roomsSupplied) or roomMatches) and (not(worldSupplied) or worldMatches)
 pure def minimumDisclosure(left: Disclosure, right: Disclosure): Disclosure =
   if (left == None or right == None) None else if (left == Redacted or right == Redacted) Redacted else Full
 pure def lawUnresolvedMemoryFailsClosed(scope: Scope, sameEntity: bool, hasEntity: bool): bool =
   not(memoryReadable(scope, Unresolved, sameEntity, hasEntity, false, false))
 pure def lawEmptyRoomSelectionDenies(agentMatches: bool, worldSupplied: bool, worldMatches: bool): bool =
   not(locationReadable(agentMatches, true, false, worldSupplied, worldMatches))
+pure def lawWorldSelectionRequiresMatch(agentMatches: bool, roomsSupplied: bool, roomMatches: bool): bool =
+  not(locationReadable(agentMatches, roomsSupplied, roomMatches, true, false))
 pure def lawAudienceCannotExceedMember(left: Disclosure): bool = minimumDisclosure(left, None) == None
 ```
 

@@ -6,8 +6,8 @@ One `Command` is one row with its review, required provider operations
 transaction the shell applies `ClaimSlot`, `ScheduleDowngrade` and
 `ReleaseSlot` to the subscription (`spec/cloud/billing/subscriptions.md`) and
 `AdjustAllowance` to the open renewal period
-(`spec/cloud/billing/allowance.md`). Sources are develop
-`organization-{upgrade,downgrade}-*` and `subscription-cancellation.ts`.
+(`spec/cloud/billing/allowance.md`). The routes and persistence live in
+`packages/cloud-worker/src/billing/`.
 
 Provider calls, the answers' shapes and the person's session stay in the
 shell. Every review, confirm and payment route is for an owner with a fresh
@@ -93,11 +93,12 @@ pure val dueNowCentsValues = Set(0, 4667)
 pure def sometimesQuoteExpiredUnconfirmed(c: Command): bool = c.phase == Quoted and nowOf(c) >= c.quote.expiresAt
 ```
 
-### An upgrade quote moves up a plan and adds exactly the allowance difference left in the period; a downgrade or undo takes effect at the period end
+### A quote uses the current instant for an upgrade and the renewal time for a downgrade or undo
 
-The quote is good for 60 seconds, and never past the period end. Its
-allowance adjustment is `upgradeAdjustment` of `allowance.md` at the
-proration instant, and zero for a downgrade or an undo.
+The quote is good for at most 60 seconds and never past the period end.
+Its allowance adjustment is `upgradeAdjustment` of `allowance.md` at the
+proration instant, and zero for a downgrade or an undo. An undo clears
+the cancellation when it applies. Its quote shows the next renewal.
 
 ```quint
 pure def quoteFits(kind: Sub::CommandKind, q: QuoteTerms): bool =

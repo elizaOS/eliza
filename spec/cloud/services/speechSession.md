@@ -10,11 +10,12 @@ the last receipt of its last window. The wire on its one socket is
 The routes are `POST /api/v1/voice/speech/consent`, `POST
 /api/v1/voice/speech/session`, `GET /api/v1/voice/speech/ws?sessionId=`
 and `POST /api/v1/voice/speech/session/:id/revoke`. JSON, the token, its
-digest, the socket, the provider calls and the database stay in
-`packages/cloud-worker/src/services/speech-session.vibe`. One session is one row of
-`speech_sessions`; the shell loads it, steps it with the generated adapter
-and writes it back by compare-and-set, in the same transaction as the
-window's holds and the day's usage.
+digest, socket, provider calls and database stay in the cloud-worker speech
+services. The shell loads the `speech_sessions` row, steps it with the
+generated adapter from [the relay protocol](./speechRelay.md) and writes it
+back by compare-and-set, in the same transaction as the window's holds and
+the day's usage. This model includes the consent and individual receipts to
+describe the journey across those boundaries.
 
 The consent and mint routes time their phases, by name and duration only,
 never by account or content: `speech_identity_rate` (request
@@ -47,12 +48,13 @@ pure val speechRouteClass: Ra::RouteClass = Ra::KeyOrSessionRoute
 
 ### A consent lasts five minutes and belongs to the account and credential that asked for it
 
-The answer is `{consentNonce, expiresAt}`: a fresh UUID and an ISO time.
-The nonce names this session's row; only the credential that asked can
-spend it.
+The answer is `{consentNonce, expiresAt}`, a fresh UUID and an ISO time.
+The nonce names the consent row and only the credential that asked can
+spend it. Consent expires after five minutes or at that credential's
+expiry, whichever comes first. Minting gives the session a separate ID.
 
 ```quint
-pure val consentLifetime: Millis = 5 * millisPerMinute
+pure val consentLifetime: Millis = Rl::consentLifetime
 pure val sessionLifetime: Millis = millisPerMinute
 type RetireCause = DeviceStopped | OwnerRevoked | CredentialWithdrawn | AccountDeleting | RelayFailed | DeadlinePassed | FundingEnded({ funding: Rl::Shortfall })
 type SessionPhase = AwaitingConsent | Consented | Minted | Starting | Active | Retiring({ cause: RetireCause }) | Closed({ cause: RetireCause })
@@ -61,9 +63,14 @@ type Session = { phase: SessionPhase, account: str, credential: str, consentExpi
   expiresAt: Millis, extend: bool, renewal: Renewal, windows: int, sttSettled: Set[int], ttsSettled: Set[int] }
 pure val initial: Session = { phase: AwaitingConsent, account: "", credential: "", consentExpiresAt: 0, tokenDigest: "", credentialExpiresAt: 0,
   expiresAt: 0, extend: false, renewal: RenewalOpen, windows: 0, sttSettled: Set(), ttsSettled: Set() }
-pure def canConsent(s: Session, account: str, credential: str, now: Millis): bool = s.phase == AwaitingConsent and account != "" and credential != "" and now >= 0
-pure def consent(s: Session, account: str, credential: str, now: Millis): Session =
-  { ...s, phase: Consented, account: account, credential: credential, consentExpiresAt: now + consentLifetime }
+pure def canConsent(s: Session, account: str, credential: str, now: Millis, credentialExpiresAt: Millis): bool =
+  s.phase == AwaitingConsent and account != "" and credential != "" and now >= 0 and credentialExpiresAt > now
+pure def consent(s: Session, account: str, credential: str, now: Millis, credentialExpiresAt: Millis): Session =
+  { ...s, phase: Consented, account: account, credential: credential, consentExpiresAt: M::minOf(now + consentLifetime, credentialExpiresAt) }
+pure def lawConsentExpiresWithinItsCredentialAndLifetime(s: Session, account: str, credential: str, now: Millis, credentialExpiresAt: Millis): bool = {
+  val end = consent(s, account, credential, now, credentialExpiresAt).consentExpiresAt
+  canConsent(s, account, credential, now, credentialExpiresAt) implies (end > now and end <= credentialExpiresAt and end <= now + consentLifetime)
+}
 pure def sometimesConsented(s: Session): bool = s.phase == Consented
 pure val accountValues = Set("a1", "a2")
 pure val credentialValues = Set("k1", "k2")
@@ -79,27 +86,28 @@ devices check before they open the socket, and only its digest is kept;
 `wsUrl` is `wss://<api host>/api/v1/voice/speech/ws?sessionId=<id>`. The
 deadline is one minute away, or the credential's expiry (the `expiresAt` of
 `requestAuth`'s `Caller`) if that is sooner. A missing, foreign, spent or
-expired consent is `403 speech_consent_required`; a day with too little
-realtime speech left for the first window is `402 allowance_exhausted`
-with `resetsAt`, and the consent stays unspent.
+expired consent is `403 speech_consent_required`. A day with less than a
+full window of realtime speech left is `402 allowance_exhausted` with
+`resetsAt`, even if an earlier credential expiry would shorten this session.
+The refusal leaves the consent unspent.
 
 ```quint
 type Verdict = Granted | Declined({ refusal: Refusal })
 pure def firstDeadline(now: Millis, credentialExpiresAt: Millis): Millis = M::minOf(now + sessionLifetime, credentialExpiresAt)
 pure def consentHolds(s: Session, account: str, credential: str, now: Millis): bool =
   s.phase == Consented and account == s.account and credential == s.credential and now < s.consentExpiresAt
-pure def mintDecision(consentValid: bool, now: Millis, credentialExpiresAt: Millis, speechUsed: Millis): Verdict =
+pure def mintDecision(consentValid: bool, now: Millis, speechUsed: Millis): Verdict =
   if (not(consentValid)) Declined({ refusal: refuse(SpeechConsentRequired) })
-  else if (not(realtimeSpeechAdmits(speechUsed, firstDeadline(now, credentialExpiresAt) - now))) Declined({ refusal: refuseAllowance(realtimeSpeechResetsAt(now)) })
+  else if (not(realtimeSpeechAdmits(speechUsed, windowLength))) Declined({ refusal: refuseAllowance(realtimeSpeechResetsAt(now)) })
   else Granted
-pure def mintVerdict(s: Session, account: str, credential: str, now: Millis, credentialExpiresAt: Millis, speechUsed: Millis): Verdict =
-  mintDecision(consentHolds(s, account, credential, now), now, credentialExpiresAt, speechUsed)
+pure def mintVerdict(s: Session, account: str, credential: str, now: Millis, speechUsed: Millis): Verdict =
+  mintDecision(consentHolds(s, account, credential, now), now, speechUsed)
 pure def canMint(s: Session, account: str, credential: str, tokenDigest: str, now: Millis, credentialExpiresAt: Millis, speechUsed: Millis): bool =
-  tokenDigest != "" and credentialExpiresAt > now and mintVerdict(s, account, credential, now, credentialExpiresAt, speechUsed) == Granted
+  tokenDigest != "" and credentialExpiresAt > now and mintVerdict(s, account, credential, now, speechUsed) == Granted
 pure def mint(s: Session, account: str, credential: str, tokenDigest: str, now: Millis, credentialExpiresAt: Millis, speechUsed: Millis): Session =
   { ...s, phase: Minted, tokenDigest: tokenDigest, credentialExpiresAt: credentialExpiresAt, expiresAt: firstDeadline(now, credentialExpiresAt) }
-pure def lawEveryMintRefusalIsConsentOrAllowance(consentValid: bool, now: Millis, credentialExpiresAt: Millis, speechUsed: Millis): bool = {
-  val v = mintDecision(consentValid, now, credentialExpiresAt, speechUsed)
+pure def lawEveryMintRefusalIsConsentOrAllowance(consentValid: bool, now: Millis, speechUsed: Millis): bool = {
+  val v = mintDecision(consentValid, now, speechUsed)
   match v {
     | Declined(d) => wellFormed(d.refusal) and (if (consentValid) d.refusal.code == AllowanceExhausted else d.refusal.code == SpeechConsentRequired)
     | Granted => consentValid
@@ -113,12 +121,13 @@ pure val credentialExpiresAtValues = Set(100000, 86400000)
 pure val weight_mint = 3
 ```
 
-### A minted session accepts one socket before its deadline, and every other upgrade is session_closed
+### A minted session accepts one socket before its deadline
 
 Accepting the socket moves the session to `Starting` durably before the
-relay reads its hello; a second upgrade, or one past the deadline, is
-`410 session_closed`. The relay must still see the token's hello within
-`Rl::helloDeadline` before any window is admitted.
+relay reads its hello. A second upgrade, or one past the deadline, is
+`410 session_closed`. An unknown valid session ID returns `404 not_found`.
+The relay must still see the token's hello within `Rl::helloDeadline`
+before any window is admitted.
 
 ```quint
 pure def canOpenSocket(s: Session, now: Millis): bool = s.phase == Minted and now < s.expiresAt
@@ -157,8 +166,9 @@ pure def stepIdentityNeverChanges(before: Session, after: Session): bool =
 
 A window holds `{speech, organization, sessionId, stt:n}` and `{…, tts:n}`,
 numbered from 1; each quote is the window's maximum at the provider's price.
-A window over its budget is a protocol end of the relay. Its day usage is
-written once per window key, so a retried admission counts nothing again.
+A window over its budget is a protocol end of the relay. Its full minute of
+daily usage is written once per window key, even when the credential makes
+the deadline earlier. A retried admission counts nothing again.
 
 ```quint
 pure val windowLength: Millis = millisPerMinute
@@ -185,38 +195,40 @@ hold is `insufficient_credits`. Window 1 is admitted after the hello; its
 refusal ends the session before audio. Later windows renew 10 s or less
 before the deadline, only for a hello with `extend` and at most 10 in all;
 a renewed window ends one window after it is renewed, never past the
-credential, and is funded for that span; the relay then sends `extended`. A
+credential, and uses a full window's daily allowance and funding. The relay
+then sends `extended`. A
 refused renewal keeps the session to its old deadline.
 
 ```quint
 type Funding = Funded | ShortOf({ funding: Rl::Shortfall })
 pure val renewalLead: Millis = 10 * millisPerSecond
-pure def fundingOf(speechUsed: Millis, span: Millis, holdsFunded: bool): Funding =
-  if (not(realtimeSpeechAdmits(speechUsed, span))) ShortOf({ funding: Rl::AllowanceShort })
+pure def fundingOf(speechUsed: Millis, holdsFunded: bool): Funding =
+  if (not(realtimeSpeechAdmits(speechUsed, windowLength))) ShortOf({ funding: Rl::AllowanceShort })
   else if (not(holdsFunded)) ShortOf({ funding: Rl::CreditsShort }) else Funded
 pure def shortfallOf(f: Funding): Rl::Shortfall = match f { | ShortOf(x) => x.funding | _ => Rl::CreditsShort }
 pure def canAdmitFirstWindow(s: Session, now: Millis, extend: bool, speechUsed: Millis, holdsFunded: bool): bool =
-  s.phase == Starting and now < s.expiresAt and fundingOf(speechUsed, s.expiresAt - now, holdsFunded) == Funded
+  s.phase == Starting and now < s.expiresAt and fundingOf(speechUsed, holdsFunded) == Funded
 pure def admitFirstWindow(s: Session, now: Millis, extend: bool, speechUsed: Millis, holdsFunded: bool): Session = { ...s, phase: Active, extend: extend, windows: 1 }
 pure def canRefuseFirstWindow(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): bool =
-  s.phase == Starting and now < s.expiresAt and fundingOf(speechUsed, s.expiresAt - now, holdsFunded) != Funded
+  s.phase == Starting and now < s.expiresAt and fundingOf(speechUsed, holdsFunded) != Funded
 pure def refuseFirstWindow(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): Session =
-  { ...s, phase: Retiring({ cause: FundingEnded({ funding: shortfallOf(fundingOf(speechUsed, s.expiresAt - now, holdsFunded)) }) }) }
+  { ...s, phase: Retiring({ cause: FundingEnded({ funding: shortfallOf(fundingOf(speechUsed, holdsFunded)) }) }) }
 pure def nextDeadline(s: Session, now: Millis): Millis = M::minOf(now + windowLength, s.credentialExpiresAt)
 pure def renewalDue(s: Session, now: Millis): bool =
   s.phase == Active and s.extend and s.renewal == RenewalOpen and s.windows < maxWindows
   and now >= s.expiresAt - renewalLead and now < s.expiresAt and nextDeadline(s, now) > s.expiresAt
 pure def canRenew(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): bool =
-  renewalDue(s, now) and fundingOf(speechUsed, nextDeadline(s, now) - now, holdsFunded) == Funded
+  renewalDue(s, now) and fundingOf(speechUsed, holdsFunded) == Funded
 pure def renew(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): Session = { ...s, expiresAt: nextDeadline(s, now), windows: s.windows + 1 }
 pure def canRefuseRenewal(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): bool =
-  renewalDue(s, now) and fundingOf(speechUsed, nextDeadline(s, now) - now, holdsFunded) != Funded
+  renewalDue(s, now) and fundingOf(speechUsed, holdsFunded) != Funded
 pure def refuseRenewal(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): Session =
-  { ...s, renewal: RenewalRefused({ funding: shortfallOf(fundingOf(speechUsed, nextDeadline(s, now) - now, holdsFunded)) }) }
+  { ...s, renewal: RenewalRefused({ funding: shortfallOf(fundingOf(speechUsed, holdsFunded)) }) }
 pure def lawARenewalEndsWithinOneWindowOfIt(s: Session, now: Millis, speechUsed: Millis, holdsFunded: bool): bool =
   canRenew(s, now, speechUsed, holdsFunded) implies renew(s, now, speechUsed, holdsFunded).expiresAt <= now + windowLength
-pure def lawAShortWindowIsNeverFunded(speechUsed: Millis, span: Millis): bool =
-  fundingOf(speechUsed, span, false) != Funded and fundingOf(realtimeSpeechPerDay, span, true) == ShortOf({ funding: Rl::AllowanceShort })
+pure def lawAWindowNeedsBothHoldsAndAFullMinuteOfAllowance(speechUsed: Millis): bool =
+  fundingOf(speechUsed, false) != Funded and
+    (fundingOf(speechUsed, true) == Funded iff realtimeSpeechAdmits(speechUsed, windowLength))
 pure def alwaysWindowsFollowThePhase(s: Session): bool =
   s.windows >= 0 and s.windows <= maxWindows
   and ((s.phase == AwaitingConsent or s.phase == Consented or s.phase == Minted or s.phase == Starting) implies s.windows == 0)
@@ -229,7 +241,6 @@ pure def sometimesExtended(s: Session): bool = s.windows >= 2
 pure def sometimesRenewalRefused(s: Session): bool = s.phase == Active and s.renewal != RenewalOpen
 pure def fundingEnded(c: RetireCause): bool = match c { | FundingEnded(f) => true | _ => false }
 pure def sometimesFirstWindowRefused(s: Session): bool = isRetiring(s.phase) and s.windows == 0 and fundingEnded(causeOf(s.phase))
-pure val spanValues = Set(1, 60000)
 pure val sValues = Set(
   { ...initial, phase: Starting, account: "a1", credential: "k1", tokenDigest: "d1", credentialExpiresAt: 86400000, expiresAt: 60000, extend: true },
   { ...initial, phase: Active, account: "a1", credential: "k1", tokenDigest: "d1", credentialExpiresAt: 86400000, expiresAt: 60000, extend: true, windows: 1 },

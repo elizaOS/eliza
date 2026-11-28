@@ -25,8 +25,8 @@ A receipt that reaches the renderer before it is ready waits; readiness
 starts every waiting receipt. A receipt that is waiting, running or done in
 this renderer joins it instead of starting again; one already done gets its
 acknowledgement again. A relaunch, after process death or a re-created
-renderer, drops the renderer's bookkeeping, and the durable slot stays
-replayable.
+renderer, drops the renderer's bookkeeping. If the host did not receive an
+acknowledgement, the receipt in its durable slot can run again after relaunch.
 
 ```quint
 type Receipt = int
@@ -98,7 +98,8 @@ pure def sometimesColdLaunchLinkOpened(d: DeepLinks): bool = d.coldLaunch > 0 an
 
 Two captures of the same URL get distinct receipts, which never repeat. The
 native host compares the receipt and the URL under one lock, so an
-acknowledgement of an older receipt leaves a newer one in the slot.
+acknowledgement of an older receipt leaves a newer one in the slot. The slot
+replays the latest pending receipt after a restart.
 
 ```quint
 pure def alwaysReceiptsComeFromCaptures(d: DeepLinks): bool =

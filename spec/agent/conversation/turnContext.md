@@ -296,9 +296,10 @@ carrying only untrusted turn context (`reviewedEmail` or
 `useSelectedVoiceNoteTranscript`), the planner refuses non-read-only tool calls
 before dispatch while still allowing read-only lookups. Its text never enters
 `message.content.text`, stored history text, or owner request words
-(`turn.ownerText`). As with `browserPage`, history keeps only stored message
-text, so an empty-text email turn leaves only the assistant's reply in later
-history.
+(`turn.ownerText`). As with `browserPage`, the conversation history route
+exposes message text without that context. In an empty-text email turn,
+the owner's stored message has empty text and the assistant's reply is
+the only written text.
 
 ```quint
 type ReviewedEmailFacts = { unknownField: bool, fieldsValid: bool, bytes: int }

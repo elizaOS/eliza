@@ -80,34 +80,3 @@ pure def alwaysServerAdmissionTracksPhase(j: WorkflowJourney): bool =
 pure def sometimesLostReceiptRetainsIntent(j: WorkflowJourney): bool = j.phase == RequestLost and j.archive.stored > 0
 pure def sometimesSettledAfterDefinitionChanged(j: WorkflowJourney): bool = j.phase == IntentSettled and j.remote.version > j.reviewedVersion
 ```
-
-## Story: Change only the workflow I named in chat
-
-> As the owner, I want "rename workflow Morning digest to Daily brief" to
-> rename Morning digest, and never to remove, pause or rename some other
-> workflow because the agent proposed it.
-
-### A chat change follows the owner's own command and refuses a different operation
-
-A chat request that changes workflows reads the words the owner typed in
-the request the host bound to the turn, or the message's own text when none
-is bound. When those words are a whole command to create a workflow by
-name, rename one or remove one, or to list them, the change runs only if it
-is that command's operation, and then on the names those words give,
-whatever workflow or names the agent proposed. A change of another operation
-is refused and nothing changes. Reading workflows, and a change the owner's
-words do not spell out as such a command, keep the agent's proposal.
-
-```quint
-type ChatChange = { reads: bool, ownerCommand: bool, sameOperation: bool }
-type ChatBinding = ProposedChange | OwnerCommandChange | ConflictingChange
-pure def chatBinding(c: ChatChange): ChatBinding =
-  if (c.reads or not(c.ownerCommand)) ProposedChange else if (c.sameOperation) OwnerCommandChange else ConflictingChange
-pure val cValues = Set({ reads: true, ownerCommand: true, sameOperation: false }, { reads: false, ownerCommand: false, sameOperation: false },
-  { reads: false, ownerCommand: true, sameOperation: true }, { reads: false, ownerCommand: true, sameOperation: false })
-pure def lawADifferentOperationChangesNothing(c: ChatChange): bool =
-  (not(c.reads) and c.ownerCommand and not(c.sameOperation)) implies chatBinding(c) == ConflictingChange
-pure def lawTheOwnersCommandNamesTheTarget(c: ChatChange): bool =
-  (not(c.reads) and c.ownerCommand and c.sameOperation) implies chatBinding(c) == OwnerCommandChange
-pure def lawReadingIsNeverRefused(c: ChatChange): bool = c.reads implies chatBinding(c) == ProposedChange
-```

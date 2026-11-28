@@ -28,8 +28,15 @@ export function restoreEarlier(messages: readonly Memory[], cursor: string, visi
   const rows = evidenceRows(messages)
   const page: EvidencePage = previousPage(rows, cursor, maxBytes)
   const restoredBytes = page.rows.reduce((sum, row) => sum + row.bytes, 0)
-  const status = restorationDecision(cursor, [...visible], [...requested], page, referenceBytes + restoredBytes, maxBytes)
+  const existingArrayBytes = referenceBytes === 0 ? 2 : referenceBytes
+  const separators = referenceBytes > 2 ? page.rows.length : Math.max(0, page.rows.length - 1)
+  const totalBytes = referenceBytes < 0 ? referenceBytes : existingArrayBytes + restoredBytes + separators
+  const status = restorationDecision(cursor, [...visible], [...requested], page, totalBytes, maxBytes)
   if (status !== "PageAccepted") return { status, records: [], hasEarlier: false }
-  const kept = new Set(page.rows.map((row) => row.identity))
-  return { status, records: messages.filter((message) => kept.has(message.id ?? "")), hasEarlier: page.hasEarlier }
+  const byId = new Map(messages.map((message) => [message.id ?? "", message]))
+  const records = page.rows.flatMap((row) => {
+    const message = byId.get(row.identity)
+    return message === undefined ? [] : [message]
+  })
+  return { status, records, hasEarlier: page.hasEarlier }
 }

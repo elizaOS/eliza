@@ -5,8 +5,8 @@ Post-delivery work stays tracked until its original promise settles. Runtime qua
 ## Story: Track detached work under runtime and room ownership
 
 > As a host, I want diagnostic work kept apart from room-state work and real
-> settlement awaited before a room is released, so that no detached work
-> outlives its owner.
+> settlement awaited before a normal room release. If an aborted drain
+> quarantines the runtime, pending work stays tracked until it settles.
 
 ### Room-state work captures a live lease and belongs to both indexes
 
@@ -94,8 +94,8 @@ pure def sometimesCancelledWorkStillPending(s: PostDelivery): bool = s.tasks.som
 ## Story: Capture and settle a connector delivery boundary
 
 > As a connector, I want delivery bound to its live room lease and the
-> room's tasks drained before that boundary is removed, so that delivery
-> never runs without its room.
+> room's tasks drained before normal boundary removal, so that delivery
+> always runs with its live room lease.
 
 ### Each runtime room has one live delivery boundary
 
@@ -118,7 +118,7 @@ pure def sometimesFailedDeliveryRetainsBoundary(s: PostDelivery): bool = s.bound
 
 ### Each drain waits for its captured batch and observes newly spawned work
 
-A drain call counts each captured task batch, waits for those original promises, and captures newly admitted work before returning. An initially empty drain returns before looking at its signal. An already aborted signal quarantines a nonempty runtime before capturing a batch. The cancellation error carries pending labels in registration order. External quarantine prevents new drains and an existing drain can still finish after its captured tasks settle.
+A drain call counts each captured task batch, waits for those original promises, and captures newly admitted work before returning. An initially empty drain returns before looking at its signal. An already aborted signal quarantines a nonempty runtime before capturing a batch. The cancellation error carries pending labels in registration order. A drain requested after external quarantine returns failure without capturing any work. An existing drain can still finish after its captured tasks settle.
 
 ```quint
 pure val drainIdValues = Set(1, 2, 3)

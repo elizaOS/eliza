@@ -102,16 +102,17 @@ pure def lawWithoutTheRoleAnEnabledAssistIsRefused(manifest: LauncherManifest, r
 ## Story: Keep my launcher eligible for the phone and messages roles without assigning them
 
 > As a consumer, I want my image to keep my launcher's phone and messages
-> handlers available, so that the person can pick my launcher for calls and
-> texts while the image never picks for them.
+> handlers available, so that the person or the product's first-run
+> provisioner can choose my launcher for calls and texts.
 
 ### Role overrides enable each required handler, found once and disabled in the APK with its exact protection, and assign no role
 
 The override is a sysconfig `<component-override>` that Android applies at
 package scan, so it survives APK updates. It only enables components; the
-output has no way to name a role holder. The consumer's first-run interface
-requests roles through the [system role bridge](../android/system.md);
-sysconfig alone assigns none. The in-call service must declare the
+output has no way to name a role holder. The consumer can request roles
+through the [system role bridge](../android/system.md). An image with the
+[first-run provisioner](./firstRun.md) may assign them on eligible devices.
+The in-call service must declare the
 in-call UI and no car-mode UI; the MMS provider is private, for the
 authority `<package>.mms`, and grants URI permissions. The dial activity
 handles `DIAL` with and without `tel`.
@@ -181,7 +182,7 @@ pure def lawDeclaredRolesHaveAdmittedHandlers(manifest: LauncherManifest, reques
 > my image, so that a sideloaded copy of my app never claims phone, contacts or
 > SMS access it cannot have.
 
-### An image-only surface answers only from a system install that sees the image feature at the current version
+### An image-only surface requires a system install and the image feature at version 1 or newer
 
 Only an image puts `<package>.aosp_image` (version 1) in the product partition;
 a sideloaded install refuses even if such a feature were present.

@@ -1,4 +1,4 @@
-// spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"; spec/files/workspace.md, "A workspace path is relative, has no parent or control segment, and names the root only where a folder is asked for"; spec/files/workspace.md, "A call touches a file only when its real location is inside the workspace, and a write never follows a link"
+// spec/files/workspace.md, "Story: Keep the agent's working files inside its workspace"; spec/files/workspace.md, "A workspace path is relative, has no parent segment or NUL, and names the root only where a folder is asked for"; spec/files/workspace.md, "A call touches a file only when its real location is inside the workspace, and a write never follows a link"
 module node {
   import { constants } from "node:fs"
   import { lstat, mkdir, open, readdir, readFile, realpath, stat } from "node:fs/promises"

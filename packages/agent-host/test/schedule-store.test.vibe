@@ -1,4 +1,4 @@
-// spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+// spec/agent/schedule/triggers.md, "An edit, enable or removal with a stale expected revision is refused"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
 import { assert, it } from "@effect/vitest"
 import type { IDatabaseAdapter } from "@elizaos/core"
 import { machineOver as triggerMachine, type Event as TriggerEvent } from "../gen/agent__schedule__triggers.effect.vibe"
@@ -83,7 +83,7 @@ it.effect('Trigger rows and scheduled tasks survive a restart of a data-director
   try closed(second.adapter)
 })
 
-it.effect('A write that read an older revision is refused and changes nothing (spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on")', effect () => {
+it.effect('A write that read an older revision is refused and changes nothing (spec/agent/schedule/triggers.md, "An edit, enable or removal with a stale expected revision is refused")', effect () => {
   const state = try scratch("schedule-store-race")
   const { adapter } = try open(state.file("memory"), false)
   const saving = triggerKeeping(adapter, "trigger-1", { details })

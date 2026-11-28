@@ -170,7 +170,7 @@ pure def lawOnlyAnUndoIsConfirmedAsKept(entry: PendingDeletion, owner: str, late
 }
 ```
 
-### A record waiting in its window is hidden from its list until Undo or the provider settles it
+### A queued deletion on its review clock hides the record from its list
 
 The list that shows a message, a conversation, a voicemail or a contact
 leaves it out while its deletion is queued on its review clock, so that it

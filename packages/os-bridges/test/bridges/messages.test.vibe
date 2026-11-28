@@ -521,7 +521,7 @@ it.live("Mark a conversation read only while the app holds the SMS role, and nev
   ))
 })
 
-it.live("Delete exactly the settled message or conversation I chose, hidden while its Undo window is queued and back on Undo (spec/os/android/messages.md, \"Story: Delete one message I chose\"; spec/os/android/messages.md, \"A deletion removes only the selected settled row and confirms only a removal Android reported\"; spec/os/android/messages.md, \"Story: Delete a conversation I chose\"; spec/os/android/messages.md, \"A conversation deletion removes only its settled rows up to the newest one I saw\"; spec/os/android/deletionWindow.md, \"A record waiting in its window is hidden from its list until Undo or the provider settles it\")", () => effect {
+it.live("Delete exactly the settled message or conversation I chose, hidden while its Undo window is queued and back on Undo (spec/os/android/messages.md, \"Story: Delete one message I chose\"; spec/os/android/messages.md, \"A deletion removes only the selected settled row and confirms only a removal Android reported\"; spec/os/android/messages.md, \"Story: Delete a conversation I chose\"; spec/os/android/messages.md, \"A conversation deletion removes only its settled rows up to the newest one I saw\"; spec/os/android/deletionWindow.md, \"A queued deletion on its review clock hides the record from its list\")", () => effect {
   const phone = device()
   const journal = androidJournal(phone)
   const client = messagesClient(androidTelephony(phone), journal)

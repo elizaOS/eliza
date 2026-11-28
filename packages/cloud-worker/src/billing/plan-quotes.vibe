@@ -1,4 +1,4 @@
-// spec/cloud/billing/subscriptionCommands.md, "A review quotes an upgrade, a downgrade or an undo of a live, active subscription with no command running"; spec/cloud/billing/subscriptionCommands.md, "An upgrade quote moves up a plan and adds exactly the allowance difference left in the period; a downgrade or undo takes effect at the period end"
+// spec/cloud/billing/subscriptionCommands.md, "A review quotes an upgrade, a downgrade or an undo of a live, active subscription with no command running"; spec/cloud/billing/subscriptionCommands.md, "A quote uses the current instant for an upgrade and the renewal time for a downgrade or undo"
 // spec/cloud/billing/subscriptionCommands.md, "A command starts only while its quote holds, the subscription is at the reviewed revision and no other command is live"
 import { canReview, elapse, initial, parseState, recordScheduleReview, review, type Command } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
 import { amountCentsOf } from "../../gen/cloud__billing__plans.effect.vibe"

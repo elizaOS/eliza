@@ -4,8 +4,8 @@ This library decides what keeps untrusted content and outbound data inside their
 
 ## Story: Admit content and outbound data
 
-> As a user, I want the agent never to fetch an internal address on an
-> attacker's behalf, never to hand a child process an environment that
+> As a user, I want fetches to refuse internal addresses unless the host
+> expressly permits them, never to hand a child process an environment that
 > changes what it runs, never to write my secrets into a log and never to
 > send me its own prompt armor, so that content it reads cannot turn it
 > against me or my network.

@@ -3,10 +3,12 @@
 The owner's Google Calendar, read and written by the cloud with the grant of
 `spec/cloud/services/google/connection.md`. Sources: develop
 `agent-google-connector/{calendar,calendar-sync-provider}.ts` and the routes
-`api/v1/eliza/google/calendar/**`. Routes under `/api/v1/eliza/google/calendar/`
-(device key or session): `GET calendars`, `GET feed`, `GET events/:eventId`,
-`POST events`, `PATCH events/:eventId`, `DELETE events/:eventId`. Every call
-may name `grantId` and selects the connection by the rules of `connection`
+`api/v1/eliza/google/calendar/**`. Under `/api/v1/eliza/google/calendar/`,
+`GET calendars`, `GET feed` and `GET events/:eventId` accept a signed session
+or device lease. `POST events`, `PATCH events/:eventId` and
+`DELETE events/:eventId` require a signed session
+([session route classes](../../identity/sessions.md)). Every call may name
+`grantId` and selects the connection by the rules of `connection`
 (`side` other than `owner`, several active grants, another organization's
 grant); every call needs a usable connection (`G::usable`). When a read
 names an expected Google account, its current grant must hold that subject.
@@ -52,7 +54,8 @@ pure def lawAWritableCalendarIsReadable(scopes: List[G::GoogleScope], role: Cale
 calendar whose row is readable, else `403 access_denied`. Its answer names
 the authorized Cloud account and gives a null continuation after completing
 all provider pages for the requested window. It answers
-`{calendarId, events, syncedAt}` with every page Google returns; a body over
+`{accountId, calendarId, events, syncedAt, nextPageToken: null}` with every
+page Google returns; a body over
 512 KiB is refused whole as `413 content_too_large`, never cut. A bad window
 or an unknown IANA zone is `400 invalid_request`. Feed and event cards keep
 the recurrence rules Google supplies, the parent series ID of an occurrence,

@@ -38,8 +38,9 @@ as tools; a `REPLY` call the model makes anyway ends planning with its
 text, and an owner turn always ends with one reply. A step whose model
 call returns no tool call ends planning with that text.
 
-Every other registered action the launch allows is offered whatever the
-message says or carries, unless it has no tool form for the turn (below).
+Every other registered action with a valid tool name is offered when the
+launch allows it and the turn has a tool form for it. The message's words
+and attachments do not decide which actions are offered.
 An action's own check of the message (its `validate`) never decides what
 is offered: it runs when the model calls the action, and a call it
 declines, or that fails to check, is refused before the action runs. The
@@ -77,9 +78,10 @@ pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool =
 The runtime checks a call's arguments against each parameter's schema.
 Every object an action's parameters hold, at any depth, names the fields
 the action reads or is offered as taking additional keys. For example, a
-workflow's run input can take keys named by the workflow. Core's
-[action schema](../../core/actionPlanning.md) makes an object with no
-named fields open unless its schema closes it.
+workflow's run input can take keys named by the workflow. The offered
+shape must explicitly allow keys if it names none. At argument validation,
+Core's [action schema](../../core/actionPlanning.md) defaults to allowing
+keys on a schema that names no fields and leaves that choice unspecified.
 An array names what it holds. An action with no parameters takes none.
 The runtime never refuses a named field of a representative argument as
 an unexpected key. The `cue` field every offered tool carries (below)
@@ -421,8 +423,8 @@ first six arguments of the step besides it, each text value cut to 40
 characters, so a record stays a few hundred bytes at most. The model reads its own call again
 as it made it: the order of a call's arguments changes how it reads its
 earlier work, so a record never reorders them (a record stored before records
-kept that order gives them by name). A reply whose turn ran no step, a
-reply stored before replies kept a record, and a redacted reply carry none.
+kept that order gives them by name). A reply whose turn recorded no step, a reply stored before this record was
+introduced, and a redacted reply carry none.
 Redacting a message ([conversations](./conversations.md)) puts the notice
 in place of each copy of its text in every other reply's record, in a text
 argument or in the JSON form of a number or yes/no argument, which is then
@@ -472,7 +474,8 @@ the discovery tools, even when the turn has nothing to restore. It asks for
 a nonempty reason and accepts the scopes `history`, `providers` and `full`,
 with `full` as the default. The owner-turn planner can restore only the
 deferred dialogue already read for this conversation at the start of the
-turn. It does no live provider read. The answer quotes the captured rows
+turn. A providers-only request has no restorable rows, and the planner
+makes no live provider read. The answer quotes the captured rows
 after the existing history and says when there are older rows outside that
 read. It sends the newest complete deferred rows that fit within 12,000
 UTF-8 bytes and reports how many captured rows did not fit. A request with no available context, an invalid request or a second
@@ -749,10 +752,13 @@ contradict, an event the call's words found none of, a checklist with no
 title) marks none. A left-out document's are that some
 attached documents exceeded what can be read in one turn. When anything is
 unreported, or the reply states a time the turn did not observe (the clock
-rules below), the model is asked once more: the turn's system prompt, its
-tools with none to be chosen, the planner's transcript, the reply as the
-assistant's, and one host note that names each such fact and says the reply
-is not final yet. A failure's own words reach that note cut to a tool
+rules below), the model is asked once more with the turn's system prompt,
+its tools with none to be chosen, the planner's transcript, the first
+reply, and a host note. An unreported failure, a failure echo or an omitted
+attachment causes the note to include every eligible failure, including
+those already reported in the first reply, because the revision needs to
+preserve them. An unobserved time alone adds the clock or calendar note.
+A failure's own words reach that note cut to a tool
 message's length, and as external data unless the action marked them as its
 words for the owner. Its answer takes the place of the model's prose, and
 the action's own copy stays where composition puts it (below). That reply is
@@ -761,9 +767,10 @@ model tags it `[answer]`, read as below, so the turn never ends on an
 untagged `One sec.` that drops the failure's report and a finished reply is
 never replaced by a cue), it is not the first reply again, and the clock
 rules hold of it.
-Otherwise, or when the call fails, the first
-reply is kept, or the clock's or the calendar change's own words (below)
-take its place when it stated a time they did not observe. The note numbers
+Otherwise, or when the call fails, the fallback starts from the first
+reply. The clock's or the calendar change's own words (below) take its
+place when the reply stated a time they did not observe. Open failures and
+omissions are still composed by the rules below. The note numbers
 each failure and omission it names, one point each, and the call asks for
 one JSON object under a fixed schema, with the turn's tools unchanged and
 none to be chosen: the whole reply and, for each point it tells, that point's
@@ -992,10 +999,11 @@ pure def lawOrdinaryRefusalsRemainOutcomes(internal: bool): bool =
 
 ### A pending-work cue is spoken only before work runs and is never the reply, and an answer is delivered whole
 
-Every offered tool except `RESTORE_CONTEXT` carries a required `cue` field,
+Every offered work tool carries a required `cue` field,
 first among its parameters and the same on every call, whose short
-description only points at the system prompt's cue rule, so the field adds
-little to the prompt. The rule asks the model to write in
+description only points at the system prompt's cue rule. The message
+service's terminal and context-restoration tools have no cue field. The
+rule asks the model to write in
 the cue field of the first call of its first tool calls only a brief cue,
 tagged `[promise]`, that it heard the request, in the person's own
 language and its own words rather than a stock phrase, and to leave the
@@ -1019,8 +1027,9 @@ confirms the destination (`Maps is open.`). Any question or lookup gets its
 cue, even one about what is on the screen. The cue is left empty, with the
 work still done, when the person asked for silence; later tool calls carry
 an empty cue. The rule tells the model to write no text beside tool calls,
-which is never heard. A response with no tool call carries no cue field, so
-it is always the reply. When no offered tool can do what was asked,
+which is never heard. A response with no tool call carries no cue field.
+Its text is read using the reply rules below. When no offered tool can do
+what was asked,
 the model calls none and says plainly, in its own words, that it can't.
 The same rule asks the model to say that something was saved, sent,
 opened or changed only when a tool result of this turn shows it.
@@ -1191,9 +1200,10 @@ The acknowledgment is delivered at most once per turn, as the [reply
 stream](./replyStream.md)'s `acknowledgment` frame, and only before work
 starts. When the owner asks for silence the model leaves the cue empty, so none is
 spoken; the shell never reads the owner's message to decide. The model says itself
-which text is its cue by writing it in the `cue` field: the turn's cue is
-the first non-empty `cue` among the first response's tool calls, in call
-order (the rule asks for it on the first call). The rule asks the model to
+which text is its cue by writing it in the `cue` field. Before any work
+step has been recorded, the turn takes the first non-empty `cue` from the
+admitted work calls in response order. The rule asks for it on the first
+work call and asks the model to
 tag it `[promise]` there too, and the tag is the model's own word that the
 text only promises what it will do and claims no effect, as the v119
 build's `pending` effect status did for its acknowledgment: the tag is taken
@@ -1286,14 +1296,14 @@ A model may write a tool call into its text instead of making it: a
 What the [binding](../models/binding.md) did not read as a call is
 markup, never words for the owner. The stream holds the text from the
 first marker on, and a trailing `<` that could still begin one, so the
-owner never sees markup, even for a moment. A step whose answer carries
-markup and no tool call runs nothing; the model reads, after its own
-answer with the markup left out, that the tool call it wrote as text did
-not run, and is asked once more, within the step bound, to call an
-offered tool or answer in words. A second such answer in the turn, an
-answer with markup beside its tool calls, and an answer at the last step
-are read without the markup: the text before the first marker is the
-draft. A `REPLY` call's text is read the same way.
+owner never sees markup, even for a moment. When the answer carries markup
+and the planner has no call after reading the offered written calls below,
+the step runs nothing. The model reads that the tool call it wrote as text
+did not run, after any text preceding the markup, and is asked once more,
+within the step bound, to call an offered tool or answer in words. A second
+such answer in the turn, an answer with markup beside its tool calls, and
+an answer at the last step are read without the markup. The text before
+the first marker is the draft. A `REPLY` call's text is read the same way.
 
 ```quint
 type WrittenMarkup = NoMarkup | AskForTheCall | DropTheMarkup
@@ -1358,12 +1368,12 @@ nothing else, or one call line and nothing else:
   (the tool's name as an `action`, `tool`, `name` or `type` field, as an
   object's key, or before `call:`, spacing and letter case ignored), so a
   call reworded or reordered from a page is still a copy. It copies
-  untrusted text when it copies, by either test, this turn's page, a tool
-  result of this turn or an attached document, or names an offered tool
-  whose name, compared as for a cue above, stands as a word in that text:
-  a page that mentions VIEWS turns off the written VIEWS call for the turn,
-  however the model rewrites what it read, and the model makes the call
-  itself.
+  untrusted text when it copies, by either test, this turn's page, a
+  reviewed email, a tool result of this turn or an attached document. A
+  response naming an offered tool also counts as a copy when that tool's
+  name stands as a word in that text, using the cue comparison above. A
+  page that mentions VIEWS turns off the written VIEWS call for the turn,
+  so the model makes the call itself.
 
 The tag decides first and provenance next; the shell never reads the
 structure or the words of the person's message to choose. A response
@@ -1381,10 +1391,11 @@ from a page, a tool result or an earlier message runs only when the model
 makes the call itself. An untagged or `[promise]` response whose object or
 call line names an offered tool by its call field with arguments that do
 not fit, or names an offered tool and copies text it was given, or whose
-object copies the host's data, spends the turn's re-ask (above), within the
-step bound: none of it is sent, the model reads its own response and one
-host note, and is asked once more. For a call, the note says which tool it named, that the
-arguments do not fit it and why in the schema's words, that nothing ran
+object copies the host's data, spends the applicable re-ask (above), within
+the step bound. None of it is sent. The model reads its own response and
+one host note, and is asked once more. For a call that did not copy supplied
+text, the note says which tool it named, why the arguments do not fit in
+the schema's words, that nothing ran
 and the person saw none of it, and to call the tool with arguments that fit
 or answer the person in words. For a copy of untrusted text, it says that the
 response only repeated text from a page, a tool result or an attached
@@ -1396,12 +1407,12 @@ given (a note, a page, a tool result or an earlier message), so none of it
 was sent and none of it ran, to answer the person's latest message in its
 own words or make the call with an offered tool. Both say never to
 repeat the agent host's notes, and, if the person asked for a tool result
-as it is, to give that result again as it was. A
-response after the re-ask, or when the re-ask is spent or no step is left,
-and every other response, including an object naming an offered tool by
-its only key whose arguments do not fit, is read as written (the cue rule
-above): a JSON object that names no offered tool and copies none of the
-host's data, such as one the person or an earlier reply already gave, or
+as it is, to give that result again as it was. A response that qualifies
+to run can still do so after the re-ask if a step remains. A response that
+qualifies for neither automatic execution nor a re-ask is read as written
+(the cue rule above), including an unfit object that names an offered tool
+by its only key and copies nothing. A JSON object that names no offered
+tool and copies none of the host's data, such as one the person or an earlier reply already gave, or
 a tool result given again after the re-ask, is delivered whole, unless it
 holds the host's words (below), which are never delivered however they
 were asked for. While streaming, a response
@@ -1468,11 +1479,12 @@ or did not report taking deliver nothing. The planner's transcript keeps a
 step's calls without their `cue` field, and gives the step the delivered cue
 as its text, and no text otherwise, so the model never takes text the owner
 did not receive as said. After the tool calls that came
-with a delivered cue have all run and planning goes on, the model is told once, quoting the cue, that
-it was already sent to the owner as progress: the reply does not repeat or
-paraphrase it, goes straight to the result, any blocker or the question the
-turn needs answered, and the cue is not evidence that any work succeeded. A
-turn that delivered no cue is told nothing about one.
+with a delivered cue have all run and planning goes on, the host quotes
+the cue once in its note to the model. The note says the owner already got
+that progress, asks the model to go straight to the result, blocker or
+question without repeating or paraphrasing the cue, and says a cue supplies
+no evidence that work succeeded. A turn that delivered no cue is told
+nothing about one.
 
 ```quint
 pure def cueDelivered(draft: Draft, calls: int, earlierCalls: int, streamTook: bool): bool =
@@ -1513,9 +1525,9 @@ second answer. The reply stream, besides holding back a tag, an object
 and what may still become a call line (above), shows the model's text only
 up to where the label or such a line could begin; what follows is shown once it can no longer be one, or
 with the reply, so neither the label, a note's lead line nor a history mark
-is ever streamed, spoken or stored. A note's later lines are not held: they
-carry the owner's own data, such as the page they are reading, which a true
-answer may quote. A later line of at least 32 characters that is a whole
+is ever streamed, spoken or stored in the owner's reply. A note's later
+lines can carry the owner's own data, such as the page they are reading,
+which an answer may quote. A later line of at least 32 characters that is a whole
 JSON object, before any external content a note quotes, such as the screen
 context's data, is the exception: a response that holds its first 32
 characters, with any spacing and in any letter case, is the host's words
@@ -1594,8 +1606,11 @@ pure def lawADeviceCallIsNamedOnlyByItsFamilysApp(deviceFamily: DeviceFamilyApp,
 A recognized card is a `[MAPSCARD]`, `[CHECKLIST]` or `[WORKFLOW]` open
 marker on its own line, one JSON object on the next and its close marker;
 any other bracketed text is ordinary output. Tool text the action marked
-verified for the owner is kept verbatim; prose that holds it is the whole
-reply, and prose it already holds adds nothing. A result that marks no words
+verified for the owner keeps its wording after surrounding whitespace is
+trimmed. Prose it already holds adds nothing. Otherwise, when composing
+both sources, prose that holds the tool text is sufficient. If both pieces
+are still needed, the shell fences a tool's multiline text when it is
+neither a recognized card nor already fenced. A result that marks no words
 for the owner tells the model, in its tool message, that the owner sees
 none of that tool text, so the reply says what the call did or found. What
 the phone itself shows the owner is a separate fact the result may state. Prose carrying a tool-call
@@ -1633,12 +1648,13 @@ pure def lawToolTextIsNeverDropped(tool: ToolTextShape, prose: bool, toolHoldsPr
 
 ### A voice turn that ran an action answers with that action's label: its kind and whether the reply is a validated card
 
-The answer and the stream's `done` frame of a `VOICE_DM` turn that ran at
-least one action carry `action: {kind, validatedCard}`, from which a voice
-client chooses a short spoken line while the written reply stays whole.
-`kind` is the name of the last action the turn ran; `validatedCard` holds
-when the stored reply carries a recognized card block. A text turn, or a
-voice turn that ran no action, carries no label.
+The answer and the stream's `done` frame of a `VOICE_DM` turn with a
+recorded action result carry `action: {kind, validatedCard}`, from which a
+voice client chooses a short spoken line while the written reply stays
+whole. `kind` is the last recorded action name other than `REPLY`, and
+`validatedCard` holds when the stored reply carries a recognized card
+block. A text turn or a voice turn without a recorded action result
+carries no label.
 
 ```quint
 type VoiceAction = { kind: str, validatedCard: bool }
@@ -1665,9 +1681,10 @@ The shell reads the phone's zone from the turn's voice view context
 (`uiTimeZone`), else its observation (`timeZone`); the launch document's
 `timeZone`; and the host's own zone, or `UTC`. A zone counts only when the
 host's zone database knows it. The turn's host notes, after the history,
-carry one line, to the minute, so every turn inside one minute sees the same
-text and the system prompt stays the same for the whole conversation. The owner's
-local clock reads `Local date: <YYYY-MM-DD> (<zone>). <full date and
+carry one line, to the minute, so turns that use the same clock in that
+minute see the same line. The system prompt stays the same for the whole
+conversation. The owner's local clock reads `Local date: <YYYY-MM-DD>
+(<zone>). <full date and
 time>. Resolve today/tomorrow from this local date, not the UTC date. UTC
 instant: <YYYY-MM-DDTHH:MM>Z.` Any other clock reads `Agent time` for the
 launch zone or `Server time` for the host's, then the full date and time,
@@ -1787,10 +1804,10 @@ version, and a title naming no clock time) and its own applied create or
 update receipt for that event at that version, a reply that states one
 clock range, a start and an end such as "3–4 PM", is read on the event's
 own clock. An explicit move clause such as "moved your dentist from 3 PM
-to 4 PM" asserts the second clock as the event's new start. The receipt
-supplies the new start. When a range endpoint or a new start disagrees
-with the receipt, the model is asked
-once more with that action's own words as a host note (above), and its
+to 4 PM" asserts the second clock as the event's new start. The event
+supplies the new start, and the applied receipt confirms its version.
+When a range endpoint or a new start disagrees with that event, the model
+is asked once more with that action's own words as a host note (above), and its
 answer is kept when this check holds of it. Otherwise, or when that call
 fails, the reply is that action's own words. A reply
 to a current-time question, one that states a single clock time, a zone
@@ -1824,17 +1841,21 @@ pure val changedEventsValues = Set(0, 1, 2)
 
 ### After the reply is stored, each evaluator that opts in runs in priority order, and one evaluator's failure stops neither its peers nor the turn
 
-Evaluators run by ascending priority (100 when unset), then name. One whose
-`shouldRun` declines is skipped. An evaluator with a local resolver that
-applies uses its output; otherwise one model call with its prompt and
-schema produces the output its `parse` admits. That call carries the
-evaluator's own response schema, the same on every turn, and nothing the
-planner was told about choosing tools; it sends no output cap, and a
-temporary rate limit sends it once more as a planning call is. Its processors then run in
-their priority order. A failure in a gate, the model, a parse or a
-processor ends that evaluator only. Background and incremental evaluators
-belong to the assistant's [evaluator runner](../../assistant/evaluatorRunner.md)
-and are not run here.
+Evaluator preparation and output processing follow ascending priority
+(100 when unset), then name. One whose `shouldRun` declines is skipped.
+An evaluator with an applicable local resolver uses its output. Otherwise,
+evaluators with the same model type share a call when at least two qualify
+and all have response schemas. The call asks for each evaluator's result
+under its own name and schema. If that call fails or leaves an output
+missing, the affected evaluator gets a call with its own prompt and schema,
+as an ungrouped evaluator does. These calls carry no planner tool-choice
+instructions or output cap. A temporary rate limit can trigger one resend.
+Each evaluator's parse admits its output and its processors run in priority
+order. A failure in preparation, an individual model call or a parse can
+end that evaluator while its peers continue. A processor failure is logged
+and the other processors can continue. The assistant's [evaluator
+runner](../../assistant/evaluatorRunner.md) owns background and incremental
+evaluators.
 
 ```quint
 type EvaluatorRun = Ran | Declined | Broke

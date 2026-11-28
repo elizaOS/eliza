@@ -18,6 +18,11 @@ and applies the secret reply policy.
 
 A cut is permitted only inside the pending sequence and outside every sensitive interval. The buffer has no truncation operation. `sourceEmitted` records original source characters released to the transformation pipeline, preserving order independently of the transformed output length. Only cancellation can move pending characters to the discarded ledger; until then, the stream has no discarded suffix.
 
+The stream owner flushes the remaining suffix through the same transformation
+pipeline when the source ends without cancellation. The model records the raw
+characters submitted for transformation, and the adapter applies the redaction
+policy before publishing text.
+
 ```quint
 type SensitiveSpan = { start: int, end: int, open: bool }
 type StreamBuffer = { received: List[int], pending: List[int], sourceEmitted: List[int], spans: List[SensitiveSpan], cancelled: bool, discarded: List[int], classified: bool, maxTokenLength: int }

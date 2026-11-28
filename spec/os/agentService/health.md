@@ -60,13 +60,13 @@ pure def lawSilentLiveChildIsBusy(socketAccepts: bool, epoch: int): bool =
   classify(Unanswered({ childAlive: true, socketAccepts: socketAccepts }), epoch) == Busy
 ```
 
-### Three busy probes or three dead probes in a row restart the agent, and only an Ok probe clears both counts
+### Three busy probes or three dead probes since the last Ok probe restart the agent
 
 `Busy` adds no strike: the agent is alive, usually inside a native call. It
-counts a busy tick, and three in a row (30 minutes at the probe interval)
-mean the agent is wedged. `Dead` adds a strike, and three strikes restart.
-The two counts are independent; `Ok` resets both. A `Restart` verdict
-starts a fresh watch for the next launch.
+counts a busy tick, and three busy ticks mean the agent is wedged. `Dead`
+adds a strike, and three strikes restart. Neither result clears the other
+count. `Ok` resets both. A `Restart` verdict starts a fresh watch for the
+next launch.
 
 ```quint
 type HealthWatch = { strikes: int, busyTicks: int, refusals: int }
@@ -103,7 +103,7 @@ pure def lawBusyAddsNoStrike(w: HealthWatch, reply: ProbeReply, epoch: int): boo
   (watchBounded(w) and classify(reply, epoch) == Busy) implies afterObservation(w, Probed({ reply: reply }), epoch).strikes <= w.strikes
 pure def lawOkClearsBothCounts(w: HealthWatch, reply: ProbeReply, epoch: int): bool =
   classify(reply, epoch) == Ok implies (verdict(w, Probed({ reply: reply }), epoch) == KeepRunning and afterObservation(w, Probed({ reply: reply }), epoch).strikes == 0 and afterObservation(w, Probed({ reply: reply }), epoch).busyTicks == 0)
-pure def lawProbeRestartNeedsThreeInARow(w: HealthWatch, reply: ProbeReply, epoch: int): bool =
+pure def lawProbeRestartNeedsThreeOfOneKind(w: HealthWatch, reply: ProbeReply, epoch: int): bool =
   (watchBounded(w) and verdict(w, Probed({ reply: reply }), epoch) == Restart) implies (w.busyTicks == busyRestartTicks - 1 or w.strikes == restartStrikes - 1)
 pure def lawWatchStaysBounded(w: HealthWatch, reply: ProbeReply, refused: bool, child: JournaledChild, epoch: int): bool =
   watchBounded(w) implies (watchBounded(afterObservation(w, Probed({ reply: reply }), epoch)) and watchBounded(afterObservation(w, ConnectChecked({ refused: refused, child: child }), epoch)))

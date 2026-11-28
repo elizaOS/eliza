@@ -6,7 +6,7 @@
 
 ### Interval summaries include only valid observations for the owner and requested time range
 
-Observations use UTC milliseconds. The shell decodes provider samples and normalizes device identities and local day boundaries. Time inside an interval is counted once when samples overlap.
+Observations use UTC milliseconds. The shell decodes provider samples and normalizes device identities and local day boundaries. It orders valid observations by start time before the model counts overlapping time once.
 
 ```quint
 type ObservationKind = SleepInterval | ScreenInterval | ActivityInterval

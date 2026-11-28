@@ -92,8 +92,8 @@ pure def lawAnUnreadPeerGetsNothing(appUid: int): bool = not(peerTrusted(PeerUnr
 
 ### A call is refused before any I/O unless the agent is serving, its id is free and its list admits it
 
-The checks run in this order: no serving launch is `NotReady`; an id
-already pending is `IdInUse`; then the caller kind's gate decides, and its
+The checks run in this order: no serving launch is `NotReady`; an empty id
+or an id already pending is `IdInUse`; then the caller kind's gate decides, and its
 `RouteRefused` and `TooLarge` (a body over the route's limit) are passed on;
 last, the call's headers decide (next rule). A refused call opens no
 connection. A streamed request matches only a streaming route and a plain one
@@ -320,8 +320,8 @@ pure def sometimesFeedsFull(s: AgentChannel): bool = s.recent.some(o => match o 
 ### A subscription's events arrive in order to its owner, and it ends once with End or Restarted
 
 Each agent `event` frame is delivered with the next index, to the owner
-that subscribed; the agent's `subscribed` confirmation only answers the
-caller. The agent ending the feed, an abort by its owner or a lost
+that subscribed. The channel consumes the agent's `subscribed` confirmation
+without delivering an event. The agent ending the feed, an abort by its owner or a lost
 connection ends it with `End`; a retired launch ends it with
 `Failed(Restarted)`. Both go through the rules of a pending call.
 

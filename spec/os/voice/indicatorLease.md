@@ -88,8 +88,8 @@ pure def stepRefusedRenewalDropsTheGeneration(before: IndicatorLease, via: str, 
 
 ### A renewal that shows the indicator or explains why it is hidden extends the lease by 3,000 ms
 
-SystemUI renews every `renewMs`; a lease not extended within `ttlMs` (three
-renewals) expires. A visible surface, an unknown display state, or a hidden
+SystemUI renews every `renewMs`. An acknowledged lease expires if it
+goes `ttlMs` without an extension. A visible surface, an unknown display state, or a hidden
 indicator with an explained pause extends it. Any other renewal is accepted
 and recorded, but does not extend the lease, and leaves a pending lease
 pending.

@@ -5,8 +5,8 @@ The PII scrub service of `services/pii-scrub.ts`: the [batch queue](./batchQueue
 ## Story: Share service startup while keeping independent scrub attempts
 
 > As an operator, I want one shared service startup and stop while each
-> content/ruleset job keeps its own scrub attempt, so that concurrent jobs
-> neither block nor overwrite each other.
+> content/ruleset job keeps its own scrub attempt, so that overlapping jobs
+> settle independently.
 
 ### Each marker lookup captures its own result before queue admission
 

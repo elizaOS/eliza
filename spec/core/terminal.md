@@ -4,9 +4,9 @@ Sources are `runtime/run-terminal-owner.ts`, `types/effects.ts` and `services/po
 
 ## Story: Finalize one run after all admitted child work
 
-> As a host, I want a run to end once, with its first terminal outcome and
-> error, after every captured child and terminal subscriber has finished,
-> so that RUN_ENDED is emitted exactly once and reports what happened.
+> As a host, I want one RUN_ENDED emission with the first terminal outcome
+> and error after every captured child finishes. The terminal operation
+> settles after all subscribers finish.
 
 A schedule failure clears the request so a caller may retry. Work failure is diagnosed and the child promise then fulfills; it does not overwrite the terminal outcome.
 

@@ -86,6 +86,7 @@ pure def alwaysRedactedGrantsHaveAVariant(s: TranscriptPrivacy): bool = s.grants
 ### Only an admin shares with the whole meeting, and only the redacted transcript
 
 The meeting's participants are the roster recorded with the transcript.
+The model uses two representative participants for that roster.
 
 ```quint
 pure val meetingRoster = List("participant1", "participant2")

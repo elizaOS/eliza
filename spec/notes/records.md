@@ -361,7 +361,7 @@ pure def lawNoLocalDateIsGuessed(observedKnown: bool, interfaceKnown: bool): boo
   localTimesShown(displayZoneSource(observedKnown, interfaceKnown)) iff (observedKnown or interfaceKnown)
 ```
 
-### A calendar draft made from a note is admitted only while that exact note is unchanged
+### A calendar draft made from a note is admitted only while its exact source text is unchanged
 
 A draft made from a note carries a source reference: this agent's ID, the
 note's ID and a hash of the agent ID, note ID, title and body as they were.

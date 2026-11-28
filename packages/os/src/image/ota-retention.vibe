@@ -1,4 +1,4 @@
-// spec/os/update/operator.md, "A release is retained as known-good only from an admitted release-keys record with no placeholder, whose target files and image are the bytes it names"
+// spec/os/update/operator.md, "Known-good retention requires a clean release-keys record and matching signed target-files and vbmeta digests"
 import { retentionAdmitted, type BuildKeys } from "../../gen/os__update__operator.effect.vibe"
 import type { ReleaseChannel } from "../../gen/os__image__signing.effect.vibe"
 import { parseDigest } from "./apk.vibe"

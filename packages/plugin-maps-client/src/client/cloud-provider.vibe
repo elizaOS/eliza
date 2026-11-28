@@ -179,7 +179,7 @@ export effect function cloudMaps(configure: (config: ProviderConfig, provider?: 
       if (!(error instanceof CloudError)) throw new MapsFailure({ code: "unavailable", message: "Cloud Maps could not complete this request." })
       const retryAfter = pauseOf(error.failure, now)
       const refused = cloudMapsFailure(error.failure, now)
-      if (retryAfter > 0) {
+      if (token > 0 && retryAfter > 0) {
         const before = try pause.get()
         const after = try orDie(pause.send({ type: "refusal", token, retryAfter }))
         if (after.until !== before.until) pauseFailure = refused
@@ -197,7 +197,8 @@ export effect function cloudMaps(configure: (config: ProviderConfig, provider?: 
       throw changed()
     }
     const sent = try orDie(pause.send({ type: "request" }))
-    const value = try cloudCall(call, client, sent.generation)
+    const token = sent.pending
+    const value = try ensuring(cloudCall(call, client, token), Effect.ignore(pause.send({ type: "settleRequest", token })))
     const after = try machine.get()
     if (!cloudReadMayReturn(kind, after.binding, owner, after.generation, generation, true, false)) throw changed()
     return value
@@ -278,10 +279,10 @@ export effect function cloudMaps(configure: (config: ProviderConfig, provider?: 
         diagnostics = { configured: true, error: "unauthorized", message: "Sign in to Cloud to use Maps." }
         return undefined
       }
-      return { attempt: read.generation, owner: read.binding, client: account.client, token: (try pause.get()).generation }
+      return { attempt: read.generation, owner: read.binding, client: account.client }
     })
     if (started === undefined) return
-    const answer = try exit(cloudCall((client, signal) => client.mapsCapabilities({ signal }), started.client, started.token))
+    const answer = try exit(cloudCall((client, signal) => client.mapsCapabilities({ signal }), started.client, 0))
     try serialize(effect {
       if (answer._tag === "Failure") {
         const refused = Exit.findErrorOption(answer)

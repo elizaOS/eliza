@@ -47,7 +47,7 @@ pure def lawInvalidFrequencyHasNoIdf(documentCount: int, frequency: int): bool =
 > As a user, I want a search over the agent's memory to return the best
 > matches I am allowed to read, in the same order every time, and nothing
 > when I ask for none, so that results are reproducible and never leak
-> another conversation's memory.
+> memory outside my authorized scopes.
 
 ### Ranking is a total order, so the same candidates always rank the same
 

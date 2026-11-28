@@ -71,11 +71,13 @@ pure def sometimesFamilyEndCapsAccess(f: Family): bool = f.phase == Live and f.a
 ### Only the current access token of a live family of the person's epoch is accepted
 
 A refused session answers `401 authentication_required`. A token that was
-never issued, of a lease not yet acknowledged, or of a family past its end,
-is unknown; any token of a revoked family is revoked; a token of an earlier
-generation of a live family is unknown; a current token past its expiry is
-expired. A lease also accepts the access token of the pair it offered, until
-that token's own 15 minutes end. So a revoked family accepts nothing.
+never issued, of a lease not yet acknowledged, or of a family past its end
+is unknown. Ordinary request authentication looks up the current access
+token, and also the offered access token for a lease. The lookup excludes
+earlier generations, whose digests are kept for logout and refresh reuse
+checks. A located token of a revoked family is revoked. A current token
+past its expiry is expired. A lease's offered access token also ends after
+its own 15 minutes.
 
 ```quint
 pure def isEnded(f: Family): bool = f.phase == Revoked or f.phase == Reused

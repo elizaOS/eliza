@@ -275,8 +275,8 @@ A host that does not declare call-log access answers unavailable, never an
 empty page; a refused admission carries its reason, so only
 `PermissionRequired` raises Android's prompt. The read runs off the main
 thread, is cancelled on background, lock, screen-off and grant change, and is
-fenced again before it is published (`fenceHolds`). A page holds 1 to 50
-calls.
+fenced again before it is published (`fenceHolds`). The caller requests a
+limit from 1 to 50 calls, and the page may be empty.
 
 ```quint
 import paging as Pg from "./paging"

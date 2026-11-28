@@ -239,7 +239,7 @@ pure def lawWithoutARecordOnlyDevelopmentStagesInert(mode: StagingMode): bool =
     == (if (mode == StageDevelopment) ListenerStaged({ reach: ListenerInert, speechIncluded: true }) else refuse(QualificationMissing))
 ```
 
-## Story: Activate the listener only on a qualified image
+## Story: Activate my listener only from an enrolled record for this image
 
 > As a product maker, I want the listener activated only from the
 > qualification record my product enrolled for exactly these inputs, so
@@ -249,7 +249,9 @@ pure def lawWithoutARecordOnlyDevelopmentStagesInert(mode: StagingMode): bool =
 Activation writes the listener image feature and the component override
 ([provisioning](./provisioning.md)). The record is the consumer's; its
 gates are the device checks of the consumer's qualification plan, each
-passed with the digest of its evidence.
+passed with the digest of its evidence. A development image may activate
+the listener using an enrolled record still awaiting qualification.
+Production needs a qualified record with all gates passed.
 
 ### A qualification record counts only when its bytes are the enrolled ones and it names every input of this image
 

@@ -5,11 +5,10 @@ staging environments, the callers each one answers, the capabilities it
 enables, the sign-in methods it offers and the public documents it serves.
 One instance serves the one environment it was started with, and it starts
 only when the profile, the database and the payment provider's catalog all
-agree with it. Sources are develop `packages/cloud/deploy/src`,
-`shared/src/lib/services/subscription-catalog.ts` (`verifyPlan`),
-`shared/src/lib/cors/` and `api/src/public/service/route.ts`; downstream
-readers are the products' deployment scripts, readiness checks and the
-service-information parser.
+agree with it. The profile lives in `packages/cloud/src/profile/`, and
+the startup and transport checks live in `packages/cloud-worker/src/`.
+Downstream readers include product deployment scripts, readiness checks
+and the service-information parser.
 
 This library has no state. The profile's Effect Schema
 (`src/profile/profile.schema.ts`) owns every string format (an origin is
@@ -241,7 +240,7 @@ pure def lawServicesListEachEnabledCapabilityOnce(offered: Set[Capability], c: C
   enabledServices(offered).select(x => x == c).length() == (if (offered.contains(c)) 1 else 0)
 ```
 
-### A credentialed cross-origin request is answered only for an exact first-party origin of the environment
+### The server grants credentialed CORS only to an exact first-party origin of the environment
 
 A request whose `Origin` is in the environment's `firstPartyOrigins` gets
 that origin reflected with credentials allowed; any other origin gets no CORS

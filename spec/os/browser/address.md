@@ -96,9 +96,9 @@ pure def lawUnreadableTextIsRefusedFirst(facts: AddressFacts, fallback: DefaultP
 
 ### Only an HTTP or HTTPS address that parsed without credentials is ever opened
 
-`javascript:`, `file:` and every other typed scheme is refused, whatever
-protocol the host assumes, and so is an address with a user name or
-password.
+Addresses with a typed scheme other than HTTP or HTTPS are refused,
+whatever protocol the host assumes. An address with a user name or password
+is also refused. Search operators follow the search rule above.
 
 ```quint
 pure def lawOnlyWebAddressesOpen(facts: AddressFacts, fallback: DefaultProtocol): bool = {

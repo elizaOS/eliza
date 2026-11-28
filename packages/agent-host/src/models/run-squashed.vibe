@@ -1,4 +1,4 @@
-// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"
+// spec/agent/models/binding.md, "Text and image generation use the launch backend, and embeddings can run on the device"
 module edge {
   import { Cause, Effect, Exit } from "effect"
 

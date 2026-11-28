@@ -1,4 +1,4 @@
-// spec/os/appUpdate/health.md, "Only the updater gets an answer, and only a well-timed request for this version starts the worker"
+// spec/os/appUpdate/health.md, "Only a well-timed updater request for this version starts the worker"
 package ai.eliza.plugins.agent.health.contract;
 import ai.eliza.plugins.agent.health.NativeHealthService;
 import android.content.*;

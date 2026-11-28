@@ -1,4 +1,4 @@
-// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "An uncertain outcome is dismissed only by its owner and stays on record"; spec/os/android/deletionWindow.md, "The notice offers Undo only while Undo can still win, and never for an uncertain outcome"; spec/os/android/deletionWindow.md, "A record waiting in its window is hidden from its list until Undo or the provider settles it"
+// spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"; spec/os/android/deferredDeletion.md, "An uncertain outcome is dismissed only by its owner and stays on record"; spec/os/android/deletionWindow.md, "The notice offers Undo only while Undo can still win, and never for an uncertain outcome"; spec/os/android/deletionWindow.md, "A queued deletion on its review clock hides the record from its list"
 import { nativeCall, nativeReply, settled } from "./bridge.vibe"
 import { DELETION_NOTICE_TEXT, UNDO_TOO_LATE, parseDeletionsPending, receiptPhase, recordKindOf, undoConfirmed } from "./deletion-window.vibe"
 import type {

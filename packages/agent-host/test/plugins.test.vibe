@@ -54,9 +54,9 @@ effect function refusal(test: Case) {
 const refusals: ReadonlyArray<readonly [string, string, Case]> = [
   ["An unknown plugin stops boot", `spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"`,
     { launch: { load: ["@elizaos/plugin-wallet"] } }],
-  ["A listed storage plugin stops boot", `spec/agent/plugins/profile.md, "Storage, the cloud link and the privacy service always load and cannot be listed"`,
+  ["A listed storage plugin stops boot", `spec/agent/plugins/profile.md, "Storage and the cloud link always load, and the load list cannot name either or the privacy service"`,
     { launch: { load: ["@elizaos/agent/storage"] } }],
-  ["A product plugin named like an agent module stops boot", `spec/agent/plugins/profile.md, "Storage, the cloud link and the privacy service always load and cannot be listed"`,
+  ["A product plugin named like an agent module stops boot", `spec/agent/plugins/profile.md, "Storage and the cloud link always load, and the load list cannot name either or the privacy service"`,
     { launch: { productPlugin: tasksModule } }],
   ["A product plugin missing from the bundle stops boot", `spec/agent/plugins/profile.md, "The product plugin must be in the bundle"`,
     { launch: { productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] } }],
@@ -121,7 +121,7 @@ it.effect(`A malformed product route refuses the whole list, then a corrected la
 
 const childRefusals: ReadonlyArray<readonly [string, string, LaunchOptions]> = [
   ["An unknown plugin name", `spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"`, { load: ["@elizaos/plugin-wallet"] }],
-  ["A load list naming storage", `spec/agent/plugins/profile.md, "Storage, the cloud link and the privacy service always load and cannot be listed"`, { load: ["@elizaos/agent/storage"] }],
+  ["A load list naming storage", `spec/agent/plugins/profile.md, "Storage and the cloud link always load, and the load list cannot name either or the privacy service"`, { load: ["@elizaos/agent/storage"] }],
   ["A named product that is not in the bundle", `spec/agent/plugins/profile.md, "The product plugin must be in the bundle"`, { productPlugin: "product-fixture", allowed: ["REPLY", "IGNORE", "NONE", productActionName] }],
 ]
 

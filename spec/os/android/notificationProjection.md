@@ -223,8 +223,8 @@ pure def lawLiveOrUncertainReceiptKeepsTheNotice(receipt: ApprovalReceipt, canFo
 
 > As the owner, I want an occurrence alert to land on the channel I left it
 > on and a new-mail notice to count only mail I have not dealt with, so that
-> a host's own grouping never overrides my choices and a count never runs
-> backwards while I read.
+> a host's own grouping never overrides my choices and the mail count still
+> includes unread notices removed by the shade's limit.
 
 ### An occurrence alert leaves the updates channel only while the owner left that channel as the host made it
 

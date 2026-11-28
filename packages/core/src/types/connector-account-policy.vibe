@@ -17,12 +17,7 @@ export type ConnectorAccountAccessGate =
   | "disabled"
   | (string & {})
 
-export type ConnectorAccountStatus =
-  | "connected"
-  | "pending"
-  | "disabled"
-  | "revoked"
-  | "error"
+export schema ConnectorAccountStatus = "connected" | "pending" | "needs_reauth" | "disabled" | "revoked" | "error"
 
 export interface ConnectorAccountPolicy {
   provider: string

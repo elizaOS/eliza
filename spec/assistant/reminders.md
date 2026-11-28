@@ -62,8 +62,8 @@ pure def proposeReminder(s: ReminderIntent, requested: bool, plannedClock: Remin
 
 A check that finds the message asked for the reminder makes it ready; one
 that finds it did not, or a check that cannot run, rejects it. The owner
-may cancel before it is written. The check asks the model with no output
-limit, so its answer is never cut short, and with the `low` thinking hint
+may cancel before it is written. The check sends no client output limit
+and supplies the `low` thinking hint
 of [model binding](../agent/models/binding.md), so a model that documents
 a reasoning effort spends a bounded one on this yes-or-no reading instead
 of its default.

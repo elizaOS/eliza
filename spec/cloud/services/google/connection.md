@@ -1,15 +1,18 @@
 # Managed Google connection
 
-The owner's Google grant, held by the cloud. Sources: develop
-`agent-google-connector/shared.ts`, `oauth/{oauth2.ts,token-cache.ts}`,
-`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (device
-key or session): `POST connect/initiate {side, capabilities, redirectUrl?, emailBinding?}`,
-`POST connect/native {serverAuthCode}`, `GET status`, `GET accounts` (every
-connection's status), `POST disconnect {side, connectionId?}`; Google calls
-`GET /api/v1/oauth/google/callback`. One instance is one connection row; the
-shell seals tokens (purpose `GoogleTokens`), keeps identity, `linkedAt` and
-`lastUsedAt`, and deletes rows left `Pending`. A unique index keeps one
-connection per (organization, Google subject).
+The owner's Google grant is held by the cloud. Its routes and services live
+in `packages/cloud-worker/src/http/routes/google.vibe` and
+`packages/cloud-worker/src/services/google/`. Under `/api/v1/eliza/google/`,
+`POST connect/initiate {side, capabilities, redirectUrl?, emailBinding?}`
+and `POST disconnect {side, connectionId?}` require a signed session.
+`POST connect/native {serverAuthCode, expectedGoogleSubject?}` allows a
+session or device key. `GET status` and `GET accounts` allow a session or
+device lease. These are the primary routes. The [Grace Google mount](../../deployment.md)
+has its own admission rules. Google calls `GET /api/v1/oauth/google/callback`.
+One instance is one connection row. The shell seals tokens (purpose
+`GoogleTokens`), keeps identity, `linkedAt` and `lastUsedAt`, and deletes rows
+left `Pending`. A unique index keeps one connection per organization and
+Google subject.
 
 ## Story: Connect my Google account with the access I chose
 
@@ -274,8 +277,9 @@ pure def sometimesRotationLost(c: Connection): bool = c.status == Errored
 ### A request names a grant or uses the only active connection, never another organization's, and only the owner side
 
 A Google route that needs one grant, including disconnect, selects this way
-over the caller's organization's rows, newest first. A named grant outside
-those rows returns `404 not_found`. With no named grant, several active rows
+over the caller's organization's rows, newest first. The status, account
+listing and disconnect routes filter those rows to the calling user first.
+A named grant outside the eligible rows returns `404 not_found`. With no named grant, several active rows
 return `400 invalid_request` with reason `grant_required`. If no row is
 active, selection uses the newest established grant. A `side` other than
 `owner` returns `400 invalid_request`.

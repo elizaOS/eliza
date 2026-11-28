@@ -1,7 +1,7 @@
 # Timing registry and histogram retention
 
 The source is `InferenceTimingRegistry`, `BoundedHistogram` and
-`nextInferenceTurnId` in `inference-timing.ts`.
+`nextInferenceTurnId` in `inference-timing.vibe`.
 
 ## Story: Retain recent telemetry with explicit missing measurements
 

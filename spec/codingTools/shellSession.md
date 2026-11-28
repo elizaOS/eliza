@@ -82,7 +82,7 @@ pure def advanceClock(s: ShellSession, delta: int): ShellSession = {
 
 ### Background shell sessions enforce concurrency caps and monotone incremental output polling
 
-This state machine models a single tracked background session slot (`bgActiveCount` in `{0, 1}`) under the per-conversation cap of 16 sessions. Starting requires the slot to be free and under the cap, output bytes accumulate while running, polling advances the cursor without skipping past total bytes, and exiting or killing releases the active session slot.
+This state machine models a single tracked background session slot (`bgActiveCount` in `{0, 1}`) under the per-conversation cap of 16 sessions. Starting requires the slot to be free and under the cap. The shell maps each output chunk to a positive tracked increment of at most 1,000. Polling advances the cursor up to the total tracked output, and exiting or killing releases the active session slot.
 
 ```quint
 pure def canStartBackground(s: ShellSession): bool =
@@ -145,7 +145,7 @@ pure def lawConfirmedCheckedStdinIsWritten(forbidden: bool): bool =
 
 ### Leased output artifacts allow bounded paging until lease expiration
 
-Spilling large foreground command output registers an immutable byte artifact with a lease expiration. Paging reads are allowed only while the lease is unexpired, the offset lies within the artifact size, and the page limit is within the 20,000-character ceiling.
+Spilling large foreground command output registers an immutable byte artifact with a lease expiration. The shell checks the lease and clamps the page limit to 20,000 characters. It projects the artifact length and offset to a model window of at most 10,000 characters. The model admits paging within that window while its lease is current. The shell applies the page to the stored stream and returns an empty page for an offset beyond the end.
 
 ```quint
 pure def canCreateArtifact(s: ShellSession, artifactSize: int): bool =

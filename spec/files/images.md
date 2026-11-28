@@ -11,9 +11,9 @@ import these bounds.
 
 ## Story: Refuse an image before it can exhaust the device
 
-> As a person scanning or recognizing a page, I want an oversized or
-> unreadable image refused before it is decoded, so that one bad file never
-> stalls or crashes the app.
+> As a person scanning or recognizing a page, I want the app to reject an
+> oversized file before decoding and refuse unreadable images or excessive
+> decoded dimensions before preparing a page.
 
 ### An image is admitted only within its byte, pixel and page bounds
 

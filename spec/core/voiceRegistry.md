@@ -1,19 +1,20 @@
 # Voice cancellation registry
 
-Source `voice-cancellation-token.ts` retains one current token identity per
+Source `voice-cancellation-token.vibe` retains one current token identity per
 room. This owner embeds [concrete tokens](./voice.md); it does not keep a
 second cancellation-reason map. Room order follows insertion order. The
 call stack exposes synchronous reentry through token callbacks.
 
 ## Story: Replace and cancel the active voice turn by room
 
-> As a host, I want arming a room's voice turn to cancel the previous one
-> before publishing the replacement, so that a room never has two live
-> voice turns.
+> As a host, I want arming a room's voice turn to cancel the current token
+> it finds before publishing the replacement, so that the registry exposes
+> at most one current token for the room.
 
-A callback may reenter the registry. The outer
-call subsequently resumes with its original captured objects. Cleanup
-removes a binding only while it still refers to that exact token.
+A callback may reenter the registry. The outer call resumes with its
+original captured objects. It may overwrite a nested arm's binding without
+aborting the token that nested arm created. Cleanup removes a binding only
+while it still refers to that exact token.
 
 ### Captured calls retain token identity through callbacks and publication
 

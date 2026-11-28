@@ -8,7 +8,7 @@ runs beside them.
 ## Story: Open optional log files lazily and close their descriptors
 
 > As an operator, I want optional log files that open on first use and
-> never leak a descriptor when opening fails.
+> unwind every acquired descriptor when opening fails.
 
 I can enable file logging through the host setting. Silent
 logging and an absent or disabled file setting suppress initialization.

@@ -15,6 +15,42 @@ lemma lawOnlyAllowedRegisteredActionsAreOffered_ensures(registered: seq<string>,
   assert "REPLY" in messageServiceActions;
 }
 
+lemma lawNamedFieldsAreNeverUnexpected_ensures(namedFields: seq<string>, submittedFields: seq<string>, extraKeys: core__actionPlanning_ExtraKeysChoice)
+  ensures (lawNamedFieldsAreNeverUnexpected(namedFields, submittedFields, extraKeys) == true)
+{
+  var named := ProofLib.Filter((key: string) => key in namedFields, submittedFields);
+  var accepted := checkedArgumentKeys(namedFields, submittedFields, extraKeys);
+  if core__actionPlanning_acceptsExtraKeys(|namedFields|, extraKeys) {
+    forall key | key in named
+      ensures key in accepted
+    {
+      ProofLib.FilterMember((key: string) => key in namedFields, submittedFields, key);
+    }
+  } else {
+    assert named == accepted;
+  }
+}
+
+lemma lawAnActionWithoutParametersAcceptsNoKeys_ensures(submittedFields: seq<string>)
+  ensures (lawAnActionWithoutParametersAcceptsNoKeys(submittedFields) == true)
+{
+  var noFields: seq<string> := [];
+  ProofLib.FilterNone((key: string) => key in noFields, submittedFields);
+}
+
+lemma lawOnlyTheCueIsRemovedFromActionFields_ensures(submittedFields: seq<string>)
+  ensures (lawOnlyTheCueIsRemovedFromActionFields(submittedFields) == true)
+{
+  var accepted := actionArgumentKeys(submittedFields);
+  ProofLib.FilterMember((key: string) => key !in ["cue"], submittedFields, "cue");
+  assert "cue" !in accepted;
+  forall key | key in submittedFields && key != "cue"
+    ensures key in accepted
+  {
+    ProofLib.FilterMember((key: string) => key !in ["cue"], submittedFields, key);
+  }
+}
+
 lemma lawTheLatestFailureIsReported_ensures(steps: seq<PlanStep>, earlier: PlanStep)
   ensures (lawTheLatestFailureIsReported(steps, earlier) == true)
 {

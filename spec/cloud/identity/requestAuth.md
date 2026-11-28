@@ -8,8 +8,8 @@ the class says what credential it needs:
 | Public | anyone; no credential is read | health, public service document, plans, entitlement keys, sign-in starts, return pages |
 | Signature | anyone; the route verifies the provider's signature | the payment provider's webhook |
 | Key or Session | a live device key or session | inference (with `/models`), speech, maps, Google native connect, billing reads (invoices too), checkout start and confirm, redeem, account read, referrals, self-revoke |
-| Mail | a live session or device lease, never a device key | Google status, accounts, connect, disconnect and sign-in sessions; Gmail; inbox; calendar |
-| Session | a live session | sign-in methods, factors, step-up send, connect |
+| Mail | a live session or device lease | Google status and accounts, Gmail content reads and calendar reads |
+| Session | a live session | sign-in methods, factors, step-up send, Google browser connect and disconnect, Gmail operations, calendar writes |
 | Fresh | a live session signed in or stepped up within 60 minutes | cancel, undo, upgrade, downgrade, payment continuation, portal |
 | Step-up | a live session with a second factor within 5 minutes | unlink a method, change factors |
 | Session family | an issued token for the same family | sign out here |
@@ -31,9 +31,9 @@ device lease's access token (`eliza_lease_` + 43 base64url, the same
 `nativeClients/deviceKeys`); anything else, or no header, presents nothing. It matches the token's digest in the
 store and reads the account's status and both revocation epochs in the same
 store operation, and passes them here as the `Standing`. The token itself
-never enters the model. The device half, which decides what a refusal means
-on the device, is os `signIn/credential.md`. The source is develop
-`packages/cloud/shared/src/lib/auth/` and `packages/cloud/api/src/bootstrap-app.ts`.
+never enters the model. The [device half](../../os/signIn/credential.md)
+decides what a refusal means on the device. The request authentication
+and transport live in `packages/cloud-worker/src/http/`.
 
 ## Story: Admit a request only for a live credential of an active account
 
@@ -136,7 +136,7 @@ pure def grantAdmission(route: RouteClass, grant: Dk::Grant, standing: Standing,
   val reason = Dk::keyRefusal(grant, now, standing.deviceEpoch)
   if (reason != NoReason) deniedFor(reason)
   else if (not(isActiveAccount(standing))) deniedFor(CredentialRevoked)
-  else if (needsSession(route)) Denied({ refusal: refuse(AccessDenied) })
+  else if (needsSession(route)) deniedFor(CredentialUnknown)
   else if (route == MailRoute) Denied({ refusal: refuseFor(AccessDenied, DeviceKeyNotAllowed) })
   else Caller({ kind: DeviceKeyCredential, expiresAt: Dk::ackAnswer(grant).expiresAt })
 }
@@ -195,10 +195,10 @@ pure def lawAnAnsweredLookupIsAdmittedAsBefore(route: RouteClass, presented: Pre
 
 ### Session, fresh and step-up routes admit only a session, and only with the assurance they name
 
-A live device key on such a route is refused `403 access_denied`, so a
-device never takes it for a signed-out key. A live session that is not fresh
-enough is refused `428 fresh_session_required`, which asks for a step-up
-rather than a new sign-in. Freshness and step-up are `S::isFresh` and
+A live device key on such a route receives `401 authentication_required`
+with reason `credential_unknown`, because the route requires a session.
+A live session that is too old for the required assurance receives
+`428 fresh_session_required`. Freshness and step-up use `S::isFresh` and
 `S::isSteppedUp` at the request's time.
 
 ```quint

@@ -12,7 +12,9 @@ A retry with the same digest returns the existing status. A different response d
 ### Creating a session binds its owner and expiration
 
 A session is created once, for a complete owner of agent, actor and
-connector, with an expiry later than now. The clock only moves forward.
+connector, with an expiry later than now. This protocol's elapsed-time
+transition advances its clock. The [session store](./sessionStore.md) also
+observes absolute host time, which can move backward.
 
 ```quint
 type SessionOwner = { agentId: str, actorId: str, connector: str }

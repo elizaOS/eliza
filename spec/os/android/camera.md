@@ -18,7 +18,7 @@ says.
 
 ### Only the answer to the current foreground start can make the viewfinder ready
 
-Every start and every stop takes a new epoch. A start waits for the queued
+Every registered preview start and every stop takes a new epoch. A start waits for the queued
 preview releases before it asks the bridge for a preview, so a new preview
 never races the release of the last one. An answer to an older epoch moves
 nothing; if that late preview did come up and no newer start owns the
@@ -231,8 +231,8 @@ pure def sometimesZoomWhileRecording(s: CameraView): bool = s.recordingControl
 The device read lists the photo aspect ratios a preview accepts, 4:3 and
 16:9 on Android; a preview with none asks for 4:3. Any other value is
 refused as `INVALID_OPTIONS` before the camera is touched. A lens that has
-no stream at the ratio falls back to another, so the bound capture size the
-preview reports is what a capture takes, never the ratio requested.
+no stream at the ratio falls back to another. A capture uses the bound
+capture size the preview reports.
 
 ```quint
 type AspectRequest = { given: bool, ratio: str }

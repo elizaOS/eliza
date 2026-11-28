@@ -96,10 +96,11 @@ pure def sometimesBrowserUnavailable(b: BrowserBinding): bool = b.link == Unavai
 ### Each ready callback fires at most once, only for an open hold that registered it
 
 Each hold gets a fresh id and registers at most one ready callback. On a
-ready binding it fires at once; otherwise it waits, and the next verified
-connection fires every waiting callback in registration order. Closing a
-hold drops its waiting callback. The shell runs the fired callbacks in
-order, and one that closes a hold or the binding is a later event.
+ready binding it fires at once; otherwise it waits. The next verified
+connection gives the shell the waiting callbacks in registration order.
+Closing a hold drops its waiting callback. The shell checks that the
+binding is still ready and the hold still open before it runs each
+callback, since a preceding callback may close either.
 
 ```quint
 pure val holdIdValues = Set(1, 2, 3)

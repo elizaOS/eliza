@@ -88,7 +88,7 @@ refused. The confirmation rechecks the underlying unedited selection.
 The recheck first requires the same pending Ask token and notice
 generation, then the same provider history, message, thread, subject
 and snippet from a fresh read. A user cancellation or scope loss
-before consumption prevents it. Only an explicit dismissal releases the
+before the consume request is sent prevents it. Only an explicit dismissal releases the
 question; the view merely being hidden does not. A recheck or consume
 failure reports the changed notification. Once the device acknowledges
 consumption the tap is spent, and that final step checks the current

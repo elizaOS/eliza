@@ -39,7 +39,8 @@ pure def sometimesTheWalletIsHeld(c: Custody): bool = c.held
 ### The owner switches the wallet off and on, and off means nothing is read or signed
 
 A wallet that is off gives the agent no wallet action and no wallet
-information, signs nothing and reads no chain. The sealed keys and the
+information, signs nothing and reads no chain. The local custody status
+still identifies the sealed wallet so its owner can switch it on. The sealed keys and the
 accounts stay as they were, so switching it on brings the same wallet back.
 Only the owner switches it.
 

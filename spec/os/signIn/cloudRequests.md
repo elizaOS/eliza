@@ -22,9 +22,9 @@ Java shell; sources are develop's `CloudConnectionPolicy.java` and
 
 ### A call tied to a device credential cannot use a different credential
 
-The page can name the device credential identifier it obtained from the
-current sign-in. The identifier is public to the page. A bound call uses
-the credential the native shell actually captured, and only while its
+The page can pass `expectedCredentialId` with the public identifier it
+obtained from the current sign-in. A call using that option attaches the
+device key the native shell actually captured, and only while its
 identifier and version still match the active credential immediately
 before dispatch. It cannot attach an account session, a mail lease or no
 credential. A mismatch is refused before a request leaves the device.
@@ -90,8 +90,9 @@ uses the lease (the next rule); every other route carries the active device
 key, or fails with `SignInRequired` when there is none. The key, the lease
 and the session token are attached natively and never reach the page.
 
-A reviewed billing request may name the installed credential. It uses only
-a route whose policy requires a fresh account session. If the installed
+A reviewed billing request can instead use `expectedSessionCredentialId`
+to name the installed credential. It uses only a route whose policy requires
+a fresh account session. If the installed
 credential changed, the native bridge refuses before sending or drops the
 unread reply. A refusal for an old session cannot discard a newer session.
 

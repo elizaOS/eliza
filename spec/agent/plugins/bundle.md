@@ -333,13 +333,12 @@ pure def lawEveryEntryNeedsTheLoadSmoke(e: BundleEntry): bool = not(entryAdmitte
 
 ### A host module is named only for a bundled package that is not an agent module, and runs with its entry's services over the resident's platform layer
 
-`hostModules` maps a bundled package name to a module factory;
-`hostServices(host)` builds, once per factory call, the layer of device
-services those factories need (for example `androidInferenceLayer(socket)`
-from `@elizaos/os`), itself given the resident's platform layer
-(file system, path, child processes). A factory needs nothing beyond those
-services and the platform layer, so no host module starts with a missing
-service.
+`hostModules` maps a bundled package name to a module factory.
+`hostServices(host)` supplies a layer for the resident, for example
+`androidInferenceLayer(socket)` from `@elizaos/os`. Each factory runs with
+that layer provided over the resident's platform layer for file system,
+path and child processes. The factory signature declares its dependencies
+from those layers.
 
 ```quint
 pure def hostModuleAdmitted(name: str, bundled: Set[str], builtins: Set[str]): bool = bundled.contains(name) and not(builtins.contains(name))

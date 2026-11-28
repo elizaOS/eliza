@@ -1,12 +1,11 @@
 # Document scan review, drafts and export
 
-A consumer imports `createScanDocument`, image admission and scan limits
-from Eliza's `plugins/plugin-native-camera/src/scan-document.ts`. Its
-[camera](../../os/index.md) adapter also imports `createScanCapture` from that
-file. The consumer binds `plugins/plugin-files/src/documents/scan-draft.ts`
-to a consumer-named device database. The editor runs on the native and
-browser surfaces. The native surface enables autosave and native save
-pickers.
+The Files client supplies `createScanDocument` in
+`packages/plugin-files-client/src/documents/scan-document.vibe` and the
+[shared image bounds](../images.md). The consumer binds the
+`scan-draft.vibe` store from the same directory to a consumer-named
+database. The editor runs on native and browser surfaces. The native
+surface enables autosave and native save pickers.
 
 ## Story: Assemble a document and retain a reviewable draft
 

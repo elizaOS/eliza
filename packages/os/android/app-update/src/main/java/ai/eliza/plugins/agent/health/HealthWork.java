@@ -1,4 +1,4 @@
-// spec/os/appUpdate/health.md, "Only the updater gets an answer, and only a well-timed request for this version starts the worker"; spec/os/appUpdate/health.md, "The agent half is the agent service's verdict for the current launch, and storage counts only from a ready agent"; spec/os/appUpdate/health.md, "Only a failing agent fails an update, and a pass needs a ready agent, its storage and visible content of the same launch"
+// spec/os/appUpdate/health.md, "Only a well-timed updater request for this version starts the worker"; spec/os/appUpdate/health.md, "The agent half is the agent service's verdict for the current launch, and storage counts only from a ready agent"; spec/os/appUpdate/health.md, "Only a failing agent fails an update, and a pass needs a ready agent, its storage and visible content of the same launch"
 package ai.eliza.plugins.agent.health;
 
 import java.util.Optional;

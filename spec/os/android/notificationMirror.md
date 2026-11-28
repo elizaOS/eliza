@@ -200,7 +200,7 @@ pure def stepStaleCallbackChangesNothing(before: MirrorState, via: str, after: M
 pure def sometimesStaleCallbackWaits(s: MirrorState): bool = s.queue.some(c => c.generation < s.generation)
 ```
 
-### A secret notice is never shown or opened, and previews off hide the content
+### Secret notice content and disabled previews are hidden, and secret notice opens are refused
 
 A hidden row shows the app label and fixed hidden-content text and is marked
 redacted; it can still be dismissed if clearable. Open runs only an intent
@@ -226,7 +226,10 @@ History is separate consent. A record holds an ID, package, signing digest,
 label, times and Posted or Removed, never text, key or intent; it is
 encrypted in no-backup storage, and a deletion checks no file remains.
 
-### History is kept only with my consent while collecting, for selected apps, at most a hundred records
+### History records only selected apps while collecting with my consent, up to a hundred records
+
+An account-bound host with unresolved custody keeps the encrypted history
+withheld until it authenticates the same owner or retires the old one.
 
 ```quint
 pure val maxHistoryRecords = 100

@@ -101,7 +101,7 @@ sheet entirely.
 pure def alwaysAttachedHasDestination(s: Directions): bool = s.owner > 0 implies s.destination != ""
 ```
 
-### A resident relay delivers each command at most once within its offer
+### A resident relay admits each command for execution at most once within its offer
 
 A relay opens for one authenticated conversation and a captured Maps
 controller. The server must acknowledge protocol 1 with no outstanding

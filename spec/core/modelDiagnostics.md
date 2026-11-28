@@ -8,7 +8,7 @@ including writes added while an earlier snapshot was awaiting.
 ## Story: Finish every diagnostic write before storage closes
 
 > As the model runtime, I want every pending diagnostic write finished
-> before storage closes, so no diagnostic is lost at shutdown.
+> before storage closes, so shutdown does not abandon pending writes.
 
 As the model runtime I retain each pending diagnostic promise. Duplicate
 tracking shares its Set entry, and tracking an already-settled promise adds

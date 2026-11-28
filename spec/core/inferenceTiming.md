@@ -8,7 +8,7 @@ observations remain missing.
 ## Story: Measure a turn without changing its execution
 
 > As an operator, I want a turn's timing recorded without changing how the
-> turn runs, so measurements are trustworthy and free.
+> turn runs, so measurements reflect the turn's actual behavior.
 
 As an operator, I collect spans and first-occurrence marks, retain the first
 provider attribution, and close a timer idempotently. A span closer can run

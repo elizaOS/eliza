@@ -150,13 +150,15 @@ surrounding quotation marks are removed. A longer text is cut to its first
 text and a kept text with a character a message body may not hold give no
 draft. A call that cannot start or fails answers 503
 `drafting_unavailable` and logs only the failure's name, because a
-provider's error may quote its input; a caller that closed the request gets
-no answer. Every other answer is 200 with the draft or null. The route
+provider's error may quote its input. Closing the request before the model
+call skips it. Closing during that call cancels it without drafting or
+logging a failure. A caller that closed the request gets no answer. Every
+other answer is 200 with the draft or null. The route
 offers the model no tool, sends no message, stores nothing and queues no
 work: its only effects are the one call, the answer and that log line.
 
 ```quint
-type ModelResult = ModelFailed({ failureName: str }) | CallerClosed | ModelSaid({ units: int, saysNone: bool, keptSafe: bool })
+type ModelResult = ModelFailed({ failureName: str }) | CallerClosedBeforeCall | CallerClosedDuringCall | ModelSaid({ units: int, saysNone: bool, keptSafe: bool })
 type DraftAnswer = BadRequest | Unavailable | Cancelled | NoDraft | Draft({ kept: int })
 type FailureLog = NoLog | LoggedFailure({ failureName: str })
 type Handled = { answer: DraftAnswer, modelCalls: int, log: FailureLog }
@@ -164,20 +166,22 @@ pure val draftMax = 320
 pure def keptUnits(units: int): int = if (units > draftMax) draftMax else units
 pure def draftOf(said: ModelResult): DraftAnswer = match said {
   | ModelFailed(f) => Unavailable
-  | CallerClosed => Cancelled
+  | CallerClosedBeforeCall => Cancelled
+  | CallerClosedDuringCall => Cancelled
   | ModelSaid(a) => if (a.units <= 0 or a.saysNone or not(a.keptSafe)) NoDraft else Draft({ kept: keptUnits(a.units) })
 }
 pure def logOf(said: ModelResult): FailureLog = match said { | ModelFailed(f) => LoggedFailure({ failureName: f.failureName }) | _ => NoLog }
 pure def handle(req: DraftRequest, callStarts: bool, said: ModelResult): Handled =
   if (decision(req) == RefuseRequest) { answer: BadRequest, modelCalls: 0, log: NoLog }
   else if (decision(req) == AnswerNoDraft) { answer: NoDraft, modelCalls: 0, log: NoLog }
-  else if (said == CallerClosed) { answer: Cancelled, modelCalls: 0, log: NoLog }
+  else if (said == CallerClosedBeforeCall or said == CallerClosedDuringCall)
+    { answer: Cancelled, modelCalls: if (callStarts and said == CallerClosedDuringCall) 1 else 0, log: NoLog }
   else if (not(callStarts)) { answer: Unavailable, modelCalls: 0, log: LoggedFailure({ failureName: "unavailable" }) }
   else { answer: draftOf(said), modelCalls: 1, log: logOf(said) }
 pure def httpStatus(answer: DraftAnswer): int = match answer {
   | BadRequest => 400 | Unavailable => 503 | Cancelled => 499 | NoDraft => 200 | Draft(d) => 200 }
 pure def draftLength(answer: DraftAnswer): int = match answer { | Draft(d) => d.kept | _ => 0 }
-pure val saidValues: Set[ModelResult] = Set(ModelFailed({ failureName: "TimeoutError" }), CallerClosed,
+pure val saidValues: Set[ModelResult] = Set(ModelFailed({ failureName: "TimeoutError" }), CallerClosedBeforeCall, CallerClosedDuringCall,
   ModelSaid({ units: 24, saysNone: false, keptSafe: true }), ModelSaid({ units: 4, saysNone: true, keptSafe: true }),
   ModelSaid({ units: 0, saysNone: false, keptSafe: true }), ModelSaid({ units: 24, saysNone: false, keptSafe: false }),
   ModelSaid({ units: 900, saysNone: false, keptSafe: true }))

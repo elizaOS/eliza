@@ -74,7 +74,7 @@ pure val commandValues = Set(operationRequest, { ...operationRequest, observedPe
 
 ### A delayed binding response cannot restore a superseded or revoked numeric epoch
 
-A bind needs a nonnegative integer epoch at least the newest bound epoch and above the newest revoked one. A previous peer for the same key that differs from the active peer stops the bind before the peer is called. After the peer accepts, the fence is checked again before the binding is recorded, so a competing bind or revoke that completed meanwhile wins. Revocation raises the revoked-through epoch before calling any peer, even when every peer refuses.
+A numeric fence accepts only a nonnegative safe integer epoch at least the newest bound epoch and above the newest revoked one. A previous peer for the same key that differs from the active peer stops the bind before the peer is called. After the peer accepts, the fence is checked again before the binding is recorded, so a competing bind or revoke that completed meanwhile wins. A numeric revocation raises the revoked-through epoch before calling any peer, even when every peer refuses.
 
 ```quint
 type EpochFence = { newestBound: int, revokedThrough: int }

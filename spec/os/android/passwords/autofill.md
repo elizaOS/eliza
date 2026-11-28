@@ -199,9 +199,9 @@ pure def stepOnlyThePendingChallengeGrants(before: NativeAutofill, via: str, aft
 
 A save capture holds the facet proved at capture time: the exact origin, or
 the app's package with its current signer. A new capture replaces the
-pending one, not an open review. Opening the review takes the token once,
-even when the capture is older than 300,000 elapsed milliseconds, and then
-opens nothing. One review is open at a time, and its facet does not change
+pending one, not an open review. The review takes the token once. A capture
+that is 300,000 elapsed milliseconds old or older cannot open a review.
+One review is open at a time, and its facet does not change
 until it closes. A write updates the first entry with that facet and the
 same username, keeping its label and bindings, or creates an entry bound
 only to that facet; its admission and result are one event. Closing the

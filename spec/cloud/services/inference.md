@@ -4,17 +4,15 @@
 OpenAI-compatible chat completion, streamed or whole, from a model of
 [the price table](./models.md), charged over one hold of
 [metering](../shared/metering.md). It is the only inference route; an image
-description is a chat completion with an image part. Sources are develop
-`packages/cloud/api/v1/chat/completions/route.ts`,
-`packages/cloud/shared/src/lib/services/{ai-billing,inference-provider-outcome}.ts`
-and the Quint models `ChatSdkStreamSettlement` and `sse_segmentation`.
+description is a chat completion with an image part. The route, request
+validation and settlement live in `packages/cloud-worker/src/services/`.
 
-The shell runs the deployment's `inference` capability gate
-([the deployment](../deployment.md)), `admitCompletion`, `dispatchVerdict`,
-`M::markDispatched`, the provider and one `closeHold`, each stage's store
-work in its own transaction. The hold's caller is the organization. The
-shell supplies the validated `Idempotency-Key` UUID, or the server request
-ID when absent, as the model's `requestId`. A repeated key returns
+The shell checks the deployment's `inference` capability
+([the deployment](../deployment.md)), admits the call, rechecks its standing,
+marks the hold dispatched, calls the provider and settles the hold. It runs
+each stage's store work in its own transaction. The hold's caller is the
+organization. The shell supplies the validated `Idempotency-Key` UUID, or
+the server request ID when absent, as the model's `requestId`. A repeated key returns
 `409 already_dispatched` before another provider call can start. Wire shapes
 are the Effect Schemas of `src/services/chat-request.schema.ts`. Every
 answer is `Cache-Control: no-store`.
@@ -35,11 +33,11 @@ exactly `acceptedFields`, passed to the provider as sent: an agent's planning
 turn, with its sampling settings, its function tools and tool choice, the
 assistant's earlier tool calls and their tool results, and a
 `prompt_cache_key` of at most 1,024 characters that keeps one
-conversation's turns on the provider's prompt cache. Another field is
-refused `400 invalid_request` with reason `unsupported_field`, and so are
-empty `messages` and an image part with neither a URL nor a data URL (an
-unknown part kind fails the schema the same way). The model is the one
-`Mo::chooseModel` gives. `funding` is read in the hold's transaction: the
+conversation's turns on the provider's prompt cache. An unlisted top-level
+field is refused `400 invalid_request` with reason `unsupported_field`.
+Empty `messages`, sourceless image parts, unknown part kinds and strict
+JSON schemas the service cannot serve are refused `400 invalid_request`.
+`Mo::chooseModel` gives the model. `funding` is read in the hold's transaction: the
 allowance as `E::meteredAllowance` gives it and the free credit balance. A
 request refused at the ingress limit or at authentication is answered before
 its plan window is counted or its body read.
@@ -448,24 +446,42 @@ pure def lawOnlyAFailedStreamSendsAnError(deltas: List[int], ending: StreamEndin
 
 ### Reading the provider's stream yields the same events however its bytes were split
 
-The cloud reads the provider's lines for usage and delivered characters: a
-line feed ends a line, carriage returns are dropped, and a non-empty line is
-one event. `src/services/sse.ts` holds this law as its `//@` contract, on
-code points decoded at UTF-8 boundaries.
+The cloud reads the provider's SSE events for usage and delivered
+characters. LF, CR and CRLF each end one line. Consecutive `data` field
+values are joined by LF, other fields are ignored, and a blank line
+emits the buffered event if a data field was seen. Finishing the provider
+stream ends the last line and emits its pending event. The reader decodes
+each assembled event as UTF-8. `src/services/sse.ts` proves that splitting
+the byte stream across chunks preserves the reader state and events.
 
 ```quint
-type SseReader = { fragment: List[int], events: List[int] }
+type SseReader = { line: List[int], dataBytes: List[int], hasData: bool, afterCarriageReturn: bool, events: List[List[int]] }
 pure val carriageReturn: int = 13
 pure val lineFeed: int = 10
-pure val emptyReader: SseReader = { fragment: List(), events: List() }
-pure def endLine(p: SseReader): SseReader = {
-  val payload = p.fragment.select(c => c != carriageReturn)
-  { fragment: List(), events: if (payload.length() == 0) p.events else p.events.append(payload.nthOr(0, 0)) }
+pure val emptyReader: SseReader = { line: List(), dataBytes: List(), hasData: false, afterCarriageReturn: false, events: List() }
+pure def isSseDataField(line: List[int]): bool =
+  line.nthOr(0, 0) == 100 and line.nthOr(1, 0) == 97 and line.nthOr(2, 0) == 116 and line.nthOr(3, 0) == 97
+    and (line.length() == 4 or line.nthOr(4, 0) == 58)
+pure def sseFieldValue(line: List[int]): List[int] = {
+  val bytes = List(0, 1, 2, 3, 4).foldl(line, (rest, ignored) => rest.removeAt(0))
+  if (bytes.nthOr(0, 0) == 32) bytes.removeAt(0) else bytes
 }
-pure def readSymbol(p: SseReader, c: int): SseReader = if (c == lineFeed) endLine(p) else { fragment: p.fragment.append(c), events: p.events }
+pure def endLine(p: SseReader, endedWithCr: bool): SseReader = {
+  val value = sseFieldValue(p.line)
+  if (p.line.length() == 0 and p.hasData)
+    { ...p, line: List(), dataBytes: List(), hasData: false, afterCarriageReturn: endedWithCr, events: p.events.append(p.dataBytes) }
+  else if (isSseDataField(p.line))
+    { ...p, line: List(), dataBytes: if (p.hasData) p.dataBytes.append(lineFeed).concat(value) else value, hasData: true, afterCarriageReturn: endedWithCr }
+  else { ...p, line: List(), afterCarriageReturn: endedWithCr }
+}
+pure def readSymbol(p: SseReader, c: int): SseReader =
+  if (c == lineFeed and p.afterCarriageReturn) { ...p, afterCarriageReturn: false }
+  else if (c == lineFeed or c == carriageReturn) endLine(p, c == carriageReturn)
+  else { ...p, line: p.line.append(c), afterCarriageReturn: false }
 pure def readChunk(p: SseReader, chunk: List[int]): SseReader = chunk.foldl(p, (q, c) => readSymbol(q, c))
-pure val firstValues = Set(List(), List(65, 10), List(65, 13), List(10, 66, 13, 10, 67))
-pure val secondValues = Set(List(), List(10), List(13, 10, 68), List(69))
+pure def finishReader(p: SseReader): SseReader = endLine(endLine(p, false), false)
+pure val firstValues = Set(List(), List(100, 97, 116, 97, 58, 65, 13), List(100, 97, 116, 97, 58, 66, 10))
+pure val secondValues = Set(List(), List(10, 13, 10), List(100, 97, 116, 97, 58, 67, 10, 10), List(69))
 pure def lawChunkBoundariesDoNotChangeEvents(first: List[int], second: List[int]): bool =
   readChunk(readChunk(emptyReader, first), second) == readChunk(emptyReader, first.concat(second))
 ```

@@ -466,7 +466,8 @@ it.effect(`To-dos change once per request, by their text whatever its case or pu
     try changeTodos({ op: "create", content: "buy milk" }, heard("t3", "yes"))
     const ambiguous = try changeTodos({ op: "complete", target: "buy milk" }, heard("t4", "done with milk"))
     const byRef = try changeTodos({ op: "complete", target: "t-1" }, heard("t5", "done with the first"))
-    try equal([duplicate, ambiguous, byRef].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[false, "duplicate"], [false, "ambiguous"], [false, "ambiguous"]])
+    try equal([duplicate, ambiguous, byRef].map(outcomeOf).map(({ success, outcome }) => [success, outcome ?? null]), [[false, "duplicate"], [false, "ambiguous"], [true, null]])
+    try equal((try currentTodos()).todos.map(({ todoId, todoStatus }) => [todoId, todoStatus]), [[1, "TodoCompleted"], [2, "TodoPending"]])
     try changeTodos({ op: "create", content: "call mom" }, heard("t6", "add call mom"))
     const completed = try changeTodos({ op: "complete", target: "call mom" }, heard("t7", "called mom"))
     const alreadyComplete = try changeTodos({ op: "complete", target: "call mom" }, heard("t11", "called mom"))
@@ -553,6 +554,34 @@ it.effect('A request recorded as a no-op still refuses a different change under 
       start: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], startStatus: "TodoPending",
       cancel: [[true, "applied", null], [true, "noop", "unchanged"], [true, "noop", "replayed"]], cancelStatus: "TodoPending",
     })
+  }
+})
+
+it.effect('Renaming and deleting by reference change only the named to-do and replay after its text or presence changes (spec/assistant/todos.md, "A displayed t-N reference changes only that item, even when text is shared"; spec/assistant/todos.md, "A mutation is applied once per idempotency key")', effect () => {
+  const seen = ports()
+  provide portsLayer(seen) {
+    const item = { op: "create", content: "Buy milk" }
+    try changeTodos(item, heard("ref-1", "add buy milk"))
+    try changeTodos(item, heard("ref-2", "add another buy milk"))
+    try changeTodos(item, heard("ref-3", "yes"))
+
+    const rename = { op: "rename", target: "t-2", content: "Buy oat milk" }
+    const renameMessage = heard("ref-4", "rename the second one")
+    const renamed = try changeTodos(rename, renameMessage)
+    const renameReplay = try changeTodos(rename, renameMessage)
+    const conflict = try changeTodos({ ...rename, content: "Buy almond milk" }, renameMessage)
+    try equal((try currentTodos()).todos.map(({ todoId, content }) => [todoId, content]), [[1, "Buy milk"], [2, "Buy oat milk"]])
+
+    const remove = { op: "delete", target: "t-2" }
+    const removeMessage = heard("ref-5", "delete the second one")
+    const deleted = try changeTodos(remove, removeMessage)
+    const deleteReplay = try changeTodos(remove, removeMessage)
+    const missing = try changeTodos(remove, heard("ref-6", "delete the second one"))
+    try equal(
+      [renamed, renameReplay, conflict, deleted, deleteReplay, missing].map(({ success, data, effectReceipts }) => [success, effectReceipts?.[0]?.outcome, data?.outcome ?? null]),
+      [[true, "applied", null], [true, "noop", "replayed"], [false, "failed", null], [true, "applied", null], [true, "noop", "replayed"], [false, "noop", "not_found"]],
+    )
+    try equal((try currentTodos()).todos.map(({ todoId, content }) => [todoId, content]), [[1, "Buy milk"]])
   }
 })
 
@@ -912,19 +941,27 @@ it.effect('A staged evaluator output is kept with its binding until every reduce
   provide portsLayer(seen) {
     const staged = try stageEvaluatorOutput(scope, observed, evidence, '{"city":"Lisbon"}', "binding-1")
     const conflicting = try stageEvaluatorOutput(scope, observed, evidence, '{"city":"Porto"}', "binding-2")
+    const equalSize = try stageEvaluatorOutput(scope, observed, evidence, '{"city":"Madrid"}', "binding-1")
+    const replay = try stageEvaluatorOutput(scope, observed, evidence, '{"city":"Lisbon"}', "binding-1")
     const resumed = try stagedOutput(scope)
     const failed = try commitEvaluatorProgress(scope, false, 0)
     const committed = try commitEvaluatorProgress(scope, true, 0)
-    try equal([staged.kind, conflicting.kind === "refused" ? conflicting.failure : "kept", resumed?.output, failed.kind, committed.kind, try stagedOutput(scope)],
-      ["kept", "ProgressConflict", '{"city":"Lisbon"}', "refused", "kept", undefined])
+    try equal([staged.kind, conflicting.kind === "refused" ? conflicting.failure : "kept", equalSize.kind === "refused" ? equalSize.failure : "kept", replay.kind, resumed?.output, failed.kind, committed.kind, try stagedOutput(scope)],
+      ["kept", "ProgressConflict", "ProgressConflict", "kept", '{"city":"Lisbon"}', "refused", "kept", undefined])
   }
 })
 
 it('An evaluator restores only whole earlier records before a visible cursor, once (spec/assistant/evaluatorEvidencePages.md, "Story: Request an earlier complete page without applying the current response")', () => {
   const messages = ["first", "second", "third"].map((text, index) => ({ ...turn, id: `m-${index}` as UUID, content: { text }, createdAt: index }))
-  const restored = restoreEarlier(messages, "m-2", ["m-2"], [], 0, 10_000)
+  const restored = restoreEarlier([...messages].reverse(), "m-2", ["m-2"], [], 0, 10_000)
   const repeated = restoreEarlier(messages, "m-2", ["m-2"], ["m-2"], 0, 10_000)
-  assert.deepStrictEqual([restored.status, restored.records.map(({ id }) => id), repeated.status], ["PageAccepted", ["m-0", "m-1"], "InvalidCursor"])
+  const oneRecord = messages.filter(({ id }) => id !== "m-0")
+  const recordBytes = new TextEncoder().encode(JSON.stringify({
+    id: "m-1", entityId: turn.entityId, createdAt: 1, content: { text: "second" },
+  })).length
+  const overBudget = restoreEarlier(oneRecord, "m-2", ["m-2"], [], 3 * recordBytes, recordBytes)
+  assert.deepStrictEqual([restored.status, restored.records.map(({ id }) => id), repeated.status, overBudget.status],
+    ["PageAccepted", ["m-0", "m-1"], "InvalidCursor", "ReferenceBudgetExceeded"])
 })
 
 it.effect('A check-in mentions a calendar event changed recently by its provider, never one only refreshed on the device (spec/assistant/checkin.md, "Story: Mention only calendar events that changed recently")', effect () => {

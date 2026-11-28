@@ -14,8 +14,8 @@ scope](./runScope.md) owns the exact calendar scope of a reviewed read.
 
 Each caller's request passes the owner gate, then takes the execution row
 lock and checks the captured version and approval request digest against
-the canonical receipt. A decided receipt resumes a caller that asked for
-the same decision and fails one that asked for the other. A pending
+the canonical receipt. A decided receipt resumes a caller whose actor and requested decision
+match the receipt. Either mismatch fails. A pending
 approval on a finished or cancelling run, or an approval of an unsupported
 review, fails; an unsupported review may still be denied. Otherwise the
 caller sends the control command under the lock. The engine may commit it
@@ -123,7 +123,8 @@ The lock belongs to exactly the caller that is reading, commanding, reading
 back or persisting, and each caller is listed once. A caller past the lock
 has passed the owner gate; one past review matched the captured version
 and digest. A caller sends a command only for a pending decision on a
-running, supported review. A caller reading back, persisting or resuming
+running execution. Approval requires a supported review, and denial is
+also available when the review is unsupported. A caller reading back, persisting or resuming
 wants the canonical decision, and only a finished caller has been answered.
 
 ```quint

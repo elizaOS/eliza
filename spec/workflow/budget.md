@@ -22,8 +22,9 @@ the call count by one and records its cost. A call's tokens are its estimated
 prompt tokens plus the output bound it is sent with as its maximum: the smaller
 of 4,096 tokens and what remains under the step and run token ceilings, so the
 ceilings bound everything a run can spend; a call with no output room left is
-not admitted. Reaching any ceiling exhausts the
-budget so no further model call is admitted. A call exceeding any remaining
+not admitted. Reaching a cumulative run token, model-call or cost ceiling
+exhausts the budget. A call that fits exactly within its per-step token
+ceiling can leave room for a later step. A call exceeding any remaining
 ceiling exhausts the budget without admitting the call. Halting a budget is
 permanent.
 
@@ -120,9 +121,9 @@ pure def sometimesBudgetHalted(b: RunBudget): bool = b.phase == BudgetHalted
 ### Step context compaction bounds every prompt input to the configured window
 
 When a prior step output fits within the context window, it is passed through
-unchanged. When it exceeds the window, compaction preserves a bounded head and
-tail so the prompt input never exceeds the window, preventing quadratic context
-growth across multi-step workflows.
+unchanged. When it exceeds the window, compaction keeps a bounded head and
+tail with an omission marker when they fit. A window too small for the marker
+keeps only a prefix. The prompt input stays within the window.
 
 ```quint
 pure val defaultContextWindowChars: int = 12000

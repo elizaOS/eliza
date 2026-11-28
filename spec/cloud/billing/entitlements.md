@@ -136,7 +136,7 @@ pure def lawALapsedSubscriptionKeepsItsPlanButSpendsOnlyCredits(subscription: Su
     (policyFrom(subscription, grants, now).planKey == subscription.planKey and laneOf(policyFrom(subscription, grants, now)) == M::CreditsOnly)
 ```
 
-### The entitlement states the plan, its end, the enabled services and the current allowance, and expires within 30 minutes and never after the plan or the allowance period
+### The entitlement states the plan, services and allowance and expires within 30 minutes
 
 An ES256 JWS with header `typ` `eliza-entitlement+jwt` and the signing
 key's `kid`; claims `iss` (the API origin), `aud` (the environment's
@@ -147,7 +147,9 @@ allowance pays first and a period is current, `plan_allowance {unit:
 "usd_micros", granted, remaining, periodStart, resetsAt}`. Every time claim
 is in whole seconds. The status is `active` for a grant or an Active
 subscription, `past_due` for Dunning or PastDue, `canceled` for Unpaid and
-`none` for the free plan. `exp` is at least one second after `iat`.
+`none` for the free plan. `exp` is capped at each stated end in whole
+seconds, with a minimum of one second after `iat`. When an end rounds
+to that issue second or earlier, the entitlement expires after one second.
 
 ```quint
 type ClaimedStatus = ClaimActive | ClaimPastDue | ClaimCanceled | ClaimNone
@@ -188,7 +190,7 @@ pure def lawAnEntitlementNeverOutlivesItsPlanOrItsAllowance(p: Policy, period: A
 }
 ```
 
-### A device accepts an entitlement only when a published key signed it for its own account and audience, issued at most an hour before it expires and not in the future
+### A device accepts an entitlement only when a published key signed it for its own account and audience, issued at most an hour before it expires and within the device's clock-skew tolerance
 
 The device checks the header type, the signature against the published key
 of its `kid`, `iss` against the configured origin, `aud` against the

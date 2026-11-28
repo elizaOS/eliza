@@ -1,4 +1,4 @@
-// spec/maps/relay.md, "A queued command waits for the phone's current offer and survives a new offer it never reached"; spec/maps/relay.md, "A lapsed lease redelivers the same command a bounded number of times, and the phone runs it at most once"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer"
+// spec/maps/relay.md, "A queued command waits for the phone's current offer and survives a new offer it never reached"; spec/maps/relay.md, "A lapsed lease redelivers the same command a bounded number of times, and the phone runs it at most once"; spec/maps/navigation.md, "A resident relay admits each command for execution at most once within its offer"
 import { commandBudget } from "../gen/maps__navigation.effect.vibe"
 import { canRedeliverCommand, initial as idleRelay, machineOver, type Event, type Machine, type MapsRelay } from "../gen/maps__relay.effect.vibe"
 import {

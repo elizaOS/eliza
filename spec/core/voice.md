@@ -1,6 +1,6 @@
 # Voice cancellation and speech contracts
 
-The owner is `voice-cancellation-token.ts`. Each token preserves its run,
+The owner is `voice-cancellation-token.vibe`. Each token preserves its run,
 optional inference slot, first reason, native signal, external-link disposer
 and listener identities. Speech generation and playback remain host effects.
 [The room registry](./voiceRegistry.md) composes these tokens.
@@ -17,7 +17,7 @@ throw or reenter cancellation. Their snapshot delivery remains ordered.
 ### Reason ownership precedes unlinking and signal abortion follows callbacks
 
 The token's `aborted` getter follows its reason immediately. Its native
-`signal.aborted` remains false while cancellation callbacks run. A linked
+`signal.aborted` remains false while the captured callbacks run. A linked
 signal is removed before the listener snapshot is taken. An already-aborted
 link produces a fully aborted token during construction. An old disposer
 removes the same function identity, including a later registration of it;
@@ -105,9 +105,8 @@ pure def sometimesExternalLinkRemoved(v: VoiceToken): bool = v.reason != Active 
 Snapshotting starts only after the external link is removed, and native
 abortion only after every listener is cleared.
 
-Without these facts a snapshot could still
-include the external link's listener, and the signal could abort while
-listeners were still pending.
+These rules remove the linked signal's listener before snapshotting and
+prevent native abortion while the snapshot still holds pending callbacks.
 
 ```quint
 pure def alwaysSnapshotFollowsUnlink(v: VoiceToken): bool = v.phase == Snapshotting implies not(v.linkInstalled) and not(v.unlinkOwned)

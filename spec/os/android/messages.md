@@ -226,11 +226,12 @@ pure def sometimesMultimediaRowWritten(s: SmsReview): bool = s.kind == Multimedi
 ### A message's status is supported by the evidence of every part, and an interrupted send reads unknown
 
 A text is divided into parts for each recipient, each with its own sent and
-delivery evidence. Any failed part makes the message failed; sent needs a
-sent receipt for every part; delivered also needs a complete delivery
-report for every part and is never claimed for an MMS, which is sent on the
-carrier's confirmation. Otherwise the message is submitted only when every
-platform call returned and its receipts can still arrive. A dispatch the
+delivery evidence. A failed send receipt for any part makes the message
+failed. Sent needs a successful sent receipt for every part. Delivered also
+needs a complete delivery report for every part and is never claimed for
+an MMS, which is sent on the carrier's confirmation. Otherwise the message
+is submitted only when every platform call returned and its receipts can
+still arrive. A dispatch the
 process did not finish, and receipts a restart or a timeout lost, read
 unknown; an unknown record is never sent again (above).
 
@@ -306,16 +307,17 @@ pure def lawAnUnconfirmedNoticeNeverLosesTheText(smsRoleHeld: bool, senderKnown:
   textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, false)) == textKept(incomingText(smsRoleHeld, senderKnown, workerRan, providerStored, true))
 ```
 
-### A picture message is downloaded once for its transaction, stored whole or not at all, and answered only once stored
+### A picture message is stored whole once per transaction and answered only after storage
 
 A WAP push is acted on only by the default SMS app, and only when it is a
 message notification that names its transaction and its content location;
 delivery and read reports are not stored, since MMS delivery is never
 claimed. A notification whose transaction is already stored starts no
 download and is answered "retrieved" again, so a carrier that missed the
-first answer stops repeating it. A new one starts one download into a
-private file. The file is stored only when Android reported the download
-done, the role is still held, the file is a retrieved message of at most
+first answer stops repeating it. A transaction with no stored message
+starts a download into a private file. The file is stored only when Android
+reported the download done, the role is still held, the file is a retrieved
+message of at most
 `maxIncomingMmsBytes` and its transaction is not stored yet: the message
 row with its addresses and every part, or, if one of them fails, nothing,
 so the carrier's repeat can store it whole. The carrier is answered

@@ -263,7 +263,7 @@ it.effect.skipIf(skipped !== null)(`Enable the launcher's disabled phone and mes
   }
 }, 240_000)
 
-it.effect(`Write the image feature once, and the presigned host's capability overlay only in production for a protected false default (spec/os/image/provisioning.md, "Story: Keep image-only features honest"; spec/os/image/provisioning.md, "An image-only surface answers only from a system install that sees the image feature at the current version"; spec/os/image/provisioning.md, "The capability overlay for a presigned host is written only in production, for a resource that defaults false and only system or product may overlay")`, effect () => {
+it.effect(`Write the image feature once, and the presigned host's capability overlay only in production for a protected false default (spec/os/image/provisioning.md, "Story: Keep image-only features honest"; spec/os/image/provisioning.md, "An image-only surface requires a system install and the image feature at version 1 or newer"; spec/os/image/provisioning.md, "The capability overlay for a presigned host is written only in production, for a resource that defaults false and only system or product may overlay")`, effect () => {
   provide NodeServices.layer {
     const path = try Path.Path
     const work = try scratch("image-provisioning-feature")

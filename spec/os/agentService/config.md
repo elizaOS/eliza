@@ -117,8 +117,9 @@ signed-in account (the cloud backend) needs the account of the active device
 key (`../signIn/credential.md`); an expired key, a sign-out or
 a key whose sign-in answer named no user or organization withholds the
 launch as `Credential`. The service reports `Failed(Config)` or
-`Failed(Credential)` and spawns nothing; an own-key or keyless launch needs
-no signed-in account.
+`Failed(Credential)` and spawns nothing. This configuration check needs no
+signed-in account for an own-key or keyless launch document. The separate
+[service lifecycle](./lifecycle.md) requires a held key before spawning a child.
 
 ```quint
 type AgentLaunch = { document: Launch::LaunchDocument, worker: RP::LaunchWorker }

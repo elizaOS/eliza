@@ -14,6 +14,9 @@ and redirects.
 
 Local-looking malformed handles fail explicitly. A trusted handle has the exact local origin and `/api/media/<sha256>.<ext>` path with no credentials, query or fragment. Each remote redirect is screened and pinned again. MIME prefix and content-encoding requirements apply before body acceptance. The configured byte maximum applies to streamed bytes and error diagnostic bodies. Cancellation and deadline stop the fetch and release transport resources.
 
+The transport adapter supplies `finish` after it observes a successful end of
+body. An early transport failure supplies `failFetch` and releases the body.
+
 ```quint
 type MediaPhase = Unresolved | Screened | Reading | Complete | Failed | Cancelled
 type MediaFetch = { phase: MediaPhase, pinned: bool, received: int, maximum: int, released: bool }

@@ -300,8 +300,8 @@ pure def lawCategorySetsDefaultPriority(category: str): bool =
 ## Story: Hand my device only the notice data it can act on
 
 > As the owner, I want my device's copy of a notice to carry only what it
-> needs to present and route it, so that producer data never reaches the
-> device and a workflow notice still names the exact run it was posted for.
+> needs to present and route it, so that each workflow notice names its exact
+> run and unrelated producer fields stay private.
 
 ### A native record carries only closed presentation data, and a workflow notice its exact run route
 
@@ -310,7 +310,8 @@ The native record, paged and broadcast to the device, carries a closed
 route carries exactly that route: the kind, `result` or `approval`, the
 workflow, run and version, and for an approval its proposal. A route ID is
 a non-empty string of at most 128 characters, a proposal of at most 256,
-neither with a control character. A workflow row with any route field
+neither with a control character. The adapter supplies `RouteId` only after
+validating these constraints. A workflow row with any route field
 missing or malformed, or with another kind, carries no route, and no other
 row carries one. An approval's expiry is the record's own `expiresAt`. Any
 other row carries only a reminder's owner type and a conversation and

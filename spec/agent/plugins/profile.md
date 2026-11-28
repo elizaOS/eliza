@@ -65,7 +65,7 @@ pure def lawUnknownPluginRefusesBoot(bundled: Set[str], policy: LaunchPolicy): b
 pure def sometimesUnknownPluginRefused(s: PluginPlan): bool = s.phase == Refused({ cause: UnknownPlugin })
 ```
 
-### Storage, the cloud link and the privacy service always load and cannot be listed
+### Storage and the cloud link always load, and the load list cannot name either or the privacy service
 
 They are the agent's own; a load list that names one, or a product plugin
 named like one of them or like an agent module, refuses boot.

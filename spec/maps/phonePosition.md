@@ -89,8 +89,8 @@ pure def lawOnlyAPointSearchOnACloudThatRanksAsksForTheClosest(aroundPoint: bool
 
 ### A reported position never becomes a route origin
 
-The reported position carries no precision, so it is never the precise fix
-a route from here is planned from: the phone plans that route from its own
+The reported position can carry an accuracy estimate but has no authority
+to serve as the precise fix for route planning: the phone plans that route from its own
 fresh fix, and the agent only names the destination. The planner says a
 route starts where the owner is ("from here", "from my location") by
 marking it so or by leaving the start out, never by passing the owner's

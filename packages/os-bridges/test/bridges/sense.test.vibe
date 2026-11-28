@@ -1,4 +1,4 @@
-// spec/os/voice/listener.md, "The status chip and the host can pause or turn off listening but never start it"; spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed"; spec/os/voice/invocation.md, "The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice"
+// spec/os/voice/listener.md, "The status chip and host can pause listening, and the host can also turn it off"; spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed"; spec/os/voice/invocation.md, "The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice"
 import { assert, it } from "@effect/vitest"
 import { listenerStartsVoice, parseAssistantInvocation, parseInvocationUnlocked, parseListenerStatus, parseListenerStopReceipt, stopSenseListenerForChatOnly, type ListenerStopReceipt, type SensePlugin } from "../../src/bridges/sense.vibe"
 
@@ -10,7 +10,7 @@ const screen = { hidden: false, dialogOpen: false, connectionOpen: false, voiceA
 
 const started = (reply: unknown) => listenerStartsVoice({ ...screen, invocation: parseAssistantInvocation(reply), unlocked: parseInvocationUnlocked(reply) })
 
-it.effect('Read the listener and stop it only on a confirmed reply (spec/os/voice/listener.md, "The status chip and the host can pause or turn off listening but never start it"; spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed")', () => effect {
+it.effect('Read the listener and stop it only on a confirmed reply (spec/os/voice/listener.md, "The status chip and host can pause listening, and the host can also turn it off"; spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed")', () => effect {
   const absent = { available: false, reason: "not-installed" }
   const chatOnly = try promise(() => Promise.all([
     stopSenseListenerForChatOnly(replying(absent)),

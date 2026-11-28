@@ -3,11 +3,9 @@
 What the `@elizaos/cloud` root speaks: the device side of the cloud. The agent,
 os and the apps around them call the cloud through one client created from
 the API origin and a credential getter. The client never stores or clears a
-credential: custody belongs to os (`spec/os/signIn/credential.md`). Sources
-are develop `packages/cloud/sdk/src/` (`subscription-entitlement.ts`,
-`cloud-account-billing.ts`, `account-billing-snapshot.ts`) and the Android
-`CloudConnectionPolicy.java` route allowlist, which the table below replaces;
-os `signIn/cloudRequests.md` imports that table instead of naming paths.
+credential because custody belongs to [the OS](../os/signIn/credential.md).
+The client shell lives in `packages/cloud/src/client/`. The [native request
+policy](../os/signIn/cloudRequests.md) imports its route table.
 
 This library has no state. JSON, fetch, header values and the entitlement
 signature stay in the shell (`src/client/`); the relay wire is
@@ -23,7 +21,7 @@ signature stay in the shell (`src/client/`); the relay wire is
 ### The base URL is an origin and nothing more
 
 A configured base URL is accepted only as an origin: `https`, or `http` on a
-loopback host, with no path beyond `/`, no query and no fragment. A value
+loopback host, with no user information, path beyond `/`, query or fragment. A value
 with a path such as `/api/v1` is refused when the client is created; every
 route below carries its full path.
 
@@ -48,9 +46,10 @@ pure def lawAPathIsRefused(u: BaseUrl): bool = u.hasPath implies not(originAccep
 
 ### Every call reads the credential when it is sent
 
-The client holds a getter, not a credential. Each call reads it once, just
-before sending, and sends `Authorization: Bearer <credential>`; a credential
-that os replaced is sent on the next call by the same client.
+Each call reads the credential getter once just before sending. When it
+returns a credential, the client sends `Authorization: Bearer <credential>`.
+A credential replaced by the OS is sent on the next call by the same client.
+The client's request options cannot override the authorization header.
 
 ```quint
 type HttpMethod = Get | Post | Patch | Delete
@@ -161,7 +160,7 @@ pure val signInRoutes: List[DeviceRoute] = List(
   route(Post, api(List("app-auth", "mobile", "lease")), Public),
   route(Delete, api(List("app-auth", "mobile", "lease")), Public),
   route(Post, api(List("app-auth", "mobile", "renew")), Public),
-  route(Delete, api(List("api-keys", "current")), KeyOrSession))
+  keyed(Delete, api(List("api-keys", "current")), Set(renewedCredential)))
 pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, api(List("subscriptions", "plans")), Public),
   route(Get, api(List("subscription", "entitlement-keys")), Public),

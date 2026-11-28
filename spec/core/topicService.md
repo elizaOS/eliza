@@ -1,6 +1,6 @@
 # Whole-service topic retirement
 
-`services/channel-topics.ts` has one stopping flag across every room queue. The [room lifecycle](./channelTopics.md) owns each queue and local/durable ordered topic values. This spec closes admission for all rooms at once, including room IDs that have never been seen, while already admitted operations finish independently.
+`services/channel-topics.vibe` has one stopping flag across every room queue. The [room lifecycle](./channelTopics.md) owns each queue and local/durable ordered topic values. This spec closes admission for all rooms at once, including room IDs that have never been seen, while already admitted operations finish independently.
 
 ## Story: Retire all room queues before clearing the service cache
 

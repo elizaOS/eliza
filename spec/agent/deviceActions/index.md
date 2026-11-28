@@ -184,8 +184,9 @@ names it as one that never ran. A
 standalone agenda read, which the host offers for the displayed day without
 the model, retires when its turn ends; a proposal the owner's words asked
 for stays open after its turn, until the owner decides it or its deadline
-passes. Either withdraws the session's authority, so the offer never
-reaches the device.
+passes. Either withdraws the session's authority and prevents a claim. The
+shell invokes turn retirement for the standalone agenda offer. Ordinary
+proposals expire separately.
 
 ```quint
 pure val elapsedValues = Set(0, 300000, 600000)
@@ -261,9 +262,10 @@ receipt for the same operation would be (the
 [operations' rule](./operations.md)), and only on an applied review: a not
 applied or unresolved review that carries evidence, or evidence that would
 not settle applied, is refused and records nothing. The agent keeps
-admitted evidence as the request's receipt and result, so a read confirmed
-applied this way is answered from its own result. A review without
-evidence is admitted as before and leaves the uncertain receipt in place.
+admitted evidence as the request's receipt and result. A later request may
+learn that a read was confirmed applied from that stored evidence. The
+original automatic read-completion route requires a directly applied receipt.
+A review without evidence leaves the uncertain receipt in place.
 
 ```quint
 type ReviewEvidence = NoReviewEvidence | AppliedReviewEvidence | RefusedReviewEvidence
@@ -360,8 +362,8 @@ pure def alwaysOneInferencePerCompletion(d: DeviceRequest): bool = d.inferences 
 pure def stepInferenceOnlyFromAPendingCompletion(before: DeviceRequest, after: DeviceRequest): bool = after.inferences > before.inferences implies before.completion == CompletionPending
 pure def sometimesCompletionDelivered(d: DeviceRequest): bool = d.completion == CompletionDelivered
 pure def sometimesLostOutcomeNeverRestarts(d: DeviceRequest): bool = d.completion == CompletionUnknown
-pure val eval_witness_sometimesCompletionDelivered = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.create.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.create.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("prepareCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }), ("deliverCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }))
-pure val eval_witness_sometimesLostOutcomeNeverRestarts = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.create.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.create.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("failCompletion", false, { agentId: "agent1", actorId: "owner1", connector: "agent1" }))
+pure val eval_witness_sometimesCompletionDelivered = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.next-read.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.next-read.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("prepareCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }), ("deliverCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }))
+pure val eval_witness_sometimesLostOutcomeNeverRestarts = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.next-read.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.next-read.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("failCompletion", false, { agentId: "agent1", actorId: "owner1", connector: "agent1" }))
 ```
 
 ### Cancelling never undoes a delivered reply
@@ -375,7 +377,7 @@ pure def canCancelCompletion(d: DeviceRequest, by: S::SessionOwner, digest: str)
 pure def cancelCompletion(d: DeviceRequest, by: S::SessionOwner, digest: str): DeviceRequest = if (d.completion == CompletionPending or d.completion == CompletionClaimed or d.completion == CompletionPrepared) { ...d, completion: CompletionCancelled } else d
 pure def stepClosedCompletionNeverReopens(before: DeviceRequest, after: DeviceRequest): bool = (before.completion == CompletionDelivered or before.completion == CompletionCancelled or before.completion == CompletionUnknown or (before.completion == NoCompletion and before.phase != Unoffered)) implies after.completion == before.completion
 pure def sometimesCancelledAfterClaim(d: DeviceRequest): bool = d.completion == CompletionCancelled and d.inferences == 1
-pure val eval_witness_sometimesCancelledAfterClaim = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.create.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.create.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("cancelCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"))
+pure val eval_witness_sometimesCancelledAfterClaim = (("registerDevice", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "key1", List("calendar.next-read.v1"), 0), ("offer", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "p1", "d1", "calendar.next-read.v1", 600000, true, { requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("decide", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", true), ("claim", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"), ("receipt", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1", 1, ReportedApplied), ("claimCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, { proposalId: "p1", digest: "d1", attemptId: 1, requestId: "r1", conversationId: "c1", inReplyTo: "m1" }), ("cancelCompletion", { agentId: "agent1", actorId: "owner1", connector: "agent1" }, "d1"))
 ```
 
 ## Story: Propose what I asked for on my phone, in my own words
@@ -676,10 +678,10 @@ pure def lawAFollowUpIsTheReadFamilysOwn(delivered: bool, admitted: bool): bool 
 An owner turn of the enrolled device carries, beside the screen context, a
 note of the newest outcomes of this conversation's own requests: each one
 that settled applied and changed something on the phone, and each one the
-owner declined or that expired before it ran. A read, a view change or an
-opened review settled applied changes nothing
-([device operations](./operations.md)) and is never named as an effect; an
-open, running, uncertain or otherwise settled request is not named either.
+owner declined or that expired or retired before it ran. The operation
+classes recorded as no effect ([device operations](./operations.md)) do
+not appear as effects. Open, running, uncertain and otherwise settled
+requests also stay out of the note.
 Only a request that still stands is named: its original message is still
 the owner's own, in this conversation, under the current enrollment, and
 the turn's negotiation still admits its operation. Each line gives its

@@ -147,13 +147,13 @@ pure def lawReplacementWaitsForAcknowledgedCleanup(slot: ObserverSlot, targetLea
 > As an owner, I want to play a voicemail and have it ready for speech
 > recognition, whole or not at all.
 
-### A voicemail's audio is asked of its source at most once
+### The bridge requests audio at most once while it holds a voicemail row
 
 A row whose audio is not on the phone asks its own source to download it;
 the answer proves only that the request was sent. A row that names no
 source, or whose request could not be sent, stays unasked. A row once
-asked, or once holding audio, is never asked again; the next refresh shows
-the audio.
+asked or holding audio is never asked again while the bridge still holds
+that row. A refresh shows audio once the source has put it on the phone.
 
 ```quint
 type PcmRefusal = PcmTooLong | PcmUndecodable

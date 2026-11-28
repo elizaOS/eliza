@@ -1,6 +1,6 @@
 # Unicode byte lengths and boundaries
 
-Source `utils/unicode.ts` defines UTF-8 byte counting, lone-surrogate sanitation, prefix and suffix boundaries, and deep payload sanitation. The model represents a JavaScript string as its exact UTF-16 code-unit sequence. Converting a JavaScript string to that sequence is an exact codec at the shell boundary.
+Source `utils/unicode.vibe` defines UTF-8 byte counting, lone-surrogate sanitation, prefix and suffix boundaries, and deep payload sanitation. The model represents a JavaScript string as its exact UTF-16 code-unit sequence. Converting a JavaScript string to that sequence is an exact codec at the shell boundary.
 
 ## Story: Preserve Unicode in provider requests and diagnostics
 
@@ -32,7 +32,7 @@ pure val lowValues = Set(56319, 56320, 57343, 57344)
 
 ### Prefix and suffix boundaries cannot introduce a split surrogate pair
 
-Prefix truncation backs off one code unit when the requested cut falls between a high/low pair. Tail selection advances one code unit in the dual case. Existing lone surrogates retain their bytes until the explicit sanitation operation.
+Prefix truncation backs off one code unit when the requested cut falls between a high/low pair. Tail selection advances one code unit in the dual case. Existing lone surrogates inside the selected range retain their code units until the explicit sanitation operation.
 
 ```quint
 pure def prefixBoundary(requested: int, left: int, right: int): int = if (requested > 0 and highSurrogate(left) and lowSurrogate(right)) requested - 1 else requested

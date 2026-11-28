@@ -1,4 +1,4 @@
-// spec/os/image/firstRun.md, "First run is done only when every required role reads back as the product's, and otherwise tries again at the next boot or unlock"; spec/os/image/firstRun.md, "Done and retired are final"
+// spec/os/image/firstRun.md, "First run is done only when every required role reads back as the product's, and otherwise retries at the next completed boot"; spec/os/image/firstRun.md, "Done and retired are final"
 package ai.eliza.firstrun;
 
 import android.content.BroadcastReceiver;

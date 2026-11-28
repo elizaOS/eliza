@@ -181,8 +181,7 @@ known, and it holds at most 24 entries and four MiB. A save or clear runs
 under the cache epoch current when it was queued, and is a
 compare-and-exchange of at most three attempts; it retries only on a
 conflict while that epoch is still current, so a clear retires every
-earlier save. A clear whose writes did not land proves nothing was
-deleted.
+earlier save. Only an acknowledged null write confirms deletion.
 
 ```quint
 type CacheDocument = { expectedOwner: bool, versionOne: bool, entryCount: int, documentBytes: int }

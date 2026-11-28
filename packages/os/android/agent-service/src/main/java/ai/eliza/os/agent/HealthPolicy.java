@@ -1,4 +1,4 @@
-// spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"; spec/os/agentService/health.md, "Three busy probes or three dead probes in a row restart the agent, and only an Ok probe clears both counts"; spec/os/agentService/health.md, "Absence needs two refused connects in a row and the dead journaled child of this launch"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"
+// spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"; spec/os/agentService/health.md, "Three busy probes or three dead probes since the last Ok probe restart the agent"; spec/os/agentService/health.md, "Absence needs two refused connects in a row and the dead journaled child of this launch"; spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"
 package ai.eliza.os.agent;
 
 public final class HealthPolicy {

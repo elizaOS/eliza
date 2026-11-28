@@ -16,14 +16,15 @@ Speech output on the device is [speech output](./speechOutput.md).
 > As the owner talking to my phone, I want each reply spoken through the
 > route my account and keys admit, spoken on this phone when that route
 > fails before I hear anything, and never by a second voice once one has
-> started, so that I always hear the answer and never hear it twice.
+> started, so that a network failure leaves a chance to hear the answer
+locally without hearing it twice.
 
 ### The owner's speech key speaks first, then a usable hosted account, then this device
 
 A hold keeps its own key's network route on the device until it lapses;
 a plan or rate limit keeps the hosted route on the device while it is in
-force. A device with no speech key and no signed-in account always speaks
-locally.
+force. A device supplied with no usable network credential selects the local
+route.
 
 ```quint
 type SpeechRoute = DeviceRoute | CloudRoute | DirectRoute

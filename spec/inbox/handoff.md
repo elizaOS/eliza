@@ -52,10 +52,10 @@ pure def lawOldReviewExpires(reviewedAt: int, now: int, unchanged: bool): bool =
 An owner's request for a new email to explicit recipients, made from a
 phone whose composer can take it, answers with the draft for that composer
 and the identity of the request; no provider draft is made and no chat
-confirmation is armed. A thread, channel or another world, or a request
-naming an account, sender, copies, attachments or a send time, is sent to
-Inbox instead, and a request not from the current owner turn hands nothing
-off.
+confirmation is armed. On that phone, specifying a thread, channel,
+world, account, sender, copies, attachments or send time directs the owner
+to Inbox instead. Only the current owner turn with an available Gmail
+composer can hand a draft off.
 
 ```quint
 type ComposeRequest = { ownerTurn: bool, composerAvailable: bool, gmailSource: bool, threaded: bool, richerFields: bool }

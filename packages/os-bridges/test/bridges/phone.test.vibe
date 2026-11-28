@@ -409,7 +409,7 @@ it.live("Read my recent calls newest first, a page at a time, without repeats or
   ))
 })
 
-it.live("See and hear my voicemail only when my carrier offers it, with each audio asked once and PCM whole (spec/os/android/voicemail.md, \"Story: See my voicemail only when my carrier offers it\"; spec/os/android/voicemail.md, \"Every voicemail operation needs telephony and the voicemail grant at the time of the call\"; spec/os/android/voicemail.md, \"A refresh shows exactly the provider's rows, keyed by provider ID, and none for an unsupported carrier\"; spec/os/android/voicemail.md, \"Story: Hear a voicemail\"; spec/os/android/voicemail.md, \"A voicemail's audio is asked of its source at most once\"; spec/os/android/voicemail.md, \"Speech-ready PCM is returned whole within five minutes of 16 kHz mono, or refused\")", () => effect {
+it.live("See and hear my voicemail only when my carrier offers it, with each audio asked once and PCM whole (spec/os/android/voicemail.md, \"Story: See my voicemail only when my carrier offers it\"; spec/os/android/voicemail.md, \"Every voicemail operation needs telephony and the voicemail grant at the time of the call\"; spec/os/android/voicemail.md, \"A refresh shows exactly the provider's rows, keyed by provider ID, and none for an unsupported carrier\"; spec/os/android/voicemail.md, \"Story: Hear a voicemail\"; spec/os/android/voicemail.md, \"The bridge requests audio at most once while it holds a voicemail row\"; spec/os/android/voicemail.md, \"Speech-ready PCM is returned whole within five minutes of 16 kHz mono, or refused\")", () => effect {
   const phone = device()
   const client = phoneClient(androidTelephony(phone), androidJournal(phone))
   const before = try promise(() => client.voicemail())

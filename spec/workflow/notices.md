@@ -17,7 +17,8 @@ approves or decides anything.
 ### A notice opens only its own run, at its own version, of a workflow still present
 
 A notice opens its run only while the workflow is present and not removed,
-the run belongs to that workflow and still names the notice's version. Any
+the decoded receipt matches the route's exact run ID, and the run belongs
+to that workflow and still names the notice's version. Any
 other read opens nothing, so a notice never reaches a run or version it was
 not posted for. The run's identity is retained, so a later edit of the
 workflow never redirects an older notice to a newer run.
@@ -44,7 +45,7 @@ pure def lawRemovedWorkflowOpensNothing(route: NoticeRoute, read: NoticeRead): b
 ### A pending approval is offered again only while its run is unchanged and unsettled
 
 When its owner returns, a suspended approval notice resumes only while the
-run is unfinished and not being cancelled at the notice's version and the
+definition still names the reviewed version, the run is unfinished and not being cancelled at the notice's version and the
 same approval is still pending with the same expiry; otherwise it is
 withdrawn. A settled approval unlocks nothing and is never offered again. A phone
 finds candidates by reading the agent's [native notification

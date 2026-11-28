@@ -189,7 +189,7 @@ pure def mute(s: CloudSpeech): SpeechStep = { state: { ...s, capture: Muted, foc
 pure def sometimesListening(s: CloudSpeech): bool = s.phase == Live and s.capture == Listening
 ```
 
-### The speaker is muted for the whole session without ending voice, and only an open session whose bridge can mute it applies the mute
+### Speaker mute applies in a supported open session and persists across its replies
 
 `setOutputMuted(muted)` asks the open session's bridge
 (`setCloudSpeechOutputMuted`) to play replies at no volume. It changes

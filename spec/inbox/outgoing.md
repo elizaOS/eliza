@@ -53,8 +53,9 @@ An attachment saved as an opaque copy has a name of 1 to 120 characters
 other than `.` and `..`, with no slash, backslash or control character; its
 encoding is canonical base64 of at most seven MiB, and its bytes at most
 five MiB. Its media type is kept when well formed and is otherwise
-`application/octet-stream`. Its bytes are hashed, never decoded, previewed
-or handed to a viewer. A check the client makes of a downloaded attachment,
+`application/octet-stream`. The client decodes the transport base64 to
+hash the file bytes and keeps the file opaque. It opens no preview or
+viewer. A check the client makes of a downloaded attachment,
 or Cloud's answer that it is too large, refuses that file; any other failure
 of the download stays what it was.
 

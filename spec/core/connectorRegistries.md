@@ -4,9 +4,9 @@
 
 ## Story: Register targets and stable capability profiles
 
-> As a plugin author, I want registering a target source or capability
-> profile to be predictable, so that a later registration never silently
-> replaces the one consumers already rely on.
+> As a plugin author, I want to replace a target source by its platform key
+> and register capability profiles whose conflicting replacements are refused,
+> so consumers can rely on each registry's collision policy.
 
 ### Target sources replace in place and profile collisions preserve the incumbent
 

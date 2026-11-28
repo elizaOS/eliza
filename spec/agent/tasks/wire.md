@@ -18,9 +18,10 @@ client may believe.
 | `GET /api/tasks/storage` | storage probe | none |
 
 `:id` matches core's `TASK_ID_PATTERN`; `current` and `storage` are never
-ids. A task reply is `{task: view}` or `{task: null}`; accepting an unknown
-outcome replies `{revision, status}`; the record routes reply the task
-store's `{records}`; the event page is core's.
+ids. A task reply is `{task: view}` or `{task: null}`. Acknowledging an
+unknown outcome replies `{revision, status}` when the task exists and
+`{task: null}` otherwise. The record routes return the task store's
+`{records}` and the event page follows core's wire shape.
 
 ## Story: Admit only the documented task commands
 
@@ -163,9 +164,11 @@ pure def storageProbe(h: TH::TaskHost, inspected: TaskStorage): TaskStorage = if
 
 ### A view shows six public fields of the held task, or null
 
-`hasUnknownOutcome` is true exactly while the task's operation is unknown.
-The client copies the six fields; a reply with no `task` member, or one that
-is neither null nor a valid view, is invalid and never read as no task.
+The public fields are `schemaVersion: 1`, `id`, `revision`, `epoch`, `status`
+and `hasUnknownOutcome`, which is true while an operation is unknown. The
+shell checks the schema version and passes the other five fields into the
+model. A reply with no `task` member, or one that is neither null nor a
+valid view, is invalid and never read as no task.
 
 ```quint
 type ViewStatus = ShownActive | ShownPaused | ShownWaiting | ShownBlocked | ShownCompleted | ShownCancelled

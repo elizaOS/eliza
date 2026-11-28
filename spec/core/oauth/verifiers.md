@@ -10,6 +10,9 @@ PKCE verifiers live in a process-local map owned by the [OAuth flow](./index.md)
 
 A missing or blank verifier creates no entry. Expiry is optional; expiry is checked while storing and sweeping and adopts the durable store's expiry after update. Reading a present entry does not independently recheck its expiry, because flow consumption is the expiry boundary. Completion finally deletes the originating verifier.
 
+The [OAuth callback](./index.md) handles the error and fresh-link instruction
+when durable flow state still refers to a verifier lost on restart.
+
 ```quint
 type Verifier = { provider: str, flowId: str, secretId: str, hasExpiry: bool, expiresAt: int }
 type OAuthSecrets = { entries: List[Verifier], now: int }

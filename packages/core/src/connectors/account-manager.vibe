@@ -7,11 +7,11 @@ import { asLegacy, Foreign, foreign, foreignSync, promised, runDetached, runDeta
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import type { Action, ActionParameters } from "../types/components.vibe"
-import type {
-  ConnectorAccountAccessGate,
-  ConnectorAccountPolicy,
-  ConnectorAccountPurpose,
-  ConnectorAccountRole,
+import {
+  type ConnectorAccountAccessGate,
+  type ConnectorAccountPolicy,
+  type ConnectorAccountPurpose,
+  type ConnectorAccountRole,
   ConnectorAccountStatus,
 } from "../types/connector-account-policy.vibe"
 import type { Memory } from "../types/memory.vibe"
@@ -363,6 +363,7 @@ export interface ConnectorAccountManagerState {
 
 error MissingAccountId { message: string }
 error MissingAccountProvider { message: string }
+error InvalidPersistedAccountStatus { message: string }
 export error MissingProviderId { message: string }
 error OAuthUnsupported { message: string }
 error UnknownOAuthFlow { message: string }
@@ -794,14 +795,14 @@ effect function listDatabaseAccounts(storage: DatabaseConnectorAccountStorage, p
       provider: provider ? normalizeProvider(provider) : undefined,
     })
   )
-  return records.map(databaseRecordToAccount)
+  return try Effect.forEach(records, databaseRecordToAccount)
 }
 
 effect function getDatabaseAccount(storage: DatabaseConnectorAccountStorage, provider: string, accountId: string) {
   if (looksLikeUuid(accountId)) {
     const byId = try foreign(() => storage.adapter.getConnectorAccount({ id: accountId }))
     if (byId && normalizeProvider(byId.provider) === normalizeProvider(provider)) {
-      return databaseRecordToAccount(byId)
+      return try databaseRecordToAccount(byId)
     }
   }
   const byKey = try foreign(() =>
@@ -810,7 +811,7 @@ effect function getDatabaseAccount(storage: DatabaseConnectorAccountStorage, pro
       accountKey: accountId,
     })
   )
-  return byKey ? databaseRecordToAccount(byKey) : null
+  return byKey ? (try databaseRecordToAccount(byKey)) : null
 }
 
 effect function upsertDatabaseAccount(storage: DatabaseConnectorAccountStorage, account: ConnectorAccount) {
@@ -832,7 +833,7 @@ effect function upsertDatabaseAccount(storage: DatabaseConnectorAccountStorage, 
       connectedAt: account.createdAt,
     })
   )
-  return databaseRecordToAccount(record)
+  return try databaseRecordToAccount(record)
 }
 
 effect function deleteDatabaseAccount(storage: DatabaseConnectorAccountStorage, provider: string, accountId: string) {
@@ -1146,13 +1147,18 @@ function oauthFlowPatchMetadata(
   return metadata
 }
 
-function databaseRecordToAccount(
+const isConnectorAccountStatus = Schema.is(ConnectorAccountStatus)
+
+effect function databaseRecordToAccount(
   record: ConnectorAccountDatabaseRecord,
-): ConnectorAccount {
+): ConnectorAccount!InvalidPersistedAccountStatus {
   const now = Date.now()
   const status = record.status === "active"
     ? "connected"
-    : ((record.status ?? "connected") as ConnectorAccountStatus)
+    : (record.status ?? "connected")
+  if (!isConnectorAccountStatus(status)) {
+    throw new InvalidPersistedAccountStatus({ message: "The stored connector account has an unknown status" })
+  }
   return {
     id: record.id,
     provider: normalizeProvider(record.provider),

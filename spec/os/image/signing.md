@@ -143,7 +143,7 @@ pure def lawAnUnpinnedOrDifferentCertificateRefuses(uses: List[CertificateUse], 
 pure def lawOnlyTheReleaseKeysNeedNoEnrollmentPin(key: str): bool = (certificatePinFor(key, false) != NotPinned) iff (key == "releasekey" or key == "platform")
 ```
 
-### Under managed signing the key directory holds no private key file, and every key handed to avbtool is a public key that encodes to its reviewed metadata
+### Managed signing refuses a PK8 file and requires each key passed to avbtool to be public and match its reviewed metadata
 
 The token holds the private keys. The shell refuses a `.pk8` file in the
 key directory, and reads the verified-boot key and each APEX payload key

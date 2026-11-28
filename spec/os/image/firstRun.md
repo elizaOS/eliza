@@ -16,9 +16,9 @@ descriptor that names another role, names one twice or leaves out `home` is
 not active. Which components keep a package eligible for a role belongs to
 [image provisioning](./provisioning.md).
 
-Setup is never held open. The host makes one attempt after each boot and
-each unlock, also after setup is complete, and stops listening once the
-machine is done or retired.
+Setup is never held open. The host attempts first run when Android
+delivers `BOOT_COMPLETED` after unlock, even if device setup was already
+completed. It stops listening once the machine is done or retired.
 
 ## Story: Have my device's default apps set on first boot without overriding my choices
 
@@ -116,7 +116,7 @@ pure def sometimesSkipped(s: FirstRun): bool = s.phase == Skipped
 pure def sometimesAssigningPhoneAndMessages(s: FirstRun): bool = s.phase == Assigning and s.assigning.contains(P::DialerRole) and s.assigning.contains(P::SmsRole)
 ```
 
-### First run is done only when every required role reads back as the product's, and otherwise tries again at the next boot or unlock
+### First run is done only when every required role reads back as the product's, and otherwise retries at the next completed boot
 
 After its assignments the host reads every required role again. A role
 whose assignment Android refused, or that did not read back, leaves the
@@ -136,8 +136,8 @@ pure def sometimesRetryKeepsWhatReadBack(s: FirstRun): bool = s.phase == Retry a
 
 ### Done and retired are final
 
-Once every role has read back, or the owner has chosen, no later boot or
-unlock reads or assigns a role again.
+Once every role has read back, or the owner has chosen, later boots read
+and assign no roles.
 
 ```quint
 pure def stepDoneAndRetiredAreFinal(before: FirstRun, after: FirstRun): bool = (before.phase == Done or before.phase == Retired) implies after.phase == before.phase

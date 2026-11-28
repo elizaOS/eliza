@@ -1,4 +1,4 @@
-// spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed"; spec/os/voice/listener.md, "The status chip and the host can pause or turn off listening but never start it"; spec/os/voice/invocation.md, "The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice"
+// spec/os/voice/listener.md, "A stop is confirmed only by a timely OFF reply with the microphone closed"; spec/os/voice/listener.md, "The status chip and host can pause listening, and the host can also turn it off"; spec/os/voice/invocation.md, "The renderer starts voice from a voice answer only while unlocked, visible, with no dialog, no connection prompt and no active voice"
 import { confirmsStop, type ListenerState as ModelState, type StopSettlement } from "../../gen/os__voice__listener.effect.vibe"
 import { listenerStartsVoice as startsFromAnswer, type Answer, type Origin } from "../../gen/os__voice__invocation.effect.vibe"
 import type { AssistantInvocation, ListenerState, ListenerStatus, ListenerStopReceipt, SensePlugin, SenseVoiceEntryPolicy } from "./definitions/sense.ts"

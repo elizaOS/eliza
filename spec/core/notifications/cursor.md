@@ -4,13 +4,13 @@ The [inbox](./index.md) owns rows and the append sequence. This machine owns onl
 
 ## Story: Page a fixed notification snapshot without skipping unreadable rows
 
-> As a client, I want to page through the inbox as it was when my scan
-> began, so no row is skipped or repeated and an unreadable row stops the
-> page instead of vanishing.
+> As a client, I want to page through rows that still exist within my scan's
+> original epoch and sequence limit, with each row returned at most once and
+> an unreadable row reported as a page error.
 
 ### A scan captures its epoch and upper append coordinate
 
-The first page starts at zero and captures the current upper sequence. An incomplete page advances to its last returned coordinate. A complete page consumes the entire original fence, including deleted rows. An unreadable eligible head yields an explicit projection error and preserves the cursor.
+The first page starts at zero and captures the current upper sequence. An incomplete page advances to its last returned coordinate. A complete page consumes the entire original fence, including deleted rows. An unreadable row in the requested page yields an explicit projection error and preserves the cursor.
 
 ```quint
 type Cursor = { epoch: int, after: int, through: int }

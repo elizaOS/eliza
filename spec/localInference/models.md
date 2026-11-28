@@ -97,8 +97,9 @@ pure def stepUnreadableAssignmentsAreKept(before: LocalModels, after: LocalModel
 ### Only an installed model whose evaluations passed is activated
 
 Activation assigns the model to every slot its role serves and starts
-loading it. Loading ends ready or failed. No model is loading or loaded
-exactly when none is active.
+loading it. Loading ends ready or failed. An idle engine has no active
+model. A failed load retains the selected model and its failed status,
+so requests can report that it is unavailable.
 
 ```quint
 pure def canActivateModel(s: LocalModels, modelId: str): bool =

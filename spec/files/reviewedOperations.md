@@ -95,7 +95,10 @@ data it still has and its record, counts it as emptied, and is how the
 owner clears it. Emptying never erases or counts a readable record whose
 data is already gone, since that is no item the owner can see. An item
 with no record at all is still missing, and a trash that never held
-anything is still an empty trash.
+anything is still an empty trash. When the browser adapter is given a
+confirmed ID for orphaned data, it can erase that data even though its
+absent journal makes it unrestorable. The local adapter only considers
+IDs it discovered in the journal namespace.
 
 ```quint
 type TrashRecordRead = RecordAbsent | RecordRead | RecordUnreadable

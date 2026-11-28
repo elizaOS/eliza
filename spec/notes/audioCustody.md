@@ -96,9 +96,11 @@ lowercase UUID-shaped operation. The store keeps at most 128 receipts
 and never evicts an earlier operation to gain capacity. Moving to
 trash commits the active operation and `removed` receipt together and
 makes the file unplayable. Repeating the same request returns its existing
-receipt. A foreign operation may not restore a trashed recording.
-Restoring requires the audio file and is open for 60 days after
-deletion, inclusive. Once restored, the old operation returns
+receipt. A foreign operation may not restore a trashed recording with
+an active deletion operation. A legacy recording without deletion
+receipts can establish its first reviewed restore operation at the native
+boundary. Restoring requires the audio file and is open for 60 days
+after deletion, inclusive. Once restored, the old operation returns
 `restored`, even after another delete, without modifying the later row.
 Purging requires the matching `removed` receipt and active operation.
 It erases bytes first, then commits `purged` and clears the transcript.

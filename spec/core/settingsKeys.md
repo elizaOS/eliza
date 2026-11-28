@@ -17,11 +17,11 @@ private key reads back after any number of restarts.
 
 ### Production rejects unset and public salts on refresh
 
-`getSalt` caches successful resolution for 300000 milliseconds and selects
-the private salt when one is configured, else the process-local random key.
-Cache clearing rereads the environment and preserves that random key for
-the life of the process. A change of environment invalidates the cached
-key. A host changing key material must migrate existing ciphertext.
+`getSalt` caches successful resolution for 300000 milliseconds. A refresh
+selects the private salt when one is configured or the process-local random
+key in development. After expiry or explicit cache clearing, the next read
+observes the environment again. The random key stays fixed for the life of
+the process. A host changing key material must migrate existing ciphertext.
 
 ```quint
 type SaltKind = UnsetSalt | PublicSalt | PrivateSalt
@@ -53,9 +53,9 @@ pure def sometimesDevelopmentKeySelected(k: KeyCache): bool = not(k.production) 
 
 ### In production a ready key is always the configured private key
 
-Production never yields the process key: a ready or cached key there is
-the private salt that is configured now, whatever an earlier configuration
-cached.
+A key refreshed in production is the private salt observed in that refresh.
+The model's configuration state records the environment observed at
+refresh, and a fresh observation replaces the prior cache entry.
 
 ```quint
 pure def alwaysProductionKeyIsPrivate(k: KeyCache): bool =

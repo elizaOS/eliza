@@ -5,8 +5,8 @@ The `currentRunId` and `currentRoomId` fields of the runtime object in `runtime.
 ## Story: Keep runtime run context explicit
 
 > As a host, I want to select the logging context on an initialized or
-> uninitialized runtime, so that every log line names the run and room it
-> belongs to.
+> uninitialized runtime, so that logs using this context name its current
+> run and room.
 
 Starting a second run replaces the current context, and ending a run clears it even if another caller most recently installed it.
 
