@@ -86,6 +86,40 @@ before the call's arguments are checked, the action runs or the action's
 arguments are recorded; the step's record keeps it apart, as its own first
 argument (below).
 
+```quint
+type ParamShape = ScalarParam | ObjectParam({ namedFields: Set[str], acceptsAnyKeys: bool }) | ArrayParam({ namesItems: bool })
+pure val plannerCueField = "cue"
+pure def objectAcceptsKey(namedFields: Set[str], acceptsAnyKeys: bool, fieldKey: str): bool =
+  acceptsAnyKeys or namedFields.contains(fieldKey)
+pure def paramShapeWellFormed(paramShape: ParamShape, readFields: Set[str]): bool = match paramShape {
+  | ScalarParam => true
+  | ObjectParam(obj) => obj.acceptsAnyKeys or readFields.subseteq(obj.namedFields)
+  | ArrayParam(arr) => arr.namesItems
+}
+pure def checkedCallArgs(callArgs: Set[str]): Set[str] = callArgs.exclude(Set(plannerCueField))
+pure val namedFieldsValues = Set(Set(), Set("path"), Set("path", "content"))
+pure val readFieldsValues = Set(Set(), Set("path"), Set("path", "content"))
+pure val fieldKeyValues = Set("path", "content", "unexpected")
+pure val paramShapeValues = Set(
+  ScalarParam,
+  ObjectParam({ namedFields: Set(), acceptsAnyKeys: false }),
+  ObjectParam({ namedFields: Set("path"), acceptsAnyKeys: false }),
+  ObjectParam({ namedFields: Set(), acceptsAnyKeys: true }),
+  ArrayParam({ namesItems: true }),
+  ArrayParam({ namesItems: false })
+)
+pure val callArgsValues = Set(Set(), Set("cue"), Set("cue", "path"), Set("path"))
+pure def lawAnEmptyClosedObjectAcceptsNoKey(fieldKey: str): bool =
+  not(objectAcceptsKey(Set(), false, fieldKey))
+pure def lawEveryReadFieldOfAWellFormedObjectIsAccepted(namedFields: Set[str], acceptsAnyKeys: bool, readFields: Set[str], fieldKey: str): bool =
+  (paramShapeWellFormed(ObjectParam({ namedFields: namedFields, acceptsAnyKeys: acceptsAnyKeys }), readFields) and readFields.contains(fieldKey)) implies
+    objectAcceptsKey(namedFields, acceptsAnyKeys, fieldKey)
+pure def lawAnArrayWithoutItemSchemaIsRejected(readFields: Set[str]): bool =
+  not(paramShapeWellFormed(ArrayParam({ namesItems: false }), readFields))
+pure def lawPlannerCueIsStrippedBeforeArgumentCheck(callArgs: Set[str]): bool =
+  not(checkedCallArgs(callArgs).contains(plannerCueField))
+```
+
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 
 The system prompt is the character's: its system text, bio, style and
