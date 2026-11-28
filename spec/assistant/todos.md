@@ -119,6 +119,9 @@ retry of such a request has no recorded reference to recover after its
 item was renamed or deleted.
 
 ```quint
+pure val todoValues = Set(
+  { todoId: 1, content: "milk", todoStatus: TodoPending, completedAt: 0 },
+  { todoId: 2, content: "milk", todoStatus: TodoPending, completedAt: 0 })
 pure def lawAReferenceNamesTheExactItem(todo: Todo, content: str, todoId: int): bool =
   todoId > 0 implies (namesTodo(todo, content, todoId) iff todo.todoId == todoId)
 ```
