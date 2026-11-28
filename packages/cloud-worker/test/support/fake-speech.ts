@@ -165,7 +165,7 @@ function accept(request: IncomingMessage, socket: Duplex, received: (peer: Peer,
   return peer;
 }
 
-export function speechFake(): SpeechFake {
+export function speechFake({ sendSttConnected = true }: { readonly sendSttConnected?: boolean } = {}): SpeechFake {
   const synthesized: Synthesized[] = [];
   const transcribed: Transcribed[] = [];
   const connections: RealtimeSeen[] = [];
@@ -246,7 +246,7 @@ export function speechFake(): SpeechFake {
     live.push(seen);
     socket.on("close", () => { seen.open = false; });
     if (scripted.kind === "fail") peer.text({ type: "error", context_id: "provider", message: "scripted failure" });
-    else if (route === stt) peer.text({ type: "connected" });
+    else if (route === stt && sendSttConnected) peer.text({ type: "connected" });
   };
 
   return {

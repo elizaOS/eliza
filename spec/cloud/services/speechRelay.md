@@ -199,6 +199,7 @@ pure def beforeHello(r: Relay, input: RelayInput): RelayAnswer = match input {
 pure def whileOpening(r: Relay, input: RelayInput): RelayAnswer = match input {
   | Admitted => { relay: { ...r, phase: RelayLive, windows: 1, pending: List() }, frames: List(ReadyFrame).concat(r.pending) }
   | ProviderStt(e) => onStt(r, e.kind, e.transcriptChars)
+  | ProviderClosed(c) => linkClosed(r, c.link)
   | _ => if (isServerEnding(input)) serverEnding(r, input) else if (isClientFrame(input)) endWith(r, CauseOutage) else quiet(r)
 }
 pure def isTokenHello(input: RelayInput): bool = match input { | ClientHello(h) => h.tokenMatches | _ => false }
@@ -261,7 +262,7 @@ pure def whileLive(r: Relay, input: RelayInput): RelayAnswer = match input {
   | ProviderFlushed(p) => if (speaking(r, p.id) and heardOf(r, p.id)) answer(withHeard(r, p.id, false), FlushedFrame({ id: p.id })) else quiet(r)
   | ProviderCompleted(p) => if (speaking(r, p.id)) answer(withUtterance(r, p.id, UtteranceDone), CompleteFrame({ id: p.id })) else quiet(r)
   | WindowRenewed => if (r.extend) answer({ ...r, windows: r.windows + 1 }, ExtendedFrame) else quiet({ ...r, windows: r.windows + 1 })
-  | ProviderClosed(_) => quiet(r)
+  | ProviderClosed(c) => linkClosed(r, c.link)
   | _ => serverEnding(r, input)
 }
 pure def relayStep(r: Relay, input: RelayInput): RelayAnswer =
@@ -320,12 +321,27 @@ pure def utteranceUnfinished(r: Relay, sent: Set[str]): bool =
   r.utterances.some(u => sent.contains(u.id) and (u.stage == UtteranceOpen or u.stage == UtteranceFinishing))
 pure def speakingLinkEnd(r: Relay, sent: Set[str]): RelayInput =
   if (utteranceUnfinished(r, sent)) ProviderFailed else ProviderClosed({ link: SpeakingLink })
+pure def linkClosed(r: Relay, link: ProviderLink): RelayAnswer =
+  if (link == ListeningLink and not(r.sttConnected)) endWith(r, CauseOutage) else quiet(r)
 pure def lawAnIdleLinkThatClosesNeverEndsTheRelay(r: Relay, link: ProviderLink): bool =
-  relayStep(r, ProviderClosed({ link: link })) == quiet(r)
+  (link == SpeakingLink or r.sttConnected) implies relayStep(r, ProviderClosed({ link: link })) == quiet(r)
 pure def lawASpeakingLinkThatClosesUnderAnUnfinishedUtteranceIsAnOutage(r: Relay, sent: Set[str]): bool =
   (r.phase == RelayLive and utteranceUnfinished(r, sent)) implies relayStep(r, speakingLinkEnd(r, sent)) == endWith(r, CauseOutage)
 pure val sentValues = Set(Set(), Set("u1"), Set("u2"))
 pure val linkValues = Set(ListeningLink, SpeakingLink)
+```
+
+### A listening link that closes before connected is an outage
+
+The device waits for the first `connected` event before it sends audio. If
+that listening link closes while the relay is opening or after `ready` but
+before `connected`, the relay reports `unavailable` and closes. The device
+can then start a fresh session.
+
+```quint
+pure def lawTheListeningLinkThatClosesBeforeConnectedIsAnOutage(r: Relay): bool =
+  ((r.phase == RelayOpening or r.phase == RelayLive) and not(r.sttConnected)) implies
+    relayStep(r, ProviderClosed({ link: ListeningLink })) == endWith(r, CauseOutage)
 ```
 
 ## Story: Start speech only from a consent I gave

@@ -1612,9 +1612,9 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     ))
   }), 60_000)
 })
-effect function relayCloud() {
+effect function relayCloud(options?: Parameters<typeof speechFake>[0]) {
   try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
-  const speech = try sync(() => speechFake())
+  const speech = try sync(() => speechFake(options))
   const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
   try TestClock.adjust(Duration.seconds(5))
   return { speech, cloud }
@@ -1630,6 +1630,27 @@ effect function closedPhase(cloud: TestCloud, sessionId: string) {
 }
 
 describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
+  it.effect('A listening socket that closes before connected ends the relay as unavailable (spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket")', () => scoped(effect {
+    const { speech, cloud } = try relayCloud({ sendSttConnected: false })
+    const caller = try signedCaller(cloud, "startup-close")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "startup-close-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string }
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    const ready = try TestClock.withLive(timeout(promise(() => socket.next()), "5 seconds"))
+    try check(() => assert.deepStrictEqual(ready, { kind: "text", frame: { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: session.expiresAt } }))
+
+    const closed = try sync(() => speech.closeIdle("stt", 0))
+    try check(() => assert.strictEqual(closed, 1))
+    const ending = try TestClock.withLive(timeout(promise(() => socket.until((received) => received.kind === "close")), "5 seconds"))
+    try check(() => assert.deepStrictEqual(ending, [
+      { kind: "text", frame: { t: "error", code: "unavailable" } },
+      { kind: "close", code: 1008 },
+    ]))
+  }), 60_000)
+
   it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew while each ended window settles at its use, and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\"; spec/cloud/services/speechRelay.md, \"Each admitted window settles once, and a retiring session closes only after all its receipts\"; spec/cloud/services/speechSession.md, \"A window is admitted only when the day has room for it and both its holds are funded\")", () => scoped(effect {
     const { speech, cloud } = try relayCloud()
     const caller = try signedCaller(cloud, "talker")
