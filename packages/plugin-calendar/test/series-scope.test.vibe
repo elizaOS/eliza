@@ -82,6 +82,20 @@ it.effect('Change this event, this and following, or all of a series from one oc
   const followingFromOverride = try saveScopedEdit(special.rows, { id: third, revision: findRow(special.rows, third)!.revision }, "this_and_following", { title: "Standup v2" }, mint, "standup-2")
   assert.deepStrictEqual([findRow(followingFromOverride.rows, followingFromOverride.selected)?.title, findRow(followingFromOverride.rows, followingFromOverride.selected)?.location, findRow(followingFromOverride.rows, followingFromOverride.selected)?.body, findRow(followingFromOverride.rows, second)?.title],
     ["Standup v2", "Room 9", "Bring the laptop", "Standup"])
+  const room = { ...standup, location: "Room 1", body: "daily sync" }
+  const late = try saveScopedEdit([room], { id: third, revision: "r1" }, "instance",
+    { location: "Room 9", body: "Bring the laptop", begin: begin + 2 * day + hour, end: begin + 2 * day + hour + 1_800_000, who: ["amy", "bo"], responses: { amy: "yes", bo: "no" } }, mint, "unused")
+  const fourth = occurrenceId("standup", begin + 3 * day)
+  const withFourth = try saveScopedEdit(late.rows, { id: fourth, revision: findRow(late.rows, fourth)!.revision }, "instance", { location: "Room 5" }, mint, "unused")
+  const probe = try saveScopedEdit(withFourth.rows, { id: third, revision: findRow(withFourth.rows, third)!.revision }, "this_and_following", { title: "Standup v2" }, mint, "standup-2")
+  assert.deepStrictEqual([probe.selected, findRow(probe.rows, probe.selected)?.title, findRow(probe.rows, probe.selected)?.location, findRow(probe.rows, probe.selected)?.body, findRow(probe.rows, probe.selected)?.begin, findRow(probe.rows, probe.selected)?.who, findRow(probe.rows, probe.selected)?.responses],
+    [third, "Standup v2", "Room 9", "Bring the laptop", begin + 2 * day + hour, ["amy", "bo"], { amy: "yes", bo: "no" }])
+  assert.deepStrictEqual([findRow(probe.rows, "standup-2")?.title, findRow(probe.rows, "standup-2")?.location, findRow(probe.rows, "standup-2")?.body, findRow(probe.rows, "standup-2")?.begin, findRow(probe.rows, "standup-2")?.who, findRow(probe.rows, "standup-2")?.responses],
+    ["Standup v2", "Room 1", "daily sync", begin + 2 * day, undefined, undefined])
+  assert.deepStrictEqual([findRow(probe.rows, fourth)?.title, findRow(probe.rows, fourth)?.location, findRow(probe.rows, fourth)?.body, findRow(probe.rows, fourth)?.begin, findRow(probe.rows, fourth)?.seriesId],
+    ["Standup", "Room 5", "daily sync", begin + 3 * day, "standup-2"])
+  assert.deepStrictEqual([findRow(probe.rows, occurrenceId("standup-2", begin + 4 * day))?.title, findRow(probe.rows, occurrenceId("standup-2", begin + 4 * day))?.location, findRow(probe.rows, occurrenceId("standup-2", begin + 4 * day))?.body, findRow(probe.rows, occurrenceId("standup-2", begin + 4 * day))?.begin, findRow(probe.rows, second)?.title, findRow(probe.rows, second)?.location, findRow(probe.rows, second)?.body],
+    ["Standup v2", "Room 1", "daily sync", begin + 4 * day, "Standup", "Room 1", "daily sync"])
   const friday = occurrenceId("standup", begin + 4 * day)
   const weekend = try Effect.flip(saveScopedEdit([{ ...standup, repeat: "weekdays" }], { id: friday, revision: "r1" }, "series", { begin: begin + 5 * day, end: begin + 5 * day + 1_800_000 }, mint, "unused"))
   assert.isTrue(weekend instanceof InvalidSeriesTime)
