@@ -1,3 +1,4 @@
+// spec/cloud/client.md, "A device sends only the routes of one table, each with its own headers"
 // spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A mail or calendar route is sent only with the lease, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
 package ai.eliza.plugins.signin;
 
@@ -21,6 +22,7 @@ public final class CloudRequestPolicy {
   public static final long REPLY_LIMIT = 67_108_864L;
   public static final List<String> PROVIDER_HOSTS = List.of("checkout.stripe.com", "billing.stripe.com", "invoice.stripe.com", "accounts.google.com");
   public static final String IDEMPOTENCY_KEY = "Idempotency-Key", IF_MATCH = "If-Match", IF_NONE_MATCH = "If-None-Match", ACCEPT = "Accept", AUTHORIZATION = "Authorization";
+  static final String RENEWED_CREDENTIAL = "X-Renewed-Credential-Id";
   public static final List<String> BASE_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate");
 
   public enum Auth { PUBLIC, KEY_OR_SESSION, MAIL, SESSION, SESSION_FAMILY, FRESH_SESSION, STEP_UP }
@@ -60,7 +62,7 @@ public final class CloudRequestPolicy {
   public static final DeviceRoute NO_DEVICE_ROUTE = new DeviceRoute(Method.GET, List.of(), Auth.PUBLIC, List.of());
   public static final List<DeviceRoute> DEVICE_ROUTES = deviceRoutes();
 
-  private static final List<String> KNOWN_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", ACCEPT, IF_NONE_MATCH, IF_MATCH, IDEMPOTENCY_KEY);
+  private static final List<String> KNOWN_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", ACCEPT, IF_NONE_MATCH, IF_MATCH, IDEMPOTENCY_KEY, RENEWED_CREDENTIAL);
   private static final Pattern HEADER_VALUE = Pattern.compile("[\\x20-\\x7e\\t]*");
   private static final Pattern REASON = Pattern.compile("[a-z_]{1,64}");
 
@@ -305,7 +307,7 @@ public final class CloudRequestPolicy {
       route(post, api("app-auth", "mobile", "lease"), pub),
       route(delete, api("app-auth", "mobile", "lease"), pub),
       route(post, api("app-auth", "mobile", "renew"), pub),
-      route(delete, api("api-keys", "current"), key),
+      keyed(delete, api("api-keys", "current"), RENEWED_CREDENTIAL),
       route(get, api("subscriptions", "plans"), pub),
       route(get, api("subscription", "entitlement-keys"), pub),
       route(get, api("billing", "limits"), key),

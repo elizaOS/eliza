@@ -8,12 +8,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: candidate-spec-acceptance-${{ github.event.pull_request.number }}
+  group: candidate-spec-acceptance-${{ github.event.pull_request.number }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
   accept-reviewed-specs:
-    if: github.event.pull_request.number == 40711 && github.head_ref == 'codex/develop-ci-46077124958'
+    if: github.event.pull_request.number == 40711 && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:

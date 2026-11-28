@@ -30,7 +30,6 @@ public final class DeviceKeyClient {
   public static final String TOKEN = "/api/v1/app-auth/mobile/token";
   public static final String ACK = "/api/v1/app-auth/mobile/ack";
   public static final String REVOKE = "/api/v1/api-keys/current";
-  static final String RENEWED_CREDENTIAL = "X-Renewed-Credential-Id";
   public static final String LEASE = "/api/v1/app-auth/mobile/lease";
   public static final String RENEW = "/api/v1/app-auth/mobile/renew";
   public static final Pattern LEASE_REFRESH = Pattern.compile("eliza_lease_refresh_[A-Za-z0-9_-]{54}");
@@ -338,7 +337,7 @@ public final class DeviceKeyClient {
     connection.setRequestMethod(method);
     connection.setRequestProperty("Accept", "application/json");
     if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
-    if (!successor.isEmpty()) connection.setRequestProperty(RENEWED_CREDENTIAL, successor);
+    if (!successor.isEmpty()) connection.setRequestProperty(CloudRequestPolicy.RENEWED_CREDENTIAL, successor);
     try {
       if (body != null) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
