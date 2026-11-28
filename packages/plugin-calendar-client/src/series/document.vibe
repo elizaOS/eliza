@@ -214,7 +214,8 @@ export effect function saveScopedEdit(rows: readonly CalendarRow[], selected: Re
   const { kept, moved } = splitStarts([...parent.excluded ?? []], splitAt)
   const following = rows.filter((stored) => stored.seriesId === parent.id && stored.id !== row.id && (stored.occurrenceBegin ?? stored.begin) >= splitAt)
   const head: CalendarRow = { ...parent, until: splitAt, excluded: kept, revision: mint() }
-  const tail: CalendarRow = { ...withoutExclusions(parent), ...fields, id: newSeriesId, begin, end, revision: mint(), repeat: parent.repeat,
+  const tailBase = storedRow(rows, row) ? standalone(withoutExclusions(row), row.revision) : withoutExclusions(parent)
+  const tail: CalendarRow = { ...tailBase, ...fields, id: newSeriesId, begin, end, revision: mint(), repeat: parent.repeat,
     ...(parent.until === undefined ? {} : { until: parent.until }) }
   const excluded = try remapExclusions(following, { ...parent, begin: splitAt, excluded: moved }, tail)
   const movedIds = new Set(following.map((stored) => stored.id))

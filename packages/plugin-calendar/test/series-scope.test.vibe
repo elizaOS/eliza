@@ -78,6 +78,10 @@ it.effect('Change this event, this and following, or all of a series from one oc
     { title: "Sync", begin: begin + day + hour, end: begin + day + hour + 1_800_000 }, mint, "unused")
   assert.deepStrictEqual([fromOverride.selected, findRow(fromOverride.rows, second)?.title, findRow(fromOverride.rows, second)?.begin, findRow(fromOverride.rows, occurrenceId("standup", begin + 2 * day + hour))?.title],
     [second, "Sync", begin + day + hour, "Sync"])
+  const special = try saveScopedEdit([standup], { id: third, revision: "r1" }, "instance", { location: "Room 9", body: "Bring the laptop" }, mint, "unused")
+  const followingFromOverride = try saveScopedEdit(special.rows, { id: third, revision: findRow(special.rows, third)!.revision }, "this_and_following", { title: "Standup v2" }, mint, "standup-2")
+  assert.deepStrictEqual([findRow(followingFromOverride.rows, followingFromOverride.selected)?.title, findRow(followingFromOverride.rows, followingFromOverride.selected)?.location, findRow(followingFromOverride.rows, followingFromOverride.selected)?.body, findRow(followingFromOverride.rows, second)?.title],
+    ["Standup v2", "Room 9", "Bring the laptop", "Standup"])
   const friday = occurrenceId("standup", begin + 4 * day)
   const weekend = try Effect.flip(saveScopedEdit([{ ...standup, repeat: "weekdays" }], { id: friday, revision: "r1" }, "series", { begin: begin + 5 * day, end: begin + 5 * day + 1_800_000 }, mint, "unused"))
   assert.isTrue(weekend instanceof InvalidSeriesTime)
