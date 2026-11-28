@@ -13,6 +13,7 @@ export interface ConsequenceTargetDescriptor {
   readonly role?: string | null;
   readonly label?: string | null;
   readonly inferredLabel?: string | null;
+  readonly visibleText?: string | null;
   readonly submits?: boolean;
   readonly sensitive?: string | null;
   readonly inDialog?: boolean;

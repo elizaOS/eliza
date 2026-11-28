@@ -115,6 +115,21 @@ export function redactSensitiveText(input) {
   return out;
 }
 
+function redactDeep(value, seen = new WeakSet()) {
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => redactDeep(item, seen));
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    out[k] = redactDeep(v, seen);
+  }
+  return out;
+}
+
 /** Strips query strings, fragments, and embedded credentials for zero-PII telemetry. */
 export function stripUrlQuery(rawUrl) {
   if (typeof rawUrl !== "string" || !rawUrl) return "";
@@ -1596,7 +1611,9 @@ export function createWalkthroughEngine({
     pendingActionContext = null;
 
     if (resolution.kind === "cancelled" || resolution.kind === "rejected") {
-      const reason = resolution.reason || `Handoff ${handoff.kind} was ${resolution.kind}.`;
+      const reason = redactSensitiveText(
+        resolution.reason || `Handoff ${handoff.kind} was ${resolution.kind}.`,
+      );
       if (handoff.kind === "NeedsCommitApproval") {
         warnings.push(`User declined commit action: ${reason}`);
         userAnswers.push({ question: handoff.summary, answer: `Declined (${reason})` });
@@ -1938,8 +1955,10 @@ export function createWalkthroughEngine({
         phase,
         stepIndex,
         summary: redactSensitiveText(action.summary),
-        quotes: action.quotes,
-        extractedFacts: action.extractedFacts ?? null,
+        quotes: action.quotes.map((q) => redactSensitiveText(q)),
+        extractedFacts: action.extractedFacts
+          ? redactDeep(action.extractedFacts)
+          : null,
         quotesVerified: quoteCheck.verified,
         telemetryEvent,
         state: getState(),
@@ -1947,6 +1966,7 @@ export function createWalkthroughEngine({
     }
 
     if (action.kind === "block") {
+      const reason = redactSensitiveText(action.reason);
       phase = "blocked";
       const telemetryEvent = await emitTelemetry({
         plannerActionKind: "block",
@@ -1954,13 +1974,13 @@ export function createWalkthroughEngine({
         handoffKind: action.handoffKind ?? null,
         latencyMs: plannerLatencyMs,
         tokenUsage,
-        detail: action.reason,
+        detail: reason,
       });
       return {
         status: "blocked",
         phase,
         stepIndex,
-        reason: action.reason,
+        reason,
         telemetryEvent,
         state: getState(),
       };
@@ -2070,7 +2090,7 @@ export function createWalkthroughEngine({
           ...(targetElement?.targetSelector
             ? { targetSelector: targetElement.targetSelector }
             : {}),
-          ...(action.details ? { details: action.details } : {}),
+          ...(action.details ? { details: redactDeep(action.details) } : {}),
         },
         null,
         {
@@ -2123,7 +2143,7 @@ export function createWalkthroughEngine({
         {
           kind: "NeedsUserDisambiguation",
           summary: redactSensitiveText(action.question),
-          options: action.options,
+          options: action.options.map((opt) => redactSensitiveText(String(opt))),
         },
         null,
         {
@@ -2632,12 +2652,138 @@ export function createPlaywrightWalkthroughTransport(
     page.on("requestfailed", onReqEnd);
   }
 
+  let disposed = false;
+  let cdpSession = null;
+  let cdpInitPromise = null;
+  let cdpUnavailable = false;
+  let isolatedWorld = null;
+
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    if (trackRequests && typeof page.off === "function") {
+      page.off("request", onReqStart);
+      page.off("requestfinished", onReqEnd);
+      page.off("requestfailed", onReqEnd);
+    }
+    if (typeof page.off === "function") {
+      page.off("close", dispose);
+    }
+    inFlight.clear();
+    isolatedWorld = null;
+    if (cdpSession) {
+      const session = cdpSession;
+      cdpSession = null;
+      void session.detach().catch(() => {});
+    }
+  };
+  if (typeof page.once === "function") {
+    page.once("close", dispose);
+  }
+
+  const getCdpSession = async () => {
+    if (disposed || cdpUnavailable) return null;
+    if (cdpSession) return cdpSession;
+    if (!cdpInitPromise) {
+      cdpInitPromise = (async () => {
+        try {
+          const ctx = typeof page.context === "function" ? page.context() : null;
+          if (!ctx || typeof ctx.newCDPSession !== "function") {
+            cdpUnavailable = true;
+            return null;
+          }
+          const session = await ctx.newCDPSession(page);
+          if (disposed) {
+            await session.detach().catch(() => {});
+            return null;
+          }
+          cdpSession = session;
+          return session;
+        } catch {
+          cdpUnavailable = true;
+          return null;
+        }
+      })();
+    }
+    return cdpInitPromise;
+  };
+
   const isContextDestroyed = (error) =>
-    /Execution context was destroyed|Cannot find context with specified id/i.test(
+    /Execution context was destroyed|Cannot find context with specified id|Inspected target navigated or closed/i.test(
       error instanceof Error ? error.message : String(error),
     );
 
+  const ensureIsolatedWorld = async (session) => {
+    const { frameTree } = await session.send("Page.getFrameTree");
+    const frame = frameTree?.frame;
+    if (!frame?.id) {
+      throw new Error("CDP Page.getFrameTree returned no main frame");
+    }
+    if (isolatedWorld && isolatedWorld.loaderId === frame.loaderId) {
+      return isolatedWorld.contextId;
+    }
+    const { executionContextId } = await session.send(
+      "Page.createIsolatedWorld",
+      {
+        frameId: frame.id,
+        worldName: "eliza-walkthrough-isolated",
+      },
+    );
+    const initResult = await session.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `globalThis.__elizaPageCommandFnV1 = (${pageCommandSource}); true`,
+      returnByValue: true,
+    });
+    if (initResult?.exceptionDetails) {
+      const desc =
+        initResult.exceptionDetails.exception?.description ||
+        initResult.exceptionDetails.text ||
+        "Failed to initialize isolated world";
+      throw new Error(desc);
+    }
+    isolatedWorld = { loaderId: frame.loaderId, contextId: executionContextId };
+    return executionContextId;
+  };
+
+  const evalInIsolatedWorld = async (session, command, snapshotId) => {
+    const runOnce = async () => {
+      const contextId = await ensureIsolatedWorld(session);
+      const expression = `globalThis.__elizaPageCommandFnV1(${JSON.stringify(command)}, ${JSON.stringify(snapshotId)}, ${command?.validateOnly === true ? "true" : "false"})`;
+      const evalResult = await session.send("Runtime.evaluate", {
+        contextId,
+        expression,
+        returnByValue: true,
+        awaitPromise: true,
+      });
+      if (evalResult?.exceptionDetails) {
+        const desc =
+          evalResult.exceptionDetails.exception?.description ||
+          evalResult.exceptionDetails.text ||
+          "Isolated world evaluation failed";
+        throw new Error(desc);
+      }
+      return evalResult?.result?.value;
+    };
+    try {
+      return await runOnce();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/__elizaPageCommandFnV1/.test(msg)) {
+        isolatedWorld = null;
+        return await runOnce();
+      }
+      if (isContextDestroyed(error)) {
+        isolatedWorld = null;
+      }
+      throw error;
+    }
+  };
+
   const evalInPage = async (command, snapshotId) => {
+    const session = await getCdpSession();
+    if (session) {
+      return evalInIsolatedWorld(session, command, snapshotId);
+    }
     return page.evaluate(
       ([source, cmd, snapId]) => {
         const fn = new Function(`return (${source});`)();
@@ -2754,59 +2900,59 @@ export function createPlaywrightWalkthroughTransport(
         typeof page.off === "function";
       if (listenDownload) page.once("download", onDownload);
       try {
-        result = await evalInPage(
-          {
-            ...command,
-            ...(taskPolicy ? { taskPolicy } : {}),
-          },
-          null,
-        );
-      } catch (error) {
-        if (command.validateOnly !== true && isContextDestroyed(error)) {
-          await waitLoaded(true, activityBefore);
-          if (settleMs > 0) await pauseMs(settleMs);
-          if (listenDownload) page.off("download", onDownload);
-          return {
-            dispatched: true,
-            completed: false,
-            requiresReadback: true,
-            navigated: true,
-            ...(downloaded ? { downloaded: true } : {}),
-          };
+        try {
+          result = await evalInPage(
+            {
+              ...command,
+              ...(taskPolicy ? { taskPolicy } : {}),
+            },
+            null,
+          );
+        } catch (error) {
+          if (
+            command.validateOnly !== true &&
+            isContextDestroyed(error) &&
+            !(typeof page.isClosed === "function" && page.isClosed())
+          ) {
+            await waitLoaded(true, activityBefore);
+            if (settleMs > 0) await pauseMs(settleMs);
+            return {
+              dispatched: true,
+              completed: false,
+              requiresReadback: true,
+              navigated: true,
+              ...(downloaded ? { downloaded: true } : {}),
+            };
+          }
+          throw error;
         }
+        if (command.validateOnly === true) return result;
+        if (!result?.error) {
+          const shouldWaitIdle = ["click", "follow", "select"].includes(
+            command.subaction,
+          );
+          await waitLoaded(shouldWaitIdle, activityBefore);
+          if (settleMs > 0) await pauseMs(settleMs);
+        }
+        return downloaded && result && typeof result === "object"
+          ? { ...result, downloaded: true }
+          : result;
+      } finally {
         if (listenDownload) page.off("download", onDownload);
-        throw error;
       }
-      if (command.validateOnly === true) return result;
-      if (!result?.error) {
-        const shouldWaitIdle = ["click", "follow", "select"].includes(
-          command.subaction,
-        );
-        await waitLoaded(shouldWaitIdle, activityBefore);
-        if (settleMs > 0) await pauseMs(settleMs);
-      }
-      if (listenDownload) page.off("download", onDownload);
-      return downloaded && result && typeof result === "object"
-        ? { ...result, downloaded: true }
-        : result;
     },
     async navigate(url) {
+      isolatedWorld = null;
       const activityBefore = networkActivitySeq;
       await page.goto(url, { waitUntil: "domcontentloaded" });
       await waitLoaded(true, activityBefore);
     },
     async goBack() {
+      isolatedWorld = null;
       const activityBefore = networkActivitySeq;
       await page.goBack({ waitUntil: "domcontentloaded" });
       await waitLoaded(true, activityBefore);
     },
-    dispose() {
-      if (trackRequests && typeof page.off === "function") {
-        page.off("request", onReqStart);
-        page.off("requestfinished", onReqEnd);
-        page.off("requestfailed", onReqEnd);
-      }
-      inFlight.clear();
-    },
+    dispose,
   };
 }

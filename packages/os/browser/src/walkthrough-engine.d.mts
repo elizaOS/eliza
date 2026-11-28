@@ -276,21 +276,45 @@ export function createWalkthroughEngine(config: {
     };
   };
 }): WalkthroughEngine;
+export interface PlaywrightCdpSessionLike {
+  send(method: "Page.getFrameTree"): Promise<unknown>;
+  send(
+    method: "Page.createIsolatedWorld",
+    params: { readonly frameId: string; readonly worldName?: string },
+  ): Promise<unknown>;
+  send(
+    method: "Runtime.evaluate",
+    params: {
+      readonly contextId?: number;
+      readonly expression: string;
+      readonly returnByValue?: boolean;
+      readonly awaitPromise?: boolean;
+    },
+  ): Promise<unknown>;
+  detach(): Promise<void>;
+}
+
 export interface PlaywrightPageLike {
   url(): string;
   evaluate<R, Arg>(pageFunction: (arg: Arg) => R | Promise<R>, arg: Arg): Promise<R>;
   goto(url: string, options?: { readonly waitUntil?: "load" | "domcontentloaded" | "networkidle" | "commit" }): Promise<unknown>;
   goBack(options?: { readonly waitUntil?: "load" | "domcontentloaded" | "networkidle" | "commit" }): Promise<unknown>;
+  context?(): {
+    newCDPSession?(page: never): Promise<PlaywrightCdpSessionLike>;
+  };
+  isClosed?(): boolean;
   waitForTimeout?(timeout: number): Promise<void>;
   waitForLoadState?(
     state?: "load" | "domcontentloaded" | "networkidle",
     options?: { readonly timeout?: number },
   ): Promise<void>;
   once?(event: "download", listener: () => void): unknown;
+  once?(event: "close", listener: () => void): unknown;
   on?(event: "request", listener: (req: { resourceType(): string }) => void): unknown;
   on?(event: "requestfinished", listener: (req: { resourceType(): string }) => void): unknown;
   on?(event: "requestfailed", listener: (req: { resourceType(): string }) => void): unknown;
   off?(event: "download", listener: () => void): unknown;
+  off?(event: "close", listener: () => void): unknown;
   off?(event: "request", listener: (req: { resourceType(): string }) => void): unknown;
   off?(event: "requestfinished", listener: (req: { resourceType(): string }) => void): unknown;
   off?(event: "requestfailed", listener: (req: { resourceType(): string }) => void): unknown;

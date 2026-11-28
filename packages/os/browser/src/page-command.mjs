@@ -667,13 +667,13 @@ export function pageCommand(
   const COMMIT_WORDS_INLINE =
     /\b(?:submit(?:\s+(?:payment|order|form|application|request|claim|message|transfer|bill|now))?|confirm(?:\s+(?:payment|order|appointment|booking|cancellation|transfer|purchase|and\s+pay|&\s*pay|and\s+submit|&\s*submit))?|pay\s+(?:now|today|in\s+full|total|balance|amount|\p{Sc}\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?|(?:usd|eur|gbp|cad|aud)\s*\d+(?:[.,]\d+)?)|(?:complete|finalize|authori[sz]e|process|execute)\s+(?:payment|order|purchase|transfer|transaction|checkout|booking|appointment)|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|buy\s+now|purchase\s+now|book\s+(?:now|appointment|visit|booking)|reserve\s+now|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|create\s+(?:an?\s+)?account|register|send(?:\s+(?:message|reply|email|payment|money|transfer|now))?|post\s+(?:comment|reply|message|now)|publish|delete|remove\s+account|close\s+account|cancel\s+(?:service|subscription|membership|plan|order|appointment|booking|payment|account|policy)|authori[sz]e|agree\s+and\b|accept\s+(?:all|and\b|terms|offer|trial)|transfer(?:\s+funds)?|wire(?:\s+funds)?|donate|subscribe|enroll(?:\s+in\b)?|start\s+(?:free\s+)?trial|verify\s+(?:code|identity|account|payment|now))\b|^(?:buy|purchase|verify|check\s*out)$/iu;
   const SAFE_DISMISS_INLINE =
-    /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|reject(?:\s+all)?|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close\b|\b(?:strictly\s+)?(?:necessary|essential|required)\s+(?:cookies\s+)?only\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
+    /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|reject(?:\s+all)?|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close(?:\s+(?:(?:this|the)\s+)?(?:dialog|modal|popup|pop-up|banner|window|overlay|drawer|panel|menu|alert|notice|message|ad|offer)|\s+(?:this|it))$|\b(?:strictly\s+)?(?:necessary|essential|required)\s+(?:cookies\s+)?only\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
   const DISMISS_AGREES_INLINE =
     /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|subscribe|sign|log|buy|pay|confirm|enroll|upgrade)\b/i;
   const DECLINE_ESCAPE_INLINE =
     /\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
   const SAFE_FORM_STEP_INLINE =
-    /^(?:search|find|go|filter|sort|apply|next|continue|back|previous|review(?:\s+[\w& -]+)?|preview|calculate|estimate|add\s+to\s+(?:cart|bag)|update(?:\s+(?:cart|quantity))?|proceed\s+to\s+(?:checkout|payment|review)|pay\s+(?:card|bill|this\s+bill)|make\s+a\s+payment|continue\s+to\s+[\w -]+|save\s+draft)$/i;
+    /^(?:search|find|go|filter|sort|apply|next|continue|back|previous|review(?:\s+[\w& -]+)?|preview|calculate|estimate|add\s+to\s+(?:cart|bag)|update(?:\s+(?:cart|quantity))?|proceed\s+to\s+(?:checkout|payment|review)|continue\s+to\s+[\w -]+|save\s+draft)$/i;
   const STAGE_WORDS_INLINE =
     /\b(?:add\s+to\s+(?:cart|bag)|one[- ]?time\s+purchase|standard\s+shipping|free\s+shipping|apply|filter|sort|search|select|update\s+(?:cart|quantity)|save\s+draft|statement\s+balance|minimum\s+(?:payment|due)|current\s+balance|other\s+amount)\b/i;
   const TWO_LABEL_PUBLIC_SUFFIXES = new Set([
@@ -821,14 +821,25 @@ export function pageCommand(
     )
       .replace(/\s+/g, " ")
       .trim();
+    const visibleText = (node.textContent || "").replace(/\s+/g, " ").trim();
     const inDialog =
       node.closest(
         "dialog,[role=dialog],[role=alertdialog],[aria-modal=true]",
       ) !== null;
+    const hasCommitWord = COMMIT_WORDS_INLINE.test(labelText);
     const isSafeDismiss =
+      !hasCommitWord &&
       SAFE_DISMISS_INLINE.test(primaryLabel) &&
-      (DECLINE_ESCAPE_INLINE.test(primaryLabel) ||
-        !DISMISS_AGREES_INLINE.test(primaryLabel));
+      (DECLINE_ESCAPE_INLINE.test(primaryLabel)
+        ? !visibleText ||
+          DECLINE_ESCAPE_INLINE.test(visibleText) ||
+          !DISMISS_AGREES_INLINE.test(visibleText)
+        : !DISMISS_AGREES_INLINE.test(labelText));
+    const isDialogCancel =
+      inDialog &&
+      /^cancel$/i.test(primaryLabel) &&
+      !hasCommitWord &&
+      !DISMISS_AGREES_INLINE.test(labelText);
     const form = closestFormDeep(node);
     const formControls = form ? [...form.elements] : [];
     const formHasSensitive = formControls.some((control) =>
@@ -847,10 +858,7 @@ export function pageCommand(
         hostSubmits) &&
       (form !== null || tag === "input");
     const hostCommit = !!commitPattern?.test(labelText);
-    const wordCommit =
-      !isSafeDismiss &&
-      !(inDialog && /^cancel$/i.test(primaryLabel)) &&
-      COMMIT_WORDS_INLINE.test(labelText);
+    const wordCommit = !isSafeDismiss && !isDialogCancel && hasCommitWord;
     const submitCommit =
       isSubmits &&
       (formHasSensitive ||
@@ -868,7 +876,7 @@ export function pageCommand(
       tag === "summary" ||
       discloses(node) ||
       isSafeDismiss ||
-      (inDialog && /^cancel$/i.test(primaryLabel))
+      isDialogCancel
     )
       return {
         consequence: "observe",
@@ -1719,7 +1727,7 @@ export function pageCommand(
       const REJECT =
         /^(?:reject|decline|refuse|deny|disagree)(?: all| optional| non-essential| additional| unnecessary)?(?: cookies)?$|\b(?:strictly )?(?:necessary|essential|required) (?:cookies )?only\b|\bonly (?:allow |accept |use )?(?:strictly )?(?:necessary|essential|required)(?: cookies)?\b|\bcontinue without (?:accepting|agreeing)\b|\breject all\b/i;
       const CLOSE =
-        /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
+        /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close(?:\s+(?:(?:this|the)\s+)?(?:dialog|modal|popup|pop-up|banner|window|overlay|drawer|panel|menu|alert|notice|message|ad|offer)|\s+(?:this|it))$|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
       // A "Close and accept" or "Dismiss and continue" control agrees to
       // something; it is never offered as the way out. Explicit "continue
       // without enrolling/accepting" declines without agreeing.
@@ -1921,13 +1929,35 @@ export function pageCommand(
         const control = (pattern) => {
           for (const [node, id] of idOf) {
             const candidate = (labelOf.get(id) ?? "").trim();
+            const fullText = [
+              candidate,
+              node.getAttribute("aria-label"),
+              node.textContent,
+              node.title,
+              is(node, "HTMLInputElement") ? node.value : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .replace(/\s+/g, " ")
+              .trim();
+            const visibleText = (node.textContent || "")
+              .replace(/\s+/g, " ")
+              .trim();
             if (
               within(root, node) &&
               node !== root &&
               pattern.test(candidate) &&
-              (pattern === REJECT ||
-                DECLINE_ESCAPE_INLINE.test(candidate) ||
-                !AGREES.test(candidate))
+              !COMMIT_WORDS_INLINE.test(fullText) &&
+              classifyNode(node, "click").consequence !== "commit" &&
+              (pattern === REJECT
+                ? !visibleText ||
+                  REJECT.test(visibleText) ||
+                  !AGREES.test(visibleText)
+                : DECLINE_ESCAPE_INLINE.test(candidate)
+                  ? !visibleText ||
+                    DECLINE_ESCAPE_INLINE.test(visibleText) ||
+                    !AGREES.test(visibleText)
+                  : !AGREES.test(fullText))
             )
               return id;
           }
@@ -4629,13 +4659,13 @@ export function blockerSelectors(blockers, prefix) {
 }
 
 const SAFE_DISMISS_PATTERN =
-  /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|reject(?:\s+all)?|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close\b|\b(?:strictly\s+)?(?:necessary|essential|required)\s+(?:cookies\s+)?only\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
+  /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|reject(?:\s+all)?|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close(?:\s+(?:(?:this|the)\s+)?(?:dialog|modal|popup|pop-up|banner|window|overlay|drawer|panel|menu|alert|notice|message|ad|offer)|\s+(?:this|it))$|\b(?:strictly\s+)?(?:necessary|essential|required)\s+(?:cookies\s+)?only\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
 const DISMISS_AGREES_PATTERN =
   /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|subscribe|sign|log|buy|pay|confirm|enroll|upgrade)\b/i;
 const DECLINE_ESCAPE_PATTERN =
   /\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
 const SAFE_FORM_STEP_PATTERN =
-  /^(?:search|find|go|filter|sort|apply|next|continue|back|previous|review(?:\s+[\w& -]+)?|preview|calculate|estimate|add\s+to\s+(?:cart|bag)|update(?:\s+(?:cart|quantity))?|proceed\s+to\s+(?:checkout|payment|review)|pay\s+(?:card|bill|this\s+bill)|make\s+a\s+payment|continue\s+to\s+[\w -]+|save\s+draft)$/i;
+  /^(?:search|find|go|filter|sort|apply|next|continue|back|previous|review(?:\s+[\w& -]+)?|preview|calculate|estimate|add\s+to\s+(?:cart|bag)|update(?:\s+(?:cart|quantity))?|proceed\s+to\s+(?:checkout|payment|review)|continue\s+to\s+[\w -]+|save\s+draft)$/i;
 const STAGE_CONTROL_PATTERN =
   /\b(?:add\s+to\s+(?:cart|bag)|one[- ]?time\s+purchase|standard\s+shipping|free\s+shipping|apply|filter|sort|search|select|update\s+(?:cart|quantity)|save\s+draft|statement\s+balance|minimum\s+(?:payment|due)|current\s+balance|other\s+amount)\b/i;
 
@@ -4688,10 +4718,25 @@ export function classifyActionConsequence(target = {}, context = {}) {
   const label = String(target?.label ?? target?.inferredLabel ?? "")
     .replace(/\s+/g, " ")
     .trim();
+  const visibleText = String(target?.visibleText ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const combinedLabel = [label, visibleText].filter(Boolean).join(" ");
   const inDialog = target?.inDialog === true;
+  const hasCommitWord = COMMIT_CONTROL.test(combinedLabel);
   const isSafeDismiss =
+    !hasCommitWord &&
     SAFE_DISMISS_PATTERN.test(label) &&
-    (DECLINE_ESCAPE_PATTERN.test(label) || !DISMISS_AGREES_PATTERN.test(label));
+    (DECLINE_ESCAPE_PATTERN.test(label)
+      ? !visibleText ||
+        DECLINE_ESCAPE_PATTERN.test(visibleText) ||
+        !DISMISS_AGREES_PATTERN.test(visibleText)
+      : !DISMISS_AGREES_PATTERN.test(combinedLabel));
+  const isDialogCancel =
+    inDialog &&
+    /^cancel$/i.test(label) &&
+    !hasCommitWord &&
+    !DISMISS_AGREES_PATTERN.test(combinedLabel);
   let hostRegex = null;
   if (context?.commitPattern instanceof RegExp) hostRegex = context.commitPattern;
   else if (typeof context?.commitPattern === "string" && context.commitPattern)
@@ -4700,11 +4745,8 @@ export function classifyActionConsequence(target = {}, context = {}) {
     } catch {
       hostRegex = null;
     }
-  const hostCommit = !!hostRegex?.test(label);
-  const wordCommit =
-    !isSafeDismiss &&
-    !(inDialog && /^cancel$/i.test(label)) &&
-    COMMIT_CONTROL.test(label);
+  const hostCommit = !!hostRegex?.test(combinedLabel);
+  const wordCommit = !isSafeDismiss && !isDialogCancel && hasCommitWord;
   const isSubmits =
     target?.submits === true ||
     (tag === "input" && ["submit", "image"].includes(type));
@@ -4734,7 +4776,7 @@ export function classifyActionConsequence(target = {}, context = {}) {
     tag === "summary" ||
     target?.discloses === true ||
     isSafeDismiss ||
-    (inDialog && /^cancel$/i.test(label))
+    isDialogCancel
   )
     return {
       consequence: "observe",

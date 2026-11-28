@@ -1809,4 +1809,236 @@ describe("Upstream general walkthrough engine (walkthrough-engine.mjs)", () => {
     expect(twoStepRes.status).toBe("completed");
     expect(twoStepHandoffs).toBe(2);
   });
+
+  it("enforces security hardening: Close account / aria-label spoof / Pay Bill POST submit / CDP isolated world / listener cleanup / output redaction", async () => {
+    // 1. Pure classifier: Close account, aria-label spoof, and <form><button type="submit">Pay Bill</button></form>
+    expect(
+      classifyActionConsequence({ tag: "button", type: "button", label: "Close account" }),
+    ).toMatchObject({ consequence: "commit", requiresGrant: true });
+    expect(
+      classifyActionConsequence({ tag: "button", type: "button", label: "Close dialog" }),
+    ).toMatchObject({ consequence: "observe", requiresGrant: false });
+    expect(
+      classifyActionConsequence({ tag: "button", type: "button", label: "Close", visibleText: "Pay $500 Now" }),
+    ).toMatchObject({ consequence: "commit", requiresGrant: true });
+    expect(
+      classifyActionConsequence({
+        tag: "button",
+        type: "button",
+        inDialog: true,
+        label: "Cancel",
+        visibleText: "Confirm Payment",
+      }),
+    ).toMatchObject({ consequence: "commit", requiresGrant: true });
+    expect(
+      classifyActionConsequence({ tag: "button", type: "submit", submits: true, label: "Pay Bill" }),
+    ).toMatchObject({ consequence: "commit", requiresGrant: true });
+    expect(
+      classifyActionConsequence({ tag: "button", type: "submit", submits: true, label: "Make a payment" }),
+    ).toMatchObject({ consequence: "commit", requiresGrant: true });
+    expect(
+      classifyActionConsequence({ tag: "button", type: "button", label: "Pay Bill" }),
+    ).toMatchObject({ consequence: "navigate", requiresGrant: false });
+
+    // 2. Real Chromium DOM checks through createPlaywrightWalkthroughTransport (CDP isolated world!)
+    await ensureBrowser();
+    const secOrigin = "https://sec-audit.example";
+    let postedPayBill = false;
+    const secRoutes: Record<string, string> = {
+      [`${secOrigin}/hazards`]: `<!doctype html><html><body>
+        <h1>Security Audit</h1>
+        <div role="dialog" aria-modal="true" style="position:fixed;inset:0;background:#fff;z-index:20">
+          <p>Account notice</p>
+          <button type="button" id="close-acct">Close account</button>
+          <button type="button" id="spoof-pay" aria-label="Close">Pay $500 Now</button>
+          <button type="button" id="spoof-cancel" aria-label="Cancel">Confirm Payment</button>
+          <button type="button" id="spoof-accept" aria-label="Close">Accept</button>
+        </div>
+        <form id="pay-form" method="post" action="/pay-bill">
+          <input type="text" name="memo" value="October">
+          <button type="submit" id="submit-pay-bill">Pay Bill</button>
+        </form>
+        <a id="next-link" href="/next">Next Page</a>
+      </body></html>`,
+      [`${secOrigin}/pay-bill`]: `<!doctype html><html><body><h1>Paid!</h1></body></html>`,
+      [`${secOrigin}/next`]: `<!doctype html><html><body><h1>Next Page</h1><button type="button" id="safe-btn">Continue</button></body></html>`,
+    };
+    const secContext = await browser!.newContext({ viewport: { width: 1280, height: 800 } });
+    await secContext.route(`${secOrigin}/**`, (route) => {
+      const req = route.request();
+      const url = req.url().split("?")[0]!;
+      if (url.endsWith("/pay-bill") && req.method() === "POST") postedPayBill = true;
+      return route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: secRoutes[url] ?? "<!doctype html><html><body>Not found</body></html>",
+      });
+    });
+    const secPage = await secContext.newPage();
+    const transport = createPlaywrightWalkthroughTransport(secPage, { settleMs: 10 });
+    await transport.navigate!(`${secOrigin}/hazards`);
+
+    const snap = await transport.snapshot();
+    // Main world MUST NOT expose any __eliza* globals (runs in CDP isolated world)
+    const mainWorldLeaks = await secPage.evaluate(() => ({
+      control: "__elizaBrowserControlV1" in window,
+      observation: "__elizaBrowserObservationV1" in window,
+      grants: "__elizaCommitGrantsV1" in window,
+      watch: "__elizaTaskEffectWatchV1" in window,
+      runner: "__elizaPageCommandFnV1" in window,
+    }));
+    expect(mainWorldLeaks).toEqual({
+      control: false,
+      observation: false,
+      grants: false,
+      watch: false,
+      runner: false,
+    });
+
+    const els = snap.elements as Record<string, unknown>[];
+    const findBySel = (sel: string) => els.find((el) => el.targetSelector === sel)!;
+    // Close account, spoofed aria-label buttons, and POST Pay Bill MUST all be commit
+    expect(findBySel("#close-acct").consequence).toBe("commit");
+    expect(findBySel("#spoof-pay").consequence).toBe("commit");
+    expect(findBySel("#spoof-cancel").consequence).toBe("commit");
+    expect(findBySel("#submit-pay-bill").consequence).toBe("commit");
+    // Blocker MUST NOT expose any of Close account / spoofed Pay / spoofed Accept as ref
+    const blockers = snap.blockers as Record<string, unknown>[];
+    expect(blockers.length).toBeGreaterThan(0);
+    expect(blockers[0]!.ref).toBeUndefined();
+
+    // Clicking each dangerous button without commitGrant MUST be blocked by POLICY_BLOCKED
+    for (const sel of ["#close-acct", "#spoof-pay", "#spoof-cancel", "#submit-pay-bill"]) {
+      const target = findBySel(sel);
+      const res = await transport.execute({
+        subaction: "click",
+        snapshotId: snap.snapshotId,
+        nodeId: target.id,
+        expectedSelector: target.targetSelector,
+      });
+      expect((res.error as { kind?: string } | undefined)?.kind, sel).toBe("POLICY_BLOCKED");
+    }
+    expect(postedPayBill).toBe(false);
+
+    // Navigating creates a fresh isolated world cleanly and still leaks zero main-world globals
+    await transport.navigate!(`${secOrigin}/next`);
+    const nextSnap = await transport.snapshot();
+    expect(String(nextSnap.text ?? "")).toContain("Next Page");
+    const nextLeaks = await secPage.evaluate(() => ({
+      control: "__elizaBrowserControlV1" in window,
+      runner: "__elizaPageCommandFnV1" in window,
+    }));
+    expect(nextLeaks).toEqual({ control: false, runner: false });
+
+    // Closing page auto-disposes listeners & CDP session; repeated dispose() is idempotent
+    await secPage.close();
+    expect(() => transport.dispose()).not.toThrow();
+    await secContext.close();
+
+    // 3. Download listener cleanup in finally even when post-action settle throws
+    const listeners = new Map<string, Set<unknown>>();
+    const addL = (ev: string, fn: unknown) => {
+      if (!listeners.has(ev)) listeners.set(ev, new Set());
+      listeners.get(ev)!.add(fn);
+    };
+    const remL = (ev: string, fn: unknown) => {
+      listeners.get(ev)?.delete(fn);
+    };
+    const mockErrPage = {
+      url: () => "https://leak.test/page",
+      evaluate: async () => ({ dispatched: true, completed: true }),
+      goto: async () => {},
+      goBack: async () => {},
+      waitForLoadState: async () => {},
+      waitForTimeout: async () => {
+        throw new Error("simulated settle failure");
+      },
+      once: (ev: string, fn: unknown) => addL(ev, fn),
+      on: (ev: string, fn: unknown) => addL(ev, fn),
+      off: (ev: string, fn: unknown) => remL(ev, fn),
+    };
+    const mockTransport = createPlaywrightWalkthroughTransport(
+      mockErrPage as unknown as Parameters<typeof createPlaywrightWalkthroughTransport>[0],
+      { settleMs: 25, networkIdleTimeoutMs: 0 },
+    );
+    await expect(
+      mockTransport.execute({ subaction: "click", snapshotId: "s1", nodeId: "0", expectedSelector: "#b" }),
+    ).rejects.toThrow("simulated settle failure");
+    expect(listeners.get("download")?.size ?? 0).toBe(0);
+    // Firing close event auto-disposes request/close listeners
+    for (const fn of [...(listeners.get("close") ?? [])]) {
+      (fn as () => void)();
+    }
+    expect(listeners.get("request")?.size ?? 0).toBe(0);
+    expect(listeners.get("requestfinished")?.size ?? 0).toBe(0);
+    expect(listeners.get("requestfailed")?.size ?? 0).toBe(0);
+    expect(listeners.get("close")?.size ?? 0).toBe(0);
+
+    // 4. Redaction of complete.quotes, complete.extractedFacts (nested), and block.reason
+    const redactCompleteEngine = createWalkthroughEngine({
+      goal: { instruction: "Extract confirmation" },
+      transport: {
+        snapshot: async () => ({
+          url: "https://acct.test/done",
+          title: "Done",
+          domRevision: 1,
+          text: "Confirmation CHS-20261003-831633 for SSN 123-45-6789 token Bearer sk_live_1234567890abcdef",
+          blockers: [],
+          elements: [],
+        }),
+        execute: async () => ({ dispatched: true }),
+      },
+      planner: {
+        plan: async () => ({
+          action: {
+            kind: "complete",
+            summary: "Done with 123-45-6789",
+            quotes: ["Confirmation CHS-20261003-831633", "SSN 123-45-6789", "Bearer sk_live_1234567890abcdef"],
+            extractedFacts: {
+              confirmation: "CHS-20261003-831633",
+              nested: { ssn: "123-45-6789", list: ["Bearer sk_live_1234567890abcdef", 42] },
+            },
+          },
+        }),
+      },
+    });
+    const redComplete = await redactCompleteEngine.run();
+    expect(redComplete.status).toBe("completed");
+    expect(redComplete.summary).not.toContain("123-45-6789");
+    expect(JSON.stringify(redComplete.quotes)).not.toContain("123-45-6789");
+    expect(JSON.stringify(redComplete.quotes)).not.toContain("sk_live_1234567890abcdef");
+    expect(JSON.stringify(redComplete.quotes)).toContain("CHS-20261003-831633");
+    expect(JSON.stringify(redComplete.extractedFacts)).not.toContain("123-45-6789");
+    expect(JSON.stringify(redComplete.extractedFacts)).not.toContain("sk_live_1234567890abcdef");
+    expect(JSON.stringify(redComplete.extractedFacts)).toContain("CHS-20261003-831633");
+
+    const redactBlockEngine = createWalkthroughEngine({
+      goal: { instruction: "Attempt restricted step" },
+      transport: {
+        snapshot: async () => ({
+          url: "https://acct.test/restricted",
+          title: "Restricted",
+          domRevision: 1,
+          text: "Restricted",
+          blockers: [],
+          elements: [],
+        }),
+        execute: async () => ({ dispatched: true }),
+      },
+      planner: {
+        plan: async () => ({
+          action: {
+            kind: "block",
+            reason: "Blocked because SSN 123-45-6789 and Bearer sk_live_1234567890abcdef failed",
+          },
+        }),
+      },
+    });
+    const redBlock = await redactBlockEngine.run();
+    expect(redBlock.status).toBe("blocked");
+    expect(redBlock.reason).not.toContain("123-45-6789");
+    expect(redBlock.reason).not.toContain("sk_live_1234567890abcdef");
+    expect(redBlock.reason).toContain("[redacted-ssn]");
+    expect(redBlock.reason).toContain("[redacted-secret]");
+  });
 });
