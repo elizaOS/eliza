@@ -44,7 +44,7 @@ export function holdFirstTtsClose(fakeOrigin: string) {
       if (tracked === undefined && new URL(url).href === provider) track(this);
     }
 
-    override get readyState(): number {
+    override get readyState(): WebSocket["readyState"] {
       const state = super.readyState;
       observeClosedWrite(this, state);
       return state;
