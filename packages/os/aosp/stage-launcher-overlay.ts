@@ -36,7 +36,10 @@ export interface CompanionDescriptor {
 }
 /** The only signature|privileged permissions a reviewed descriptor may name. */
 export const REVIEWED_PRIVILEGED_PERMISSIONS: readonly string[] = Object.freeze(
-  ["android.permission.READ_PRIVILEGED_PHONE_STATE"],
+  [
+    "android.permission.READ_PRIVILEGED_PHONE_STATE",
+    "android.permission.INSTALL_SELF_UPDATES",
+  ],
 );
 export interface LauncherDescriptor {
   schemaVersion: 1;

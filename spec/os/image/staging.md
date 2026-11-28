@@ -29,8 +29,9 @@ staging only: never of a boot, a signature or a device qualification.
 
 ### A descriptor names a valid launcher, at most 32 unique first-boot grants, only reviewed privileged permissions, and distinct companions
 
-A privileged permission is never also a first-boot grant. An absent list
-is empty; the shell refuses an explicit empty list.
+The reviewed privileged permissions are `android.permission.READ_PRIVILEGED_PHONE_STATE`
+and `android.permission.INSTALL_SELF_UPDATES`. A privileged permission is never also a
+first-boot grant. An absent list is empty; the shell refuses an explicit empty list.
 
 ```quint
 import apk.* from "./apk"
@@ -40,7 +41,7 @@ type Partition = ProductPartition | SystemPartition
 type CompanionDescriptor = { moduleName: str, packageName: str, apkSha256: Digest }
 type LauncherDescriptor = { schemaVersion: int, brandValid: bool, moduleNameValid: bool, moduleName: str, packageName: str, apkSha256: Digest, certificate: Digest,
   defaultPermissions: List[str], privilegedPermissions: List[str], partition: Partition, companions: List[CompanionDescriptor] }
-pure val reviewedPrivilegedPermissions = Set("android.permission.READ_PRIVILEGED_PHONE_STATE")
+pure val reviewedPrivilegedPermissions = Set("android.permission.READ_PRIVILEGED_PHONE_STATE", "android.permission.INSTALL_SELF_UPDATES")
 pure def distinctNames(names: List[str]): bool = names.every(x => names.select(y => y == x).length() == 1)
 pure def companionsDistinct(d: LauncherDescriptor): bool = {
   val modules = d.companions.listMap(x => x.moduleName)
@@ -141,18 +142,19 @@ pure val callValues = {
   val descriptor = { schemaVersion: 1, brandValid: true, moduleNameValid: true, moduleName: "Home", packageName: "pkg.home", apkSha256: Sha256({ hex: "a1" }), certificate: Sha256({ hex: "c1" }),
     defaultPermissions: List("android.permission.CAMERA"), privilegedPermissions: List(), partition: ProductPartition, companions: List() }
   val launcher = { ...noApk, sha256: Sha256({ hex: "a1" }), packageName: "pkg.home", home: true, buildType: ReleaseBuild, signer: OneSigner({ certificate: Sha256({ hex: "c1" }) }),
-    declaredPermissions: List("android.permission.CAMERA", "android.permission.READ_PRIVILEGED_PHONE_STATE") }
+    declaredPermissions: List("android.permission.CAMERA", "android.permission.READ_PRIVILEGED_PHONE_STATE", "android.permission.INSTALL_SELF_UPDATES") }
   val companion = { ...launcher, sha256: Sha256({ hex: "b1" }), packageName: "pkg.updater", home: false }
   val plain = { descriptor: descriptor, source: ReviewedDescriptor, stagingMode: StageProduction, apk: launcher, companions: List(), nativeRequest: NoNatives,
     target: { soongOnly: false, soongPatchAdmitted: false }, mode: StageOverlay, outputExists: false }
   val withCompanion = { ...plain, descriptor: { ...descriptor, companions: List({ moduleName: "Updater", packageName: "pkg.updater", apkSha256: Sha256({ hex: "b1" }) }) },
     companions: List({ moduleName: "Updater", apk: companion }) }
   val runtimeLibraries = List({ abi: R::X86_64, name: R::nodeLibraryName, check: EntryValid }, { abi: R::X86_64, name: "libagent.so", check: EntryValid })
-  val privileged = { ...plain, descriptor: { ...descriptor, privilegedPermissions: List("android.permission.READ_PRIVILEGED_PHONE_STATE") }, apk: { ...launcher, natives: runtimeLibraries },
+  val privileged = { ...plain, descriptor: { ...descriptor, privilegedPermissions: List("android.permission.READ_PRIVILEGED_PHONE_STATE", "android.permission.INSTALL_SELF_UPDATES") }, apk: { ...launcher, natives: runtimeLibraries },
     nativeRequest: NativeFor({ abi: R::X86_64, install: SoongDeferred }), target: { soongOnly: true, soongPatchAdmitted: true } }
   List(plain, withCompanion, privileged, { ...plain, mode: AdmissionOnly }, { ...plain, outputExists: true }, { ...plain, source: SelfSelected },
     { ...plain, source: SelfSelected, stagingMode: StageDevelopment, apk: { ...launcher, buildType: DebuggableBuild } }, { ...plain, apk: { ...launcher, signer: OneSigner({ certificate: Sha256({ hex: "c2" }) }) } },
-    { ...plain, descriptor: { ...descriptor, privilegedPermissions: List("android.permission.CAMERA") } }, { ...withCompanion, companions: List({ moduleName: "Updater", apk: { ...companion, home: true } }) },
+    { ...plain, descriptor: { ...descriptor, privilegedPermissions: List("android.permission.CAMERA") } }, { ...plain, descriptor: { ...descriptor, privilegedPermissions: List("android.permission.INSTALL_PACKAGES") } },
+    { ...withCompanion, companions: List({ moduleName: "Updater", apk: { ...companion, home: true } }) },
     { ...privileged, nativeRequest: NoNatives }, { ...privileged, nativeRequest: NativeFor({ abi: R::X86_64, install: MakeRules }) }, { ...privileged, nativeRequest: NativeFor({ abi: R::Arm64, install: SoongRules }) },
     { ...privileged, nativeRequest: NativeFor({ abi: R::X86_64, install: SoongRules }) }, { ...privileged, target: { soongOnly: true, soongPatchAdmitted: false } }).foldl(Set(), (acc, x) => acc.union(Set(x)))
 }

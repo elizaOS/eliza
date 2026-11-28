@@ -241,6 +241,7 @@ process.stdout.write(args[0] === "verify" ? answers.signatures : args[1] === "ba
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
+  <uses-permission android:name="android.permission.INSTALL_SELF_UPDATES" />
   <application android:label="Home" android:debuggable="${debuggable}" android:allowBackup="false">
     <activity android:name=".HomeActivity" android:exported="true">
       <intent-filter>
@@ -281,6 +282,7 @@ const LAUNCHER = "example.fixture.home"
 const COMPANION = "example.fixture.updater"
 const IDENTITY = { brand: "example", moduleName: "ExampleHome", packageName: LAUNCHER }
 const PRIVILEGED = "android.permission.READ_PRIVILEGED_PHONE_STATE"
+const SELF_UPDATE = "android.permission.INSTALL_SELF_UPDATES"
 const suffix = skipped === null ? "" : ` (skipped: ${skipped})`
 
 effect function kit(prefix: string) {
@@ -376,13 +378,15 @@ it.effect.skipIf(skipped !== null)(`Stage a development launcher and a signer-pi
       apkSha256: release.sha256,
       certificateSha256: k.signer.certificateSha256,
       defaultPermissions: ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
-      privilegedPermissions: [PRIVILEGED],
+      privilegedPermissions: [PRIVILEGED, SELF_UPDATE],
       companions: [{ moduleName: "ExampleUpdater", packageName: COMPANION, apkSha256: updater.sha256 }],
     })
     const pinnedFile = try writeDescriptor(path.join(k.work, "pinned.json"), pinned)
     const refusedDescriptors = [
       { ...pinned, privilegedPermissions: ["android.permission.CAMERA"] },
+      { ...pinned, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] },
       { ...pinned, defaultPermissions: [PRIVILEGED] },
+      { ...pinned, defaultPermissions: [SELF_UPDATE] },
       { ...pinned, privilegedPermissions: [] },
       { ...pinned, moduleName: "bad name" },
       { ...pinned, partition: "vendor" },
@@ -409,7 +413,9 @@ it.effect.skipIf(skipped !== null)(`Stage a development launcher and a signer-pi
     assert.include(blueprint, `name: "ExampleHome",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    privileged: true,\n    product_specific: true,`)
     assert.include(blueprint, `name: "ExampleUpdater",\n    apk: "ExampleUpdater.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,`)
     assert.include(tree["privapp-permissions.xml"] ?? "", `<permission name="${PRIVILEGED}"/>`)
+    assert.include(tree["privapp-permissions.xml"] ?? "", `<permission name="${SELF_UPDATE}"/>`)
     assert.notInclude(tree["default-permissions.xml"] ?? "", PRIVILEGED)
+    assert.notInclude(tree["default-permissions.xml"] ?? "", SELF_UPDATE)
     assert.notInclude(tree["default-permissions.xml"] ?? "", COMPANION)
     assert.strictEqual(tree["sepolicy/eliza_agent_socket.te"], "allow priv_app_all privapp_data_file:sock_file { create unlink getattr setattr write rename };\n")
     assert.include(tree["product.mk"] ?? "", "PRODUCT_PACKAGES += ExampleHome ExampleHomeDefaultPermissions ExampleHomePrivappPermissions ExampleUpdater\n")
@@ -553,6 +559,7 @@ it.effect('The stager a consumer runs by path declares the modules, native rules
     const descriptors: readonly LauncherDescriptor[] = [
       pinned,
       { ...pinned, privilegedPermissions: [PRIVILEGED] },
+      { ...pinned, privilegedPermissions: [PRIVILEGED, SELF_UPDATE] },
       { ...pinned, partition: "system", defaultPermissions: ["android.permission.CAMERA"], companions: [{ moduleName: "ExampleUpdater", packageName: COMPANION, apkSha256: "e".repeat(64) }] },
     ]
     for (const descriptor of descriptors) {
@@ -579,7 +586,7 @@ it.effect(`The stager a consumer runs by path takes the descriptors, launchers a
     const s = try standIns("path-stager")
     const certificate = "b".repeat(64)
     const other = "c".repeat(64)
-    const declared = ["android.permission.CAMERA", PRIVILEGED]
+    const declared = ["android.permission.CAMERA", PRIVILEGED, SELF_UPDATE]
     const release = try s.apk("release", { packageName: LAUNCHER, signers: [certificate], permissions: declared })
     const debug = try s.apk("debug", { packageName: LAUNCHER, signers: [certificate], debuggable: true })
     const foreign = try s.apk("foreign", { packageName: LAUNCHER, signers: [other] })
@@ -592,16 +599,18 @@ it.effect(`The stager a consumer runs by path takes the descriptors, launchers a
     const updaterRenamed = try s.apk("updater-renamed", { packageName: "example.fixture.other", signers: [certificate], home: false })
 
     const plain: LauncherDescriptor = { schemaVersion: 1, ...IDENTITY, apkSha256: release.sha256, certificateSha256: certificate }
-    const reviewed: LauncherDescriptor = { ...plain, defaultPermissions: ["android.permission.CAMERA"], privilegedPermissions: [PRIVILEGED] }
+    const reviewed: LauncherDescriptor = { ...plain, defaultPermissions: ["android.permission.CAMERA"], privilegedPermissions: [PRIVILEGED, SELF_UPDATE] }
     const companion = { moduleName: "ExampleUpdater", packageName: COMPANION, apkSha256: updater.sha256 }
     const pinned: LauncherDescriptor = { ...reviewed, companions: [companion] }
-    const admitted: readonly unknown[] = [plain, reviewed, pinned, { ...plain, partition: "system" }]
+    const admitted: readonly unknown[] = [plain, reviewed, { ...plain, privilegedPermissions: [SELF_UPDATE] }, pinned, { ...plain, partition: "system" }]
     const refusedDescriptors: readonly unknown[] = [
       null, { ...plain, schemaVersion: 2 }, { ...plain, brand: '../evil"' }, { ...plain, moduleName: '../evil"' }, { ...plain, packageName: '../evil"' }, { ...plain, apkSha256: "A".repeat(64) }, { ...plain, certificateSha256: "short" },
       { ...plain, defaultPermissions: [] }, { ...plain, defaultPermissions: ["android.permission.CAMERA", "android.permission.CAMERA"] }, { ...plain, defaultPermissions: ['android.permission.X"/><permission name="android.permission.Y'] },
       { ...plain, defaultPermissions: ["com.example.permission.PRIVATE"] }, { ...plain, defaultPermissions: Array.from({ length: 33 }, (_, index) => `android.permission.P${index}`) },
-      { ...plain, privilegedPermissions: [] }, { ...plain, privilegedPermissions: PRIVILEGED }, { ...plain, privilegedPermissions: [PRIVILEGED, PRIVILEGED] }, { ...plain, privilegedPermissions: ["android.permission.WRITE_SECURE_SETTINGS"] },
-      { ...plain, privilegedPermissions: [null] }, { ...reviewed, defaultPermissions: ["android.permission.CAMERA", PRIVILEGED] }, { ...plain, partition: "vendor" },
+      { ...plain, privilegedPermissions: [] }, { ...plain, privilegedPermissions: PRIVILEGED }, { ...plain, privilegedPermissions: [PRIVILEGED, PRIVILEGED] }, { ...plain, privilegedPermissions: [SELF_UPDATE, SELF_UPDATE] },
+      { ...plain, privilegedPermissions: ["android.permission.WRITE_SECURE_SETTINGS"] }, { ...plain, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] },
+      { ...plain, privilegedPermissions: [PRIVILEGED, "android.permission.INSTALL_PACKAGES"] },
+      { ...plain, privilegedPermissions: [null] }, { ...reviewed, defaultPermissions: ["android.permission.CAMERA", PRIVILEGED] }, { ...reviewed, defaultPermissions: ["android.permission.CAMERA", SELF_UPDATE] }, { ...plain, partition: "vendor" },
       { ...plain, companions: [] }, { ...plain, companions: [{ ...companion, moduleName: IDENTITY.moduleName }] }, { ...plain, companions: [{ ...companion, moduleName: "Launcher" }] },
       { ...plain, companions: [{ ...companion, moduleName: "ExampleHomeDefaultPermissions" }] }, { ...plain, companions: [{ ...companion, packageName: LAUNCHER }] },
       { ...plain, companions: [companion, { ...companion, packageName: "example.fixture.other" }] }, { ...plain, companions: [{ ...companion, apkSha256: "C".repeat(64) }] },
@@ -614,6 +623,7 @@ it.effect(`The stager a consumer runs by path takes the descriptors, launchers a
         assert.deepStrictEqual([byPath, byRule], [verdict, verdict], JSON.stringify(candidate))
       }
     }
+    assert.deepStrictEqual(reviewedPrivilegedPermissions, [PRIVILEGED, SELF_UPDATE])
     assert.deepStrictEqual([...stager.REVIEWED_PRIVILEGED_PERMISSIONS], reviewedPrivilegedPermissions)
     const installed: readonly LauncherDescriptor[] = [plain, pinned, { ...pinned, partition: "system" }]
     for (const descriptor of installed) {
@@ -657,7 +667,9 @@ it.effect(`The stager a consumer runs by path takes the descriptors, launchers a
       ["signer", pinnedTo(foreign), { apk: foreign.apk }, /signer mismatch or multiple signers/, "SignerNotTheDescriptors"],
       ["two-signers", pinnedTo(twice), { apk: twice.apk }, /Exactly one valid launcher signer/, "SignerNotTheDescriptors"],
       ["undeclared", pinnedTo(debug, { defaultPermissions: ["android.permission.RECORD_AUDIO"] }), { apk: debug.apk, development: true }, /does not declare android\.permission\.RECORD_AUDIO/, "PermissionUndeclared"],
+      ["undeclared-self-update", pinnedTo(debug, { privilegedPermissions: [SELF_UPDATE] }), { apk: debug.apk, development: true }, /does not declare android\.permission\.INSTALL_SELF_UPDATES/, "PermissionUndeclared"],
       ["unreviewed", { ...plain, privilegedPermissions: ["android.permission.CAMERA"] }, { apk: release.apk }, /Invalid privileged permissions/, "DescriptorInvalid"],
+      ["install-packages", { ...plain, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] }, { apk: release.apk }, /Invalid privileged permissions/, "DescriptorInvalid"],
       ["no-companion", pinned, { apk: release.apk }, /exactly one APK for each descriptor companion/, "CompanionRefused"],
       ["unnamed-companion", pinned, { apk: release.apk, companions: { ...companions, Other: updater.apk } }, /exactly one APK for each descriptor companion/, "CompanionRefused"],
       ["companion-digest", pinned, { apk: release.apk, companions: { ExampleUpdater: release.apk } }, /ExampleUpdater APK hash mismatch/, "CompanionRefused"],
@@ -972,15 +984,28 @@ it.live('Check the exact booted image and report a change during readback (spec/
         "getprop ro.boot.verifiedbootstate": "orange", "getprop ro.boot.slot_suffix": "_b", "getenforce": "Permissive",
         [sum]: `${"c".repeat(64)}  ${apkPath}`,
       }, serial))
+      const privApkPath = "/product/priv-app/Eliza/Eliza.apk"
+      const privilegedExpected = { ...expected, apkPath: privApkPath, privilegedPermissions: [PRIVILEGED, SELF_UPDATE] }
+      const privilegedHealthy = try tryPromise(() => verificationBinary(work, "privileged-healthy", {
+        ...responses,
+        [`pm path --user 0 ${packageName}`]: `package:${privApkPath}`,
+        [`sha256sum ${privApkPath}`]: `${apkSha256}  ${privApkPath}`,
+        [`dumpsys package ${packageName}`]: `privateFlags=[ PRIVILEGED ]\n    install permissions:\n      ${PRIVILEGED}: granted=true\n      ${SELF_UPDATE}: granted=true\n  User 0:\n    runtime permissions:\n      android.permission.RECORD_AUDIO: granted=true, flags=[ GRANTED_BY_DEFAULT ]`,
+      }))
       const wrongTarget = try exit(verifyImage({ ...options, target: "pixel10a", adb: badBoot.binary }))
-      const [stable, raced, pixel, cameraOff] = try.all [
+      const unreviewedPrivilege = try exit(verifyImage({ ...options, expected: { ...privilegedExpected, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] }, adb: privilegedHealthy.binary }))
+      const [stable, privilegedVerified, raced, pixel, cameraOff] = try.all [
         verifyImage({ ...options, adb: healthy.binary }),
+        verifyImage({ ...options, expected: privilegedExpected, adb: privilegedHealthy.binary }),
         verifyImage({ ...options, adb: changed.binary }),
         verifyImage({ ...options, serial, target: "pixel10a", adb: badBoot.binary }),
         verifyImage({ ...options, adb: gestureOff.binary }),
       ]
       try Effect.try(() => assert.deepStrictEqual({
         staged: stable.passed,
+        privilegedStaged: privilegedVerified.passed,
+        privilegedPermissions: privilegedVerified.privilegedPermissions,
+        unreviewedPrivilege: unreviewedPrivilege._tag,
         checks: stable.checks.every(({ outcome }) => outcome === "pass"),
         capture: stable.captures.every(({ status }) => status === 0),
         measuredTwice: stable.captures.filter(({ args }) => args[0] === "sha256sum").length,
@@ -991,7 +1016,8 @@ it.live('Check the exact booted image and report a change during readback (spec/
         changed: raced.checks.filter(({ outcome }) => outcome !== "pass"),
         gestureTurnedOff: cameraOff.checks.filter(({ outcome }) => outcome !== "pass"),
       }, {
-        staged: true, checks: true, capture: true, measuredTwice: 2, actual: "fail", wrongTarget: "Failure",
+        staged: true, privilegedStaged: true, privilegedPermissions: [PRIVILEGED, SELF_UPDATE], unreviewedPrivilege: "Failure",
+        checks: true, capture: true, measuredTwice: 2, actual: "fail", wrongTarget: "Failure",
         boot: { state: "orange", slotSuffix: "_b" },
         weakened: [{ check: "LauncherBytes", outcome: "fail" }, { check: "SelinuxEnforcing", outcome: "fail" }, { check: "VerifiedBoot", outcome: "fail" }],
         changed: [{ check: "WebViewProvider", outcome: "unknown" }, { check: "SameBootThroughout", outcome: "fail" }],
