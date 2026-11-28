@@ -705,9 +705,10 @@ describe("Tiered consequence classifier and upgraded page-command.mjs primitives
 describe("Upstream general walkthrough engine (walkthrough-engine.mjs)", () => {
   it("redacts secrets/SSNs/Luhn cards without wiping order IDs, validates planner JSON, and detects dark patterns", () => {
     const redacted = redactSensitiveText(
-      "Order #123456 ZIP 02148 SSN 123-45-6789 Card 4111-1111-1111-1111 Bearer eyJhbGciOiJIUzI1NiJ9.secret https://a.test/?token=abc123&page=2",
+      "Order #123456 Ref CHS-20261003-831633 ZIP 02148 SSN 123-45-6789 Card 4111-1111-1111-1111 Bearer eyJhbGciOiJIUzI1NiJ9.secret https://a.test/?token=abc123&page=2",
     );
     expect(redacted).toContain("Order #123456");
+    expect(redacted).toContain("CHS-20261003-831633");
     expect(redacted).toContain("ZIP 02148");
     expect(redacted).toContain("[redacted-ssn]");
     expect(redacted).toContain("[redacted-card]");
@@ -1697,5 +1698,115 @@ describe("Upstream general walkthrough engine (walkthrough-engine.mjs)", () => {
     ).toBe(true);
     await ajaxNav;
     expect(new URL(p.url()).pathname).toBe("/receipt");
+
+    // 12. autoDismissBlockers does NOT auto-close a non-upsell modal intentionally opened by a planner click
+    let composeOpen = false;
+    let closeClicked = false;
+    const modalEngine = createWalkthroughEngine({
+      goal: { instruction: "Open Compose Message and read recipient" },
+      transport: {
+        snapshot: async () => ({
+          url: "https://portal.test/messages",
+          title: "Messages",
+          domRevision: composeOpen ? 2 : 1,
+          text: composeOpen ? "Compose Message — Recipient: Billy Smith" : "Inbox",
+          blockers: composeOpen
+            ? [{ kind: "modal", covers: "viewport", overlay: true, ref: "1", text: "Compose Message" }]
+            : [],
+          elements: composeOpen
+            ? [{ id: "1", tag: "button", label: "Close", targetSelector: "#close-compose", consequence: "observe" }]
+            : [{ id: "0", tag: "button", label: "Compose Message", targetSelector: "#open-compose", consequence: "navigate" }],
+        }),
+        execute: async (cmd) => {
+          if (cmd.expectedSelector === "#open-compose") composeOpen = true;
+          if (cmd.expectedSelector === "#close-compose") {
+            closeClicked = true;
+            composeOpen = false;
+          }
+          return { dispatched: true };
+        },
+      },
+      planner: {
+        plan: async (input) => {
+          const text = String((input.observation as { textExcerpt?: string }).textExcerpt ?? "");
+          if (text.includes("Billy Smith")) {
+            return { action: { kind: "complete", summary: "Found Billy Smith", quotes: ["Billy Smith"] } };
+          }
+          return { action: { kind: "click", ref: "e0", reason: "Open Compose Message" } };
+        },
+      },
+    });
+    const modalRes = await modalEngine.run();
+    expect(modalRes.status).toBe("completed");
+    expect(closeClicked).toBe(false);
+    expect(modalRes.quotesVerified).toBe(true);
+
+    // 13. 2-step sign-in (/login -> /login/password) permits NeedsPrivateSignIn on the second empty password step
+    let loginStage = 1;
+    let twoStepHandoffs = 0;
+    const twoStepEngine = createWalkthroughEngine({
+      goal: { instruction: "Sign in to portal" },
+      transport: {
+        snapshot: async () => {
+          if (loginStage === 1) {
+            return {
+              url: "https://auth.test/login",
+              title: "Sign In",
+              domRevision: 1,
+              text: "Enter username",
+              blockers: [],
+              elements: [{ id: "0", tag: "input", type: "text", label: "Username", hasInput: false, targetSelector: "#u" }],
+            };
+          }
+          if (loginStage === 2) {
+            return {
+              url: "https://auth.test/login/password",
+              title: "Enter Password",
+              domRevision: 2,
+              text: "Enter password",
+              blockers: [],
+              elements: [
+                { id: "0", tag: "input", type: "password", label: "Password", sensitive: "password", hasInput: false, targetSelector: "#p" },
+              ],
+            };
+          }
+          return {
+            url: "https://auth.test/home",
+            title: "Dashboard",
+            domRevision: 3,
+            text: "Welcome back!",
+            blockers: [],
+            elements: [],
+          };
+        },
+        execute: async () => ({ dispatched: true }),
+      },
+      planner: {
+        plan: async () => {
+          if (loginStage <= 2) {
+            return {
+              action: {
+                kind: "request_handoff",
+                handoffKind: "NeedsPrivateSignIn",
+                ref: "e0",
+                summary: `Step ${loginStage}`,
+                reason: "Sign in step",
+              },
+            };
+          }
+          return { action: { kind: "complete", summary: "Signed in", quotes: ["Welcome back!"] } };
+        },
+      },
+      ports: {
+        onHandoff: async () => {
+          twoStepHandoffs++;
+          loginStage++;
+          return { kind: "approved", humanCompleted: true };
+        },
+      },
+    });
+    const twoStepRes = await twoStepEngine.run();
+    expect(twoStepRes.status).toBe("completed");
+    expect(twoStepHandoffs).toBe(2);
   });
 });

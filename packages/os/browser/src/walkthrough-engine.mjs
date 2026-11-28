@@ -103,11 +103,15 @@ export function redactSensitiveText(input) {
   );
   // US SSN format NNN-NN-NNNN
   out = out.replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted-ssn]");
-  // Luhn-valid 13-19 digit payment card numbers (with optional spaces or hyphens)
-  out = out.replace(/\b(?:\d[ -]?){13,19}\b/g, (candidate) => {
-    const digits = candidate.replace(/\D/g, "");
-    return luhnValid(digits) ? "[redacted-card]" : candidate;
-  });
+  // Luhn-valid 13-19 digit payment card numbers (with optional spaces or hyphens),
+  // excluding alphanumeric/hyphen-prefixed reference/confirmation IDs (e.g. CHS-20261003-831633).
+  out = out.replace(
+    /(?<![A-Za-z0-9-])\b(?:\d[ -]?){13,19}\b(?![A-Za-z0-9-])/g,
+    (candidate) => {
+      const digits = candidate.replace(/\D/g, "");
+      return luhnValid(digits) ? "[redacted-card]" : candidate;
+    },
+  );
   return out;
 }
 
@@ -1658,9 +1662,11 @@ export function createWalkthroughEngine({
       phase = "observing";
       const { snapshot: afterSnap, sanitized: afterSan } = await observePage();
       const afterUrlPath = stripUrlQuery(afterSnap?.url ?? "");
-      resolvedHandoffKeys.add(
-        `${handoff.kind}:${afterUrlPath}:${afterSan.observation.contentHash}`,
-      );
+      if (afterUrlPath === beforeUrlPath) {
+        resolvedHandoffKeys.add(
+          `${handoff.kind}:${afterUrlPath}:${afterSan.observation.contentHash}`,
+        );
+      }
       history.push({
         stepIndex,
         action: `handoff:${handoff.kind}`,
@@ -1801,28 +1807,42 @@ export function createWalkthroughEngine({
       );
     }
 
-    // 3. Safe automatic blocker dismissal (cookie rejectRef or non-agreeing modal ref)
+    // 3. Safe automatic blocker dismissal for unsolicited blockers (cookie rejectRef,
+    //    upsell modals, or landing/navigation-triggered modals — never auto-closing a
+    //    non-upsell dialog intentionally opened by the planner's previous click).
     if (autoDismissBlockers) {
       const dismissPlan = dismissBlockerCommand(snapshot, { preferReject: true });
-      if (
-        dismissPlan &&
-        (dismissPlan.blocker.covers === "viewport" ||
-          dismissPlan.blocker.covers === "target" ||
-          dismissPlan.blocker.kind === "cookie-consent")
-      ) {
-        const attemptKey = `dismiss:${stripUrlQuery(currentUrl)}:${dismissPlan.element.targetSelector ?? dismissPlan.element.id}`;
-        const tries = actionAttempts.get(attemptKey) ?? 0;
-        if (tries < 1) {
-          actionAttempts.set(attemptKey, tries + 1);
-          return executeAndVerify({
-            beforeSnapshot: snapshot,
-            beforeSanitized: sanitized,
-            command: dismissPlan.command,
-            targetElement: dismissPlan.element,
-            actionKind: "dismiss_blocker",
-            consequenceClass: "observe",
-            gateVerdict: "auto_dismissed",
-          });
+      if (dismissPlan) {
+        const prevStep = history.at(-1);
+        const openedByPlannerClick =
+          prevStep?.action === "click" && prevStep?.urlChanged === false;
+        const isUpsellModal =
+          dismissPlan.blocker.kind === "modal" &&
+          sanitized.observation.darkPatterns.some(
+            (dp) => dp.kind === "upsell-modal",
+          );
+        const shouldAutoDismiss =
+          dismissPlan.blocker.kind === "cookie-consent" ||
+          ((dismissPlan.blocker.covers === "viewport" ||
+            dismissPlan.blocker.covers === "target") &&
+            (dismissPlan.blocker.kind !== "modal" ||
+              isUpsellModal ||
+              !openedByPlannerClick));
+        if (shouldAutoDismiss) {
+          const attemptKey = `dismiss:${stripUrlQuery(currentUrl)}:${dismissPlan.element.targetSelector ?? dismissPlan.element.id}`;
+          const tries = actionAttempts.get(attemptKey) ?? 0;
+          if (tries < 1) {
+            actionAttempts.set(attemptKey, tries + 1);
+            return executeAndVerify({
+              beforeSnapshot: snapshot,
+              beforeSanitized: sanitized,
+              command: dismissPlan.command,
+              targetElement: dismissPlan.element,
+              actionKind: "dismiss_blocker",
+              consequenceClass: "observe",
+              gateVerdict: "auto_dismissed",
+            });
+          }
         }
       }
     }
@@ -1984,11 +2004,22 @@ export function createWalkthroughEngine({
         action.handoffKind === "NeedsFileUpload" &&
         sanitized.observation.fileInputs.length > 0 &&
         sanitized.observation.fileInputs.every((fi) => fi.hasFiles === true);
+      const hasEmptyTargetOrSensitive =
+        ((action.handoffKind === "NeedsPrivateSignIn" ||
+          action.handoffKind === "NeedsMFA") &&
+          (targetElement?.hasInput === false ||
+            (targetElement === null &&
+              editableSensitive.some((el) => el.hasInput !== true)))) ||
+        (action.handoffKind === "NeedsFileUpload" &&
+          (targetElement?.fileInput?.hasFiles === false ||
+            (targetElement === null &&
+              sanitized.observation.fileInputs.some((fi) => fi.hasFiles !== true))));
       const alreadyCompletedOnState =
-        resolvedHandoffKeys.has(stateHandoffKey) ||
-        (targetHandoffKey !== null &&
-          resolvedHandoffKeys.has(targetHandoffKey) &&
-          targetAlreadySatisfied);
+        !hasEmptyTargetOrSensitive &&
+        (resolvedHandoffKeys.has(stateHandoffKey) ||
+          (targetHandoffKey !== null &&
+            resolvedHandoffKeys.has(targetHandoffKey) &&
+            targetAlreadySatisfied));
       if (
         allSensitiveFilled ||
         targetAlreadySatisfied ||
