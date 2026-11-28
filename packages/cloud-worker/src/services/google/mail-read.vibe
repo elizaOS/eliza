@@ -7,7 +7,7 @@ import { bearerToken, recheckAccess, signed } from "../../http/request-auth.vibe
 import { Deployment } from "@elizaos/cloud"
 import { seal, sha256Hex, tokenDigest, unseal } from "../../shared/sealing.vibe"
 import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
-import { holds, knownScopes, readGrantStatus, useGrant, useMailReadGrant, type GoogleCapability } from "./grant-access.vibe"
+import { holds, knownScopes, readGrantStatus, requireSameMailGrant, useGrant, useMailReadGrant, type GoogleCapability } from "./grant-access.vibe"
 import { decodeInboxWatch, inboxArrivalBodyLimit, inboxArrivalPath, inboxWatchBinding, inboxWatchInput, observeInboxWatch } from "./inbox-arrival.vibe"
 import * as GoogleRead from "../../google-read.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
@@ -257,7 +257,7 @@ effect function grantOf(context: RouteContext, surface: MailSurface) {
   const owner = ownerOf(context.caller)
   if (owner === undefined) throw refused("AuthenticationRequired")
   const grantId = context.query.get("grantId") ?? ""
-  const grant: Grant = try useMailReadGrant(owner, grantId === "" ? undefined : grantId, context.query.get("side"), surface)
+  const grant = try useMailReadGrant(owner, grantId === "" ? undefined : grantId, context.query.get("side"), surface)
   return { ...grant, accountId: owner.userId }
 }
 
@@ -305,12 +305,15 @@ effect function searchRoute(context: RouteContext) {
   return json({ ...page, accountId: grant.accountId, q: query, syncedAt: syncedAt(context), mailboxHistoryId, supportsSpamTrash: true })
 }
 
+// spec/cloud/services/google/mailRead.md, "A message read answers the message whole, with inert HTML whole or absent, or is refused as too large"
 effect function readRoute(context: RouteContext) {
   const messageId = try param(context, "messageId", providerId)
   const grant = try grantOf(context, "MessageSurface")
   const message = try readMessage(grant, messageId, "full")
   const historyId = message.historyId !== undefined && historyPattern.test(message.historyId) ? message.historyId : null
-  return json({ accountId: grant.accountId, historyId, ...try messageView(grant, message, grant.email) })
+  const view = try messageView(grant, message, grant.email)
+  try requireSameMailGrant(grant)
+  return json({ accountId: grant.accountId, historyId, ...view })
 }
 
 effect function capabilitiesRoute(context: RouteContext) {

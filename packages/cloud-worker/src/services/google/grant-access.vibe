@@ -30,6 +30,7 @@ export interface Owner {
 
 interface GoogleGrant {
   readonly connectionId: string
+  readonly linkedAt: number | null
   readonly accessToken: string
   readonly subject: string
   readonly email: string
@@ -200,6 +201,9 @@ effect function restoreLegacyConnection(tx: Tx, owner: Owner, connectionId: stri
 
 export effect function storeGrant(tx: Tx, landing: GrantLanding) {
   const sealed = try sealTokens(landing.tokens)
+  const held = (try tx.query("SELECT linked_at FROM google_connections WHERE key = $1 FOR UPDATE", [landing.connectionId]))[0]
+  const priorLink = toInt(held?.linked_at)
+  const linkedAt = Number.isNaN(priorLink) ? landing.now : Math.max(landing.now, priorLink + 1)
   try restoreLegacyConnection(tx, landing.owner, landing.connectionId)
   const event: Event = {
     type: "receiveGrant",
@@ -215,7 +219,7 @@ export effect function storeGrant(tx: Tx, landing: GrantLanding) {
     email: landing.email,
     granted_scopes: JSON.stringify([...new Set(landing.grantedScopes)]),
     tokens: sealed,
-    linked_at: landing.now
+    linked_at: linkedAt
   }))
 }
 
@@ -427,10 +431,12 @@ effect function claim(tx: Tx, owner: Owner, target: GrantTarget, holdsScope: Sco
   if (connectionId === undefined) throw refused("GoogleReauthRequired")
   try restoreLegacyConnection(tx, owner, connectionId)
   const loaded = try loadRow(tx, connectionRows, connectionId)
-  const row = (try tx.query("SELECT email, tokens, refreshing_until FROM google_connections WHERE key = $1", [connectionId]))[0]
+  const row = (try tx.query("SELECT email, tokens, refreshing_until, linked_at FROM google_connections WHERE key = $1", [connectionId]))[0]
   let state = atTime(loaded.state, time)
   if (expectedAccountId !== undefined && state.status === "Active" && state.subject !== expectedAccountId) throw refused("AccessDenied", "GoogleAccountChanged")
-  const grant = { connectionId, subject: state.subject, email: toText(row?.email) ?? "", scopes: state.scopes.map(scopeName) }
+  const linkTime = toInt(row?.linked_at)
+  const linkedAt = Number.isNaN(linkTime) ? null : linkTime
+  const grant = { connectionId, linkedAt, subject: state.subject, email: toText(row?.email) ?? "", scopes: state.scopes.map(scopeName) }
   const tokens = toText(row?.tokens) ?? ""
   if (state.refreshing) {
     if (Number(row?.refreshing_until ?? 0) > time) return { kind: "wait" } satisfies Claimed
@@ -498,6 +504,16 @@ export effect function useGrant(owner: Owner, grantId: string | undefined, capab
 // spec/cloud/services/google/mailRead.md, "A read needs a usable connection that holds the Gmail scope of its surface"
 export effect function useMailReadGrant(owner: Owner, grantId: string | undefined, side: string | null, surface: MailSurface) {
   return try useSelectedGrant(owner, { kind: "Organization", grantId, side }, (scopes) => surfaceHeld(surface, scopes))
+}
+
+// spec/cloud/services/google/mailRead.md, "A message read answers the message whole, with inert HTML whole or absent, or is refused as too large"
+export effect function requireSameMailGrant(grant: Pick<GoogleGrant, "connectionId" | "linkedAt">) {
+  const store = try Store
+  const held = try store.transaction((tx) => tx.query(
+    "SELECT key FROM google_connections WHERE key = $1 AND status = 'Active' AND linked_at IS NOT DISTINCT FROM $2::bigint",
+    [grant.connectionId, grant.linkedAt]
+  ))
+  if (held.length === 0) throw refused("StaleRevision")
 }
 
 // spec/cloud/services/google/mailRead.md, "Story: Hear about new mail while my phone is idle"

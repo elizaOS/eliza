@@ -378,8 +378,9 @@ barge-in is confirmed while that turn still awaits its reply, the person
 was not finished: the aborted turn's text is carried into the utterance in
 progress, so the next turn sends the carried text joined with what was
 said since, and names the aborted turn's `clientMessageId` in
-the message port's `supersedes` field. The carried text is sent even when the resumed speech turns out to be
-filler. Nothing of the aborted request is spoken. A reply that has started
+the message port's `supersedes` field. The carried text is sent even when
+the resumed speech turns out to be filler. Nothing of the aborted request
+is spoken. A reply that has started
 playing is cut and reported instead, and its speech becomes a turn of its
 own; a Stop or a failed capture carries nothing.
 

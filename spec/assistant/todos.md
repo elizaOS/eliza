@@ -77,16 +77,6 @@ the new text, the request is recorded and the item stays as it was. A
 rename gives the one matching item its new, nonblank text and keeps its
 status.
 
-### A displayed t-N reference changes only that item, even when text is shared
-
-The shell passes the parsed numeric ID together with the reference text
-derived from that same ID. A recorded reference keeps the same identity
-after a rename or deletion, so replay never applies a second change. A
-missing reference changes nothing. A text request passes zero for its ID.
-Earlier versions stored only the resolved item text, so an outstanding
-retry of such a request has no recorded reference to recover after its
-item was renamed or deleted.
-
 ```quint
 pure val todoIdValues = Set(0, 1, 2)
 pure def namesTodo(todo: Todo, content: str, todoId: int): bool = if (todoId == 0) todo.content == content else todo.todoId == todoId
@@ -116,6 +106,21 @@ pure def deleteTodo(s: Todos, key: str, content: str, todoId: int): Todos =
 pure def stepNoChangeKeepsItems(before: Todos, after: Todos): bool =
   ((after.lastOutcome == Missed or after.lastOutcome == AlreadySet) and after.mutations.length() > before.mutations.length()) implies after.todos == before.todos
 pure def sometimesStatusAlreadySet(s: Todos): bool = s.lastOutcome == AlreadySet
+```
+
+### A displayed t-N reference changes only that item, even when text is shared
+
+The shell passes the parsed numeric ID together with the reference text
+derived from that same ID. A recorded reference keeps the same identity
+after a rename or deletion, so replay never applies a second change. A
+missing reference changes nothing. A text request passes zero for its ID.
+Earlier versions stored only the resolved item text, so an outstanding
+retry of such a request has no recorded reference to recover after its
+item was renamed or deleted.
+
+```quint
+pure def lawAReferenceNamesTheExactItem(todo: Todo, content: str, todoId: int): bool =
+  todoId > 0 implies (namesTodo(todo, content, todoId) iff todo.todoId == todoId)
 ```
 
 ### A miss offers the items that share most of its words, and changes nothing

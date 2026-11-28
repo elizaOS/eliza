@@ -1,13 +1,13 @@
 # Managed Gmail reads
 
-The owner's mail, read through the grant of [the connection](./connection.md)
-(develop `agent-google-connector/{gmail.ts,inbox-provider.ts}`). Routes, by
-device key or session, `side` only `owner`, grant chosen by `connection`'s
-selection rule: `GET /api/v1/eliza/google/gmail/{triage,search,read}` and
-`GET …/gmail/inbox-v1/{capabilities,thread,attachment,drafts,draft}`. This
-library decides what a read may answer; the shell calls Google and renders
-the wire. [The reviewed operations](./mailOperations.md) reuse its revision
-check, mail cap and operation kinds.
+The owner's mail is read through the grant of [the connection](./connection.md).
+The content routes use a signed session or a device lease. They are
+`GET /api/v1/eliza/google/gmail/{triage,search,read}` and
+`GET …/gmail/inbox-v1/{capabilities,thread,attachment,drafts,draft}`. When
+supplied, `side` must be `owner`. The shell in
+`packages/cloud-worker/src/services/google/` selects the grant, calls Google
+and renders the wire. [The reviewed operations](./mailOperations.md) reuse
+its revision check, mail cap and operation kinds.
 
 ## Story: Read my mail through the grant I chose
 
@@ -153,11 +153,11 @@ pure def lawASearchPageNeverLoops(asked: Continuation, answered: Continuation, m
 ### A message read answers the message whole, with inert HTML whole or absent, or is refused as too large
 
 `read(messageId)` answers the triage row of the message, `bodyText` (the
-plain part, else the HTML part as text, else the snippet), `bodyHtml` and
-`bodyHtmlStatus` (`available`, `none`, `too_large`), its links, its
-attachment descriptors and `authenticationResults`: the Authentication-Results
-header Google's receiving server wrote, or null when the read cannot tell it
-from one a sender wrote. That header is the first one, it names
+plain part, else the HTML part as text, else the snippet), whether body text
+was available, `bodyHtml` and `bodyHtmlStatus` (`available`, `none`,
+`too_large`), attachment descriptors and `authenticationResults`. The latter
+is the header Google's receiving server wrote, or null when the read cannot
+tell it from one a sender wrote. That header is the first one, it names
 `mx.google.com`, and it sits below the topmost Received header that says
 where the message came from, which says `mx.google.com` took the message by
 SMTP, with no other Received header between them. Mail that Gmail fetched by
@@ -166,9 +166,11 @@ owner imported keeps the trace it came with. The cloud vouches for nothing
 in the header; it only says which one Google wrote.
 The HTML is served as text and never fetched or run by the cloud; over
 512 KiB, or past 200 MIME parts, it is left out with `too_large` while the
-text stays whole. Text over the 8 MiB mail cap is
-`413 content_too_large`, never cut. Google answering another message is
-`502`; a connection that changed during the read is `409 stale_revision`.
+text stays whole. Text over the 8 MiB mail cap is `413 content_too_large`,
+and Google answering another message is `502`. Before returning a whole
+message, the cloud checks that the selected grant is still active and was
+not replaced. A revoked or replaced grant gives `409 stale_revision`.
+Refreshing Google's tokens for that same grant leaves the read valid.
 
 ```quint
 type HtmlView = HtmlAvailable | HtmlAbsent | HtmlTooLarge
@@ -181,8 +183,8 @@ pure def htmlViewOf(htmlBytes: int, partsWithinLimit: bool): HtmlView =
   if (not(partsWithinLimit) or htmlBytes > htmlMaxBytes) HtmlTooLarge else if (htmlBytes <= 0) HtmlAbsent else HtmlAvailable
 pure def readOutcome(got: MessageFetch): ReadOutcome =
   if (not(got.sameMessage)) ReadRefused({ refusal: refuse(ProviderInvalidResponse) })
-  else if (not(got.grantUnchanged)) ReadRefused({ refusal: refuse(StaleRevision) })
   else if (got.textBytes > mailMaxBytes) ReadRefused({ refusal: refuse(ContentTooLarge) })
+  else if (not(got.grantUnchanged)) ReadRefused({ refusal: refuse(StaleRevision) })
   else MessageServed({ html: htmlViewOf(got.htmlBytes, got.partsWithinLimit) })
 pure val gotValues: Set[MessageFetch] = {
   val ok: MessageFetch = { sameMessage: true, grantUnchanged: true, textBytes: 10, htmlBytes: 0, partsWithinLimit: true }
