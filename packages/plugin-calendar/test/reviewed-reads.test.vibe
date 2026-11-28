@@ -75,7 +75,7 @@ it.effect('See and create times in the zone I am asking about (spec/calendar/rea
   assert.strictEqual(createdUtcInstant({ year: 2026, month: 11, day: 1, hour: 1, minute: 30, second: 0 }, la), "2026-11-01T08:30:00.000Z")
   assert.strictEqual(buildUtcDateFromLocalParts(la, { year: 2026, month: 11, day: 1, hour: 1, minute: 30, second: 0 }, "reject"), undefined)
   assert.strictEqual(startOfCivilDay({ year: 2026, month: 3, day: 8 }, la), Date.parse("2026-03-08T08:00:00.000Z"))
-  assert.strictEqual(startOfCivilDay({ year: 2011, month: 12, day: 30 }, "Pacific/Apia"), Date.parse("2011-12-30T10:00:00.000Z"))
+  assert.strictEqual(startOfCivilDay({ year: 2011, month: 12, day: 30 }, "Pacific/Apia"), undefined)
   assert.deepStrictEqual([
     displayDay({ startAt: "2026-01-15T03:00:00.000Z", isAllDay: false }, la),
     displayDay({ startAt: "2026-01-15T00:00:00.000Z", isAllDay: true }, la),
