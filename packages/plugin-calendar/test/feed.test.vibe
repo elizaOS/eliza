@@ -384,6 +384,16 @@ it.effect('Group copies by exact link or portable occurrence and show the ranked
     ["i-allday", [], []],
     ["i-plain", [], []],
   ])
+  const mixedOffsets = mergeFeedEvents([
+    component(google, [
+      copy({ id: "later", startAt: "2026-11-23T09:00:00-08:00", endAt: "2026-11-23T10:00:00-08:00" }),
+      copy({ id: "earlier-a", startAt: "2026-11-23T17:00:00+01:00", endAt: "2026-11-23T18:00:00+01:00" }),
+    ]),
+    component(ics, [
+      copy({ id: "earlier-b", startAt: "2026-11-23T16:00:00.000Z", endAt: "2026-11-23T17:00:00.000Z" }),
+    ]),
+  ], [])
+  assert.deepEqual(mixedOffsets.map(({ id }) => id), ["earlier-a", "earlier-b", "later"])
   const lunch = merged.find((event) => event.id === "g-lunch")
   assert.deepEqual([lunch?.grantId, lunch?.connectorAccountId, lunch?.calendarSummary], [grant, grant, "work"])
   assert.deepEqual(merged.map((event) => event.startAt), [...merged.map((event) => event.startAt)].sort())

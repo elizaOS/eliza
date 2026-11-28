@@ -199,7 +199,11 @@ export function mergeFeedEvents(components: readonly FeedComponent[], links: rea
         },
       },
     }
-  }).sort((left, right) => left.startAt.localeCompare(right.startAt) || left.id.localeCompare(right.id))
+  }).sort((left, right) => {
+    const leftStart = Date.parse(left.startAt)
+    const rightStart = Date.parse(right.startAt)
+    return (Number.isFinite(leftStart) ? leftStart : Infinity) - (Number.isFinite(rightStart) ? rightStart : Infinity) || left.id.localeCompare(right.id)
+  })
 }
 
 const aggregateStates = {
