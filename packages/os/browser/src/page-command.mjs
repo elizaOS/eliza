@@ -2,12 +2,21 @@
 
 /**
  * Words on a control that commits a payment, sign-in, submission or other
- * irreversible step. A task policy can never click such a control; the person
- * presses it. Products that plan clicks should use this same vocabulary; this
- * module imports nothing, so they can import it without the native wire.
+ * irreversible external step. A task policy without a commit grant can never
+ * click such a control; routine navigation and staging steps (such as
+ * "Pay card", "Continue", "Next", "Review", "Add to Cart") are excluded so
+ * multi-step workflows are not falsely blocked. This module imports nothing.
  */
 export const COMMIT_CONTROL =
-  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
+  /\b(?:submit(?:\s+(?:payment|order|form|application|request|claim|message|transfer|bill|now))?|confirm(?:\s+(?:payment|order|appointment|booking|cancellation|transfer|purchase|and\s+pay|&\s*pay|and\s+submit|&\s*submit))?|pay\s+(?:now|today|in\s+full|total|balance|amount|\p{Sc}\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?|(?:usd|eur|gbp|cad|aud)\s*\d+(?:[.,]\d+)?)|(?:complete|finalize|authori[sz]e|process|execute)\s+(?:payment|order|purchase|transfer|transaction|checkout|booking|appointment)|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|buy\s+now|purchase\s+now|book\s+(?:now|appointment|visit|booking)|reserve\s+now|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|create\s+(?:an?\s+)?account|register|send(?:\s+(?:message|reply|email|payment|money|transfer|now))?|post\s+(?:comment|reply|message|now)|publish|delete|remove\s+account|close\s+account|cancel\s+(?:service|subscription|membership|plan|order|appointment|booking|payment|account|policy)|authori[sz]e|agree\s+and\b|accept\s+(?:all|and\b|terms|offer|trial)|transfer(?:\s+funds)?|wire(?:\s+funds)?|donate|subscribe|enroll(?:\s+in\b)?|start\s+(?:free\s+)?trial|verify\s+(?:code|identity|account|payment|now))\b|^(?:buy|purchase|verify|check\s*out)$/iu;
+
+/** Ordered action consequence tiers from least to most consequential. */
+export const ACTION_CONSEQUENCE_ORDER = Object.freeze([
+  "observe",
+  "navigate",
+  "stage",
+  "commit",
+]);
 
 /**
  * Runs one fixed page command in the page. The browser extension and the
@@ -612,17 +621,227 @@ export function pageCommand(
       return false;
     }
   };
-  const showsMoney = () =>
+  // Only raw payment-credential fields (card/bank numbers) lock non-inert
+  // clicks on a document. Displaying currency amounts alone (balances, prices,
+  // copays) does not block routine navigation or staging controls.
+  const hasPaymentCredentialField = () =>
     scan.parts
       .flatMap(({ root }) => [
         ...root.querySelectorAll("input,textarea,select,[contenteditable]"),
       ])
       .some((field) =>
         ["payment-card", "bank-account"].includes(sensitivity(field)),
-      ) ||
-    /(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)\s?\d|\d\s?(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)/u.test(
-      readVisibleText(document.body ?? document.documentElement),
+      );
+  let cachedHasPaymentCredentialField = null;
+  const pageHasPaymentCredentialField = () => {
+    if (cachedHasPaymentCredentialField === null)
+      cachedHasPaymentCredentialField = hasPaymentCredentialField();
+    return cachedHasPaymentCredentialField;
+  };
+  const COMMIT_WORDS_INLINE =
+    /\b(?:submit(?:\s+(?:payment|order|form|application|request|claim|message|transfer|bill|now))?|confirm(?:\s+(?:payment|order|appointment|booking|cancellation|transfer|purchase|and\s+pay|&\s*pay|and\s+submit|&\s*submit))?|pay\s+(?:now|today|in\s+full|total|balance|amount|\p{Sc}\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?|(?:usd|eur|gbp|cad|aud)\s*\d+(?:[.,]\d+)?)|(?:complete|finalize|authori[sz]e|process|execute)\s+(?:payment|order|purchase|transfer|transaction|checkout|booking|appointment)|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|buy\s+now|purchase\s+now|book\s+(?:now|appointment|visit|booking)|reserve\s+now|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|create\s+(?:an?\s+)?account|register|send(?:\s+(?:message|reply|email|payment|money|transfer|now))?|post\s+(?:comment|reply|message|now)|publish|delete|remove\s+account|close\s+account|cancel\s+(?:service|subscription|membership|plan|order|appointment|booking|payment|account|policy)|authori[sz]e|agree\s+and\b|accept\s+(?:all|and\b|terms|offer|trial)|transfer(?:\s+funds)?|wire(?:\s+funds)?|donate|subscribe|enroll(?:\s+in\b)?|start\s+(?:free\s+)?trial|verify\s+(?:code|identity|account|payment|now))\b|^(?:buy|purchase|verify|check\s*out)$/iu;
+  const SAFE_DISMISS_INLINE =
+    /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|reject(?:\s+all)?|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close\b|\b(?:strictly\s+)?(?:necessary|essential|required)\s+(?:cookies\s+)?only\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
+  const DISMISS_AGREES_INLINE =
+    /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|subscribe|sign|log|buy|pay|confirm|enroll|upgrade)\b/i;
+  const DECLINE_ESCAPE_INLINE =
+    /\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
+  const SAFE_FORM_STEP_INLINE =
+    /^(?:search|find|go|filter|sort|apply|next|continue|back|previous|review(?:\s+[\w& -]+)?|preview|calculate|estimate|add\s+to\s+(?:cart|bag)|update(?:\s+(?:cart|quantity))?|proceed\s+to\s+(?:checkout|payment|review)|pay\s+(?:card|bill|this\s+bill)|make\s+a\s+payment|continue\s+to\s+[\w -]+|save\s+draft)$/i;
+  const STAGE_WORDS_INLINE =
+    /\b(?:add\s+to\s+(?:cart|bag)|one[- ]?time\s+purchase|standard\s+shipping|free\s+shipping|apply|filter|sort|search|select|update\s+(?:cart|quantity)|save\s+draft|statement\s+balance|minimum\s+(?:payment|due)|current\s+balance|other\s+amount)\b/i;
+  const TWO_LABEL_PUBLIC_SUFFIXES = new Set([
+    "co.uk",
+    "org.uk",
+    "gov.uk",
+    "ac.uk",
+    "com.au",
+    "net.au",
+    "org.au",
+    "gov.au",
+    "co.nz",
+    "co.jp",
+    "ne.jp",
+    "or.jp",
+    "com.br",
+    "com.mx",
+    "co.in",
+    "com.sg",
+    "com.hk",
+    "co.za",
+    "com.cn",
+    "co.kr",
+    "com.tw",
+  ]);
+  const isLoopbackHost = (host) =>
+    host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  const registrableSiteOf = (host) => {
+    const clean = (host || "").toLowerCase().replace(/\.$/, "");
+    if (!clean || /^[\d.]+$/.test(clean) || clean.includes(":")) return null;
+    const labels = clean.split(".").filter(Boolean);
+    if (labels.length < 2) return null;
+    const lastTwo = labels.slice(-2).join(".");
+    if (TWO_LABEL_PUBLIC_SUFFIXES.has(lastTwo))
+      return labels.length >= 3 ? labels.slice(-3).join(".") : null;
+    return lastTwo;
+  };
+  const sameRegistrableSite = (a, b) => {
+    const left = (a || "").toLowerCase().replace(/\.$/, "");
+    const right = (b || "").toLowerCase().replace(/\.$/, "");
+    if (left === right) return true;
+    const siteA = registrableSiteOf(left);
+    const siteB = registrableSiteOf(right);
+    return siteA !== null && siteA === siteB;
+  };
+  const isValidIsoDate = (value) =>
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !value.startsWith("0000-") &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  const classifyNode = (node, subaction = "click", commitPattern = null) => {
+    const reasons = [];
+    if (subaction === "scroll")
+      return { consequence: "observe", reasons: ["scroll"], requiresGrant: false };
+    const sens = sensitivity(node);
+    const tag = node.tagName.toLowerCase();
+    const type = (node.getAttribute("type") || "").toLowerCase();
+    const role = (node.getAttribute("role") || "").toLowerCase();
+    if (
+      (tag === "input" && type === "password") ||
+      ["password", "payment-card", "bank-account", "government-id"].includes(sens)
+    )
+      return {
+        consequence: "commit",
+        reasons: ["sensitive-control"],
+        requiresGrant: true,
+      };
+    if (subaction === "fill" || subaction === "select") {
+      if (sens === "one-time-code")
+        return {
+          consequence: "commit",
+          reasons: ["verification-code"],
+          requiresGrant: true,
+        };
+      if (tag === "input" && type === "file")
+        return {
+          consequence: "commit",
+          reasons: ["file-upload"],
+          requiresGrant: true,
+        };
+      return {
+        consequence: "stage",
+        reasons: [subaction],
+        requiresGrant: false,
+      };
+    }
+    if (subaction === "follow")
+      return {
+        consequence: "navigate",
+        reasons: ["follow-link"],
+        requiresGrant: false,
+      };
+    const labelText = [
+      accessibleName(node),
+      node.getAttribute("aria-label"),
+      node.textContent,
+      node.title,
+      is(node, "HTMLInputElement") ? node.value : "",
+      ...[...(node.labels ?? [])].map((item) => item.textContent),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const primaryLabel = (
+      accessibleName(node) ||
+      node.getAttribute("aria-label") ||
+      (is(node, "HTMLInputElement") ? node.value : "") ||
+      node.title ||
+      ""
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+    const inDialog =
+      node.closest(
+        "dialog,[role=dialog],[role=alertdialog],[aria-modal=true]",
+      ) !== null;
+    const isSafeDismiss =
+      SAFE_DISMISS_INLINE.test(primaryLabel) &&
+      (DECLINE_ESCAPE_INLINE.test(primaryLabel) ||
+        !DISMISS_AGREES_INLINE.test(primaryLabel));
+    const form = node.form ?? node.closest("form");
+    const formControls = form ? [...form.elements] : [];
+    const formHasSensitive = formControls.some((control) =>
+      ["password", "payment-card", "bank-account"].includes(
+        sensitivity(control),
+      ),
     );
+    const isSubmits =
+      node.matches(
+        "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image]",
+      ) && (form !== null || tag === "input");
+    const hostCommit = !!commitPattern?.test(labelText);
+    const wordCommit =
+      !isSafeDismiss &&
+      !(inDialog && /^cancel$/i.test(primaryLabel)) &&
+      COMMIT_WORDS_INLINE.test(labelText);
+    const submitCommit =
+      isSubmits &&
+      (formHasSensitive ||
+        wordCommit ||
+        hostCommit ||
+        !SAFE_FORM_STEP_INLINE.test(primaryLabel));
+    const paymentPageLock = pageHasPaymentCredentialField() && !inert(node);
+    if (wordCommit) reasons.push("commit-label");
+    if (hostCommit) reasons.push("host-commit-pattern");
+    if (submitCommit) reasons.push("form-submit");
+    if (paymentPageLock) reasons.push("payment-credential-page");
+    if (reasons.length > 0)
+      return { consequence: "commit", reasons, requiresGrant: true };
+    if (
+      tag === "summary" ||
+      discloses(node) ||
+      isSafeDismiss ||
+      (inDialog && /^cancel$/i.test(primaryLabel))
+    )
+      return {
+        consequence: "observe",
+        reasons: ["disclosure-or-dismiss"],
+        requiresGrant: false,
+      };
+    if (
+      tag === "select" ||
+      tag === "textarea" ||
+      node.isContentEditable ||
+      (tag === "input" &&
+        !["button", "submit", "reset", "image"].includes(type)) ||
+      [
+        "checkbox",
+        "radio",
+        "switch",
+        "option",
+        "combobox",
+        "listbox",
+        "radiogroup",
+        "spinbutton",
+        "slider",
+        "textbox",
+        "searchbox",
+      ].includes(role) ||
+      STAGE_WORDS_INLINE.test(primaryLabel)
+    )
+      return {
+        consequence: "stage",
+        reasons: ["reversible-stage"],
+        requiresGrant: false,
+      };
+    return {
+      consequence: "navigate",
+      reasons: ["navigation-or-routine"],
+      requiresGrant: false,
+    };
+  };
   const CODE_BOX_TYPES = ["text", "tel", "number"];
   const CODE_WORDS = /\b(?:code|passcode|otp|one[\s-]*time|verification)\b/i;
   const NOT_A_CODE =
@@ -648,9 +867,40 @@ export function pageCommand(
               ) && control.form === null,
           );
   // The last visible line of text before a control, looked for among its
-  // earlier siblings and then its ancestors' earlier siblings. It names a
-  // control that has no label ("Search" beside an empty input) and tells
-  // repeated labels apart (the row text before each "Pay").
+  // earlier siblings, preceding table cell in the same row, and then its
+  // ancestors' earlier siblings. For checkboxes and radios, also falls back to
+  // immediately following sibling text when no preceding text exists.
+  const precedingCellText = (node) => {
+    const cell = node.closest("td,th,[role=cell],[role=gridcell]");
+    const row = cell?.closest("tr,[role=row]");
+    if (!cell || !row) return null;
+    for (
+      let prev = cell.previousElementSibling;
+      prev;
+      prev = prev.previousElementSibling
+    ) {
+      const text = readVisibleText(prev).replace(/\s+/g, " ").trim();
+      if (text) return text;
+    }
+    return null;
+  };
+  const followingSiblingText = (node) => {
+    for (let next = node.nextSibling; next; next = next.nextSibling) {
+      if (
+        is(next, "Element") &&
+        next.matches("input,button,select,textarea,[role=button]")
+      )
+        break;
+      const text =
+        next.nodeType === Node.TEXT_NODE
+          ? next.textContent.replace(/\s+/g, " ").trim()
+          : is(next, "Element")
+            ? readVisibleText(next).replace(/\s+/g, " ").trim()
+            : "";
+      if (text) return text;
+    }
+    return null;
+  };
   const nearbyText = (node) => {
     for (
       let item = node, depth = 0;
@@ -670,7 +920,46 @@ export function pageCommand(
               : "";
         if (text) return text.split("\n").filter(Boolean).at(-1).trim();
       }
+    const cellLabel = precedingCellText(node);
+    if (cellLabel) return cellLabel;
+    if (
+      (is(node, "HTMLInputElement") &&
+        ["checkbox", "radio"].includes(node.type)) ||
+      ["checkbox", "radio", "switch"].includes(
+        (node.getAttribute("role") || "").toLowerCase(),
+      )
+    )
+      return followingSiblingText(node);
     return null;
+  };
+  const inferredFieldLabel = (node) => {
+    if (accessibleName(node)) return null;
+    if (
+      !(
+        is(node, "HTMLInputElement") ||
+        is(node, "HTMLTextAreaElement") ||
+        is(node, "HTMLSelectElement") ||
+        node.isContentEditable ||
+        ["textbox", "searchbox", "combobox", "checkbox", "radio", "switch"].includes(
+          (node.getAttribute("role") || "").toLowerCase(),
+        )
+      )
+    )
+      return null;
+    const cell = precedingCellText(node);
+    if (cell) return cell.replace(/:$/, "").trim();
+    if (
+      (is(node, "HTMLInputElement") &&
+        ["checkbox", "radio"].includes(node.type)) ||
+      ["checkbox", "radio", "switch"].includes(
+        (node.getAttribute("role") || "").toLowerCase(),
+      )
+    ) {
+      const after = followingSiblingText(node);
+      if (after) return after;
+    }
+    const near = nearbyText(node);
+    return near ? near.replace(/:$/, "").trim() : null;
   };
   const paysHere = (controls) =>
     controls.some((control) =>
@@ -687,9 +976,14 @@ export function pageCommand(
     }
     const controlState = (node) => {
       const flag = (name) => node.getAttribute(name) === "true";
+      const current = node.getAttribute("aria-current");
       return {
         focused: document.activeElement === node || active === node,
         disabled: node.matches(":disabled") || flag("aria-disabled"),
+        ...(node.readOnly === true || flag("aria-readonly")
+          ? { readOnly: true }
+          : {}),
+        ...(node.isContentEditable ? { contentEditable: true } : {}),
         ...(is(node, "HTMLInputElement") &&
         ["checkbox", "radio"].includes(node.type)
           ? { checked: node.checked }
@@ -699,6 +993,13 @@ export function pageCommand(
         ...(node.hasAttribute("aria-expanded")
           ? { expanded: flag("aria-expanded") }
           : {}),
+        ...(node.hasAttribute("aria-selected")
+          ? { selected: flag("aria-selected") }
+          : {}),
+        ...(node.hasAttribute("aria-pressed")
+          ? { pressed: flag("aria-pressed") }
+          : {}),
+        ...(current && current !== "false" ? { current } : {}),
         required: node.required === true || flag("aria-required"),
         invalid: flag("aria-invalid"),
         // Field help and error text the page ties to this control.
@@ -712,6 +1013,16 @@ export function pageCommand(
             .filter(Boolean)
             .join(" ") || null,
         sensitive: sensitivity(node),
+        ...(is(node, "HTMLInputElement") && node.type === "file"
+          ? {
+              fileInput: {
+                accept: node.getAttribute("accept") || null,
+                multiple: node.multiple === true,
+                hasFiles: (node.files?.length ?? 0) > 0,
+                fileCount: node.files?.length ?? 0,
+              },
+            }
+          : {}),
         ...((is(node, "HTMLInputElement") ||
           is(node, "HTMLSelectElement") ||
           is(node, "HTMLTextAreaElement") ||
@@ -750,6 +1061,73 @@ export function pageCommand(
               : {}),
       };
     };
+    const deepQuery = (root, selector) => {
+      const found = [];
+      const visit = (scope) => {
+        if (!scope || typeof scope.querySelectorAll !== "function") return;
+        for (const item of scope.querySelectorAll(selector)) found.push(item);
+        for (const el of scope.querySelectorAll("*"))
+          if (el.shadowRoot) visit(el.shadowRoot);
+      };
+      visit(root);
+      if (root?.shadowRoot) visit(root.shadowRoot);
+      return [...new Set(found)];
+    };
+    const ariaWidgetOptions = (node) => {
+      const role = (node.getAttribute("role") || "").toLowerCase();
+      if (!["combobox", "listbox", "radiogroup"].includes(role)) return [];
+      const scope = node.getRootNode();
+      const optionNodes = [];
+      const addFrom = (container, selector) => {
+        if (!container) return;
+        for (const item of deepQuery(container, selector))
+          if (!optionNodes.includes(item)) optionNodes.push(item);
+      };
+      if (role === "radiogroup") {
+        addFrom(node, "[role=radio],input[type=radio]");
+      } else {
+        for (const attr of ["aria-controls", "aria-owns"]) {
+          const ids = (node.getAttribute(attr) || "").split(/\s+/).filter(Boolean);
+          for (const id of ids) {
+            const target =
+              scope.getElementById?.(id) ?? document.getElementById(id);
+            if (target) addFrom(target, "[role=option]");
+          }
+        }
+        addFrom(node, "[role=option]");
+        if (is(node, "HTMLInputElement") && node.list) {
+          for (const opt of node.list.options) optionNodes.push(opt);
+        }
+      }
+      return optionNodes.map((opt) => {
+        const isRadioInput =
+          is(opt, "HTMLInputElement") && opt.type === "radio";
+        const isHtmlOption = is(opt, "HTMLOptionElement");
+        const label = isHtmlOption
+          ? (opt.label || opt.textContent || opt.value || "")
+              .replace(/\s+/g, " ")
+              .trim()
+          : (accessibleName(opt) || opt.textContent || "")
+              .replace(/\s+/g, " ")
+              .trim();
+        return {
+          node: opt,
+          label,
+          value:
+            opt.getAttribute?.("data-value") ??
+            (typeof opt.value === "string" ? opt.value : null),
+          disabled:
+            opt.disabled === true ||
+            opt.getAttribute?.("aria-disabled") === "true",
+          selected: isRadioInput
+            ? opt.checked
+            : isHtmlOption
+              ? opt.selected
+              : opt.getAttribute?.("aria-selected") === "true" ||
+                opt.getAttribute?.("aria-checked") === "true",
+        };
+      });
+    };
     // A page can copy what was typed in a secret field into its own text, its
     // title or a control's name. The values are compared here, in the page, and
     // every copy is replaced before anything is returned. Very short values are
@@ -778,7 +1156,7 @@ export function pageCommand(
     const elements = [];
     // Native controls and widget roles, as assistive technology lists them.
     const NATIVE =
-      "a,button,input,textarea,select,summary,[contenteditable=true],[role=button],[role=link],[role=textbox],[role=searchbox],[role=combobox],[role=checkbox],[role=radio],[role=switch],[role=tab],[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio],[role=option],[role=spinbutton],[role=slider]";
+      "a,button,input,textarea,select,summary,[contenteditable=true],[contenteditable=''],[role=button],[role=link],[role=textbox],[role=searchbox],[role=combobox],[role=listbox],[role=radiogroup],[role=checkbox],[role=radio],[role=switch],[role=tab],[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio],[role=option],[role=spinbutton],[role=slider]";
     // A page can also make a plain element pressable with an inline click
     // handler, a tab stop or a pointer cursor, often with no name at all.
     // The commit guard treats the same signals as a control. Only the
@@ -895,6 +1273,7 @@ export function pageCommand(
       // the page guard checks that it matches only this node at the moment
       // of a granted action.
       const path = [];
+      let anchoredById = false;
       for (
         let item = node;
         item && item !== scope.documentElement;
@@ -902,11 +1281,20 @@ export function pageCommand(
       ) {
         if (item !== node && item.id && unique(`#${CSS.escape(item.id)}`)) {
           path.unshift(`#${CSS.escape(item.id)}`);
+          anchoredById = true;
           break;
         }
         path.unshift(
           `${item.tagName.toLowerCase()}:nth-of-type(${typeIndex(item)})`,
         );
+      }
+      if (
+        scope.nodeType !== Node.DOCUMENT_NODE &&
+        !anchoredById &&
+        path.length > 0
+      ) {
+        const topTag = path[0].split(":")[0];
+        path[0] = `${path[0]}:not(* ${topTag})`;
       }
       const selector = path.join(" > ");
       try {
@@ -985,7 +1373,11 @@ export function pageCommand(
         href: is(node, "HTMLAnchorElement") ? node.href : null,
         scroll,
         scrollOnly,
-        value: typeof node.value === "string" ? node.value : null,
+        value: node.isContentEditable
+          ? (node.textContent ?? "")
+          : typeof node.value === "string"
+            ? node.value
+            : null,
         selection: is(node, "HTMLSelectElement") ? node.selectedIndex : null,
       });
       const state = controlState(node);
@@ -998,6 +1390,24 @@ export function pageCommand(
       const submits = submitControl(node) && node.form !== null;
       const hint = (value) => withoutSecrets(value?.trim() || null);
       const frame = frameOf(node);
+      const widgetOptions =
+        !is(node, "HTMLSelectElement") && sensitivity(node) === null
+          ? ariaWidgetOptions(node)
+          : [];
+      const selectedOptionLabel =
+        is(node, "HTMLSelectElement") &&
+        sensitivity(node) === null &&
+        node.selectedIndex >= 0
+          ? hint(
+              node.options[node.selectedIndex]?.label.replace(/\s+/g, " ") ??
+                "",
+            )
+          : widgetOptions.length > 0
+            ? hint(widgetOptions.find((opt) => opt.selected)?.label ?? "")
+            : null;
+      const consequence = scrollOnly
+        ? "observe"
+        : classifyNode(node, "click").consequence;
       elements.push({
         bounds: geometry,
         id,
@@ -1014,6 +1424,7 @@ export function pageCommand(
         ),
         ...(scroll ? { scroll, scrollOnly } : {}),
         type: node.getAttribute("type"),
+        consequence,
         ...state,
         description: withoutSecrets(state.description),
         // Option labels are page-authored choices, not internal option values.
@@ -1026,7 +1437,16 @@ export function pageCommand(
                 selected: option.selected,
               })),
             }
-          : {}),
+          : widgetOptions.length > 0
+            ? {
+                options: widgetOptions.map((option) => ({
+                  label: hint(option.label),
+                  disabled: option.disabled,
+                  selected: option.selected,
+                })),
+              }
+            : {}),
+        ...(selectedOptionLabel ? { selectedLabel: selectedOptionLabel } : {}),
         // Words that locate a control when its name is empty or repeated.
         // None of them is a field value.
         placeholder: hint(node.getAttribute("placeholder")),
@@ -1038,6 +1458,9 @@ export function pageCommand(
             .join(" "),
         ),
         nearbyText: hint(nearbyText(node)),
+        ...(inferredFieldLabel(node)
+          ? { inferredLabel: hint(inferredFieldLabel(node)) }
+          : {}),
         // The whole row or list item a control sits in, cell by cell, such
         // as "The Overstory | Due October 20" beside an unnamed Renew icon.
         rowText: hint(
@@ -1231,11 +1654,26 @@ export function pageCommand(
       const REJECT =
         /^(?:reject|decline|refuse|deny|disagree)(?: all| optional| non-essential| additional| unnecessary)?(?: cookies)?$|\b(?:strictly )?(?:necessary|essential|required) (?:cookies )?only\b|\bonly (?:allow |accept |use )?(?:strictly )?(?:necessary|essential|required)(?: cookies)?\b|\bcontinue without (?:accepting|agreeing)\b|\breject all\b/i;
       const CLOSE =
-        /^(?:close|dismiss|no,? thanks|not now|maybe later|skip|×|✕|✖|x)$|^close\b/i;
+        /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
       // A "Close and accept" or "Dismiss and continue" control agrees to
-      // something; it is never offered as the way out.
+      // something; it is never offered as the way out. Explicit "continue
+      // without enrolling/accepting" declines without agreeing.
       const AGREES =
-        /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|continue|subscribe|sign|log|buy|pay|confirm)\b/i;
+        /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|continue|subscribe|sign|log|buy|pay|confirm|enroll|upgrade)\b/i;
+      const hasVisiblePassword = (root = document) =>
+        queryAll("input[type=password]", root).some(
+          (node) => node !== root && visible(node),
+        );
+      const hasSignOutControl =
+        !hasVisiblePassword(document) &&
+        elements.some(
+          (element) =>
+            !element.scrollOnly &&
+            ["a", "button"].includes(element.tag) &&
+            /^(?:sign\s*out|log\s*out|logout)$/i.test(
+              (element.label ?? "").trim(),
+            ),
+        );
       // An invisible reCAPTCHA or hCaptcha is bound to a page's own button
       // and is not in the way until the site shows a challenge. Its frame's
       // address says size=invisible.
@@ -1337,6 +1775,14 @@ export function pageCommand(
           ) ?? parent;
         const layer = layerOf(root);
         const overlay = !!layer || layered(root);
+        if (
+          kind === "login-wall" &&
+          !overlay &&
+          !hasVisiblePassword(root) &&
+          (hasSignOutControl ||
+            parent.closest("footer,nav,[role=navigation]") !== null)
+        )
+          continue;
         const scoped = kind === "login-wall" && scopedInvitation(root, overlay, words.trim());
         if (!scoped) inline.add(kind);
         add(layer ?? root, { overlay, kind, text: words.trim(), scoped });
@@ -1408,15 +1854,18 @@ export function pageCommand(
         )
           covers = "target";
         const control = (pattern) => {
-          for (const [node, id] of idOf)
+          for (const [node, id] of idOf) {
+            const candidate = (labelOf.get(id) ?? "").trim();
             if (
               within(root, node) &&
               node !== root &&
-              pattern.test((labelOf.get(id) ?? "").trim()) &&
+              pattern.test(candidate) &&
               (pattern === REJECT ||
-                !AGREES.test((labelOf.get(id) ?? "").trim()))
+                DECLINE_ESCAPE_INLINE.test(candidate) ||
+                !AGREES.test(candidate))
             )
               return id;
+          }
           return undefined;
         };
         const ref =
@@ -1698,6 +2147,504 @@ export function pageCommand(
       }
       return { complete: true, ...(primaryHeading && { primaryHeading }), regions };
     };
+    const structuredRegions = () => {
+      const idOfNode = new Map([...nodes].map(([id, entry]) => [entry.node, id]));
+      const elById = new Map(elements.map((el) => [el.id, el]));
+      const clean = (value, maxLen = 240) => {
+        const text = withoutSecrets(
+          String(value ?? "")
+            .replace(/\s+/g, " ")
+            .trim(),
+        );
+        return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text;
+      };
+      const isShown = (node) => {
+        try {
+          return (
+            node.checkVisibility({
+              checkOpacity: true,
+              checkVisibilityCSS: true,
+            }) &&
+            node.getBoundingClientRect().width > 0 &&
+            node.getBoundingClientRect().height > 0
+          );
+        } catch {
+          return false;
+        }
+      };
+      const frameIndexOf = (node) => frameOf(node)?.index ?? null;
+      const inShadowOf = (node) => Boolean(node.getRootNode()?.host);
+      const headingSel = "h1,h2,h3,h4,h5,h6,[role=heading]";
+      const firstHeadingIn = (container) => {
+        const found = deepQuery(container, headingSel).find(isShown);
+        return found ? clean(readVisibleText(found), 160) || null : null;
+      };
+      const actionRefsIn = (container, limit = 16) => {
+        const refs = [];
+        for (const [node, id] of idOfNode) {
+          if (refs.length >= limit) break;
+          const el = elById.get(id);
+          if (!el || el.scrollOnly) continue;
+          if (within(container, node)) refs.push(id);
+        }
+        return refs;
+      };
+      const headings = [];
+      let pageHeading = null;
+      for (const { root } of scan.parts) {
+        for (const node of root.querySelectorAll(headingSel)) {
+          if (headings.length >= 64) break;
+          if (!isShown(node)) continue;
+          const text = clean(readVisibleText(node), 160);
+          if (!text) continue;
+          const level = /^h[1-6]$/i.test(node.localName)
+            ? Number(node.localName[1])
+            : Number(node.getAttribute("aria-level") ?? 2);
+          const entry = {
+            level: Number.isInteger(level) && level >= 1 && level <= 6 ? level : 2,
+            text,
+            ...(inShadowOf(node) ? { inShadowRoot: true } : {}),
+            ...(frameIndexOf(node) !== null
+              ? { frameIndex: frameIndexOf(node) }
+              : {}),
+          };
+          if (pageHeading === null && entry.level === 1) pageHeading = text;
+          headings.push(entry);
+        }
+      }
+      const landmarkSel =
+        "header,nav,main,aside,footer,dialog[open],[role=banner],[role=navigation],[role=main],[role=complementary],[role=contentinfo],[role=region],[role=dialog],[role=alertdialog],section[aria-label],section[aria-labelledby],form";
+      const landmarks = [];
+      for (const { root } of scan.parts) {
+        for (const node of root.querySelectorAll(landmarkSel)) {
+          if (landmarks.length >= 40) break;
+          if (!isShown(node)) continue;
+          const role =
+            node.getAttribute("role") ||
+            {
+              header: "banner",
+              nav: "navigation",
+              main: "main",
+              aside: "complementary",
+              footer: "contentinfo",
+              dialog: "dialog",
+              section: "region",
+              form: "form",
+            }[node.localName] ||
+            node.localName;
+          const label =
+            clean(
+              idText(node.getAttribute("aria-labelledby"), node) ||
+                node.getAttribute("aria-label") ||
+                "",
+              120,
+            ) || null;
+          const heading = firstHeadingIn(node);
+          const textPreview = clean(readVisibleText(node), 220);
+          if (!label && !heading && !textPreview) continue;
+          landmarks.push({
+            regionId: `landmark-${landmarks.length}`,
+            role,
+            label,
+            heading,
+            textPreview,
+            actionRefs: actionRefsIn(node, 12),
+            ...(inShadowOf(node) ? { inShadowRoot: true } : {}),
+            ...(frameIndexOf(node) !== null
+              ? { frameIndex: frameIndexOf(node) }
+              : {}),
+          });
+        }
+      }
+      const tables = [];
+      for (const { root } of scan.parts) {
+        for (const table of root.querySelectorAll(
+          "table,[role=table],[role=grid]",
+        )) {
+          if (tables.length >= 16) break;
+          if (!isShown(table)) continue;
+          const isHtmlTable = is(table, "HTMLTableElement");
+          const caption = isHtmlTable && table.caption
+            ? clean(readVisibleText(table.caption), 120) || null
+            : clean(
+                idText(table.getAttribute("aria-labelledby"), table) ||
+                  table.getAttribute("aria-label") ||
+                  "",
+                120,
+              ) || null;
+          const containerHeading =
+            table.closest("section,article,main,[role=region]")
+              ? firstHeadingIn(
+                  table.closest("section,article,main,[role=region]"),
+                )
+              : null;
+          let columns = [];
+          const rows = [];
+          let totalRows = 0;
+          if (isHtmlTable) {
+            const headRow =
+              table.tHead?.rows[0] ??
+              [...table.rows].find((r) =>
+                [...r.cells].every((c) => c.localName === "th"),
+              );
+            if (headRow)
+              columns = [...headRow.cells]
+                .filter(isShown)
+                .map((c) => clean(readVisibleText(c), 80));
+            const bodyRows = [...table.rows].filter((r) => r !== headRow);
+            totalRows = bodyRows.length;
+            for (const r of bodyRows) {
+              if (rows.length >= 40) break;
+              if (!isShown(r)) continue;
+              const cells = [...r.cells]
+                .filter(isShown)
+                .map((c) => clean(readVisibleText(c), 120));
+              const actionRefs = actionRefsIn(r, 8);
+              if (cells.some(Boolean) || actionRefs.length > 0)
+                rows.push({ cells, actionRefs });
+            }
+          } else {
+            const headerCells = [
+              ...table.querySelectorAll("[role=columnheader]"),
+            ].filter(isShown);
+            columns = headerCells.map((c) => clean(readVisibleText(c), 80));
+            const roleRows = [...table.querySelectorAll("[role=row]")].filter(
+              (r) =>
+                isShown(r) && r.querySelector("[role=cell],[role=gridcell]"),
+            );
+            totalRows = roleRows.length;
+            for (const r of roleRows) {
+              if (rows.length >= 40) break;
+              const cells = [
+                ...r.querySelectorAll("[role=cell],[role=gridcell]"),
+              ]
+                .filter(isShown)
+                .map((c) => clean(readVisibleText(c), 120));
+              const actionRefs = actionRefsIn(r, 8);
+              if (cells.some(Boolean) || actionRefs.length > 0)
+                rows.push({ cells, actionRefs });
+            }
+          }
+          if (columns.length > 0 || rows.length > 0) {
+            tables.push({
+              regionId: `table-${tables.length}`,
+              caption,
+              heading: containerHeading,
+              columns,
+              rows,
+              rowCount: totalRows,
+              ...(inShadowOf(table) ? { inShadowRoot: true } : {}),
+              ...(frameIndexOf(table) !== null
+                ? { frameIndex: frameIndexOf(table) }
+                : {}),
+            });
+          }
+        }
+      }
+      const SPONSORED_BADGE =
+        /^(?:sponsored|promoted|ad|advertisement|paid\s+partnership|featured\s+ad)$/i;
+      const OPTIN_TRAP =
+        /\b(?:auto[- ]?pay|automatic\s+pay(?:ment)?s?|paperless|subscribe|subscription|membership|free\s+trial|protection\s+plan|warranty|marketing|promotional|newsletter|special\s+offers?|text\s+alerts?|upgrade|add[- ]?on)\b/i;
+      const RECURRING_TRAP =
+        /\b(?:subscribe\s*(?:&|and)\s*save|auto[- ]?deliver|recurring|monthly\s+plan|subscription|auto[- ]?renew)\b/i;
+      const ONETIME_ALT =
+        /\b(?:one[- ]?time|single\s+purchase|standard\s+purchase|pay\s+once)\b/i;
+      const PAID_ADDON_TRAP =
+        /\b(?:express|priority|rush|overnight|same[- ]?day|expedited|convenience\s+fee|service\s+fee|card\s+fee|surcharge)\b/i;
+      const FREE_ALT =
+        /\b(?:standard|free|no\s+fee|bank\s+account|ach|checking|\$0(?:\.00)?)\b/i;
+      const UPSELL_MODAL =
+        /\b(?:auto[- ]?pay|automatic\s+pay|free\s+trial|upgrade|protection\s+plan|subscribe|membership|paperless|special\s+offer|add\s+protection|save\s+with\s+membership|try\s+(?:free\s+)?(?:membership|plus|pro))\b/i;
+      const CONFIRMSHAMING =
+        /\b(?:no,?\s*thanks.*(?:pay\s+full|don'?t\s+want\s+to\s+save|miss\s+out|lose\s+my)|i\s+prefer\s+to\s+pay\s+more)\b/i;
+      const darkPatterns = [];
+      const seenTraps = new Set();
+      const pushTrap = (trap) => {
+        const sig = `${trap.kind}:${trap.ref ?? ""}:${trap.text.slice(0, 60)}`;
+        if (seenTraps.has(sig) || darkPatterns.length >= 32) return;
+        seenTraps.add(sig);
+        darkPatterns.push(trap);
+      };
+      const cards = [];
+      const cardNodes = [];
+      const cardSel =
+        "article,[role=article],li,[role=listitem],section,fieldset,[role=group]";
+      for (const { root } of scan.parts) {
+        for (const node of root.querySelectorAll(cardSel)) {
+          if (cards.length >= 48) break;
+          if (!isShown(node)) continue;
+          if (node.closest("nav,[role=navigation],header,footer")) continue;
+          const heading = firstHeadingIn(node);
+          const actionRefs = actionRefsIn(node, 10);
+          const rawLines = readVisibleText(node)
+            .split("\n")
+            .map((line) => clean(line, 160))
+            .filter(Boolean);
+          if (rawLines.length === 0) continue;
+          if (!heading && actionRefs.length === 0 && rawLines.length < 2)
+            continue;
+          // Skip giant outer wrappers that contain multiple sub-cards already
+          const childCardCount = [
+            ...node.querySelectorAll("article,[role=article],li,[role=listitem]"),
+          ].filter((c) => c !== node && isShown(c)).length;
+          if (childCardCount >= 2) continue;
+          const badges = [];
+          for (const badgeNode of deepQuery(
+            node,
+            "span,small,mark,strong,em,p,div,[aria-label]",
+          )) {
+            if (badges.length >= 6) break;
+            if (!isShown(badgeNode)) continue;
+            const aria = (badgeNode.getAttribute("aria-label") || "").trim();
+            const ownText =
+              badgeNode.childElementCount === 0
+                ? (badgeNode.textContent || "").replace(/\s+/g, " ").trim()
+                : "";
+            const candidate = SPONSORED_BADGE.test(ownText)
+              ? ownText
+              : SPONSORED_BADGE.test(aria)
+                ? aria
+                : ownText.length > 0 &&
+                    ownText.length <= 24 &&
+                    /\b(?:sponsored|promoted|ad|pending|past\s+due|overdue|abnormal|out\s+of\s+stock|subscribe|autopay)\b/i.test(
+                      ownText,
+                    )
+                  ? ownText
+                  : "";
+            if (candidate && !badges.includes(candidate))
+              badges.push(clean(candidate, 40));
+          }
+          const cardTraps = [];
+          if (badges.some((b) => SPONSORED_BADGE.test(b))) {
+            cardTraps.push("sponsored-listing");
+            pushTrap({
+              kind: "sponsored-listing",
+              ...(actionRefs[0] ? { ref: actionRefs[0] } : {}),
+              label: heading ?? rawLines[0] ?? null,
+              text: clean(rawLines.slice(0, 3).join(" | "), 180),
+            });
+          }
+          cardNodes.push(node);
+          cards.push({
+            regionId: `card-${cards.length}`,
+            heading,
+            textLines: rawLines.slice(0, 8),
+            badges,
+            actionRefs,
+            ...(cardTraps.length > 0 ? { darkPatterns: cardTraps } : {}),
+            ...(inShadowOf(node) ? { inShadowRoot: true } : {}),
+            ...(frameIndexOf(node) !== null
+              ? { frameIndex: frameIndexOf(node) }
+              : {}),
+          });
+        }
+      }
+      // Inspect checkboxes, switches, and radio groups for pre-checked opt-ins & recurring/paid defaults.
+      const radioGroups = new Map();
+      for (const [node, id] of idOfNode) {
+        const el = elById.get(id);
+        if (!el || el.scrollOnly) continue;
+        const role = (el.role || "").toLowerCase();
+        const combined = [el.label, el.inferredLabel, el.nearbyText, el.group, el.rowText]
+          .filter(Boolean)
+          .join(" ");
+        if (CONFIRMSHAMING.test(el.label || "")) {
+          pushTrap({
+            kind: "confirmshaming",
+            ref: id,
+            targetSelector: el.targetSelector,
+            label: el.label,
+            text: clean(el.label, 160),
+          });
+        }
+        const isCheckbox =
+          (el.tag === "input" && el.type === "checkbox") ||
+          role === "checkbox" ||
+          role === "switch";
+        if (
+          isCheckbox &&
+          el.checked === true &&
+          !monitor.editedFields.has(node) &&
+          OPTIN_TRAP.test(combined)
+        ) {
+          pushTrap({
+            kind: "pre-checked-opt-in",
+            ref: id,
+            targetSelector: el.targetSelector,
+            label: el.label || el.inferredLabel || el.nearbyText,
+            text: clean(combined, 180),
+          });
+        }
+        const isRadio =
+          (el.tag === "input" && el.type === "radio") || role === "radio";
+        if (isRadio) {
+          const groupKey =
+            (is(node, "HTMLInputElement") && node.name
+              ? `name:${node.getRootNode() === document ? "doc" : "sub"}:${node.name}`
+              : null) ??
+            (node.closest("[role=radiogroup],fieldset,form")
+              ? `group:${elements.indexOf(el) >= 0 ? (el.group ?? "anon") : "anon"}`
+              : "default");
+          if (!radioGroups.has(groupKey)) radioGroups.set(groupKey, []);
+          radioGroups.get(groupKey).push({ node, id, el, combined });
+        }
+      }
+      for (const items of radioGroups.values()) {
+        const checked = items.find(
+          ({ node, el }) => el.checked === true && !monitor.editedFields.has(node),
+        );
+        if (!checked) continue;
+        if (
+          RECURRING_TRAP.test(checked.combined) &&
+          items.some((other) => other !== checked && ONETIME_ALT.test(other.combined))
+        ) {
+          pushTrap({
+            kind: "recurring-default",
+            ref: checked.id,
+            targetSelector: checked.el.targetSelector,
+            label: checked.el.label || checked.el.inferredLabel || checked.el.nearbyText,
+            text: clean(checked.combined, 180),
+          });
+        }
+        if (
+          PAID_ADDON_TRAP.test(checked.combined) &&
+          items.some((other) => other !== checked && FREE_ALT.test(other.combined))
+        ) {
+          pushTrap({
+            kind: "paid-default-addon",
+            ref: checked.id,
+            targetSelector: checked.el.targetSelector,
+            label: checked.el.label || checked.el.inferredLabel || checked.el.nearbyText,
+            text: clean(checked.combined, 180),
+          });
+        }
+      }
+      for (const blocker of blockers) {
+        if (
+          blocker.kind === "modal" &&
+          blocker.text &&
+          UPSELL_MODAL.test(blocker.text)
+        ) {
+          pushTrap({
+            kind: "upsell-modal",
+            ...(blocker.ref ? { dismissRef: blocker.ref } : {}),
+            text: clean(blocker.text, 180),
+          });
+        }
+      }
+      const structuredForms = [];
+      for (const { root } of scan.parts) {
+        for (const form of root.querySelectorAll("form,[role=form]")) {
+          if (structuredForms.length >= 20) break;
+          if (!isShown(form)) continue;
+          const controls = deepQuery(
+            form,
+            "input,select,textarea,button,[contenteditable=true],[role=combobox],[role=textbox],[role=button]",
+          );
+          const fieldRefs = [];
+          const submitRefs = [];
+          let hasPassword = false;
+          let hasPaymentCredential = false;
+          let hasOtp = false;
+          let hasFileInput = false;
+          for (const control of controls) {
+            const sens = sensitivity(control);
+            if (sens === "password") hasPassword = true;
+            if (sens === "payment-card" || sens === "bank-account")
+              hasPaymentCredential = true;
+            if (sens === "one-time-code") hasOtp = true;
+            if (is(control, "HTMLInputElement") && control.type === "file")
+              hasFileInput = true;
+            const id = idOfNode.get(control);
+            if (!id) continue;
+            if (submitControl(control)) submitRefs.push(id);
+            else if (
+              is(control, "HTMLInputElement") ||
+              is(control, "HTMLSelectElement") ||
+              is(control, "HTMLTextAreaElement") ||
+              control.isContentEditable ||
+              ["combobox", "textbox", "searchbox"].includes(
+                (control.getAttribute("role") || "").toLowerCase(),
+              )
+            )
+              fieldRefs.push(id);
+          }
+          structuredForms.push({
+            formIndex: structuredForms.length,
+            name: clean(groupName(form) || "", 120) || null,
+            hasPassword,
+            hasPaymentCredential,
+            hasOtp,
+            hasFileInput,
+            fieldRefs: fieldRefs.slice(0, 32),
+            submitRefs: submitRefs.slice(0, 8),
+          });
+        }
+      }
+      const fileInputs = [];
+      for (const { root } of scan.parts) {
+        for (const input of root.querySelectorAll("input[type=file]")) {
+          if (fileInputs.length >= 16) break;
+          const ref = idOfNode.get(input) ?? null;
+          let triggerRef = ref;
+          if (triggerRef === null) {
+            for (const label of input.labels ?? []) {
+              const id = idOfNode.get(label);
+              if (id) {
+                triggerRef = id;
+                break;
+              }
+            }
+          }
+          if (triggerRef === null) {
+            const container = input.parentElement;
+            if (container) {
+              for (const candidate of container.querySelectorAll(
+                "button,label,[role=button]",
+              )) {
+                const id = idOfNode.get(candidate);
+                if (id) {
+                  triggerRef = id;
+                  break;
+                }
+              }
+            }
+          }
+          const label =
+            clean(
+              accessibleName(input) ||
+                inferredFieldLabel(input) ||
+                [...(input.labels ?? [])]
+                  .map((l) => readVisibleText(l))
+                  .join(" ") ||
+                "",
+              120,
+            ) || "File upload";
+          fileInputs.push({
+            ref,
+            triggerRef,
+            targetSelector: uniqueSelector(input),
+            label,
+            accept: input.getAttribute("accept") || null,
+            multiple: input.multiple === true,
+            hasFiles: (input.files?.length ?? 0) > 0,
+            fileCount: input.files?.length ?? 0,
+            hiddenInput: ref === null,
+          });
+        }
+      }
+      return {
+        complete: true,
+        pageHeading,
+        landmarks,
+        headings,
+        tables,
+        cards,
+        forms: structuredForms,
+        fileInputs,
+        darkPatterns,
+      };
+    };
     const clickReadback = monitor.clickReadback;
     delete monitor.clickReadback;
     const codeReadback = monitor.codeReadback;
@@ -1734,7 +2681,10 @@ export function pageCommand(
               matches:
                 inputReadback.node.isConnected &&
                 !sensitivity(inputReadback.node) &&
-                (inputReadback.node.value === inputReadback.text || formatted),
+                ((inputReadback.node.isContentEditable
+                  ? (inputReadback.node.textContent ?? "") === inputReadback.text
+                  : inputReadback.node.value === inputReadback.text) ||
+                  formatted),
               ...(formatted ? { formatted: true } : {}),
             },
           }
@@ -1788,6 +2738,9 @@ export function pageCommand(
       viewport: viewport(),
       text: command.statementRegions === true ? "" : withoutSecrets(pageText),
       ...(command.statementRegions === true && { statementRegions: statementRegions() }),
+      ...(command.structuredRegions === true && {
+        structuredRegions: structuredRegions(),
+      }),
       blockers,
       ...(descend
         ? {
@@ -1842,7 +2795,12 @@ export function pageCommand(
   if (
     !node?.isConnected ||
     !partOf.has(node.getRootNode()) ||
-    recorded.value !== (typeof node.value === "string" ? node.value : null) ||
+    recorded.value !==
+      (node.isContentEditable
+        ? (node.textContent ?? "")
+        : typeof node.value === "string"
+          ? node.value
+          : null) ||
     recorded.selection !==
       (is(node, "HTMLSelectElement") ? node.selectedIndex : null) ||
     JSON.stringify(recorded.bounds) !== JSON.stringify(bounds(node)) ||
@@ -1964,6 +2922,7 @@ export function pageCommand(
       ? [node]
       : null;
   };
+  let clickedConsequence = "navigate";
   if (policy) {
     // The native host supplies reviewed target permissions; DOM text cannot
     // grant an action. Re-check the actual node immediately before the effect.
@@ -1989,14 +2948,6 @@ export function pageCommand(
       })
     )
       return denied();
-    const label = [
-      accessibleName(node),
-      node.getAttribute("aria-label"),
-      node.textContent,
-      node.title,
-      is(node, "HTMLInputElement") ? node.value : "",
-      ...[...(node.labels ?? [])].map((item) => item.textContent),
-    ].join(" ");
     // The host's own commit words, for the languages it serves (bounded and
     // checked by the binding). They only add to COMMIT_CONTROL.
     let commitPattern = null;
@@ -2006,30 +2957,27 @@ export function pageCommand(
       } catch {
         return denied();
       }
-    // A control that commits something stays with the person, whatever its
-    // element or role, unless she said yes to this exact commit. Keep this
-    // literal equal to COMMIT_CONTROL above; the function runs in the page,
-    // so it cannot read a module constant.
-    if (
-      command.subaction === "click" &&
-      !grant &&
-      (node.matches(
-        "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
-      ) ||
-        /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|sign\s*on|log\s*in|log\s*on|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
-          label,
-        ) ||
-        commitPattern?.test(label))
+    // Tiered action consequence classification: observe | navigate | stage | commit.
+    // True irreversible commitments and raw payment-credential pages always
+    // require a single-use commitGrant; routine wizard navigation and reversible
+    // staging steps on pages merely displaying currency amounts are permitted up
+    // to policy.maxConsequence (default "stage").
+    const tierRank = { observe: 0, navigate: 1, stage: 2, commit: 3 };
+    const maxTier = ["observe", "navigate", "stage"].includes(
+      policy.maxConsequence,
     )
-      return denied();
-    // Words cannot say what a control does in every language. On a page that
-    // shows money, a click with no grant may press only a control whose
-    // effect the browser itself defines: a link to another document, a
-    // checkbox or radio, an option, a disclosure or a tab. Facts decide, not
-    // words: a card or bank field in this document, or a currency sign or
-    // code next to a number in its text.
-    if (command.subaction === "click" && !grant && !inert(node) && showsMoney())
-      return denied();
+      ? policy.maxConsequence
+      : "stage";
+    if (command.subaction === "click") {
+      const classified = classifyNode(node, "click", commitPattern);
+      clickedConsequence = classified.consequence;
+      if (
+        !grant &&
+        (classified.consequence === "commit" ||
+          tierRank[classified.consequence] > tierRank[maxTier])
+      )
+        return denied();
+    }
     if (
       command.subaction === "fill" &&
       policy.protectedValueKind === "verification-code"
@@ -2037,10 +2985,26 @@ export function pageCommand(
       codeBoxes = codeTargets();
     if (
       command.subaction === "fill" &&
+      is(node, "HTMLInputElement") &&
+      node.type === "file"
+    )
+      return {
+        error: {
+          kind: "POLICY_BLOCKED",
+          reason: "file-upload-requires-host-picker",
+          message:
+            "File uploads must be chosen by the person through the host file picker.",
+          accept: node.getAttribute("accept") || null,
+          multiple: node.multiple === true,
+        },
+      };
+    if (
+      command.subaction === "fill" &&
       (!(
         is(node, "HTMLInputElement") ||
         is(node, "HTMLTextAreaElement") ||
-        is(node, "HTMLSelectElement")
+        is(node, "HTMLSelectElement") ||
+        node.isContentEditable
       ) ||
         (is(node, "HTMLInputElement") &&
           !["text", "email", "tel", "number", "search", "url", "date"].includes(
@@ -2049,36 +3013,270 @@ export function pageCommand(
         // A date field takes only a real calendar day, as YYYY-MM-DD.
         (is(node, "HTMLInputElement") &&
           node.type === "date" &&
-          (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
-            command.text.startsWith("0000-") ||
-            Number.isNaN(Date.parse(`${command.text}T00:00:00Z`)) ||
-            new Date(`${command.text}T00:00:00Z`).toISOString().slice(0, 10) !==
-              command.text)) ||
+          !isValidIsoDate(command.text)) ||
         (policy.protectedValueKind === "verification-code"
           ? codeBoxes === null
           : sensitivity(node) !== null))
     )
       return denied();
   }
-  const selectedOptions =
-    command.subaction === "select" && is(node, "HTMLSelectElement")
-      ? [...node.options].filter(
-          (option) => option.label.replace(/\s+/g, " ").trim() === command.text,
-        )
-      : [];
   if (
-    command.subaction === "select" &&
-    (!is(node, "HTMLSelectElement") ||
-      node.multiple ||
-      sensitivity(node) !== null ||
-      selectedOptions.length !== 1 ||
-      selectedOptions[0].disabled ||
-      selectedOptions[0].parentElement?.disabled === true)
+    command.subaction === "fill" &&
+    is(node, "HTMLInputElement") &&
+    node.type === "file"
   )
-    return denied();
+    return {
+      error: {
+        kind: "POLICY_BLOCKED",
+        reason: "file-upload-requires-host-picker",
+        message:
+          "File uploads must be chosen by the person through the host file picker.",
+        accept: node.getAttribute("accept") || null,
+        multiple: node.multiple === true,
+      },
+    };
+  const findDeep = (root, selector) => {
+    const out = [];
+    const seen = new Set();
+    const visit = (scope) => {
+      if (!scope || typeof scope.querySelectorAll !== "function") return;
+      for (const item of scope.querySelectorAll(selector)) {
+        if (!seen.has(item)) {
+          seen.add(item);
+          out.push(item);
+        }
+      }
+      for (const el of scope.querySelectorAll("*"))
+        if (el.shadowRoot) visit(el.shadowRoot);
+    };
+    visit(root);
+    if (root?.shadowRoot) visit(root.shadowRoot);
+    return out;
+  };
+  const matchUniqueOption = (items, wanted, getLabel, getValue, isDisabled) => {
+    const target = String(wanted ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const exact = items.filter((item) => getLabel(item) === target);
+    const matches =
+      exact.length > 0
+        ? exact
+        : (() => {
+            const lower = target.toLowerCase();
+            const ci = items.filter(
+              (item) => getLabel(item).toLowerCase() === lower,
+            );
+            if (ci.length > 0) return ci;
+            return items.filter((item) => {
+              const val = getValue(item);
+              return (
+                typeof val === "string" &&
+                val.trim().toLowerCase() === lower
+              );
+            });
+          })();
+    if (matches.length !== 1 || isDisabled(matches[0])) return null;
+    return matches[0];
+  };
+  const parseDateText = (raw, preferMdy = false) => {
+    const text = String(raw ?? "").trim();
+    if (isValidIsoDate(text)) {
+      const [y, m, d] = text.split("-").map(Number);
+      return { iso: text, year: y, month: m, day: d };
+    }
+    const slashed = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+    if (slashed) {
+      const first = slashed[1].padStart(2, "0");
+      const second = slashed[2].padStart(2, "0");
+      const year = slashed[3];
+      const candidates = preferMdy
+        ? [
+            { month: first, day: second },
+            { month: second, day: first },
+          ]
+        : [
+            { month: second, day: first },
+            { month: first, day: second },
+          ];
+      for (const { month, day } of candidates) {
+        const iso = `${year}-${month}-${day}`;
+        if (isValidIsoDate(iso))
+          return {
+            iso,
+            year: Number(year),
+            month: Number(month),
+            day: Number(day),
+          };
+      }
+    }
+    return null;
+  };
+  const findAriaOptionElements = (host) => {
+    const role = (host.getAttribute("role") || "").toLowerCase();
+    const scope = host.getRootNode();
+    const out = [];
+    const pushAll = (container, sel) => {
+      if (!container) return;
+      for (const el of findDeep(container, sel))
+        if (!out.includes(el)) out.push(el);
+    };
+    if (role === "radiogroup") {
+      pushAll(host, "[role=radio],input[type=radio]");
+      return out;
+    }
+    for (const attr of ["aria-controls", "aria-owns"]) {
+      const ids = (host.getAttribute(attr) || "").split(/\s+/).filter(Boolean);
+      for (const id of ids) {
+        const controlled =
+          scope.getElementById?.(id) ?? document.getElementById(id);
+        if (controlled) pushAll(controlled, "[role=option]");
+      }
+    }
+    pushAll(host, "[role=option]");
+    if (out.length === 0) {
+      for (const lb of findDeep(scope, "[role=listbox]")) {
+        if (lb.checkVisibility?.({ checkVisibilityCSS: true }))
+          pushAll(lb, "[role=option]");
+      }
+      if (out.length === 0 && scope !== document) {
+        for (const lb of findDeep(document, "[role=listbox]")) {
+          if (lb.checkVisibility?.({ checkVisibilityCSS: true }))
+            pushAll(lb, "[role=option]");
+        }
+      }
+    }
+    return out;
+  };
+  const nodeRole = (node.getAttribute("role") || "").toLowerCase();
+  const isDateWidget =
+    (is(node, "HTMLInputElement") && node.type === "date") ||
+    (is(node, "HTMLInputElement") &&
+      ["text", "search"].includes(node.type) &&
+      (node.hasAttribute("data-provide") ||
+        /\b(?:date|calendar|dd\/mm\/yyyy|mm\/dd\/yyyy|yyyy-mm-dd)\b/i.test(
+          `${wordsOf(node)} ${node.className || ""}`,
+        ))) ||
+    (node.shadowRoot &&
+      findDeep(node.shadowRoot, "input[type=date],[data-date]").length > 0);
+  let selectPlan = null;
+  if (command.subaction === "select") {
+    if (sensitivity(node) !== null) return denied();
+    if (is(node, "HTMLSelectElement")) {
+      const chosen =
+        !node.multiple
+          ? matchUniqueOption(
+              [...node.options],
+              command.text,
+              (opt) => opt.label.replace(/\s+/g, " ").trim(),
+              (opt) => opt.value,
+              (opt) => opt.disabled || opt.parentElement?.disabled === true,
+            )
+          : null;
+      if (!chosen) return denied();
+      selectPlan = { kind: "native-select", option: chosen, target: node };
+    } else if (
+      ["combobox", "listbox", "radiogroup"].includes(nodeRole) ||
+      (node.shadowRoot &&
+        findDeep(
+          node.shadowRoot,
+          "select,[role=combobox],[role=listbox],[role=radiogroup]",
+        ).length > 0)
+    ) {
+      const innerSelect = node.shadowRoot
+        ? findDeep(node.shadowRoot, "select")[0]
+        : null;
+      if (innerSelect && is(innerSelect, "HTMLSelectElement")) {
+        const chosen = !innerSelect.multiple
+          ? matchUniqueOption(
+              [...innerSelect.options],
+              command.text,
+              (opt) => opt.label.replace(/\s+/g, " ").trim(),
+              (opt) => opt.value,
+              (opt) => opt.disabled || opt.parentElement?.disabled === true,
+            )
+          : null;
+        if (!chosen) return denied();
+        selectPlan = {
+          kind: "native-select",
+          option: chosen,
+          target: innerSelect,
+        };
+      } else {
+        const widget = ["combobox", "listbox", "radiogroup"].includes(nodeRole)
+          ? node
+          : findDeep(
+              node.shadowRoot,
+              "[role=combobox],[role=listbox],[role=radiogroup]",
+            )[0];
+        const widgetRole = (widget?.getAttribute("role") || "").toLowerCase();
+        const existing = widget ? findAriaOptionElements(widget) : [];
+        const matched =
+          existing.length > 0
+            ? matchUniqueOption(
+                existing,
+                command.text,
+                (opt) =>
+                  (accessibleName(opt) || opt.textContent || "")
+                    .replace(/\s+/g, " ")
+                    .trim(),
+                (opt) =>
+                  opt.getAttribute("data-value") ??
+                  (typeof opt.value === "string" ? opt.value : null),
+                (opt) =>
+                  opt.disabled === true ||
+                  opt.getAttribute("aria-disabled") === "true",
+              )
+            : null;
+        if (matched) {
+          selectPlan = { kind: "aria-option", widget, option: matched };
+        } else if (
+          widget &&
+          widgetRole === "combobox" &&
+          existing.length === 0
+        ) {
+          selectPlan = { kind: "aria-combobox-open", widget };
+        } else {
+          return denied();
+        }
+      }
+    } else if (
+      nodeRole === "option" ||
+      nodeRole === "radio" ||
+      (is(node, "HTMLInputElement") && node.type === "radio")
+    ) {
+      const optLabel = (accessibleName(node) || node.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const optValue =
+        node.getAttribute("data-value") ??
+        (typeof node.value === "string" ? node.value : "");
+      const wanted = command.text.replace(/\s+/g, " ").trim();
+      if (
+        node.disabled ||
+        node.getAttribute("aria-disabled") === "true" ||
+        (wanted !== "" &&
+          optLabel.toLowerCase() !== wanted.toLowerCase() &&
+          optValue.toLowerCase() !== wanted.toLowerCase())
+      )
+        return denied();
+      selectPlan = { kind: "aria-option", widget: node, option: node };
+    } else if (isDateWidget) {
+      const preferMdy = (node.getAttribute("placeholder") || "")
+        .toLowerCase()
+        .includes("mm/dd/yyyy");
+      const parsedDate = parseDateText(command.text, preferMdy);
+      if (!parsedDate) return denied();
+      selectPlan = { kind: "date-widget", target: node, parsedDate };
+    } else {
+      return denied();
+    }
+  }
   if (
     ["fill", "select"].includes(command.subaction) &&
-    (node.disabled || node.readOnly)
+    (node.disabled ||
+      node.readOnly ||
+      node.getAttribute("aria-disabled") === "true" ||
+      node.getAttribute("aria-readonly") === "true")
   )
     return denied();
   // A control the provider disabled stays as the provider left it. A script
@@ -2100,16 +3298,33 @@ export function pageCommand(
       !is(node, "HTMLAnchorElement") ||
       !node.hasAttribute("href") ||
       node.hasAttribute("download") ||
-      (node.target && node.target !== "_self") ||
+      (node.target &&
+        node.target !== "_self" &&
+        policy.allowNewTabFollow !== true) ||
       node.matches('[aria-disabled="true"]') ||
       node.href !== recorded.href
     )
       return denied();
     try {
       destination = new URL(recorded.href);
+      const policyUrl = new URL(policy.origin);
+      const protocolOk =
+        destination.protocol === "https:" ||
+        (destination.protocol === "http:" &&
+          policyUrl.protocol === "http:" &&
+          isLoopbackHost(destination.hostname));
+      const allowedList = Array.isArray(policy.allowedOrigins)
+        ? policy.allowedOrigins.filter((entry) => typeof entry === "string")
+        : [];
+      const originOk =
+        destination.origin === policy.origin ||
+        allowedList.includes(destination.origin) ||
+        (policy.allowSameSiteSubdomains === true &&
+          destination.protocol === policyUrl.protocol &&
+          sameRegistrableSite(destination.hostname, policyUrl.hostname));
       if (
-        destination.protocol !== "https:" ||
-        destination.origin !== policy.origin ||
+        !protocolOk ||
+        !originOk ||
         destination.username ||
         destination.password
       )
@@ -2524,6 +3739,7 @@ export function pageCommand(
     // The last submit event, so the form data it sends is not taken for a
     // script form.submit(), which sends no submit event.
     let lastSubmit = null;
+    let allowedGetSubmit = null;
     watched.addEventListener(
       "submit",
       (event) => {
@@ -2565,6 +3781,22 @@ export function pageCommand(
           setTimeout(() => {
             if (event.defaultPrevented) consent.pending = false;
           }, 0);
+          return;
+        }
+        // A permitted non-commit wizard/search GET submitter on the same origin
+        // may advance without tripping an unauthorized-commit violation.
+        if (
+          command.subaction === "click" &&
+          !grant &&
+          clickedConsequence !== "commit" &&
+          sent &&
+          sent.method === "get" &&
+          sameOrigin(sent.action) &&
+          ["", "_self"].includes(sent.target) &&
+          form === node.form &&
+          (submitter === node || submitter === null)
+        ) {
+          allowedGetSubmit = { form, action: sent.action };
           return;
         }
         report("submit", event);
@@ -2615,7 +3847,27 @@ export function pageCommand(
           return;
         if (event.destination.sameDocument) {
           // Recorded, not stopped: the page's own state has already moved.
+          // Permitted SPA navigation/staging clicks may transition hash/history routes.
+          if (
+            command.subaction === "click" &&
+            !grant &&
+            clickedConsequence !== "commit" &&
+            policy.allowSameDocumentNavigation !== false
+          )
+            return;
           if (!byPerson(performance.now())) record("navigation");
+          return;
+        }
+        if (
+          allowedGetSubmit &&
+          event.formData == null &&
+          sameOrigin(event.destination.url) &&
+          samePath(event.destination.url, allowedGetSubmit.action) &&
+          (event.sourceElement === node ||
+            event.sourceElement === allowedGetSubmit.form ||
+            !("sourceElement" in event))
+        ) {
+          allowedGetSubmit = null;
           return;
         }
         // A form submission's source is its submitter, or the form itself
@@ -2775,7 +4027,14 @@ export function pageCommand(
       "HTMLTextAreaElement",
       "HTMLSelectElement",
     ].find((name) => is(node, name));
-    if (!type || node.disabled || node.readOnly)
+    const editable = node.isContentEditable === true;
+    if (
+      (!type && !editable) ||
+      node.disabled ||
+      node.readOnly ||
+      node.getAttribute("aria-disabled") === "true" ||
+      node.getAttribute("aria-readonly") === "true"
+    )
       return {
         error: {
           kind: "UNSUPPORTED",
@@ -2783,13 +4042,86 @@ export function pageCommand(
         },
       };
     const view = realmOf(node);
-    const write = (box, text) => {
-      Object.getOwnPropertyDescriptor(view[type].prototype, "value").set.call(
-        box,
-        text,
-      );
-      box.dispatchEvent(new view.Event("input", { bubbles: true }));
-      box.dispatchEvent(new view.Event("change", { bubbles: true }));
+    const dispatchFocus = (box) => {
+      try {
+        box.focus?.();
+      } catch {}
+      try {
+        box.dispatchEvent(new view.FocusEvent("focus", { bubbles: false }));
+        box.dispatchEvent(
+          new view.FocusEvent("focusin", { bubbles: true, composed: true }),
+        );
+      } catch {
+        box.dispatchEvent(new view.Event("focus", { bubbles: false }));
+      }
+    };
+    const dispatchBlur = (box) => {
+      try {
+        box.blur?.();
+      } catch {}
+      try {
+        box.dispatchEvent(new view.FocusEvent("blur", { bubbles: false }));
+        box.dispatchEvent(
+          new view.FocusEvent("focusout", { bubbles: true, composed: true }),
+        );
+      } catch {
+        box.dispatchEvent(new view.Event("blur", { bubbles: false }));
+      }
+    };
+    const write = (box, text, blurAfter = true) => {
+      dispatchFocus(box);
+      if (box.isContentEditable) {
+        try {
+          box.dispatchEvent(
+            new view.InputEvent("beforeinput", {
+              bubbles: true,
+              composed: true,
+              data: text,
+              inputType: "insertReplacementText",
+            }),
+          );
+        } catch {
+          box.dispatchEvent(
+            new view.Event("beforeinput", { bubbles: true, composed: true }),
+          );
+        }
+        box.textContent = text;
+        try {
+          box.dispatchEvent(
+            new view.InputEvent("input", {
+              bubbles: true,
+              composed: true,
+              data: text,
+              inputType: "insertText",
+            }),
+          );
+        } catch {
+          box.dispatchEvent(
+            new view.Event("input", { bubbles: true, composed: true }),
+          );
+        }
+        box.dispatchEvent(
+          new view.Event("change", { bubbles: true, composed: true }),
+        );
+      } else {
+        const boxType =
+          [
+            "HTMLInputElement",
+            "HTMLTextAreaElement",
+            "HTMLSelectElement",
+          ].find((name) => is(box, name)) ?? type;
+        Object.getOwnPropertyDescriptor(
+          view[boxType].prototype,
+          "value",
+        ).set.call(box, text);
+        box.dispatchEvent(
+          new view.Event("input", { bubbles: true, composed: true }),
+        );
+        box.dispatchEvent(
+          new view.Event("change", { bubbles: true, composed: true }),
+        );
+      }
+      if (blurAfter) dispatchBlur(box);
     };
     const targetRef = `${state.snapshotId}:0:${command.nodeId}`;
     if (codeBoxes) {
@@ -2800,7 +4132,7 @@ export function pageCommand(
           !(box.isConnected && codeBox(box) && !box.disabled && !box.readOnly)
         )
           break;
-        write(box, parts[index]);
+        write(box, parts[index], index === codeBoxes.length - 1);
       }
       const until = Date.now() + 900000;
       monitor.heldCodes = [
@@ -2815,7 +4147,7 @@ export function pageCommand(
         until,
       };
     } else {
-      write(node, command.text);
+      write(node, command.text, true);
       if (policy && !sensitivity(node))
         monitor.inputReadback = {
           node,
@@ -2826,12 +4158,192 @@ export function pageCommand(
     }
   } else if (command.subaction === "select") {
     const view = realmOf(node);
-    Object.getOwnPropertyDescriptor(
-      view.HTMLSelectElement.prototype,
-      "selectedIndex",
-    ).set.call(node, selectedOptions[0].index);
-    node.dispatchEvent(new view.Event("input", { bubbles: true }));
-    node.dispatchEvent(new view.Event("change", { bubbles: true }));
+    const setNativeSelect = (selectEl, optionEl) => {
+      try {
+        selectEl.focus?.();
+      } catch {}
+      Object.getOwnPropertyDescriptor(
+        view.HTMLSelectElement.prototype,
+        "selectedIndex",
+      ).set.call(selectEl, optionEl.index);
+      selectEl.dispatchEvent(
+        new view.Event("input", { bubbles: true, composed: true }),
+      );
+      selectEl.dispatchEvent(
+        new view.Event("change", { bubbles: true, composed: true }),
+      );
+      try {
+        selectEl.blur?.();
+      } catch {}
+    };
+    if (selectPlan?.kind === "native-select") {
+      setNativeSelect(selectPlan.target, selectPlan.option);
+    } else if (selectPlan?.kind === "aria-option") {
+      try {
+        selectPlan.option.focus?.();
+      } catch {}
+      selectPlan.option.click();
+    } else if (selectPlan?.kind === "aria-combobox-open") {
+      const widget = selectPlan.widget;
+      try {
+        widget.focus?.();
+      } catch {}
+      widget.click();
+      const opened = findAriaOptionElements(widget);
+      const chosen = matchUniqueOption(
+        opened,
+        command.text,
+        (opt) =>
+          (accessibleName(opt) || opt.textContent || "")
+            .replace(/\s+/g, " ")
+            .trim(),
+        (opt) =>
+          opt.getAttribute("data-value") ??
+          (typeof opt.value === "string" ? opt.value : null),
+        (opt) =>
+          opt.disabled === true ||
+          opt.getAttribute("aria-disabled") === "true",
+      );
+      if (chosen) {
+        try {
+          chosen.focus?.();
+        } catch {}
+        chosen.click();
+      } else if (is(widget, "HTMLInputElement") && widget.list) {
+        const listOpt = matchUniqueOption(
+          [...widget.list.options],
+          command.text,
+          (opt) =>
+            (opt.label || opt.textContent || opt.value || "")
+              .replace(/\s+/g, " ")
+              .trim(),
+          (opt) => opt.value,
+          (opt) => opt.disabled === true,
+        );
+        if (!listOpt) return denied();
+        Object.getOwnPropertyDescriptor(
+          view.HTMLInputElement.prototype,
+          "value",
+        ).set.call(widget, listOpt.value);
+        widget.dispatchEvent(
+          new view.Event("input", { bubbles: true, composed: true }),
+        );
+        widget.dispatchEvent(
+          new view.Event("change", { bubbles: true, composed: true }),
+        );
+        try {
+          widget.blur?.();
+        } catch {}
+      } else {
+        return denied();
+      }
+    } else if (selectPlan?.kind === "date-widget") {
+      const { target, parsedDate } = selectPlan;
+      const innerDate =
+        is(target, "HTMLInputElement") && target.type === "date"
+          ? target
+          : target.shadowRoot
+            ? findDeep(target.shadowRoot, "input[type=date]")[0] ?? null
+            : null;
+      if (innerDate) {
+        const innerView = realmOf(innerDate);
+        try {
+          innerDate.focus?.();
+        } catch {}
+        Object.getOwnPropertyDescriptor(
+          innerView.HTMLInputElement.prototype,
+          "value",
+        ).set.call(innerDate, parsedDate.iso);
+        innerDate.dispatchEvent(
+          new innerView.Event("input", { bubbles: true, composed: true }),
+        );
+        innerDate.dispatchEvent(
+          new innerView.Event("change", { bubbles: true, composed: true }),
+        );
+        try {
+          innerDate.blur?.();
+        } catch {}
+      } else {
+        try {
+          target.focus?.();
+        } catch {}
+        target.click();
+        const searchRoots = [
+          target,
+          ...(target.shadowRoot ? [target.shadowRoot] : []),
+          target.getRootNode(),
+          document,
+        ];
+        const findDateCell = () => {
+          for (const root of searchRoots) {
+            const exact = findDeep(
+              root,
+              `[data-date="${parsedDate.iso}"]`,
+            ).find(
+              (el) =>
+                el.checkVisibility?.({ checkVisibilityCSS: true }) !== false &&
+                !el.matches(":disabled,[aria-disabled=true],.disabled"),
+            );
+            if (exact) return exact;
+          }
+          for (const selector of [
+            ".datepicker-days td.day:not(.disabled):not(.old):not(.new),.flatpickr-day:not(.disabled)",
+            "[role=gridcell]:not([aria-disabled=true])",
+          ]) {
+            for (const root of searchRoots) {
+              const cells = findDeep(root, selector).filter(
+                (el) =>
+                  el.checkVisibility?.({ checkVisibilityCSS: true }) !==
+                    false &&
+                  (el.textContent || "").trim() === String(parsedDate.day),
+              );
+              if (cells.length === 1) return cells[0];
+            }
+          }
+          return null;
+        };
+        const cell = findDateCell();
+        if (cell) {
+          cell.click();
+        } else if (is(target, "HTMLInputElement")) {
+          const ph = (target.getAttribute("placeholder") || "").toLowerCase();
+          const formattedDate = ph.includes("dd/mm/yyyy")
+            ? `${String(parsedDate.day).padStart(2, "0")}/${String(parsedDate.month).padStart(2, "0")}/${parsedDate.year}`
+            : ph.includes("mm/dd/yyyy")
+              ? `${String(parsedDate.month).padStart(2, "0")}/${String(parsedDate.day).padStart(2, "0")}/${parsedDate.year}`
+              : parsedDate.iso;
+          Object.getOwnPropertyDescriptor(
+            view.HTMLInputElement.prototype,
+            "value",
+          ).set.call(target, formattedDate);
+          target.dispatchEvent(
+            new view.Event("input", { bubbles: true, composed: true }),
+          );
+          target.dispatchEvent(
+            new view.Event("change", { bubbles: true, composed: true }),
+          );
+          try {
+            target.blur?.();
+          } catch {}
+          if (target.value === "") {
+            Object.getOwnPropertyDescriptor(
+              view.HTMLInputElement.prototype,
+              "value",
+            ).set.call(target, formattedDate);
+            target.dispatchEvent(
+              new view.Event("input", { bubbles: true, composed: true }),
+            );
+            target.dispatchEvent(
+              new view.Event("change", { bubbles: true, composed: true }),
+            );
+          }
+        } else {
+          return denied();
+        }
+      }
+    } else {
+      return denied();
+    }
   } else if (command.subaction === "scroll") {
     node.scrollBy({
       top:
@@ -2879,4 +4391,235 @@ export function blockerSelectors(blockers, prefix) {
         : {}),
     }),
   );
+}
+
+const SAFE_DISMISS_PATTERN =
+  /^(?:close|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|skip|decline|reject(?:\s+all)?|keep\s+one[- ]?time(?:\s+purchase)?|×|✕|✖|x)$|^close\b|\b(?:strictly\s+)?(?:necessary|essential|required)\s+(?:cookies\s+)?only\b|\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
+const DISMISS_AGREES_PATTERN =
+  /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|subscribe|sign|log|buy|pay|confirm|enroll|upgrade)\b/i;
+const DECLINE_ESCAPE_PATTERN =
+  /\b(?:continue|proceed)\s+without\s+(?:accepting|agreeing|enrolling|upgrading|subscribing|autopay|membership|trial|protection)\b/i;
+const SAFE_FORM_STEP_PATTERN =
+  /^(?:search|find|go|filter|sort|apply|next|continue|back|previous|review(?:\s+[\w& -]+)?|preview|calculate|estimate|add\s+to\s+(?:cart|bag)|update(?:\s+(?:cart|quantity))?|proceed\s+to\s+(?:checkout|payment|review)|pay\s+(?:card|bill|this\s+bill)|make\s+a\s+payment|continue\s+to\s+[\w -]+|save\s+draft)$/i;
+const STAGE_CONTROL_PATTERN =
+  /\b(?:add\s+to\s+(?:cart|bag)|one[- ]?time\s+purchase|standard\s+shipping|free\s+shipping|apply|filter|sort|search|select|update\s+(?:cart|quantity)|save\s+draft|statement\s+balance|minimum\s+(?:payment|due)|current\s+balance|other\s+amount)\b/i;
+
+/**
+ * Pure, site-agnostic tiered consequence classifier matching the in-page guard
+ * inside `pageCommand`. Maps a target descriptor and page context to
+ * `"observe" | "navigate" | "stage" | "commit"`.
+ */
+export function classifyActionConsequence(target = {}, context = {}) {
+  const reasons = [];
+  const action = target?.action ?? "click";
+  if (action === "scroll" || target?.scrollOnly === true)
+    return { consequence: "observe", reasons: ["scroll"], requiresGrant: false };
+  const tag = String(target?.tag ?? "").toLowerCase();
+  const type = String(target?.type ?? "").toLowerCase();
+  const role = String(target?.role ?? "").toLowerCase();
+  const sensitive = target?.sensitive ?? null;
+  if (
+    (tag === "input" && type === "password") ||
+    ["password", "payment-card", "bank-account", "government-id"].includes(
+      sensitive,
+    )
+  )
+    return {
+      consequence: "commit",
+      reasons: ["sensitive-control"],
+      requiresGrant: true,
+    };
+  if (action === "fill" || action === "select") {
+    if (sensitive === "one-time-code")
+      return {
+        consequence: "commit",
+        reasons: ["verification-code"],
+        requiresGrant: true,
+      };
+    if (tag === "input" && type === "file")
+      return {
+        consequence: "commit",
+        reasons: ["file-upload"],
+        requiresGrant: true,
+      };
+    return { consequence: "stage", reasons: [action], requiresGrant: false };
+  }
+  if (action === "follow")
+    return {
+      consequence: "navigate",
+      reasons: ["follow-link"],
+      requiresGrant: false,
+    };
+  const label = String(target?.label ?? target?.inferredLabel ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const inDialog = target?.inDialog === true;
+  const isSafeDismiss =
+    SAFE_DISMISS_PATTERN.test(label) &&
+    (DECLINE_ESCAPE_PATTERN.test(label) || !DISMISS_AGREES_PATTERN.test(label));
+  let hostRegex = null;
+  if (context?.commitPattern instanceof RegExp) hostRegex = context.commitPattern;
+  else if (typeof context?.commitPattern === "string" && context.commitPattern)
+    try {
+      hostRegex = new RegExp(context.commitPattern, "iu");
+    } catch {
+      hostRegex = null;
+    }
+  const hostCommit = !!hostRegex?.test(label);
+  const wordCommit =
+    !isSafeDismiss &&
+    !(inDialog && /^cancel$/i.test(label)) &&
+    COMMIT_CONTROL.test(label);
+  const isSubmits =
+    target?.submits === true ||
+    (tag === "input" && ["submit", "image"].includes(type));
+  const submitCommit =
+    isSubmits &&
+    (target?.inFormWithPayment === true ||
+      target?.inFormWithPassword === true ||
+      wordCommit ||
+      hostCommit ||
+      !SAFE_FORM_STEP_PATTERN.test(label));
+  const isInert =
+    target?.inert === true ||
+    (target?.inert !== false &&
+      ((tag === "input" && ["checkbox", "radio"].includes(type)) ||
+        ["checkbox", "radio", "switch", "option", "tab"].includes(role) ||
+        tag === "summary" ||
+        (tag === "a" && target?.hasHref === true)));
+  const paymentPageLock =
+    context?.hasPaymentCredentialField === true && !isInert;
+  if (wordCommit) reasons.push("commit-label");
+  if (hostCommit) reasons.push("host-commit-pattern");
+  if (submitCommit) reasons.push("form-submit");
+  if (paymentPageLock) reasons.push("payment-credential-page");
+  if (reasons.length > 0)
+    return { consequence: "commit", reasons, requiresGrant: true };
+  if (
+    tag === "summary" ||
+    target?.discloses === true ||
+    isSafeDismiss ||
+    (inDialog && /^cancel$/i.test(label))
+  )
+    return {
+      consequence: "observe",
+      reasons: ["disclosure-or-dismiss"],
+      requiresGrant: false,
+    };
+  if (
+    tag === "select" ||
+    tag === "textarea" ||
+    target?.contentEditable === true ||
+    (tag === "input" &&
+      !["button", "submit", "reset", "image"].includes(type)) ||
+    [
+      "checkbox",
+      "radio",
+      "switch",
+      "option",
+      "combobox",
+      "listbox",
+      "radiogroup",
+      "spinbutton",
+      "slider",
+      "textbox",
+      "searchbox",
+    ].includes(role) ||
+    STAGE_CONTROL_PATTERN.test(label)
+  )
+    return {
+      consequence: "stage",
+      reasons: ["reversible-stage"],
+      requiresGrant: false,
+    };
+  return {
+    consequence: "navigate",
+    reasons: ["navigation-or-routine"],
+    requiresGrant: false,
+  };
+}
+
+/**
+ * Selects the highest-priority safely dismissible blocker from a snapshot
+ * (cookie-consent `rejectRef` or non-agreeing modal `ref`, never captcha or
+ * accepting consent) and builds a click command targeting it.
+ */
+export function dismissBlockerCommand(snapshot, options = {}) {
+  const frameId = options?.frameId ?? 0;
+  const preferReject = options?.preferReject !== false;
+  const blockers = Array.isArray(snapshot?.blockers) ? snapshot.blockers : [];
+  const elements = Array.isArray(snapshot?.elements) ? snapshot.elements : [];
+  const snapshotId =
+    typeof snapshot?.snapshotId === "string" ? snapshot.snapshotId : undefined;
+  const rank = { viewport: 0, target: 1, partial: 2 };
+  const ordered = blockers
+    .map((blocker, blockerIndex) => ({ blocker, blockerIndex }))
+    .sort(
+      (left, right) =>
+        (rank[left.blocker?.covers] ?? 3) - (rank[right.blocker?.covers] ?? 3),
+    );
+  const findElement = (ref) => {
+    if (typeof ref !== "string" || !ref) return null;
+    return (
+      elements.find(
+        (element) =>
+          element.id === ref ||
+          element.selector === ref ||
+          (snapshotId && `${snapshotId}:${frameId}:${element.id}` === ref),
+      ) ?? null
+    );
+  };
+  for (const { blocker, blockerIndex } of ordered) {
+    if (!blocker || blocker.kind === "captcha" || blocker.kind === "paywall")
+      continue;
+    const candidateRef =
+      blocker.kind === "cookie-consent"
+        ? preferReject
+          ? blocker.rejectRef
+          : undefined
+        : blocker.ref;
+    if (!candidateRef) continue;
+    const element = findElement(candidateRef);
+    if (!element || element.disabled) continue;
+    const label = String(element.label ?? "").trim();
+    if (
+      blocker.kind !== "cookie-consent" &&
+      DISMISS_AGREES_PATTERN.test(label) &&
+      !DECLINE_ESCAPE_PATTERN.test(label)
+    )
+      continue;
+    if (
+      element.consequence === "commit" &&
+      blocker.kind !== "cookie-consent" &&
+      !DECLINE_ESCAPE_PATTERN.test(label)
+    )
+      continue;
+    const nodeId =
+      typeof element.id === "string"
+        ? element.id
+        : typeof element.selector === "string"
+          ? element.selector.split(":").at(-1)
+          : undefined;
+    const selector =
+      typeof element.selector === "string"
+        ? element.selector
+        : snapshotId && nodeId !== undefined
+          ? `${snapshotId}:${frameId}:${nodeId}`
+          : undefined;
+    return {
+      blocker,
+      blockerIndex,
+      element,
+      command: {
+        subaction: "click",
+        ...(snapshotId ? { snapshotId } : {}),
+        ...(nodeId !== undefined ? { nodeId } : {}),
+        ...(selector ? { selector } : {}),
+        ...(element.targetSelector
+          ? { expectedSelector: element.targetSelector }
+          : {}),
+      },
+    };
+  }
+  return null;
 }

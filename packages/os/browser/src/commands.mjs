@@ -3,7 +3,13 @@
 import { blockerSelectors, pageCommand } from "./page-command.mjs";
 import { BridgeError } from "./protocol.mjs";
 
-export { COMMIT_CONTROL, pageCommand } from "./page-command.mjs";
+export {
+  ACTION_CONSEQUENCE_ORDER,
+  COMMIT_CONTROL,
+  classifyActionConsequence,
+  dismissBlockerCommand,
+  pageCommand,
+} from "./page-command.mjs";
 
 const PAGE_ANSWER_MS = 10000;
 

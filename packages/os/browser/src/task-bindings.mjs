@@ -141,8 +141,14 @@ export function createTaskBindings({
             "revoked",
             "assistantName",
             "commitPattern",
+            "allowSameSiteSubdomains",
+            "maxConsequence",
           ].includes(key),
       ) ||
+      (binding.allowSameSiteSubdomains !== undefined &&
+        typeof binding.allowSameSiteSubdomains !== "boolean") ||
+      (binding.maxConsequence !== undefined &&
+        !["observe", "navigate", "stage"].includes(binding.maxConsequence)) ||
       // Display name for the overlay cursor and marks; host configuration.
       (binding.assistantName !== undefined &&
         (typeof binding.assistantName !== "string" ||
@@ -213,6 +219,8 @@ export function createTaskBindings({
       JSON.stringify(binding.origins) === JSON.stringify(previous.origins) &&
       binding.assistantName === previous.assistantName &&
       binding.commitPattern === previous.commitPattern &&
+      binding.allowSameSiteSubdomains === previous.allowSameSiteSubdomains &&
+      binding.maxConsequence === previous.maxConsequence &&
       JSON.stringify(binding.targets) === JSON.stringify(previous.targets);
     if (
       !current() ||
@@ -357,6 +365,15 @@ export function createTaskBindings({
         : await spendCommitGrant(command, binding, current, origin);
     copy.taskPolicy = {
       origin,
+      ...(binding.origins === undefined
+        ? {}
+        : { allowedOrigins: binding.origins }),
+      ...(binding.allowSameSiteSubdomains === undefined
+        ? {}
+        : { allowSameSiteSubdomains: binding.allowSameSiteSubdomains }),
+      ...(binding.maxConsequence === undefined
+        ? {}
+        : { maxConsequence: binding.maxConsequence }),
       targets: binding.targets,
       ...(command.expectedSelector === undefined
         ? {}

@@ -184,8 +184,12 @@ export function createSurfaceTaskHandler({
             "expectedSelector",
             "actionText",
             "commitGrant",
+            "structuredRegions",
           ].includes(key),
-      )
+      ) ||
+      (command.structuredRegions !== undefined &&
+        (command.subaction !== "snapshot" ||
+          typeof command.structuredRegions !== "boolean"))
     )
       throw failure(
         "POLICY_BLOCKED",
@@ -213,6 +217,9 @@ export function createSurfaceTaskHandler({
         {
           command: {
             subaction: "snapshot",
+            ...(command.structuredRegions === true
+              ? { structuredRegions: true }
+              : {}),
             taskPolicy: scoped.command.taskPolicy,
           },
         },

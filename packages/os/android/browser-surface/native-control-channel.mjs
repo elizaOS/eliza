@@ -106,12 +106,30 @@ function installControlChannel(pageCommand, pageGuidance) {
     if (
       (command.validateOnly !== undefined &&
         typeof command.validateOnly !== "boolean") ||
+      (command.structuredRegions !== undefined &&
+        (command.subaction !== "snapshot" ||
+          typeof command.structuredRegions !== "boolean")) ||
       (["fill", "select"].includes(command.subaction) &&
         typeof command.text !== "string") ||
       (command.subaction === "scroll" &&
         !["up", "down", "left", "right"].includes(command.direction)) ||
       (policy &&
         (typeof policy.origin !== "string" ||
+          (policy.allowedOrigins !== undefined &&
+            (!Array.isArray(policy.allowedOrigins) ||
+              !policy.allowedOrigins.every(
+                (entry) => typeof entry === "string",
+              ))) ||
+          (policy.allowSameSiteSubdomains !== undefined &&
+            typeof policy.allowSameSiteSubdomains !== "boolean") ||
+          (policy.allowNewTabFollow !== undefined &&
+            typeof policy.allowNewTabFollow !== "boolean") ||
+          (policy.allowSameDocumentNavigation !== undefined &&
+            typeof policy.allowSameDocumentNavigation !== "boolean") ||
+          (policy.maxConsequence !== undefined &&
+            !["observe", "navigate", "stage"].includes(
+              policy.maxConsequence,
+            )) ||
           !Number.isSafeInteger(policy.expiresAt) ||
           !Array.isArray(policy.targets) ||
           !policy.targets.every(

@@ -35,6 +35,11 @@
       "default": "./dist/src/index.js"
     },
     "./browser/runtime/*": "./browser/src/*",
+    "./browser/walkthrough": {
+      "types": "./browser/src/walkthrough-engine.d.mts",
+      "import": "./browser/src/walkthrough-engine.mjs",
+      "default": "./browser/src/walkthrough-engine.mjs"
+    },
     "./browser/protection/*": "./browser/protection/*",
     "./browser/chromium/component/*": "./browser/chromium/component/*",
     "./android/*": "./android/*",
@@ -48,6 +53,11 @@
         "default": "./dist/src/index.js"
       },
       "./browser/runtime/*": "./browser/src/*",
+      "./browser/walkthrough": {
+        "types": "./browser/src/walkthrough-engine.d.mts",
+        "import": "./browser/src/walkthrough-engine.mjs",
+        "default": "./browser/src/walkthrough-engine.mjs"
+      },
       "./browser/protection/*": "./browser/protection/*",
       "./browser/chromium/component/*": "./browser/chromium/component/*",
       "./android/*": "./android/*",
