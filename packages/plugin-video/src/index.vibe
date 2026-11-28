@@ -1,52 +1,147 @@
-// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Manual English captions outrank automatic English captions and audio"; spec/video/index.md, "Story: Transcribe a video and reuse only completed work"
-import { ModelType, Service, ServiceType, type IAgentRuntime, type Plugin } from "@elizaos/core"
+// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Media and caption sources have separate byte limits"; spec/video/index.md, "Manual English captions outrank automatic English captions and audio"; spec/video/index.md, "Story: Transcribe a video and reuse only completed work"; spec/video/index.md, "A stable source and format own the metadata download or conversion result"
+import {
+  IVideoService,
+  ModelType,
+  ServiceType,
+  stringToUuid,
+  type IAgentRuntime,
+  type ITranscriptionService,
+  type Media,
+  type Plugin,
+  type VideoDownloadOptions,
+  type VideoFormat,
+  type VideoInfo,
+  type VideoProcessingOptions,
+} from "@elizaos/core"
 import { Schema } from "effect"
-import { Machine, mediaReadAllowed, compactVideoDateValid, machine, requestedDownloadLimit, selectManualCaptionTrack, selectVideoCaption, type ManualCaptionTrack, type PinnedCaption, type VideoInputKind } from "../gen/video.effect.vibe"
+import {
+  Machine,
+  compactVideoDateValid,
+  machine,
+  mediaReadAllowed,
+  requestedDownloadLimit,
+  type Event as VideoEvent,
+  type VideoInputKind,
+  type VideoRun,
+} from "../gen/video.effect.vibe"
+import {
+  BinaryResolver,
+  execBinary,
+  ffmpegStaticExecutableName,
+  formatInstallErrorReason,
+  resolveFfmpegStaticCandidatePath,
+  resolveNodeInstallRunner,
+  ytDlpArgsFromFlags,
+  ytDlpAssetName,
+  ytDlpFileName,
+  type BinaryResolverOptions,
+  type YtDlpFlags,
+  type YtDlpMeta,
+  type YtDlpRunner,
+} from "./binaries.vibe"
+import {
+  CAPTION_PARSE_ERROR,
+  assertMetadataRecord,
+  extractYoutubeVideoId,
+  isSupportedVideoUrl,
+  normalizeCaptionNewlines,
+  parseCaptionJson,
+  parseSrtOrVtt,
+  parseYtDlpFormats,
+  parseYtDlpUploadDate,
+  pinVideoCaption,
+  type YtDlpMetadata,
+  type YtDlpSubtitleTrack,
+} from "./parse.vibe"
 
 module node {
-  import { execFile } from "node:child_process"
-  import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+  import fs from "node:fs"
+  import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises"
   import { tmpdir } from "node:os"
-  import { join } from "node:path"
-  import { promisify } from "node:util"
-  import { fetchRemoteMedia } from "@elizaos/core-node"
+  import path from "node:path"
+  import { fetchRemoteMedia, fetchWithSsrfGuard } from "@elizaos/core-node"
 
-  const run = promisify(execFile)
-
-  /** @throws {never} */
-  export function approvedVideoSource(raw: string): URL | undefined {
-    const url = URL.parse(raw)
-    if (!url || url.protocol !== "https:" || url.username || url.password) return undefined
-    return url
-  }
-
-  export async function inspect(url: URL, signal: AbortSignal): Promise<unknown> {
-    const { stdout } = await run("yt-dlp", ["--no-playlist", "--no-config", "--skip-download", "--dump-single-json", "--", url.href], {
-      maxBuffer: 4194304, signal, timeout: 45000,
-    })
-    return JSON.parse(stdout)
-  }
-
-  export async function remoteMedia(url: string, limit: number, signal: AbortSignal): Promise<Uint8Array> {
+  export async function remoteMedia(url: string, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
     return Uint8Array.from((await fetchRemoteMedia({ url, maxBytes: limit, signal })).buffer)
   }
 
-  export async function audioFromVideo(bytes: Uint8Array, signal: AbortSignal): Promise<Uint8Array> {
-    const directory = await mkdtemp(join(tmpdir(), "eliza-video-"))
+  export async function probeDirectMp4(url: string): Promise<boolean> {
+    const { response, release } = await fetchWithSsrfGuard({ url, timeoutMs: 30_000 })
     try {
-      const source = join(directory, "source")
-      const output = join(directory, "transcription.wav")
-      await writeFile(source, bytes)
-      await run("ffmpeg", ["-nostdin", "-protocol_whitelist", "file,pipe", "-i", source, "-vn", "-ac", "1", "-ar", "16000", "-fs", "25165824", output], {
-        maxBuffer: 1048576, signal, timeout: 120000,
-      })
-      return Uint8Array.from(await readFile(output))
+      return response.ok
+    } finally {
+      await response.body?.cancel().catch(() => undefined)
+      await release()
+    }
+  }
+
+  export function ensureDirSync(dir: string): void {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+
+  export function fileExistsSync(filePath: string): boolean {
+    return fs.existsSync(filePath)
+  }
+
+  export function readFileSyncBytes(filePath: string): Buffer {
+    return fs.readFileSync(filePath)
+  }
+
+  export function joinPath(...parts: string[]): string {
+    return path.join(...parts)
+  }
+
+  export function baseName(filePath: string): string {
+    return path.basename(filePath)
+  }
+
+  export async function writeTempFile(name: string, bytes: Uint8Array): Promise<string> {
+    const filePath = path.join(tmpdir(), name)
+    await writeFile(filePath, bytes)
+    return filePath
+  }
+
+  export async function removeFileQuietly(filePath: string): Promise<void> {
+    await unlink(filePath).catch(() => undefined)
+  }
+
+  export async function ensureParentDir(filePath: string): Promise<void> {
+    await mkdir(path.dirname(filePath), { recursive: true })
+  }
+
+  export async function withTempAudioWorkdir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+    const directory = await mkdtemp(path.join(tmpdir(), "eliza-video-"))
+    try {
+      return await fn(directory)
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
   }
+
+  export async function readFileBytes(filePath: string): Promise<Uint8Array> {
+    return Uint8Array.from(await readFile(filePath))
+  }
+
+  export async function writeFileBytes(filePath: string, bytes: Uint8Array): Promise<void> {
+    await writeFile(filePath, bytes)
+  }
 }
-import { approvedVideoSource, audioFromVideo, inspect, remoteMedia } from node
+
+import {
+  baseName,
+  ensureDirSync,
+  ensureParentDir,
+  fileExistsSync,
+  joinPath,
+  probeDirectMp4,
+  readFileBytes,
+  readFileSyncBytes,
+  remoteMedia,
+  removeFileQuietly,
+  withTempAudioWorkdir,
+  writeFileBytes,
+  writeTempFile,
+} from node
 
 export error VideoFailure { reason: string; cause?: unknown }
 
@@ -63,32 +158,32 @@ const videoMetadata = Schema.Struct({
   subtitles: Schema.optionalKey(captionTracks),
   automatic_captions: Schema.optionalKey(captionTracks),
 })
-const autoCaptions = Schema.Struct({
-  events: Schema.Array(Schema.Struct({ segs: Schema.optionalKey(Schema.Array(Schema.Struct({ utf8: Schema.optionalKey(Schema.String) }))) })),
-})
 
-function captionUrl(offered: readonly { readonly url: string; readonly ext?: string }[], type?: string): string {
-  return offered.find((entry) => entry.url !== "" && entry.ext === type)?.url ?? ""
+function approvedVideoSource(raw: string): URL | undefined {
+  const url = URL.parse(raw)
+  if (!url || url.protocol !== "https:" || url.username || url.password) return undefined
+  return url
 }
 
-function manualCaptionTrack(language: string, offered: readonly { readonly url: string; readonly ext?: string }[]): ManualCaptionTrack {
-  return { primaryEnglish: language === "en", srtUrl: captionUrl(offered, "srt"), vttUrl: captionUrl(offered, "vtt"), untypedUrl: captionUrl(offered) }
+function isDirectMp4Url(url: string): boolean {
+  return url.endsWith(".mp4") || url.includes(".mp4?")
 }
 
-export function pinVideoCaption(metadata: typeof videoMetadata.Type): PinnedCaption {
-  const manual = selectManualCaptionTrack(Object.entries(metadata.subtitles ?? {}).filter(([language]) => /^en(?:-|$)/i.test(language)).map(([language, offered]) => manualCaptionTrack(language, offered)))
-  const automatic = metadata.automatic_captions?.["en"] ?? []
-  return selectVideoCaption(manual.srtUrl, manual.vttUrl, manual.untypedUrl, captionUrl(automatic, "json3"), captionUrl(automatic))
+async function resolveFfmpegExecutable(binaries: BinaryResolver): Promise<string> {
+  return (await binaries.getFfmpegPath()) ?? "ffmpeg"
 }
 
-function youtubePage(url: URL): boolean {
-  return ["www.youtube.com", "youtube.com", "m.youtube.com", "youtu.be", "www.vimeo.com", "vimeo.com"].includes(url.hostname)
-}
-
-export effect function probeVideo(source: string) {
+export effect function probeVideo(source: string, binaries?: BinaryResolver) {
   const url = approvedVideoSource(source)
-  if (url === undefined || !youtubePage(url)) throw new VideoFailure({ reason: "Select a supported HTTPS video site." })
-  const raw = try tryPromise({ try: (signal) => inspect(url, signal), catch: (cause) => new VideoFailure({ reason: "Video site metadata could not be read.", cause }) })
+  if (url === undefined || !isSupportedVideoUrl(url.href)) throw new VideoFailure({ reason: "Select a supported HTTPS video site." })
+  const resolver = binaries ?? (try Effect.try({
+    try: () => BinaryResolver.instance(),
+    catch: (cause) => new VideoFailure({ reason: "Video binary resolver could not be initialized.", cause }),
+  }))
+  const raw = try tryPromise({
+    try: (signal) => resolver.runYtDlp(url.href, { noPlaylist: true, noConfig: true, skipDownload: true, dumpSingleJson: true }, signal),
+    catch: (cause) => new VideoFailure({ reason: "Video site metadata could not be read.", cause }),
+  })
   const info = try Schema.decodeUnknownEffect(videoMetadata)(raw)
   const date = info.upload_date
   const uploaded = date !== undefined && /^\d{8}$/.test(date) && compactVideoDateValid(Number(date.slice(0, 4)), Number(date.slice(4, 6)), Number(date.slice(6)))
@@ -107,75 +202,390 @@ effect function readVideo(source: string, kind: VideoInputKind) {
   return bytes
 }
 
-effect function extractCaption(metadata: typeof videoMetadata.Type) {
+effect function extractCaption(metadata: YtDlpMetadata) {
   const selected = pinVideoCaption(metadata)
   if (selected.formatKind === "ExtractAudio") return ""
   const bytes = try readVideo(selected.sourceUrl, "SubtitleDownload")
   const text = new TextDecoder().decode(bytes)
   if (selected.formatKind === "JsonCaptions" || text.trimStart().startsWith("{")) {
-    const raw = try Effect.try((): unknown => JSON.parse(text))
-    const reply = try Schema.decodeUnknownEffect(autoCaptions)(raw)
-    return reply.events.flatMap((entry) => entry.segs?.map((segment) => segment.utf8 ?? "") ?? []).join("").replace(/\r\n?|\n/g, " ").trim()
+    const parsed = parseCaptionJson(text)
+    return parsed === CAPTION_PARSE_ERROR ? "" : parsed.trim()
   }
-  return text.split(/\r?\n/).filter((line) => line.trim() !== "" && !/^\d+$/.test(line.trim()) && !line.includes("-->") && line.trim() !== "WEBVTT").join(" ")
+  return parseSrtOrVtt(text).trim()
 }
 
-export effect function transcribeVideo(runtime: IAgentRuntime, source: string) {
+async function convertBytesToWav(binaries: BinaryResolver, bytes: Uint8Array, signal?: AbortSignal): Promise<Uint8Array> {
+  const ffmpegBin = await resolveFfmpegExecutable(binaries)
+  return withTempAudioWorkdir(async (directory) => {
+    const source = joinPath(directory, "source")
+    const output = joinPath(directory, "transcription.wav")
+    await writeFileBytes(source, bytes)
+    await execBinary(ffmpegBin, ["-nostdin", "-protocol_whitelist", "file,pipe", "-i", source, "-vn", "-ac", "1", "-ar", "16000", "-fs", "25165824", output], {
+      maxBuffer: 1048576,
+      timeout: 120_000,
+      signal,
+    })
+    return readFileBytes(output)
+  })
+}
+
+export effect function transcribeVideo(runtime: IAgentRuntime, source: string, binaries?: BinaryResolver) {
   const url = approvedVideoSource(source)
   if (url === undefined) throw new VideoFailure({ reason: "A video URL must use HTTPS." })
+  const resolver = binaries ?? (try Effect.try({
+    try: () => BinaryResolver.instance(),
+    catch: (cause) => new VideoFailure({ reason: "Video binary resolver could not be initialized.", cause }),
+  }))
   provide machine() {
     const run = try Machine
     try run.send({ type: "beginVideo", sourceRef: url.href, job: "BuildTranscript", formatName: "text", sourceAllowed: true })
     let text: string
-    if (youtubePage(url)) {
-      const metadata = try probeVideo(url.href)
+    if (isSupportedVideoUrl(url.href)) {
+      const metadata = try probeVideo(url.href, resolver)
       text = (extractCaption(metadata)) catch () => ""
-      if (text === "") throw new VideoFailure({ reason: "The video page supplied no usable transcript or downloadable media." })
+      if (text === "") {
+        try run.send({ type: "failVideo" })
+        throw new VideoFailure({ reason: "The video page supplied no usable transcript or downloadable media." })
+      }
     } else {
       const video = try readVideo(source, "DirectVideo")
       const audio = try tryPromise({
-        try: (signal) => audioFromVideo(video, signal),
+        try: (signal) => convertBytesToWav(resolver, video, signal),
         catch: (cause) => new VideoFailure({ reason: "The media audio could not be converted.", cause }),
       })
       text = try tryPromise({
-        try: (signal) => runtime.useModel(ModelType.TRANSCRIPTION, { audio: audio, audioUrl: "", mimeType: "audio/wav", signal }),
+        try: (signal) => runtime.useModel(ModelType.TRANSCRIPTION, { audio, audioUrl: "", mimeType: "audio/wav", signal }),
         catch: (cause) => new VideoFailure({ reason: "The video transcription provider did not answer.", cause }),
       })
     }
-    if (text.trim() === "") throw new VideoFailure({ reason: "The video returned no transcription." })
+    if (text.trim() === "") {
+      try run.send({ type: "failVideo" })
+      throw new VideoFailure({ reason: "The video returned no transcription." })
+    }
     try run.send({ type: "publishVideo", sourceRef: url.href, job: "BuildTranscript", formatName: "text", artifactRef: "transcript", verified: true })
     return text
   }
 }
 
-export class VideoService extends Service {
-  static override serviceType = ServiceType.VIDEO
-  override capabilityDescription = "Read video metadata and extract captions or transcribe direct video audio."
+export interface VideoRunMachineHandle {
+  readonly state: () => VideoRun
+  readonly dispatch: (event: VideoEvent) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown) => Promise<"accepted" | "refused">
+}
 
-  static override start(runtime: IAgentRuntime): Promise<VideoService> {
-    return Promise.resolve(new VideoService(runtime))
+export function createVideoRunHandle(): VideoRunMachineHandle {
+  const created = runSync(effect {
+    provide machine() {
+      const m = try Machine
+      return m
+    }
+  })
+  return {
+    state: () => runSync(created.get()),
+    dispatch: (event) => runPromise(created.send(event).pipe(Effect.as("accepted" as const), Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)))),
+    receive: (raw) => runPromise(created.receive(raw).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("NotAnEvent", () => Effect.succeed("refused" as const)),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+  }
+}
+
+export interface VideoServiceOptions {
+  readonly dataDir?: string
+  readonly binaries?: BinaryResolver
+}
+
+export class VideoService extends IVideoService {
+  static override readonly serviceType = ServiceType.VIDEO
+  override readonly capabilityDescription = "Video download, processing, and conversion capabilities"
+
+  private readonly cacheKey = "content/video"
+  private readonly dataDir: string
+  private readonly binaries: BinaryResolver
+  private processingChain: Promise<void> = Promise.resolve()
+
+  constructor(runtime?: IAgentRuntime, options: BinaryResolver | VideoServiceOptions = {}) {
+    super(runtime)
+    if (options instanceof BinaryResolver) {
+      this.binaries = options
+      this.dataDir = "./content_cache"
+    } else {
+      this.binaries = options.binaries ?? BinaryResolver.instance()
+      this.dataDir = options.dataDir ?? "./content_cache"
+    }
+    ensureDirSync(this.dataDir)
   }
 
-  getVideoInfo(source: string, signal?: AbortSignal) {
-    return runPromise(probeVideo(source), { signal })
+  static override async start(runtime: IAgentRuntime): Promise<VideoService> {
+    const service = new VideoService(runtime)
+    await service.initialize(runtime)
+    return service
   }
 
-  downloadVideo(source: string, signal?: AbortSignal) {
-    return runPromise(readVideo(source, "DirectVideo"), { signal })
+  async initialize(_runtime: IAgentRuntime): Promise<void> {
+    await this.binaries.getFfmpegPath()
+  }
+
+  override async stop(): Promise<void> {
+    this.processingChain = Promise.resolve()
+  }
+
+  isVideoUrl(url: string): boolean {
+    return isSupportedVideoUrl(url)
+  }
+
+  async getVideoInfo(url: string, signal?: AbortSignal): Promise<VideoInfo> {
+    const videoInfo = await this.fetchVideoInfo(url, signal)
+    const formats = parseYtDlpFormats(videoInfo.formats)
+    return {
+      title: videoInfo.title,
+      duration: videoInfo.duration,
+      url,
+      thumbnail: videoInfo.thumbnail,
+      description: videoInfo.description,
+      uploader: videoInfo.channel,
+      viewCount: videoInfo.view_count,
+      uploadDate: parseYtDlpUploadDate(videoInfo.upload_date),
+      formats,
+    }
+  }
+
+  async getAvailableFormats(url: string, signal?: AbortSignal): Promise<VideoFormat[]> {
+    const result = await this.binaries.runYtDlp(url, {
+      dumpJson: true,
+      verbose: true,
+      callHome: false,
+      noCheckCertificates: true,
+      preferFreeFormats: true,
+      youtubeSkipDashManifest: true,
+      skipDownload: true,
+    }, signal)
+    const record = assertMetadataRecord(result)
+    if (!("formats" in record)) return []
+    return parseYtDlpFormats(record.formats)
+  }
+
+  async downloadVideo(url: string, options?: VideoDownloadOptions): Promise<string> {
+    const videoId = stringToUuid(url)
+    const outputFile = options?.outputPath || joinPath(this.dataDir, `${videoId}.mp4`)
+    if (fileExistsSync(outputFile)) return outputFile
+    await ensureParentDir(outputFile)
+    const downloadOptions: {
+      verbose: boolean
+      output: string
+      writeInfoJson: boolean
+      format?: string
+      extractAudio?: boolean
+      audioFormat?: string
+      writeSub?: boolean
+      embedSubs?: boolean
+    } = {
+      verbose: true,
+      output: outputFile,
+      writeInfoJson: options?.writeInfoJson ?? true,
+    }
+    if (options?.format) downloadOptions.format = options.format
+    else if (options?.quality) downloadOptions.format = options.quality
+    if (options?.audioOnly) {
+      downloadOptions.extractAudio = true
+      downloadOptions.audioFormat = "mp3"
+    }
+    if (options?.videoOnly) downloadOptions.format = "bestvideo[ext=mp4]/best[ext=mp4]/best"
+    if (options?.subtitles) downloadOptions.writeSub = true
+    if (options?.embedSubs) downloadOptions.embedSubs = true
+    await this.binaries.runYtDlp(url, downloadOptions)
+    return outputFile
+  }
+
+  async downloadMedia(url: string): Promise<string> {
+    const videoId = stringToUuid(url)
+    const outputFile = joinPath(this.dataDir, `${videoId}.mp4`)
+    if (fileExistsSync(outputFile)) return outputFile
+    await ensureParentDir(outputFile)
+    await this.binaries.runYtDlp(url, {
+      verbose: true,
+      output: outputFile,
+      format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+      writeInfoJson: true,
+    })
+    return outputFile
+  }
+
+  async extractAudio(videoPath: string, outputPath?: string): Promise<string> {
+    const videoId = stringToUuid(videoPath)
+    const audioFile = outputPath || joinPath(this.dataDir, `${videoId}.mp3`)
+    if (fileExistsSync(audioFile)) return audioFile
+    await ensureParentDir(audioFile)
+    const ffmpegBin = await resolveFfmpegExecutable(this.binaries)
+    await execBinary(ffmpegBin, ["-nostdin", "-y", "-i", videoPath, "-vn", "-c:a", "libmp3lame", audioFile])
+    return audioFile
+  }
+
+  async getThumbnail(videoPath: string, timestamp: number = 1): Promise<string> {
+    const videoId = stringToUuid(videoPath)
+    const thumbnailFile = joinPath(this.dataDir, `${videoId}_thumb.jpg`)
+    if (fileExistsSync(thumbnailFile)) return thumbnailFile
+    await ensureParentDir(thumbnailFile)
+    const ffmpegBin = await resolveFfmpegExecutable(this.binaries)
+    await execBinary(ffmpegBin, ["-nostdin", "-y", "-ss", String(timestamp), "-i", videoPath, "-vframes", "1", "-s", "320x240", thumbnailFile])
+    return thumbnailFile
+  }
+
+  async convertVideo(videoPath: string, outputPath: string, options?: VideoProcessingOptions): Promise<string> {
+    await ensureParentDir(outputPath)
+    const ffmpegBin = await resolveFfmpegExecutable(this.binaries)
+    const args: string[] = ["-nostdin", "-y"]
+    if (options?.startTime !== undefined) args.push("-ss", String(options.startTime))
+    args.push("-i", videoPath)
+    if (options?.endTime !== undefined) args.push("-t", String(options.endTime - (options.startTime ?? 0)))
+    if (options?.outputFormat) args.push("-f", options.outputFormat)
+    if (options?.resolution) args.push("-s", options.resolution)
+    if (options?.bitrate) args.push("-b:v", options.bitrate)
+    if (options?.framerate !== undefined) args.push("-r", String(options.framerate))
+    if (options?.videoCodec) args.push("-c:v", options.videoCodec)
+    if (options?.audioCodec) args.push("-c:a", options.audioCodec)
+    args.push(outputPath)
+    await execBinary(ffmpegBin, args)
+    return outputPath
+  }
+
+  async fetchVideoInfo(url: string, signal?: AbortSignal): Promise<YtDlpMetadata> {
+    if (isDirectMp4Url(url)) {
+      const ok = await probeDirectMp4(url).catch(() => false)
+      if (ok) return { title: baseName(url), description: "", channel: "" }
+    }
+    const result = await this.binaries.runYtDlp(url, {
+      dumpJson: true,
+      verbose: true,
+      callHome: false,
+      noCheckCertificates: true,
+      preferFreeFormats: true,
+      youtubeSkipDashManifest: true,
+      writeSub: true,
+      writeAutoSub: true,
+      subLang: "en",
+      skipDownload: true,
+    }, signal)
+    return assertMetadataRecord(result) as YtDlpMetadata
+  }
+
+  processVideo(url: string, runtime: IAgentRuntime): Promise<Media> {
+    const run = this.processingChain.then(() => this.processVideoFromUrl(url, runtime))
+    this.processingChain = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  private async processVideoFromUrl(url: string, runtime: IAgentRuntime): Promise<Media> {
+    const videoUuid = stringToUuid(extractYoutubeVideoId(url))
+    const key = `${this.cacheKey}/${videoUuid}`
+    const cached = await runtime.getCache<Media>(key)
+    if (cached) return cached
+    const videoInfo = await this.fetchVideoInfo(url)
+    const transcript = await this.getTranscript(url, videoInfo, runtime)
+    const result: Media = {
+      id: videoUuid,
+      url,
+      title: videoInfo.title,
+      source: videoInfo.channel,
+      description: videoInfo.description,
+      text: transcript,
+    }
+    await runtime.setCache(key, result)
+    return result
+  }
+
+  private async getTranscript(url: string, videoInfo: YtDlpMetadata, runtime: IAgentRuntime): Promise<string> {
+    const caption = await runPromise(extractCaption(videoInfo).pipe(Effect.catch(() => Effect.succeed(""))))
+    if (caption.trim() !== "") return caption
+    if (videoInfo.categories?.includes("Music")) return "No lyrics available."
+    return this.transcribeAudio(url, runtime)
+  }
+
+  async transcribeAudio(url: string, runtime: IAgentRuntime): Promise<string> {
+    const videoId = stringToUuid(url)
+    const mp4FilePath = joinPath(this.dataDir, `${videoId}.mp4`)
+    const mp3FilePath = joinPath(this.dataDir, `${videoId}.mp3`)
+    if (!fileExistsSync(mp3FilePath)) {
+      if (fileExistsSync(mp4FilePath)) {
+        await this.extractAudio(mp4FilePath, mp3FilePath)
+      } else {
+        await this.downloadAudio(url, mp3FilePath)
+      }
+    }
+    const audioBuffer = readFileSyncBytes(mp3FilePath)
+    const transcriptionService = runtime.getService<ITranscriptionService>(ServiceType.TRANSCRIPTION)
+    if (transcriptionService) {
+      const result = await transcriptionService.transcribeAudio(audioBuffer)
+      return result.text
+    }
+    return runtime.useModel(ModelType.TRANSCRIPTION, { audio: Uint8Array.from(audioBuffer), audioUrl: "", mimeType: "audio/mpeg" })
+  }
+
+  private async downloadAudio(url: string, outputFile: string): Promise<string> {
+    await ensureParentDir(outputFile)
+    if (isDirectMp4Url(url)) {
+      const bytes = await runPromise(readVideo(url, "DirectVideo"))
+      const tempMp4 = await writeTempFile(`${stringToUuid(url)}.mp4`, bytes)
+      try {
+        await this.extractAudio(tempMp4, outputFile)
+      } finally {
+        await removeFileQuietly(tempMp4)
+      }
+      return outputFile
+    }
+    await this.binaries.runYtDlp(url, {
+      verbose: true,
+      extractAudio: true,
+      audioFormat: "mp3",
+      output: outputFile,
+      writeInfoJson: true,
+    })
+    return outputFile
   }
 
   transcribe(source: string, signal?: AbortSignal): Promise<string> {
-    return runPromise(transcribeVideo(this.runtime, source), { signal })
-  }
-
-  override stop(): Promise<void> {
-    return Promise.resolve()
+    return runPromise(transcribeVideo(this.runtime, source, this.binaries), { signal })
   }
 }
 
-export const plugin: Plugin = {
+export const videoPlugin: Plugin = {
   name: "@elizaos/plugin-video",
-  description: "Video metadata, bounded downloads, caption selection and audio transcription.",
+  description: "Video metadata, bounded downloads, caption selection, conversion and audio transcription.",
   services: [VideoService],
+  actions: [],
+  providers: [],
+  async dispose(runtime) {
+    const svc = runtime.getService<VideoService>(VideoService.serviceType)
+    await svc?.stop()
+  },
 }
-export default plugin
+
+export const plugin: Plugin = videoPlugin
+export default videoPlugin
+
+export {
+  BinaryResolver,
+  CAPTION_PARSE_ERROR,
+  extractYoutubeVideoId,
+  ffmpegStaticExecutableName,
+  formatInstallErrorReason,
+  isSupportedVideoUrl,
+  normalizeCaptionNewlines,
+  parseCaptionJson,
+  parseSrtOrVtt,
+  parseYtDlpFormats,
+  parseYtDlpUploadDate,
+  pinVideoCaption,
+  resolveFfmpegStaticCandidatePath,
+  resolveNodeInstallRunner,
+  ytDlpArgsFromFlags,
+  ytDlpAssetName,
+  ytDlpFileName,
+  type BinaryResolverOptions,
+  type YtDlpFlags,
+  type YtDlpMeta,
+  type YtDlpMetadata,
+  type YtDlpRunner,
+  type YtDlpSubtitleTrack,
+}

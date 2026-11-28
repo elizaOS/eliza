@@ -1,0 +1,320 @@
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"
+import type {
+  DispatchResult,
+  OwnerFactsView,
+  ScheduledTask,
+  ScheduledTaskInput,
+} from "./types.vibe"
+
+export interface AnchorDefinition {
+  readonly key: string
+  readonly defaultHour: number
+  readonly defaultMinute: number
+  readonly description: string
+}
+
+export interface AnchorRegistry {
+  register(anchor: AnchorDefinition): void
+  get(key: string): AnchorDefinition | undefined
+  list(): readonly AnchorDefinition[]
+}
+
+export const APP_LIFEOPS_ANCHORS: readonly AnchorDefinition[] = [
+  { key: "wake_up", defaultHour: 7, defaultMinute: 30, description: "Owner morning wake-up anchor" },
+  { key: "work_start", defaultHour: 9, defaultMinute: 0, description: "Workday start anchor" },
+  { key: "midday", defaultHour: 12, defaultMinute: 30, description: "Midday break anchor" },
+  { key: "work_end", defaultHour: 17, defaultMinute: 30, description: "Workday wrap-up anchor" },
+  { key: "wind_down", defaultHour: 21, defaultMinute: 30, description: "Evening wind-down anchor" },
+]
+
+export function createAnchorRegistry(): AnchorRegistry {
+  const map = new Map<string, AnchorDefinition>()
+  return {
+    register(anchor) {
+      map.set(anchor.key, anchor)
+    },
+    get(key) {
+      return map.get(key)
+    },
+    list() {
+      return [...map.values()]
+    },
+  }
+}
+
+export function registerFallbackAnchors(registry: AnchorRegistry): AnchorRegistry {
+  for (const anchor of APP_LIFEOPS_ANCHORS) {
+    if (!registry.get(anchor.key)) registry.register(anchor)
+  }
+  return registry
+}
+
+export function registerAppLifeOpsAnchors(registry: AnchorRegistry): AnchorRegistry {
+  for (const anchor of APP_LIFEOPS_ANCHORS) {
+    registry.register(anchor)
+  }
+  return registry
+}
+
+let sharedAnchorRegistry: AnchorRegistry = registerAppLifeOpsAnchors(createAnchorRegistry())
+
+export function getAnchorRegistry(): AnchorRegistry {
+  return sharedAnchorRegistry
+}
+
+export function registerAnchorRegistry(registry: AnchorRegistry): void {
+  sharedAnchorRegistry = registry
+}
+
+export function __resetAnchorRegistryForTests(): void {
+  sharedAnchorRegistry = registerAppLifeOpsAnchors(createAnchorRegistry())
+}
+
+export interface ConsolidationRule {
+  readonly key: string
+  readonly maxBatchSize: number
+  readonly windowMinutes: number
+}
+
+export interface ConsolidationRegistry {
+  register(rule: ConsolidationRule): void
+  get(key: string): ConsolidationRule | undefined
+  list(): readonly ConsolidationRule[]
+}
+
+export function createConsolidationRegistry(): ConsolidationRegistry {
+  const rules = new Map<string, ConsolidationRule>()
+  return {
+    register(rule) {
+      rules.set(rule.key, rule)
+    },
+    get(key) {
+      return rules.get(key)
+    },
+    list() {
+      return [...rules.values()]
+    },
+  }
+}
+
+export interface GateContext {
+  readonly now: Date
+  readonly task: ScheduledTask
+  readonly ownerFacts?: OwnerFactsView
+}
+
+export type GateDecision = { readonly allow: true } | { readonly allow: false; readonly reason: string }
+export type GateEvaluator = (params: Record<string, unknown> | undefined, ctx: GateContext) => GateDecision
+
+export interface TaskGateRegistry {
+  register(kind: string, evaluator: GateEvaluator): void
+  get(kind: string): GateEvaluator | undefined
+  evaluate(task: ScheduledTask, ctx: Omit<GateContext, "task">): GateDecision
+}
+
+function hourInUtcOrTz(date: Date, timeZone?: string): number {
+  if (!timeZone) return date.getUTCHours()
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone, hour: "2-digit", hour12: false }).formatToParts(date)
+    return Number(parts.find((p) => p.type === "hour")?.value ?? date.getUTCHours()) % 24
+  } catch {
+    return date.getUTCHours()
+  }
+}
+
+function inHourSpan(hour: number, startHour: number, endHour: number): boolean {
+  if (startHour <= endHour) return hour >= startHour && hour < endHour
+  return hour >= startHour || hour < endHour
+}
+
+export function createTaskGateRegistry(): TaskGateRegistry {
+  const gates = new Map<string, GateEvaluator>()
+  return {
+    register(kind, evaluator) {
+      gates.set(kind, evaluator)
+    },
+    get(kind) {
+      return gates.get(kind)
+    },
+    evaluate(task, baseCtx) {
+      const spec = task.shouldFire
+      if (!spec || spec.gates.length === 0) return { allow: true }
+      const compose = spec.compose ?? "all"
+      const ctx: GateContext = { ...baseCtx, task }
+      const denials: string[] = []
+      let allowedCount = 0
+      for (const ref of spec.gates) {
+        const fn = gates.get(ref.kind)
+        if (!fn) {
+          denials.push(`unknown_gate:${ref.kind}`)
+          if (compose === "first_deny") return { allow: false, reason: `unknown_gate:${ref.kind}` }
+          continue
+        }
+        const decision = fn(ref.params, ctx)
+        if (decision.allow) {
+          allowedCount += 1
+          if (compose === "any") return { allow: true }
+        } else {
+          denials.push(decision.reason)
+          if (compose === "first_deny") return decision
+        }
+      }
+      if (compose === "any") {
+        return allowedCount > 0 ? { allow: true } : { allow: false, reason: denials[0] ?? "gate_denied" }
+      }
+      return denials.length === 0 ? { allow: true } : { allow: false, reason: denials.join("; ") }
+    },
+  }
+}
+
+export function registerBuiltInGates(registry: TaskGateRegistry): TaskGateRegistry {
+  registry.register("quiet_hours", (_params, ctx) => {
+    const quiet = ctx.ownerFacts?.quietHours
+    if (!quiet) return { allow: true }
+    const hour = hourInUtcOrTz(ctx.now, ctx.ownerFacts?.timezone)
+    return inHourSpan(hour, quiet.startHour, quiet.endHour)
+      ? { allow: false, reason: "quiet_hours" }
+      : { allow: true }
+  })
+  registry.register("time_window", (params, ctx) => {
+    const startHour = typeof params?.startHour === "number" ? params.startHour : 0
+    const endHour = typeof params?.endHour === "number" ? params.endHour : 24
+    const hour = hourInUtcOrTz(ctx.now, ctx.ownerFacts?.timezone)
+    return inHourSpan(hour, startHour, endHour)
+      ? { allow: true }
+      : { allow: false, reason: "outside_time_window" }
+  })
+  registry.register("flag_set", (params, ctx) => {
+    const flag = typeof params?.flag === "string" ? params.flag : ""
+    if (!flag) return { allow: true }
+    const expected = params?.expected !== false
+    const actual = Boolean(ctx.ownerFacts?.flags?.[flag])
+    return actual === expected ? { allow: true } : { allow: false, reason: `flag_mismatch:${flag}` }
+  })
+  return registry
+}
+
+export type CompletionCheckEvaluator = (
+  task: ScheduledTask,
+  now: Date,
+) => { readonly settled: boolean; readonly outcome?: "completed" | "expired" }
+
+export interface CompletionCheckRegistry {
+  register(kind: string, evaluator: CompletionCheckEvaluator): void
+  get(kind: string): CompletionCheckEvaluator | undefined
+}
+
+export function createCompletionCheckRegistry(): CompletionCheckRegistry {
+  const checks = new Map<string, CompletionCheckEvaluator>()
+  return {
+    register(kind, evaluator) {
+      checks.set(kind, evaluator)
+    },
+    get(kind) {
+      return checks.get(kind)
+    },
+  }
+}
+
+export function registerBuiltInCompletionChecks(registry: CompletionCheckRegistry): CompletionCheckRegistry {
+  registry.register("timeout", (task, now) => {
+    const firedMs = task.state.firedAt ? Date.parse(task.state.firedAt) : NaN
+    const minutes = task.completionCheck?.followupAfterMinutes ?? 60
+    if (!Number.isFinite(firedMs)) return { settled: false }
+    return now.getTime() - firedMs >= minutes * 60_000
+      ? { settled: true, outcome: "expired" }
+      : { settled: false }
+  })
+  registry.register("manual_reply", (task) => ({
+    settled: task.state.status === "completed",
+    outcome: task.state.status === "completed" ? "completed" : undefined,
+  }))
+  return registry
+}
+
+export interface ScheduledTaskChannelDispatcherContribution {
+  readonly channelKey: string
+  readonly dispatch: (task: ScheduledTask, payload: { readonly title: string; readonly body: string }) => Promise<DispatchResult>
+}
+
+export const RESERVED_SCHEDULED_TASK_CHANNEL_KEYS = ["chat", "push", "sms", "email"] as const
+
+const channelDispatchers = new Map<string, ScheduledTaskChannelDispatcherContribution>()
+
+export function registerScheduledTaskChannelDispatcher(
+  contribution: ScheduledTaskChannelDispatcherContribution,
+): void {
+  channelDispatchers.set(contribution.channelKey, contribution)
+}
+
+export function unregisterScheduledTaskChannelDispatcher(channelKey: string): boolean {
+  return channelDispatchers.delete(channelKey)
+}
+
+export function getScheduledTaskChannelDispatcher(
+  channelKey: string,
+): ScheduledTaskChannelDispatcherContribution | undefined {
+  return channelDispatchers.get(channelKey)
+}
+
+export function listScheduledTaskChannelDispatcherKeys(): string[] {
+  return [...channelDispatchers.keys()].sort()
+}
+
+export const FALLBACK_DEFAULT_PACK_ID = "fallback-default-pack" as const
+export const FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS = ["morning-checkin", "evening-recap"] as const
+export const DAILY_ROUTINES_ENABLE_TRIGGERS = ["wake_up", "work_start", "wind_down"] as const
+
+export function buildFallbackDefaultPack(ownerId: string): ScheduledTaskInput[] {
+  return [
+    {
+      ownerId,
+      title: "Morning check-in",
+      kind: "checkin",
+      priority: "low",
+      source: "default_pack",
+      channelKey: "chat",
+      promptInstructions: "Review top priorities for today.",
+      trigger: { kind: "relative_to_anchor", anchorKey: "wake_up", offsetMinutes: 30 },
+      metadata: { packId: FALLBACK_DEFAULT_PACK_ID, idempotencyKey: "morning-checkin" },
+    },
+    {
+      ownerId,
+      title: "Evening recap",
+      kind: "recap",
+      priority: "low",
+      source: "default_pack",
+      channelKey: "chat",
+      promptInstructions: "Summarize completed work and open follow-ups.",
+      trigger: { kind: "relative_to_anchor", anchorKey: "wind_down", offsetMinutes: 0 },
+      metadata: { packId: FALLBACK_DEFAULT_PACK_ID, idempotencyKey: "evening-recap" },
+    },
+  ]
+}
+
+export function buildDailyRoutinesPack(ownerId: string, tz = "UTC"): ScheduledTaskInput[] {
+  return [
+    {
+      ownerId,
+      title: "Daily morning routine",
+      kind: "reminder",
+      priority: "medium",
+      source: "default_pack",
+      channelKey: "chat",
+      promptInstructions: "Start the day with focus goals.",
+      trigger: { kind: "cron", expression: "0 8 * * *", tz },
+      metadata: { packId: "daily-routines", routineKey: "morning" },
+    },
+    {
+      ownerId,
+      title: "Daily wind-down routine",
+      kind: "reminder",
+      priority: "low",
+      source: "default_pack",
+      channelKey: "chat",
+      promptInstructions: "Wrap up open tasks and prepare for tomorrow.",
+      trigger: { kind: "cron", expression: "0 21 * * *", tz },
+      metadata: { packId: "daily-routines", routineKey: "evening" },
+    },
+  ]
+}

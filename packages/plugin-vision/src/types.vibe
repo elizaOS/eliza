@@ -1,0 +1,218 @@
+// spec/vision/index.md, "Story: Control which of my visual sources the assistant can use"
+import type { VisionMode as SpecVisionMode } from "../gen/vision.effect.vibe"
+
+export const VisionServiceType = {
+  VISION: "VISION" as const,
+}
+
+export const VisionMode = {
+  OFF: "OFF",
+  CAMERA: "CAMERA",
+  SCREEN: "SCREEN",
+  BOTH: "BOTH",
+} as const
+
+export type VisionMode = (typeof VisionMode)[keyof typeof VisionMode]
+
+export type DetectionSource = "yolo" | "vlm" | "ocr" | "ax" | "heuristic" | "none"
+
+export type MemoryPressureLevel = "normal" | "elevated" | "critical"
+
+export type DescribePauseReason =
+  | "critical_memory"
+  | "arbiter_denied"
+  | "circuit_open"
+  | "concurrency_limit"
+  | null
+
+export interface CameraInfo {
+  id: string
+  name: string
+  connected: boolean
+}
+
+export interface BoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface DetectedObject {
+  id: string
+  type: string
+  confidence: number
+  boundingBox: BoundingBox
+}
+
+export interface PersonInfo {
+  id: string
+  pose: "sitting" | "standing" | "lying" | "unknown"
+  facing: "camera" | "away" | "left" | "right" | "unknown"
+  confidence: number
+  boundingBox: BoundingBox
+  name?: string
+}
+
+export interface SceneDescription {
+  timestamp: number
+  descriptionTimestamp?: number
+  description: string
+  objects: DetectedObject[]
+  people: PersonInfo[]
+  sceneChanged: boolean
+  changePercentage: number
+  descriptionStale?: boolean
+  describePaused?: boolean
+  describePauseReason?: Exclude<DescribePauseReason, null>
+  audioTranscription?: string
+  objectDetectionSource?: DetectionSource
+}
+
+export interface VisionFrame {
+  timestamp: number
+  width: number
+  height: number
+  data: Uint8Array
+  format: "rgb" | "rgba" | "jpeg" | "png"
+}
+
+export interface ScreenTile {
+  id: string
+  displayId: string
+  sourceX: number
+  sourceY: number
+  sourceW: number
+  sourceH: number
+  tileW: number
+  tileH: number
+  pngBytes: Uint8Array
+}
+
+export interface TileAnalysis {
+  tileId: string
+  summary: string
+  text: string
+  timestamp: number
+}
+
+export interface OCRResult {
+  text: string
+  fullText: string
+  blocks: Array<{
+    text: string
+    bbox: BoundingBox
+    confidence: number
+  }>
+}
+
+export interface ScreenCapture {
+  timestamp: number
+  width: number
+  height: number
+  data: Uint8Array
+  format: "png" | "jpeg"
+  displayId?: number
+  tiles: ScreenTile[]
+}
+
+export interface EnhancedSceneDescription extends SceneDescription {
+  screenCapture?: ScreenCapture
+  screenAnalysis?: {
+    fullScreenOCR: string
+    activeTileSummary: string
+    gridSummary: string
+    focusedApp?: string
+    tileAnalyses: TileAnalysis[]
+  }
+}
+
+export interface VisionConfig {
+  cameraName?: string
+  pixelChangeThreshold?: number
+  updateInterval?: number
+  visionMode?: VisionMode
+  ocrEnabled?: boolean
+  screenCaptureInterval?: number
+  maxConcurrentDescribes?: number
+  failureThreshold?: number
+}
+
+export interface EntityAttributes {
+  name?: string
+  faceId?: string
+  description?: string
+  clothing?: string
+  role?: string
+  tags?: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface TrackedEntity {
+  id: string
+  entityType: "person" | "object" | "pet"
+  firstSeen: number
+  lastSeen: number
+  lastPosition: BoundingBox
+  appearances: Array<{ timestamp: number; boundingBox: BoundingBox; confidence: number }>
+  attributes: EntityAttributes
+  worldId?: string
+  roomId?: string
+  revision?: number
+  frameRef?: string
+}
+
+export interface FaceProfile {
+  id: string
+  name?: string
+  embedding: number[]
+  firstSeen: number
+  lastSeen: number
+  seenCount: number
+}
+
+export interface FaceLibrary {
+  faces: Map<string, FaceProfile>
+  embeddings: Map<string, number[][]>
+}
+
+export interface WorldState {
+  worldId: string
+  activeEntities: Map<string, TrackedEntity>
+  recentlyLeft: Map<string, { entity: TrackedEntity; leftAt: number }>
+  lastUpdate: number
+}
+
+export interface VisionCapabilities {
+  camera: boolean
+  screenCapture: boolean
+  ocr: boolean
+  objectDetection: boolean
+  faceRecognition: boolean
+  unavailableReasons?: {
+    camera?: string
+    screenCapture?: string
+    ocr?: string
+  }
+}
+
+export function hasReadyInputForMode(capabilities: VisionCapabilities, mode: VisionMode): boolean {
+  if (mode === VisionMode.OFF) return false
+  if (mode === VisionMode.CAMERA) return capabilities.camera
+  if (mode === VisionMode.SCREEN) return capabilities.screenCapture
+  return capabilities.camera || capabilities.screenCapture
+}
+
+export function toSpecVisionMode(mode: VisionMode): SpecVisionMode {
+  if (mode === VisionMode.CAMERA) return "CameraOnly"
+  if (mode === VisionMode.SCREEN) return "ScreenOnly"
+  if (mode === VisionMode.BOTH) return "CameraAndScreen"
+  return "VisionOff"
+}
+
+export function fromSpecVisionMode(mode: SpecVisionMode): VisionMode {
+  if (mode === "CameraOnly") return VisionMode.CAMERA
+  if (mode === "ScreenOnly") return VisionMode.SCREEN
+  if (mode === "CameraAndScreen") return VisionMode.BOTH
+  return VisionMode.OFF
+}

@@ -1,0 +1,497 @@
+// spec/nativeDesktop/index.md, "Story: Manage desktop tray, shortcuts, window state, and notifications safely"
+import type { PluginListenerHandle } from "@capacitor/core"
+import {
+  canCloseNotification,
+  canCreateTray,
+  canDestroyTray,
+  canRegisterShortcut,
+  canSetFullscreen,
+  canSetWindowOpacity,
+  canSetWindowVisibility,
+  canShowNotification,
+  canUnregisterShortcut,
+  closeNotification,
+  createTray,
+  destroyTray,
+  initial,
+  registerShortcut,
+  safeExternalScheme,
+  setFullscreen,
+  setWindowOpacity,
+  setWindowVisibility,
+  showNotification,
+  unregisterShortcut,
+  type DesktopState,
+} from "../gen/nativeDesktop.effect.vibe"
+import type {
+  AutoLaunchOptions,
+  DesktopPathName,
+  DesktopPermissionId,
+  DesktopPermissionState,
+  DesktopPlugin,
+  NotificationEvent,
+  NotificationOptions,
+  PowerMonitorState,
+  TrayClickEvent,
+  TrayMenuClickEvent,
+  TrayMenuItem,
+  TrayOptions,
+  WindowBounds,
+  WindowOptions,
+  GlobalShortcutEvent,
+} from "./native-contract.vibe"
+
+type DesktopEventData = TrayClickEvent | TrayMenuClickEvent | GlobalShortcutEvent | NotificationEvent | undefined
+
+interface ListenerRecord {
+  eventName: string
+  callback: (event: DesktopEventData) => void
+  windowListener?: () => void
+}
+
+module desktopHost {
+  export interface DesktopRpcBridge {
+    request?: {
+      permissionsCheck?: (options: { id: string }) => Promise<unknown>
+      permissionsRequest?: (options: { id: string }) => Promise<unknown>
+    }
+  }
+
+  export function failDesktop(message: string): never {
+    throw new Error(message)
+  }
+
+  export function parseUrlScheme(raw: string): string | null {
+    try {
+      const parsed = new URL(raw)
+      return parsed.protocol.replace(/:$/, "").toLowerCase()
+    } catch {
+      return null
+    }
+  }
+
+  export function detectPlatform(): "darwin" | "win32" | "linux" {
+    const proc = (globalThis as { process?: { platform?: string } }).process
+    if (proc?.platform === "darwin" || proc?.platform === "win32" || proc?.platform === "linux") {
+      return proc.platform
+    }
+    const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator
+    const ua = nav?.userAgent?.toLowerCase() ?? ""
+    if (ua.includes("mac")) return "darwin"
+    if (ua.includes("win")) return "win32"
+    return "linux"
+  }
+
+  export function readProcessVersions(): { chrome: string; node: string } {
+    const proc = (globalThis as { process?: { versions?: { node?: string; chrome?: string } } }).process
+    return {
+      chrome: proc?.versions?.chrome ?? "",
+      node: proc?.versions?.node ?? "",
+    }
+  }
+
+  export function getRpcBridge(): DesktopRpcBridge | undefined {
+    const win = (globalThis as { window?: { __ELIZA_DESKTOP_RPC__?: DesktopRpcBridge } }).window
+    return win?.__ELIZA_DESKTOP_RPC__
+  }
+
+  export function readWindow(): Window | undefined {
+    return (globalThis as { window?: Window }).window
+  }
+
+  export function readDocument(): Document | undefined {
+    return (globalThis as { document?: Document }).document
+  }
+
+  export function readNavigator(): Navigator | undefined {
+    return (globalThis as { navigator?: Navigator }).navigator
+  }
+}
+import { detectPlatform, failDesktop, getRpcBridge, parseUrlScheme, readDocument, readNavigator, readProcessVersions, readWindow } from desktopHost
+
+export function assertSafeExternalUrl(raw: string): string {
+  const scheme = parseUrlScheme(raw)
+  if (scheme === null || !safeExternalScheme(scheme)) {
+    failDesktop(`Unsafe external URL scheme: ${raw}`)
+  }
+  return raw
+}
+
+function isDesktopPermissionState(value: unknown, id: DesktopPermissionId): value is DesktopPermissionState {
+  if (typeof value !== "object" || value === null) return false
+  const record = value as Record<string, unknown>
+  return record.id === id && typeof record.status === "string" && typeof record.canRequest === "boolean" && typeof record.lastChecked === "number"
+}
+
+export class DesktopWeb implements DesktopPlugin {
+  private machineState: DesktopState = initial
+  private trayOptions: TrayOptions | null = null
+  private readonly shortcuts = new Map<string, string>()
+  private autoLaunch: { enabled: boolean; openAsHidden: boolean } = { enabled: false, openAsHidden: false }
+  private bounds: WindowBounds = { x: 0, y: 0, width: 1280, height: 800 }
+  private focused = true
+  private alwaysOnTop = false
+  private readonly notifications = new Map<string, NotificationOptions>()
+  private notificationSeq = 0
+  private clipboard: { text?: string; html?: string; rtf?: string; hasImage: boolean } = { hasImage: false }
+  private pluginListeners: ListenerRecord[] = []
+
+  getState(): DesktopState {
+    return this.machineState
+  }
+
+  async createTray(options: TrayOptions): Promise<void> {
+    if (!canCreateTray(this.machineState)) return
+    this.machineState = createTray(this.machineState)
+    this.trayOptions = { ...options }
+  }
+
+  async updateTray(options: Partial<TrayOptions>): Promise<void> {
+    if (!this.trayOptions) return
+    this.trayOptions = { ...this.trayOptions, ...options }
+  }
+
+  async destroyTray(): Promise<void> {
+    if (!canDestroyTray(this.machineState)) return
+    this.machineState = destroyTray(this.machineState)
+    this.trayOptions = null
+  }
+
+  async setTrayMenu(options: { menu: TrayMenuItem[] }): Promise<void> {
+    if (this.trayOptions) {
+      this.trayOptions = { ...this.trayOptions, menu: [...options.menu] }
+    }
+  }
+
+  async registerShortcut(options: { id: string; accelerator: string }): Promise<{ registered: boolean }> {
+    if (this.shortcuts.has(options.id) || !canRegisterShortcut(this.machineState)) {
+      return { registered: false }
+    }
+    this.machineState = registerShortcut(this.machineState)
+    this.shortcuts.set(options.id, options.accelerator)
+    return { registered: true }
+  }
+
+  async unregisterShortcut(options: { id: string }): Promise<void> {
+    if (!this.shortcuts.delete(options.id)) return
+    if (canUnregisterShortcut(this.machineState)) {
+      this.machineState = unregisterShortcut(this.machineState)
+    }
+  }
+
+  async unregisterAllShortcuts(): Promise<void> {
+    this.shortcuts.clear()
+    while (canUnregisterShortcut(this.machineState)) {
+      this.machineState = unregisterShortcut(this.machineState)
+    }
+  }
+
+  async isShortcutRegistered(options: { accelerator: string }): Promise<{ registered: boolean }> {
+    for (const acc of this.shortcuts.values()) {
+      if (acc === options.accelerator) return { registered: true }
+    }
+    return { registered: false }
+  }
+
+  async setAutoLaunch(options: AutoLaunchOptions): Promise<void> {
+    this.autoLaunch = { enabled: options.enabled, openAsHidden: options.openAsHidden ?? false }
+    this.machineState = { ...this.machineState, autoLaunchEnabled: options.enabled }
+  }
+
+  async getAutoLaunchStatus(): Promise<{ enabled: boolean; openAsHidden: boolean }> {
+    return { ...this.autoLaunch }
+  }
+
+  async setWindowOptions(options: WindowOptions): Promise<void> {
+    if (options.width !== undefined) this.bounds = { ...this.bounds, width: options.width }
+    if (options.height !== undefined) this.bounds = { ...this.bounds, height: options.height }
+    if (options.x !== undefined) this.bounds = { ...this.bounds, x: options.x }
+    if (options.y !== undefined) this.bounds = { ...this.bounds, y: options.y }
+    if (options.alwaysOnTop !== undefined) this.alwaysOnTop = options.alwaysOnTop
+    if (options.fullscreen !== undefined) await this.setFullscreen({ flag: options.fullscreen })
+    if (options.opacity !== undefined) await this.setOpacity({ opacity: options.opacity })
+  }
+
+  async getWindowBounds(): Promise<WindowBounds> {
+    const win = readWindow()
+    if (win) {
+      return {
+        x: win.screenX ?? this.bounds.x,
+        y: win.screenY ?? this.bounds.y,
+        width: win.outerWidth || this.bounds.width,
+        height: win.outerHeight || this.bounds.height,
+      }
+    }
+    return { ...this.bounds }
+  }
+
+  async setWindowBounds(bounds: Partial<WindowBounds>): Promise<void> {
+    this.bounds = { ...this.bounds, ...bounds }
+  }
+
+  async minimizeWindow(): Promise<void> {
+    if (this.machineState.fullscreen) await this.setFullscreen({ flag: false })
+    this.machineState = { ...this.machineState, minimized: true }
+    this.notifyListeners("windowMinimize", undefined)
+  }
+
+  async maximizeWindow(): Promise<void> {
+    this.machineState = { ...this.machineState, maximized: true, minimized: false }
+    this.notifyListeners("windowMaximize", undefined)
+  }
+
+  async unmaximizeWindow(): Promise<void> {
+    this.machineState = { ...this.machineState, maximized: false }
+    this.notifyListeners("windowUnmaximize", undefined)
+  }
+
+  async closeWindow(): Promise<void> {
+    this.notifyListeners("windowClose", undefined)
+    readWindow()?.close?.()
+  }
+
+  async showWindow(): Promise<void> {
+    if (canSetWindowVisibility(this.machineState, true)) {
+      this.machineState = setWindowVisibility(this.machineState, true)
+    }
+  }
+
+  async hideWindow(): Promise<void> {
+    if (canSetWindowVisibility(this.machineState, false)) {
+      this.machineState = setWindowVisibility(this.machineState, false)
+    }
+  }
+
+  async focusWindow(): Promise<void> {
+    this.focused = true
+    readWindow()?.focus?.()
+    this.notifyListeners("windowFocus", undefined)
+  }
+
+  async isWindowMaximized(): Promise<{ maximized: boolean }> {
+    return { maximized: this.machineState.maximized }
+  }
+
+  async isWindowMinimized(): Promise<{ minimized: boolean }> {
+    return { minimized: this.machineState.minimized }
+  }
+
+  async isWindowVisible(): Promise<{ visible: boolean }> {
+    return { visible: this.machineState.visible }
+  }
+
+  async isWindowFocused(): Promise<{ focused: boolean }> {
+    const doc = readDocument()
+    return { focused: doc ? doc.hasFocus() : this.focused }
+  }
+
+  async setAlwaysOnTop(options: {
+    flag: boolean
+    level?: "normal" | "floating" | "torn-off-menu" | "modal-panel" | "main-menu" | "status" | "pop-up-menu" | "screen-saver"
+  }): Promise<void> {
+    this.alwaysOnTop = options.flag
+  }
+
+  async setFullscreen(options: { flag: boolean }): Promise<void> {
+    if (canSetFullscreen(this.machineState, options.flag)) {
+      this.machineState = setFullscreen(this.machineState, options.flag)
+    }
+  }
+
+  async setOpacity(options: { opacity: number }): Promise<void> {
+    const hundredths = Math.round(options.opacity * 100)
+    if (!Number.isFinite(options.opacity) || hundredths < 0 || hundredths > 100) {
+      failDesktop("opacity must be between 0 and 1")
+    }
+    if (canSetWindowOpacity(this.machineState, hundredths)) {
+      this.machineState = setWindowOpacity(this.machineState, hundredths)
+    }
+  }
+
+  async showNotification(options: NotificationOptions): Promise<{ id: string }> {
+    if (!canShowNotification(this.machineState)) {
+      failDesktop("notification limit reached")
+    }
+    this.machineState = showNotification(this.machineState)
+    this.notificationSeq += 1
+    const id = `desktop-notification-${this.notificationSeq}`
+    this.notifications.set(id, options)
+    return { id }
+  }
+
+  async closeNotification(options: { id: string }): Promise<void> {
+    if (!this.notifications.delete(options.id)) return
+    if (canCloseNotification(this.machineState)) {
+      this.machineState = closeNotification(this.machineState)
+    }
+  }
+
+  async getPowerState(): Promise<PowerMonitorState> {
+    return {
+      onBattery: false,
+      idleState: "active",
+      idleTime: 0,
+    }
+  }
+
+  async quit(): Promise<void> {
+    await this.unregisterAllShortcuts()
+    await this.destroyTray()
+  }
+
+  async relaunch(): Promise<void> {
+    readWindow()?.location?.reload?.()
+  }
+
+  async getVersion(): Promise<{ version: string; name: string; runtime: string; chrome: string; node: string }> {
+    const versions = readProcessVersions()
+    return {
+      version: "4.0.0-alpha.0",
+      name: "@elizaos/capacitor-desktop",
+      runtime: "web",
+      chrome: versions.chrome,
+      node: versions.node,
+    }
+  }
+
+  async isPackaged(): Promise<{ packaged: boolean }> {
+    return { packaged: false }
+  }
+
+  async getPath(options: { name: DesktopPathName }): Promise<{ path: string }> {
+    return { path: `/${options.name}` }
+  }
+
+  async writeToClipboard(options: { text?: string; html?: string; image?: string; rtf?: string }): Promise<void> {
+    this.clipboard = {
+      text: options.text,
+      html: options.html,
+      rtf: options.rtf,
+      hasImage: Boolean(options.image),
+    }
+    const nav = readNavigator()
+    if (options.text !== undefined && nav?.clipboard?.writeText) {
+      await nav.clipboard.writeText(options.text)
+    }
+  }
+
+  async readFromClipboard(): Promise<{ text?: string; html?: string; rtf?: string; hasImage: boolean }> {
+    const nav = readNavigator()
+    if (nav?.clipboard?.readText) {
+      const text = await nav.clipboard.readText()
+      return { text: text || undefined, hasImage: this.clipboard.hasImage }
+    }
+    return { ...this.clipboard }
+  }
+
+  async clearClipboard(): Promise<void> {
+    this.clipboard = { hasImage: false }
+    const nav = readNavigator()
+    if (nav?.clipboard?.writeText) {
+      await nav.clipboard.writeText("")
+    }
+  }
+
+  async openExternal(options: { url: string }): Promise<void> {
+    const safeUrl = assertSafeExternalUrl(options.url)
+    readWindow()?.open?.(safeUrl, "_blank", "noopener")
+  }
+
+  async showItemInFolder(_options: { path: string }): Promise<void> {}
+
+  async beep(): Promise<void> {}
+
+  async checkPermission(options: { id: DesktopPermissionId }): Promise<DesktopPermissionState> {
+    const rpc = getRpcBridge()
+    if (rpc?.request?.permissionsCheck) {
+      const bridged = await rpc.request.permissionsCheck({ id: options.id })
+      if (isDesktopPermissionState(bridged, options.id)) return bridged
+    }
+    return {
+      id: options.id,
+      status: "not-applicable",
+      restrictedReason: "platform_unsupported",
+      lastChecked: Date.now(),
+      canRequest: false,
+      platform: detectPlatform(),
+    }
+  }
+
+  async requestPermission(options: { id: DesktopPermissionId; reason: string }): Promise<DesktopPermissionState> {
+    const rpc = getRpcBridge()
+    if (rpc?.request?.permissionsRequest) {
+      const bridged = await rpc.request.permissionsRequest({ id: options.id })
+      if (isDesktopPermissionState(bridged, options.id)) return bridged
+    }
+    return await this.checkPermission({ id: options.id })
+  }
+
+  addListener(eventName: "trayClick", listenerFunc: (event: TrayClickEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "trayDoubleClick", listenerFunc: (event: TrayClickEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "trayRightClick", listenerFunc: (event: TrayClickEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "trayMenuClick", listenerFunc: (event: TrayMenuClickEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "shortcutPressed", listenerFunc: (event: GlobalShortcutEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "notificationClick", listenerFunc: (event: NotificationEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "notificationAction", listenerFunc: (event: NotificationEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "notificationReply", listenerFunc: (event: NotificationEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "windowFocus", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "windowBlur", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "windowMaximize", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "windowUnmaximize", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "windowMinimize", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "windowRestore", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "windowClose", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "powerSuspend", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "powerResume", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "powerOnAC", listenerFunc: () => void): Promise<PluginListenerHandle>
+  addListener(eventName: "powerOnBattery", listenerFunc: () => void): Promise<PluginListenerHandle>
+  async addListener(eventName: string, listenerFunc: (event: never) => void): Promise<PluginListenerHandle> {
+    const callback = listenerFunc as unknown as (event: DesktopEventData) => void
+    const entry: ListenerRecord = { eventName, callback }
+    const win = readWindow()
+    if (win) {
+      if (eventName === "windowFocus") {
+        entry.windowListener = () => callback(undefined)
+        win.addEventListener("focus", entry.windowListener)
+      } else if (eventName === "windowBlur") {
+        entry.windowListener = () => callback(undefined)
+        win.addEventListener("blur", entry.windowListener)
+      }
+    }
+    this.pluginListeners.push(entry)
+    return {
+      remove: async () => {
+        const index = this.pluginListeners.indexOf(entry)
+        if (index >= 0) {
+          const targetWin = readWindow()
+          if (targetWin && entry.windowListener) {
+            if (entry.eventName === "windowFocus") targetWin.removeEventListener("focus", entry.windowListener)
+            else if (entry.eventName === "windowBlur") targetWin.removeEventListener("blur", entry.windowListener)
+          }
+          this.pluginListeners.splice(index, 1)
+        }
+      },
+    }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    const win = readWindow()
+    for (const entry of this.pluginListeners) {
+      if (win && entry.windowListener) {
+        if (entry.eventName === "windowFocus") win.removeEventListener("focus", entry.windowListener)
+        else if (entry.eventName === "windowBlur") win.removeEventListener("blur", entry.windowListener)
+      }
+    }
+    this.pluginListeners = []
+  }
+
+  protected notifyListeners(eventName: string, data: DesktopEventData): void {
+    for (const listener of this.pluginListeners) {
+      if (listener.eventName === eventName) listener.callback(data)
+    }
+  }
+
+  isAlwaysOnTop(): boolean {
+    return this.alwaysOnTop
+  }
+}

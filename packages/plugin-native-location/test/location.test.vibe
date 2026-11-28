@@ -1,0 +1,93 @@
+// spec/nativeLocation/index.md, "Story: Use a fresh device location and stop updates when I close the view"
+import { assert, describe, it } from "@effect/vitest"
+import type { LocationClient } from "@elizaos/os-bridges"
+import {
+  LocationWeb,
+  createLocationWatchHandle,
+  haversineDistanceMeters,
+  readCurrentDeviceLocation,
+} from "../src/index.vibe"
+
+module node {
+  export async function captureRejection(fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await fn()
+      return undefined
+    } catch (error) {
+      return error
+    }
+  }
+}
+import { captureRejection } from node
+
+describe("Native location (spec/nativeLocation/index.md, \"Story: Use a fresh device location and stop updates when I close the view\")", () => {
+  it("Enforces fresh/cached fix bounds, haversine distance, LocationWeb geolocation fallback, and watch lifecycle (spec/nativeLocation/index.md, \"A fix is usable only when coordinates, accuracy and age fall within the request\")", async () => {
+    const now = Date.now()
+    const freshClient = {
+      getCurrentPosition: async () => ({
+        kind: "fix" as const,
+        source: "fresh" as const,
+        coords: { latitude: 40.7128, longitude: -74.006, accuracy: 12, timestamp: now - 50 },
+        precise: true,
+      }),
+      checkPermissions: async () => ({ location: "granted" as const, coarseLocation: "granted" as const }),
+    } as unknown as LocationClient
+    const reading = await runPromise(readCurrentDeviceLocation(freshClient))
+    assert.strictEqual(reading.kind, "fix")
+
+    const staleCachedClient = {
+      getCurrentPosition: async () => ({
+        kind: "fix" as const,
+        source: "cached" as const,
+        coords: { latitude: 40.7128, longitude: -74.006, accuracy: 12, timestamp: now - 5000 },
+        precise: true,
+      }),
+      checkPermissions: async () => ({ location: "granted" as const, coarseLocation: "granted" as const }),
+    } as unknown as LocationClient
+    assert.isDefined(await captureRejection(() => runPromise(readCurrentDeviceLocation(staleCachedClient, { maxAge: 0 }))))
+
+    assert.isAbove(haversineDistanceMeters(40.7128, -74.006, 34.0522, -118.2437), 3_900_000)
+
+    const cleared: number[] = []
+    const makePos = (latitude: number, longitude: number, timestamp: number) => ({
+      coords: { latitude, longitude, accuracy: 5, altitude: null, altitudeAccuracy: null, heading: null, speed: null, toJSON: () => ({}) },
+      timestamp,
+      toJSON: () => ({}),
+    } as GeolocationPosition)
+    const fakeGeo = {
+      getCurrentPosition: (ok: (pos: GeolocationPosition) => void) => {
+        ok(makePos(37.7749, -122.4194, now))
+      },
+      watchPosition: (ok: (pos: GeolocationPosition) => void, fail?: (err: GeolocationPositionError) => void) => {
+        ok(makePos(37.7749, -122.4194, now))
+        ok(makePos(37.77491, -122.4194, now + 200))
+        ok(makePos(37.77491, -122.4194, now + 5000))
+        ok(makePos(37.79, -122.4194, now + 6000))
+        fail?.({ code: 3, message: "timed out", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError)
+        return 42
+      },
+      clearWatch: (id: number) => cleared.push(id),
+    } as unknown as Geolocation
+
+    const web = new LocationWeb(fakeGeo)
+    const fixes: number[] = []
+    const errors: string[] = []
+    const listener = await web.addListener("locationChange", (res) => fixes.push(res.coords.latitude))
+    const errListener = await web.addListener("error", (err) => errors.push(err.code))
+    const pos = await web.getCurrentPosition({ accuracy: "high" })
+    assert.strictEqual(pos.coords.latitude, 37.7749)
+    const { watchId } = await web.watchPosition({ minInterval: 1000, minDistance: 100 })
+    const blankErr = await captureRejection(() => web.clearWatch({ watchId: "   " }))
+    assert.include((blankErr as Error)?.message, "Missing watchId")
+    await web.clearWatch({ watchId })
+    await listener.remove()
+    await errListener.remove()
+    assert.deepStrictEqual(cleared, [42])
+    assert.deepStrictEqual(fixes, [37.7749, 37.79])
+    assert.deepStrictEqual(errors, ["TIMEOUT"])
+
+    const handle = createLocationWatchHandle()
+    assert.strictEqual(await handle.dispatch({ type: "registerWatch", watchId: "w1", grant: "PreciseLocation" }), "accepted")
+    assert.strictEqual(await handle.dispatch({ type: "clearWatch", watchId: "w1" }), "accepted")
+  })
+})

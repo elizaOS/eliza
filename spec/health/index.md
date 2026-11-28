@@ -1,5 +1,8 @@
 # Health and activity observations
 
+Child specs:
+- [Connector consent, sync lifecycle, and sleep alert gating](./lifecycle.md)
+
 ## Story: Review recorded sleep and device activity
 
 > As the owner, I can read my recorded sleep intervals and screen activity and see which connector provided the observations.

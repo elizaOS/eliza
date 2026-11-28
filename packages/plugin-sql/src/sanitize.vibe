@@ -1,0 +1,234 @@
+// spec/sql/index.md, "Story: Attach a SQL adapter only after its schema is ready"
+import { ElizaError } from "@elizaos/core"
+
+module sqlPathNode {
+  import { existsSync } from "node:fs"
+  import { dirname, join, resolve } from "node:path"
+  import { cwd, env } from "node:process"
+
+  /** @throws {never} */
+  export function expandTildePath(filepath: string): string {
+    if (filepath.startsWith("~")) {
+      return join(cwd(), filepath.slice(1))
+    }
+    return filepath
+  }
+
+  /** @throws {never} */
+  export function resolveEnvFile(startDir: string = cwd()): string {
+    let currentDir = startDir
+    for (;;) {
+      const candidate = join(currentDir, ".env")
+      if (existsSync(candidate)) return candidate
+      if (existsSync(join(currentDir, ".git"))) break
+      const parentDir = dirname(currentDir)
+      if (parentDir === currentDir) break
+      currentDir = parentDir
+    }
+    return join(startDir, ".env")
+  }
+
+  /** @throws {never} */
+  export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
+    let monoPath: string | undefined
+    if (existsSync(join(cwd(), "packages", "core"))) {
+      monoPath = cwd()
+    } else {
+      const twoUp = resolve(cwd(), "../..")
+      if (existsSync(join(twoUp, "packages", "core"))) {
+        monoPath = twoUp
+      }
+    }
+    const base =
+      dir ??
+      env.PGLITE_DATA_DIR ??
+      fallbackDir ??
+      (monoPath ? join(monoPath, ".eliza", ".elizadb") : undefined) ??
+      join(cwd(), ".eliza", ".elizadb")
+    return expandTildePath(base)
+  }
+
+  /** @throws {never} */
+  export function utf8ByteLength(text: string): number {
+    return Buffer.byteLength(text, "utf8")
+  }
+}
+import { expandTildePath, resolveEnvFile, resolvePgliteDir, utf8ByteLength } from sqlPathNode
+export { expandTildePath, resolveEnvFile, resolvePgliteDir }
+
+export const MAX_SQL_JSON_SANITIZE_DEPTH = 64
+export const MAX_SQL_JSON_SANITIZE_NODES = 10_000
+export const MAX_SQL_JSON_SANITIZE_BYTES = 1_048_576
+export const MAX_SQL_JSON_SANITIZE_STRING_BYTES = MAX_SQL_JSON_SANITIZE_BYTES
+export const MAX_SQL_JSON_SANITIZE_KEY_BYTES = 65_536
+export const MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS = 4_096
+export const SQL_JSON_SANITIZE_UNBOUNDED = "SQL_JSON_SANITIZE_UNBOUNDED"
+
+const NUL = String.fromCharCode(0)
+const PG_SSLMODE_ALIASES = new Set(["prefer", "require", "verify-ca"])
+const UNSUPPORTED_JSON_TEXT_CODES = new Set([
+  "SQL_JSON_UNSUPPORTED_NUL",
+  "SQL_JSON_UNSUPPORTED_SURROGATE",
+])
+
+export function normalizePgSslMode(connectionString: string): string {
+  if (
+    !connectionString ||
+    /(?:^|[?&]|\s)uselibpqcompat=true(?:[&#]|\s|$)/i.test(connectionString)
+  ) {
+    return connectionString
+  }
+  return connectionString
+    .replace(/([?&]sslmode=)(prefer|require|verify-ca)(?=(&|#|$))/gi, (match, prefix, value) =>
+      PG_SSLMODE_ALIASES.has(String(value).toLowerCase()) ? `${prefix}verify-full` : match,
+    )
+    .replace(
+      /(^|\s)(sslmode=)(prefer|require|verify-ca)(?=\s|$)/gi,
+      (match, boundary, prefix, value) =>
+        PG_SSLMODE_ALIASES.has(String(value).toLowerCase())
+          ? `${boundary}${prefix}verify-full`
+          : match,
+    )
+}
+
+export function isUnsupportedJsonTextError(error: unknown): boolean {
+  return error instanceof ElizaError && UNSUPPORTED_JSON_TEXT_CODES.has(error.code)
+}
+
+module jsonSanitizeImpl {
+  import { ElizaError } from "@elizaos/core"
+
+  const NUL_CHAR = String.fromCharCode(0)
+
+  function throwUnbounded(context: Record<string, unknown>): never {
+    throw new ElizaError("sql json sanitize exceeded its safe structural budget", {
+      code: "SQL_JSON_SANITIZE_UNBOUNDED",
+      context,
+      severity: "fatal",
+    })
+  }
+
+  function normalizeText(value: string, rejectNul: boolean): string {
+    if (rejectNul) {
+      if (value.includes(NUL_CHAR)) {
+        throw new ElizaError(
+          "JSON contains NUL, which PostgreSQL jsonb cannot preserve",
+          { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" },
+        )
+      }
+      if (!value.isWellFormed()) {
+        throw new ElizaError(
+          "JSON contains a lone UTF-16 surrogate, which PostgreSQL jsonb cannot store",
+          { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" },
+        )
+      }
+      return value
+    }
+    const withoutNul = value.includes(NUL_CHAR) ? value.replaceAll(NUL_CHAR, "") : value
+    return withoutNul.isWellFormed() ? withoutNul : withoutNul.toWellFormed()
+  }
+
+  export function assertJsonbStorable(value: unknown): void {
+    if (value === undefined || typeof value === "function" || typeof value === "symbol") return
+    const serialized = JSON.stringify(value)
+    if (serialized === undefined) return
+    for (let i = 0; i < serialized.length; i += 1) {
+      if (serialized.charCodeAt(i) !== 92) continue
+      const next = serialized.charCodeAt(i + 1)
+      if (next === 117 && i + 5 < serialized.length) {
+        const hex = serialized.slice(i + 2, i + 6).toLowerCase()
+        if (hex === "0000") {
+          throw new ElizaError("JSON contains NUL, which PostgreSQL jsonb cannot preserve", {
+            code: "SQL_JSON_UNSUPPORTED_NUL",
+            severity: "fatal",
+          })
+        }
+        const codeUnit = Number.parseInt(hex, 16)
+        if (codeUnit >= 0xd800 && codeUnit <= 0xdfff) {
+          throw new ElizaError(
+            "JSON contains a lone UTF-16 surrogate, which PostgreSQL jsonb cannot store",
+            { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" },
+          )
+        }
+        i += 5
+      } else {
+        i += 1
+      }
+    }
+  }
+
+  export function sanitizeJsonObject(
+    value: unknown,
+    options: { rejectNul?: boolean; maxBytes?: number; byteLen: (s: string) => number },
+  ): unknown {
+    const seen = new WeakSet<object>()
+    let visits = 0
+    let bytes = 0
+    const maxBytes = options.maxBytes ?? 1_048_576
+    const rejectNul = options.rejectNul === true
+
+    const walk = (input: unknown, depth: number): unknown => {
+      if (depth > 64) throwUnbounded({ depth })
+      visits += 1
+      if (visits > 10_000) throwUnbounded({ visits })
+      if (input === null || typeof input === "boolean") return input
+      if (typeof input === "number") return Number.isFinite(input) ? input : null
+      if (typeof input === "bigint") {
+        const str = input.toString()
+        if (str.length > 4_096) throwUnbounded({ bigintDigits: str.length })
+        return str
+      }
+      if (typeof input === "string") {
+        const clean = normalizeText(input, rejectNul)
+        const len = options.byteLen(clean)
+        bytes += len
+        if (bytes > maxBytes) throwUnbounded({ bytes, maxBytes })
+        return clean
+      }
+      if (typeof input !== "object") return undefined
+      if (input instanceof Date) return input.toISOString()
+      if (seen.has(input)) return "[Circular]"
+      seen.add(input)
+      try {
+        if (Array.isArray(input)) {
+          return input.map((item) => {
+            const v = walk(item, depth + 1)
+            return v === undefined ? null : v
+          })
+        }
+        const out: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(input)) {
+          const cleanKey = normalizeText(k, rejectNul)
+          const keyBytes = options.byteLen(cleanKey)
+          if (keyBytes > 65_536) throwUnbounded({ keyBytes })
+          bytes += keyBytes
+          if (bytes > maxBytes) throwUnbounded({ bytes, maxBytes })
+          const sanitized = walk(v, depth + 1)
+          if (sanitized !== undefined) out[cleanKey] = sanitized
+        }
+        return out
+      } finally {
+        seen.delete(input)
+      }
+    }
+
+    return walk(value, 0)
+  }
+}
+import { assertJsonbStorable, sanitizeJsonObject as sanitizeImpl } from jsonSanitizeImpl
+export { assertJsonbStorable }
+
+export function sanitizeJsonObject<T = unknown>(
+  value: T,
+  options?: { rejectNul?: boolean; maxBytes?: number },
+): T {
+  return sanitizeImpl(value, {
+    rejectNul: options?.rejectNul,
+    maxBytes: options?.maxBytes,
+    byteLen: utf8ByteLength,
+  }) as T
+}
+
+export function stripNulFromString(text: string): string {
+  return text.includes(NUL) ? text.replaceAll(NUL, "") : text
+}

@@ -1,0 +1,199 @@
+// spec/meetings/index.md, "Transcript segments are bound to that meeting and appended once in sequence"; spec/meetings/urlAndDisclosure.md, "Transcript disclosure fails closed when a row is missing or ungranted and filters unusable segments"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import type { TranscriptSegment } from "../gen/meetings.effect.vibe"
+import { segmentAdmitted } from "../gen/meetings__urlAndDisclosure.effect.vibe"
+import {
+  MEETING_AUDIO_SAMPLE_RATE,
+  type MeetingAudioSink,
+  type MeetingParticipant,
+} from "./types.vibe"
+
+const HALLUCINATION_PHRASES = new Set([
+  "thank you",
+  "thank you.",
+  "thanks for watching",
+  "thanks for watching.",
+  "please subscribe",
+  "please subscribe.",
+  "you",
+  "...",
+  "[blank_audio]",
+  "[silence]",
+  "[music]",
+  "(music)",
+])
+
+export function isHallucination(rawText: string): boolean {
+  const trimmed = rawText.trim()
+  if (trimmed.length === 0) return true
+  const normalized = trimmed.toLowerCase().replace(/\s+/g, " ")
+  if (HALLUCINATION_PHRASES.has(normalized)) return true
+  if (/^[\p{P}\p{S}\s]+$/u.test(trimmed)) return true
+  const words = normalized.split(" ")
+  if (words.length >= 6 && new Set(words).size === 1) return true
+  return false
+}
+
+export function concatFloat32(chunks: readonly Float32Array[]): Float32Array {
+  let total = 0
+  for (const chunk of chunks) total += chunk.length
+  const out = new Float32Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.length
+  }
+  return out
+}
+
+export function float32ToWav(samples: Float32Array, sampleRate = MEETING_AUDIO_SAMPLE_RATE): Uint8Array {
+  const dataBytes = samples.length * 2
+  const buffer = new ArrayBuffer(44 + dataBytes)
+  const view = new DataView(buffer)
+  const writeAscii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i += 1) {
+      view.setUint8(offset + i, text.charCodeAt(i))
+    }
+  }
+  writeAscii(0, "RIFF")
+  view.setUint32(4, 36 + dataBytes, true)
+  writeAscii(8, "WAVE")
+  writeAscii(12, "fmt ")
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeAscii(36, "data")
+  view.setUint32(40, dataBytes, true)
+  let pos = 44
+  for (let i = 0; i < samples.length; i += 1) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]!))
+    const int16 = clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff)
+    view.setInt16(pos, int16, true)
+    pos += 2
+  }
+  return new Uint8Array(buffer)
+}
+
+export function wavToFloat32(wav: Uint8Array): { readonly sampleRate: number; readonly samples: Float32Array } {
+  if (wav.byteLength < 44) {
+    return { sampleRate: MEETING_AUDIO_SAMPLE_RATE, samples: new Float32Array(0) }
+  }
+  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength)
+  const sampleRate = view.getUint32(24, true) || MEETING_AUDIO_SAMPLE_RATE
+  const sampleCount = Math.floor((wav.byteLength - 44) / 2)
+  const samples = new Float32Array(sampleCount)
+  for (let i = 0; i < sampleCount; i += 1) {
+    samples[i] = view.getInt16(44 + i * 2, true) / 0x8000
+  }
+  return { sampleRate, samples }
+}
+
+export interface AsrTranscribeResult {
+  readonly text: string
+}
+
+export interface AsrBackend {
+  transcribe(wav: Uint8Array, options?: { readonly language?: string }): Promise<AsrTranscribeResult>
+}
+
+export class RuntimeModelAsrBackend implements AsrBackend {
+  private readonly runtime: IAgentRuntime
+
+  constructor(runtime: IAgentRuntime) {
+    this.runtime = runtime
+  }
+
+  async transcribe(wav: Uint8Array, options?: { readonly language?: string }): Promise<AsrTranscribeResult> {
+    const raw = await this.runtime.useModel(ModelType.TRANSCRIPTION, {
+      audioUrl: "",
+      audio: wav,
+      mimeType: "audio/wav",
+      ...(options?.language ? { prompt: options.language } : {}),
+    })
+    if (typeof raw === "string") return { text: raw }
+    return { text: "" }
+  }
+}
+
+export interface MeetingPipelineInstance extends MeetingAudioSink {
+  readonly getSegments: () => readonly TranscriptSegment[]
+  readonly getParticipants: () => readonly MeetingParticipant[]
+  readonly stop: () => Promise<readonly TranscriptSegment[]>
+}
+
+export function createMeetingTranscriptionPipeline(args: {
+  readonly asr: AsrBackend
+  readonly language?: string
+  readonly onSegment?: (segment: TranscriptSegment) => void
+  readonly nowMs?: () => number
+}): MeetingPipelineInstance {
+  const startedMs = (args.nowMs ?? Date.now)()
+  const buffers = new Map<string, Float32Array[]>()
+  const speakers = new Map<string, string>()
+  const participants = new Map<string, MeetingParticipant>()
+  const segments: TranscriptSegment[] = []
+  let nextSeq = 1
+
+  const flushSpeaker = async (speakerKey: string): Promise<void> => {
+    const chunks = buffers.get(speakerKey)
+    if (!chunks || chunks.length === 0) return
+    buffers.delete(speakerKey)
+    const pcm = concatFloat32(chunks)
+    if (pcm.length === 0) return
+    const wav = float32ToWav(pcm, MEETING_AUDIO_SAMPLE_RATE)
+    const result = await args.asr.transcribe(wav, { language: args.language })
+    const words = result.text.trim()
+    const speaker = (speakers.get(speakerKey) ?? speakerKey).trim()
+    const durationMs = Math.max(1, Math.round((pcm.length / MEETING_AUDIO_SAMPLE_RATE) * 1000))
+    const toMs = Math.max(durationMs, (args.nowMs ?? Date.now)() - startedMs)
+    const fromMs = Math.max(0, toMs - durationMs)
+    const admitted = segmentAdmitted(
+      isHallucination(words),
+      speaker.length > 0,
+      words.length > 0,
+      fromMs >= 0 && toMs >= fromMs,
+      true,
+    )
+    if (!admitted) return
+    const segment: TranscriptSegment = { seq: nextSeq, speaker, fromMs, toMs, words }
+    nextSeq += 1
+    segments.push(segment)
+    args.onSegment?.(segment)
+  }
+
+  return {
+    pushSpeakerAudio(speakerKey, samples) {
+      const existing = buffers.get(speakerKey)
+      if (existing) existing.push(samples)
+      else buffers.set(speakerKey, [samples])
+    },
+    setSpeakerName(speakerKey, displayName) {
+      const clean = displayName.trim()
+      if (clean.length > 0) speakers.set(speakerKey, clean)
+    },
+    flushSpeaker,
+    participantJoined(participant) {
+      participants.set(participant.id, participant)
+    },
+    participantLeft(participantId, atMs) {
+      const prev = participants.get(participantId)
+      if (prev) participants.set(participantId, { ...prev, leftAtMs: atMs })
+    },
+    getSegments() {
+      return [...segments]
+    },
+    getParticipants() {
+      return [...participants.values()]
+    },
+    async stop() {
+      for (const key of [...buffers.keys()]) {
+        await flushSpeaker(key)
+      }
+      return [...segments]
+    },
+  }
+}

@@ -1,14 +1,19 @@
-// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"
+// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"; spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows"
+export * from "./actions.vibe"
 export { curatedModels, isCatalogId, modelNamed, type Catalog, type CatalogId, type CatalogModel, type EmbeddingSpace, type ModelSource, type PublishedFile } from "./catalog.vibe"
 export { EmbeddingRefused, embedText, embeddingsOwnedBy, type EmbeddingChoice } from "./embeddings.vibe"
 export {
   EngineFailed, EngineUnavailable, InferenceEngine,
   type Capability, type EndOfTurnScore, type EngineVector, type InstalledModel, type Pcm, type SpeechReadiness,
 } from "./engine.vibe"
+export * from "./hardware-policy.vibe"
 export {
   AssignmentsUnreadable, DownloadFailed, Rejected, openLocalModels, slotNamed, slotNames,
   type LocalModelsApi, type ModelView, type ModelsView, type SlotName,
 } from "./models.vibe"
+export * from "./pii.vibe"
 export { localInferenceModule, localInferencePlugin, localInferencePluginName, localInferenceProvider } from "./plugin.vibe"
-export { endOfTurnPath, localInferenceRoutes } from "./routes.vibe"
+export { endOfTurnPath, localInferenceHardwarePath, localInferenceRoutes, localInferenceTtsPath, transcriptPrivacyRoutes } from "./routes.vibe"
 export { SpeechInputRefused, speakLocally, transcribeLocally } from "./speech.vibe"
+export * from "./transcript-privacy.vibe"
+export * from "./voice-profiles.vibe"

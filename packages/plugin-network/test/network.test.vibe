@@ -1,0 +1,347 @@
+// spec/network/index.md, "Availability uses the member's own evidence and calendar window"; spec/network/index.md, "Only the authenticated turn may request a state write or relay"; spec/network/index.md, "Only unseen updates for the bound member appear in the read acknowledgement"
+import { assert, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import {
+  InMemoryNetworkStore,
+  NETWORK_ACTION_FIELD,
+  NETWORK_APP_VOICES,
+  NETWORK_CONTEXT_DEFINITION,
+  NETWORK_EDGE_COMPATIBILITY,
+  NETWORK_STATE_TO_PARTICIPATION,
+  NetworkServiceClient,
+  authorizeSetState,
+  createMemberContextProvider,
+  createNetworkActionFieldEvaluator,
+  createNetworkEdgePlugin,
+  createNetworkSignalsEvaluator,
+  createNetworkVoiceProvider,
+  detectNetworkSignals,
+  isNetworkStateIntent,
+  networkAgentVoice,
+  ownWords,
+  parseNetworkActionProposal,
+  parseServiceTurn,
+  resolveWindow,
+  sanitize,
+  svcSign,
+  svcVerify,
+  zonedNow,
+} from "../src/index.vibe"
+
+module node {
+  import { once } from "node:events"
+  import { createServer, type Server } from "node:http"
+
+  export interface LoopbackServiceHandle {
+    readonly baseUrl: string
+    readonly paths: string[]
+    close(): Promise<void>
+  }
+
+  export async function startNetworkTestServer(
+    secret: string,
+    verify: (secret: string, req: { method: string; path: string; headers: { get(n: string): string | null }; body: string }) => Promise<{ ok: boolean }>,
+  ): Promise<LoopbackServiceHandle> {
+    const paths: string[] = []
+    const server: Server = createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (chunk: Buffer) => { chunks.push(chunk) })
+      req.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8")
+        const path = req.url ?? ""
+        paths.push(path)
+        const headers = {
+          get: (name: string) => {
+            const val = req.headers[name.toLowerCase()]
+            return Array.isArray(val) ? (val[0] ?? null) : (val ?? null)
+          },
+        }
+        void verify(secret, { method: req.method ?? "POST", path, headers, body }).then((v) => {
+          if (!v.ok) {
+            res.writeHead(401, { "content-type": "application/json", connection: "close" })
+            res.end(JSON.stringify({ error: "unauthorized" }))
+            return
+          }
+          res.writeHead(200, { "content-type": "application/json", connection: "close" })
+          if (path === "/internal/turn") {
+            res.end(JSON.stringify({
+              outcome: "open",
+              channel: "blooio",
+              app: "ntwrk",
+              memberId: "m-42",
+              context: {
+                firstName: "Ada",
+                city: "NYC",
+                state: "open",
+                stateFrom: null,
+                stateUntil: null,
+                facets: ["builders", "music"],
+                singlePlayer: false,
+                activeItems: [{ id: "item-1", kind: "intro", summary: "Intro with Sam" }],
+              },
+            }))
+            return
+          }
+          if (path === "/internal/set-state") {
+            const parsed = JSON.parse(body) as { state: string; from: string | null; until: string | null }
+            res.end(JSON.stringify({
+              eventId: "evt-99",
+              previous: "open",
+              current: parsed.state,
+              from: parsed.from,
+              until: parsed.until,
+              committedAt: "2026-10-14T12:00:00.000Z",
+              replayed: false,
+              unchanged: false,
+            }))
+            return
+          }
+          if (path === "/internal/signals") {
+            const parsed = JSON.parse(body) as { signals: unknown[] }
+            res.end(JSON.stringify({ recorded: parsed.signals.length }))
+            return
+          }
+          if (path === "/internal/updates") {
+            res.end(JSON.stringify({ items: [{ id: "u-1", summary: "New match with Taylor" }] }))
+            return
+          }
+          if (path === "/internal/relay") {
+            res.end(JSON.stringify({ decision: "pass", senderNotice: "Sent to Sam.", delivered: true, replayed: false }))
+            return
+          }
+          res.end(JSON.stringify({ ok: true, replayed: false }))
+        })
+      })
+    })
+    server.keepAliveTimeout = 0
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const addr = server.address()
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0
+    return {
+      baseUrl: `http://127.0.0.1:${port}`,
+      paths,
+      close: async () => {
+        server.closeAllConnections()
+        await new Promise<void>((resolve) => { server.close(() => resolve()) })
+      },
+    }
+  }
+}
+
+import { startNetworkTestServer } from node
+
+it.effect(`Routing authz, state intent, date windows, signals, providers, and structured field evaluator work end to end (spec/network/index.md, "Availability uses the member's own evidence and calendar window")`, effect () => {
+  try promise(async () => {
+    const clean = sanitize("I\u200B’m slammed until Friday")
+    assert.strictEqual(clean, "I'm slammed until Friday")
+    assert.strictEqual(isNetworkStateIntent("Please pause my intros until next week"), true)
+    assert.strictEqual(isNetworkStateIntent('Sam said "pause my intros"'), false)
+    assert.strictEqual(isNetworkStateIntent("I need to pause my gym membership"), false)
+    assert.strictEqual(ownWords('Alex said "stop texting me" but I am traveling').includes("stop texting"), false)
+
+    const now = zonedNow(new Date("2026-10-14T12:00:00.000Z"), "America/New_York")
+    const win = resolveWindow("I'm busy for two weeks", now)
+    assert.strictEqual(win.until, "2026-10-28T00:00:00.000Z")
+
+    const downgraded = authorizeSetState(
+      { state: "paused", until: null, evidence: "I'm slammed this week" },
+      "I'm slammed this week",
+      new Date("2026-10-14T12:00:00.000Z"),
+    )
+    assert.strictEqual(downgraded.allowed, true)
+    if (downgraded.allowed) {
+      assert.strictEqual(downgraded.state, "busy")
+      assert.strictEqual(downgraded.until, "2026-10-18T00:00:00.000Z")
+    }
+
+    const quotedRefusal = authorizeSetState(
+      { state: "paused", until: null, evidence: "pause intros" },
+      'Sam texted "pause intros"',
+      new Date("2026-10-14T12:00:00.000Z"),
+    )
+    assert.strictEqual(quotedRefusal.allowed, false)
+
+    assert.deepStrictEqual(
+      detectNetworkSignals("I'm visiting Tokyo next week, and don't remove me").map((s) => s.kind),
+      ["travel"],
+    )
+    assert.deepStrictEqual(
+      detectNetworkSignals("That person made me uncomfortable").map((s) => s.kind),
+      ["safety_concern"],
+    )
+
+    const store = new InMemoryNetworkStore([
+      {
+        memberId: "m-1",
+        firstName: "Ada",
+        city: "NYC",
+        state: "open",
+        stateFrom: null,
+        stateUntil: null,
+        facets: ["systems"],
+        activeItems: [{ id: "match-1", kind: "intro", summary: "Intro with Sam" }],
+      },
+    ])
+    store.addUpdate({ updateId: "u-1", forMember: "m-1", summary: "Sam replied", seen: false })
+    store.addUpdate({ updateId: "u-other", forMember: "m-2", summary: "Other member", seen: false })
+
+    const voiceProvider = createNetworkVoiceProvider({ app: "ntwrk" })
+    const voiceResult = await voiceProvider.get({} as IAgentRuntime, {} as Memory, {} as State)
+    assert.ok(voiceResult.text?.includes(NETWORK_APP_VOICES.ntwrk.agentName))
+    assert.strictEqual(voiceResult.text, networkAgentVoice("ntwrk"))
+
+    const memberProvider = createMemberContextProvider({ store, authority: { memberId: "m-1" } })
+    const ctxResult = await memberProvider.get({} as IAgentRuntime, {} as Memory, {} as State)
+    assert.ok(ctxResult.text?.includes("Ada (NYC)"))
+    assert.ok(ctxResult.text?.includes("itemId: match-1"))
+
+    const signalsEval = createNetworkSignalsEvaluator({ store, authority: { memberId: "m-1" } })
+    const signalMsg = { id: "msg-sig", content: { text: "Please stop texting me" } } as unknown as Memory
+    const evalCtx = { runtime: {} as IAgentRuntime, message: signalMsg, state: {} as State, options: {} }
+    assert.strictEqual(await signalsEval.shouldRun(evalCtx), true)
+    const prepared = signalsEval.prepare ? await signalsEval.prepare(evalCtx) : { text: "Please stop texting me" }
+    const resolved = signalsEval.resolveOutput?.({ ...evalCtx, prepared })
+    assert.ok(resolved !== undefined && resolved !== null)
+    if (resolved !== undefined && resolved !== null) {
+      const proc = signalsEval.processors?.[0]
+      await proc?.process({ ...evalCtx, evaluatorName: signalsEval.name, prepared, output: resolved })
+    }
+    assert.strictEqual(store.recordedSignals.length, 1)
+
+    const fieldEval = createNetworkActionFieldEvaluator({
+      store,
+      authority: { memberId: "m-1", messageId: "msg-field" },
+      now: () => new Date("2026-10-14T12:00:00.000Z"),
+    })
+    assert.strictEqual(fieldEval.name, NETWORK_ACTION_FIELD)
+    const proposal = parseNetworkActionProposal(
+      JSON.stringify({ state: "paused", until: null, evidence: "pause my intros" }),
+    )
+    assert.ok(proposal !== null)
+    if (proposal !== null && fieldEval.handle) {
+      const effectRes = await fieldEval.handle({
+        runtime: {} as IAgentRuntime,
+        message: { id: "msg-field", content: { text: "Please pause my intros until Friday" } } as unknown as Memory,
+        state: {} as State,
+        senderRole: "GUEST",
+        turnSignal: new AbortController().signal,
+        value: proposal,
+        parsed: {
+          shouldRespond: "RESPOND",
+          contexts: ["network"],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        },
+      })
+      const target = {
+        shouldRespond: "RESPOND" as const,
+        contexts: ["network"],
+        intents: [],
+        candidateActionNames: [],
+        replyText: "",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      }
+      effectRes?.mutateResult?.(target)
+      assert.strictEqual(effectRes?.preempt?.mode, "direct-reply")
+      assert.ok(target.replyText.includes("2026-10-16"))
+    }
+
+    const updates = await store.readUpdates({ memberId: "m-1", messageId: "msg-u1" })
+    assert.deepStrictEqual(updates.items.map((i) => i.id), ["u-1"])
+    const secondUpdates = await store.readUpdates({ memberId: "m-1", messageId: "msg-u2" })
+    assert.strictEqual(secondUpdates.items.length, 0)
+
+    const registeredContexts: unknown[] = []
+    const plugin = createNetworkEdgePlugin({
+      store,
+      authority: { memberId: "m-1", messageId: "msg-edge", text: "Please pause my intros" },
+      routing: "structured",
+      voice: { app: "slop" },
+    })
+    await plugin.init?.({}, { contexts: { tryRegister: (def: unknown) => { registeredContexts.push(def) } } } as unknown as IAgentRuntime)
+    assert.strictEqual(registeredContexts.length, 1)
+    assert.strictEqual(NETWORK_CONTEXT_DEFINITION.id, "network")
+    assert.strictEqual(NETWORK_EDGE_COMPATIBILITY.target, "edge")
+    assert.strictEqual(NETWORK_STATE_TO_PARTICIPATION.busy, "quiet")
+    assert.strictEqual(plugin.providers?.length, 2)
+    assert.strictEqual(plugin.evaluators?.length, 1)
+    assert.strictEqual(plugin.responseHandlerFieldEvaluators?.length, 1)
+  })
+})
+
+it.effect('NetworkServiceClient signs/verifies requests and createServiceNetworkStore + parseServiceTurn operate end to end over HTTP (spec/network/index.md, "Only the authenticated turn may request a state write or relay")', effect () => {
+  try promise(async () => {
+    const secret = "network-test-secret-with-at-least-32-chars"
+    const srv = await startNetworkTestServer(secret, svcVerify)
+    try {
+      const signedHeaders = await svcSign(secret, { method: "POST", path: "/internal/turn", id: "m1", body: "{}" })
+      const verified = await svcVerify(secret, {
+        method: "POST",
+        path: "/internal/turn",
+        headers: { get: (k) => signedHeaders[k.toLowerCase()] ?? null },
+        body: "{}",
+      })
+      assert.strictEqual(verified.ok, true)
+
+      const client = new NetworkServiceClient({ baseUrl: srv.baseUrl, secret })
+      const turnRes = await client.turn({
+        messageId: "msg-http-1",
+        channel: "blooio",
+        from: "+15550001111",
+        to: "+15550002222",
+        text: "I am busy until Friday",
+      })
+      const parsed = parseServiceTurn(turnRes, { client, messageId: "msg-http-1", text: "I am busy until Friday" })
+      assert.ok(parsed !== null)
+      if (parsed === null) return
+
+      const member = await parsed.store.getMemberContext("m-42")
+      assert.strictEqual(member?.firstName, "Ada")
+
+      const stateReceipt = await parsed.store.setState({
+        memberId: "m-42",
+        messageId: "msg-http-1",
+        idempotencyKey: "state:m-42:msg-http-1",
+        state: "busy",
+        from: null,
+        until: "2026-10-16T00:00:00.000Z",
+      })
+      assert.strictEqual(stateReceipt.eventId, "evt-99")
+      assert.strictEqual((await parsed.store.getMemberContext("m-42"))?.state, "busy")
+
+      const sigReceipt = await parsed.store.recordSignals({
+        memberId: "m-42",
+        messageId: "msg-http-1",
+        signals: [{ kind: "travel", evidence: "visiting NYC" }],
+      })
+      assert.strictEqual(sigReceipt.recorded, 1)
+
+      const upd = await parsed.store.readUpdates?.({ memberId: "m-42", messageId: "msg-http-1" })
+      assert.strictEqual(upd?.items.length, 1)
+
+      const rel = await parsed.store.relay?.({
+        memberId: "m-42",
+        messageId: "msg-http-1",
+        itemId: "item-1",
+        text: "Tell Sam hi",
+      })
+      assert.strictEqual(rel?.delivered, true)
+      assert.deepStrictEqual(srv.paths, [
+        "/internal/turn",
+        "/internal/set-state",
+        "/internal/signals",
+        "/internal/updates",
+        "/internal/relay",
+      ])
+    } finally {
+      await srv.close()
+    }
+  })
+})

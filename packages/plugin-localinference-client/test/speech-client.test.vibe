@@ -1,0 +1,140 @@
+// spec/localInference/speechOutput.md, "Story: Speak a reply without cutting off what is playing"; spec/localInference/speechOutput.md, "Story: Start streamed speech without needless connections"; spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route"
+import { assert, it } from "@effect/vitest"
+import { TestClock } from "effect/testing"
+import {
+  SpeechAttemptFailed,
+  bootstrapStreamedSpeech,
+  cancelReply,
+  deviceSpeechUnavailable,
+  nextSpeechRoute,
+  publishReply,
+  serviceLimitOf,
+  speakOnRoute,
+  speechFailureOf,
+  speechKeyChanged,
+  speechLimitChanged,
+  speechOutput,
+  speechRouting,
+  type BootstrapRequest,
+  type Connection,
+  type Playback,
+  type PlaybackSlot,
+} from "../src/index.vibe"
+
+it.effect('publishReply respects slot occupancy, replacement, and cancellation, and bootstrapStreamedSpeech reuses compatible connections (spec/localInference/speechOutput.md, "Story: Speak a reply without cutting off what is playing")', effect () => {
+  provide speechOutput() {
+    let currentPlayback: Playback = "EmptyPlayback"
+    const played: string[] = []
+    const slot: PlaybackSlot<string> = {
+      current: () => sync(() => currentPlayback),
+      play: (clip) =>
+        sync(() => {
+          currentPlayback = "PreparedClip"
+          played.push(clip)
+        }),
+    }
+
+    const first = try publishReply(slot, succeed("clip-1"), { replace: false })
+    assert.strictEqual(first, "played")
+    assert.deepStrictEqual(played, ["clip-1"])
+
+    currentPlayback = "StreamPlayback"
+    const busy = try publishReply(slot, succeed("clip-2"), { replace: false })
+    assert.strictEqual(busy, "busy")
+    assert.strictEqual(currentPlayback, "StreamPlayback")
+
+    const interrupted = try publishReply(slot, succeed("clip-3"), { replace: true })
+    assert.strictEqual(interrupted, "interrupted")
+    assert.deepStrictEqual(played, ["clip-1", "clip-3"])
+
+    currentPlayback = "StreamPlayback"
+    const gate = try Deferred.make<string>()
+    const started = try Deferred.make<void>()
+    const fiber = try forkChild(
+      publishReply(
+        slot,
+        effect {
+          try Deferred.succeed(started, undefined)
+          return try Deferred.await(gate)
+        },
+        { replace: true },
+      ),
+    )
+    try Deferred.await(started)
+    try cancelReply()
+    try Deferred.succeed(gate, "clip-4")
+    const cancelled = try Fiber.join(fiber)
+    assert.strictEqual(cancelled, "cancelled")
+    assert.strictEqual(currentPlayback, "StreamPlayback")
+
+    const http1Calls: Array<readonly [BootstrapRequest, Connection]> = []
+    const http1Conns = try bootstrapStreamedSpeech({ http1: true, keepAlive: true }, (req, conn) =>
+      sync(() => {
+        http1Calls.push([req, conn])
+      }),
+    )
+    assert.strictEqual(http1Conns, 1)
+    assert.deepStrictEqual(http1Calls, [
+      ["consent", "open"],
+      ["session", "reuse"],
+      ["socket", "reuse"],
+    ])
+
+    const http2Conns = try bootstrapStreamedSpeech({ http1: false, keepAlive: true }, () => Effect.void)
+    assert.strictEqual(http2Conns, 2)
+
+    const closingConns = try bootstrapStreamedSpeech({ http1: true, keepAlive: false }, () => Effect.void)
+    assert.strictEqual(closingConns, 3)
+  }
+})
+
+it.effect('speakOnRoute selects admitted routes, falls back once with hold before audio, and parses limits/failures (spec/localInference/speechRoute.md, "Story: Hear a reply on the admitted speech route")', effect () => {
+  provide Layer.mergeAll(speechRouting(), TestClock.layer()) {
+    assert.strictEqual(try nextSpeechRoute(), "DeviceRoute")
+
+    try speechKeyChanged({ tag: "CloudKey", credential: 1 })
+    assert.strictEqual(try nextSpeechRoute(), "CloudRoute")
+
+    const visited: string[] = []
+    const fallbackResult = try speakOnRoute((route, heard) =>
+      effect {
+        visited.push(route)
+        if (route === "CloudRoute") {
+          throw new SpeechAttemptFailed({ failure: { tag: "Offline" }, cause: null })
+        }
+        try heard()
+        return `spoken:${route}`
+      },
+    )
+    assert.strictEqual(fallbackResult, "spoken:DeviceRoute")
+    assert.deepStrictEqual(visited, ["CloudRoute", "DeviceRoute"])
+    assert.strictEqual(try nextSpeechRoute(), "DeviceRoute")
+
+    try deviceSpeechUnavailable()
+    assert.strictEqual(try nextSpeechRoute(), "CloudRoute")
+
+    try speechLimitChanged(serviceLimitOf({ kind: "rate-limited", retryAfterMs: 10_000, observedAt: 1_000 }, 1_000))
+    try TestClock.setTime(2_000)
+    assert.strictEqual(try nextSpeechRoute(), "DeviceRoute")
+
+    try speechKeyChanged({ tag: "DirectKey", revision: 1 })
+    assert.strictEqual(try nextSpeechRoute(), "DirectRoute")
+
+    const directResult = try speakOnRoute((route, heard) =>
+      effect {
+        try heard()
+        return route
+      },
+    )
+    assert.strictEqual(directResult, "DirectRoute")
+
+    assert.strictEqual(speechFailureOf({ name: "AbortError" }), undefined)
+    assert.deepStrictEqual(speechFailureOf({ code: "voice-http-429", data: { retryAfterSeconds: 5 } }), {
+      tag: "RateLimited",
+      retryAfterMs: 5000,
+    })
+    assert.deepStrictEqual(speechFailureOf({ code: "cloud-http-401" }), { tag: "AccountRefused" })
+    assert.deepStrictEqual(speechFailureOf({ code: "voice-http-503" }), { tag: "ServerFailed" })
+    assert.deepStrictEqual(speechFailureOf({ code: "connect" }), { tag: "Offline" })
+  }
+})

@@ -1,0 +1,69 @@
+// spec/nativeTalkmode/index.md, "Story: Converse by voice without audio from a retired session playing or recording"; spec/nativeTalkmode/audioPolicy.md, "Story: Keep voice capture active and TTS progressing under output mute"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  TalkModeWeb,
+  createTalkModeAudioState,
+  currentTalkListener,
+  getVolumeMutePolicy,
+  observeTalkAudio,
+  reduceTalkModeAudioPolicy,
+} from "../src/index.vibe"
+
+describe("TalkMode voice session & volume mute policy (spec/nativeTalkmode/index.md, \"Story: Converse by voice without audio from a retired session playing or recording\")", () => {
+  it("Preserves voice capture and TTS progress while muting output audibility (spec/nativeTalkmode/audioPolicy.md, \"Output mute and volume zero change audibility without stopping capture or active TTS progress\")", async () => {
+    const policy = getVolumeMutePolicy("android")
+    assert.strictEqual(policy.captureContinuesWhenOutputMuted, true)
+    assert.strictEqual(policy.ttsOutputChannel, "android-voice-communication")
+    assert.strictEqual(policy.requiresDeviceAudioVerification, true)
+    assert.strictEqual(getVolumeMutePolicy("browser").requiresDeviceAudioVerification, false)
+
+    let state = createTalkModeAudioState()
+    state = reduceTalkModeAudioPolicy(state, { type: "capture-started" })
+    state = reduceTalkModeAudioPolicy(state, { type: "tts-started", utteranceId: "u-1" })
+    assert.strictEqual(state.ttsAudibility, "audible")
+    state = reduceTalkModeAudioPolicy(state, { type: "output-mute-changed", muted: true })
+    assert.strictEqual(state.captureActive, true)
+    assert.strictEqual(state.captureIndicator, "recording")
+    assert.strictEqual(state.ttsProgress, "continue")
+    assert.strictEqual(state.ttsAudibility, "silent-by-output-policy")
+    state = reduceTalkModeAudioPolicy(state, { type: "output-mute-changed", muted: false })
+    state = reduceTalkModeAudioPolicy(state, { type: "output-volume-changed", volume: 0 })
+    assert.strictEqual(state.ttsAudibility, "silent-by-output-policy")
+    state = reduceTalkModeAudioPolicy(state, { type: "tts-finished", utteranceId: "u-1" })
+    assert.strictEqual(state.ttsAudibility, "not-speaking")
+
+    const web = new TalkModeWeb()
+    const states: string[] = []
+    const handle = await web.addListener("stateChange", (ev) => states.push(ev.state))
+    assert.strictEqual((await web.start({ config: { mode: "hands-free" } })).started, true)
+    const spoke = await web.speak({ text: "Hello from TalkMode" })
+    assert.strictEqual(spoke.completed, true)
+    await web.stop()
+    await handle.remove()
+    assert.include(states, "listening")
+    assert.include(states, "speaking")
+    assert.strictEqual((await web.getState()).state, "idle")
+
+    const delivered: string[] = []
+    const session = { conversationId: "c1", ownerSession: true, active: true, captureLease: true, outputFocus: true, onCall: false }
+    const listener = currentTalkListener(() => session, "c1", "TalkPlaybackFrame", (v: string) => delivered.push(v))
+    listener("before-call")
+    session.onCall = true
+    listener("during-call")
+    assert.deepStrictEqual(delivered, ["before-call"])
+  })
+
+  it.effect("observeTalkAudio filters audio frames by active session and valid bounds (spec/nativeTalkmode/index.md, \"Capture and playback callbacks belong to the current conversation\")", () => effect {
+    const web = new TalkModeWeb()
+    try promise(() => web.startAudioFrames({ sampleRate: 16_000, frameMs: 20 }))
+    const frames: number[] = []
+    const session = { conversationId: "c1", ownerSession: true, active: true, captureLease: true, outputFocus: true, onCall: false }
+    try Effect.scoped(effect {
+      try observeTalkAudio(() => session, (ev) => frames.push(ev.frameIndex), web)
+      web.emitAudioFrame({ pcm16: "AAAA", sampleRate: 16_000, channels: 1, samples: 320, rms: 0.25, timestamp: 100, frameIndex: 0 })
+      session.onCall = true
+      web.emitAudioFrame({ pcm16: "AAAA", sampleRate: 16_000, channels: 1, samples: 320, rms: 0.25, timestamp: 120, frameIndex: 1 })
+    })
+    try Effect.try(() => assert.deepStrictEqual(frames, [0]))
+  })
+})

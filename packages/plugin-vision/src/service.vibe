@@ -1,0 +1,581 @@
+// spec/vision/index.md, "Story: Control which of my visual sources the assistant can use"; spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"; spec/vision/index.md, "A subject matches the current observation and an explicit instruction"
+import {
+  ModelType,
+  Service,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import {
+  Machine,
+  acceptCameraOrScreen,
+  canAcceptCameraOrScreen,
+  canConfigureVision,
+  canFailCapture,
+  canRequestCapture,
+  canRetireCapture,
+  configureVision,
+  failCapture,
+  initial,
+  machine,
+  releaseVisionImage,
+  requestCapture,
+  retireCapture,
+  sourceAllowed,
+  subjectIsCurrent,
+  subjectNamingAllowed,
+  type CapturePurpose,
+  type CaptureSource,
+  type SubjectObservation,
+  type VisionMode as SpecVisionMode,
+  type VisionState,
+} from "../gen/vision.effect.vibe"
+import { DescribeBackpressureController } from "./backpressure.vibe"
+import { EntityTracker } from "./entity-tracker.vibe"
+import { parseTesseractTsvWords } from "./ocr.vibe"
+import {
+  VisionMode,
+  VisionServiceType,
+  fromSpecVisionMode,
+  hasReadyInputForMode,
+  toSpecVisionMode,
+  type CameraInfo,
+  type EnhancedSceneDescription,
+  type SceneDescription,
+  type ScreenCapture,
+  type VisionCapabilities,
+  type VisionConfig,
+} from "./types.vibe"
+
+module visionNode {
+  import { execFile } from "node:child_process"
+  import { randomUUID } from "node:crypto"
+  import { mkdtemp, readFile, rm } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+  import { platform } from "node:process"
+  import { promisify } from "node:util"
+  import sharp from "sharp"
+  import type { CaptureSource } from "../gen/vision.ts"
+
+  const run = promisify(execFile)
+  export const captureIdentity = randomUUID
+
+  /** @throws {never} */
+  export function hasDesktopCapture(): boolean {
+    return platform === "darwin"
+  }
+
+  /** @throws {never} */
+  export function bytesToPngDataUrl(bytes: Uint8Array): string {
+    return "data:image/png;base64," + Buffer.from(bytes).toString("base64")
+  }
+
+  export async function captureNative(
+    source: CaptureSource,
+    camera: string,
+    ocr: boolean,
+    signal: AbortSignal,
+  ) {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-vision-"))
+    const file = join(directory, "capture.png")
+    try {
+      const limits = { signal, timeout: 20_000, maxBuffer: 2_097_152 }
+      if (source === "ScreenSource") {
+        await run("/usr/sbin/screencapture", ["-x", "-t", "png", file], limits)
+      } else {
+        const [format, input] = platform === "darwin" ? ["avfoundation", camera] : ["v4l2", camera]
+        await run("ffmpeg", ["-nostdin", "-f", format, "-i", input, "-frames:v", "1", file], limits)
+      }
+      const bytes = await readFile(file)
+      const image = await sharp(bytes, { limitInputPixels: 33_554_432 })
+        .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+        .png()
+        .toBuffer({ resolveWithObject: true })
+      const words = ocr ? await run("tesseract", [file, "stdout", "tsv"], limits) : undefined
+      return {
+        bytes: new Uint8Array(image.data),
+        dataUrl: "data:image/png;base64," + image.data.toString("base64"),
+        width: image.info.width,
+        height: image.info.height,
+        controlTable: words?.stdout ?? "",
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+}
+import { bytesToPngDataUrl, captureIdentity, captureNative, hasDesktopCapture } from visionNode
+
+export error VisionRefused { reason: string }
+
+interface ScreenProtection extends Service {
+  isScreenProtected(): Promise<boolean>
+}
+
+function protectionService(runtime: IAgentRuntime): ScreenProtection | undefined {
+  const service = runtime.getService<ScreenProtection>("screen-capture-protection")
+  return service !== null && typeof service.isScreenProtected === "function" ? service : undefined
+}
+
+export function readVisionSetting(runtime: IAgentRuntime, key: string): string {
+  const value = runtime.getSetting(key)
+  return typeof value === "string" ? value.trim() : ""
+}
+
+export function resolveSpecVisionMode(runtime: IAgentRuntime): SpecVisionMode {
+  const mode = readVisionSetting(runtime, "VISION_MODE").toLowerCase()
+  if (mode === "camera") return "CameraOnly"
+  if (mode === "screen") return "ScreenOnly"
+  if (mode === "both") return "CameraAndScreen"
+  return "VisionOff"
+}
+
+export effect function screenIsProtected(runtime: IAgentRuntime) {
+  const protection = protectionService(runtime)
+  return (
+    protection === undefined ||
+    (try tryPromise({
+      try: () => protection.isScreenProtected(),
+      catch: () => new VisionRefused({ reason: "Screen capture protection could not be checked." }),
+    }))
+  )
+}
+
+export function buildSceneDescriptionPrompt(customPrompt?: string): string {
+  const trimmed = customPrompt?.trim()
+  if (trimmed) return trimmed
+  return "Describe the current scene concisely, noting visible people, key objects, and salient text."
+}
+
+export function resolveCaptureIntervalMs(config?: VisionConfig): number {
+  const raw = config?.screenCaptureInterval ?? config?.updateInterval
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 500) {
+    return Math.round(raw)
+  }
+  return 5_000
+}
+
+export class VisionCaptureController {
+  private state: VisionState = initial
+
+  getState(): VisionState {
+    return this.state
+  }
+
+  configure(args: {
+    mode: SpecVisionMode
+    cameraConnected: boolean
+    screenConnected: boolean
+    protectedScreen: boolean
+    revision?: number
+  }): boolean {
+    const rev = args.revision !== undefined ? args.revision : this.state.revision + 1
+    if (!canConfigureVision(this.state, rev)) return false
+    this.state = configureVision(
+      this.state,
+      args.mode,
+      args.cameraConnected,
+      args.screenConnected,
+      args.protectedScreen,
+      rev,
+    )
+    return true
+  }
+
+  request(args: {
+    captureId: string
+    source: CaptureSource
+    purpose: CapturePurpose
+    includeImage: boolean
+  }): boolean {
+    if (!canRequestCapture(this.state, args.captureId, args.source, args.purpose)) return false
+    this.state = requestCapture(
+      this.state,
+      args.captureId,
+      args.source,
+      args.purpose,
+      args.includeImage,
+    )
+    return true
+  }
+
+  accept(args: {
+    captureId: string
+    source: CaptureSource
+    revision: number
+    frameRef: string
+  }): boolean {
+    if (
+      !canAcceptCameraOrScreen(
+        this.state,
+        args.captureId,
+        args.source,
+        args.revision,
+        args.frameRef,
+      )
+    ) {
+      return false
+    }
+    this.state = acceptCameraOrScreen(
+      this.state,
+      args.captureId,
+      args.source,
+      args.revision,
+      args.frameRef,
+    )
+    return true
+  }
+
+  fail(captureId: string, revision: number): boolean {
+    if (!canFailCapture(this.state, captureId, revision)) return false
+    this.state = failCapture(this.state, captureId, revision)
+    return true
+  }
+
+  retire(captureId: string, revision: number): boolean {
+    if (!canRetireCapture(this.state, captureId, revision)) return false
+    this.state = retireCapture(this.state, captureId, revision)
+    return true
+  }
+
+  canReleaseImage(revision?: number): boolean {
+    const rev = revision !== undefined ? revision : this.state.revision
+    return releaseVisionImage(this.state, rev)
+  }
+
+  isSubjectCurrent(subject: SubjectObservation): boolean {
+    return subjectIsCurrent(this.state, subject)
+  }
+
+  canNameSubject(subject: SubjectObservation, ownerLabel: string, ownerRequested: boolean): boolean {
+    return subjectNamingAllowed(this.state, subject, ownerLabel, ownerRequested)
+  }
+}
+
+export effect function observeVision(
+  runtime: IAgentRuntime,
+  source: CaptureSource,
+  purpose: CapturePurpose,
+  includeImage: boolean,
+  prompt: string,
+) {
+  const mode = resolveSpecVisionMode(runtime)
+  const camera = readVisionSetting(runtime, "VISION_CAMERA_INPUT")
+  const cameraConnected = camera !== ""
+  const screenConnected = hasDesktopCapture()
+  const protectedScreen = source === "ScreenSource" ? try screenIsProtected(runtime) : false
+  if (!sourceAllowed(mode, source, cameraConnected, screenConnected, protectedScreen)) {
+    throw new VisionRefused({
+      reason: "The selected visual source is disabled, unavailable, or protected.",
+    })
+  }
+  const captureId = captureIdentity()
+  const revision = 1
+  provide machine() {
+    const run = try Machine
+    try run.send({
+      type: "configureVision",
+      mode,
+      cameraConnected,
+      screenConnected,
+      protectedScreen,
+      revision,
+    })
+    try run.send({ type: "requestCapture", captureId, source, purpose, includeImage })
+    const captured = try tryPromise({
+      try: (signal) =>
+        captureNative(source, camera, purpose === "ReadControls" || purpose === "ReadText", signal),
+      catch: () =>
+        new VisionRefused({
+          reason: "The device could not capture and process the selected source.",
+        }),
+    })
+    if (
+      mode !== resolveSpecVisionMode(runtime) ||
+      camera !== readVisionSetting(runtime, "VISION_CAMERA_INPUT") ||
+      (source === "ScreenSource" && (try screenIsProtected(runtime)))
+    ) {
+      throw new VisionRefused({
+        reason: "The capture authorization changed while the device was processing it.",
+      })
+    }
+    const snapshot = try run.send({
+      type: "acceptCameraOrScreen",
+      captureId,
+      source,
+      revision,
+      frameRef: captureId,
+    })
+    const elements = parseTesseractTsvWords(captured.controlTable).map((w) => ({
+      left: w.left,
+      top: w.top,
+      width: w.width,
+      height: w.height,
+      text: w.text,
+    }))
+    const ocr = elements.map((word) => word.text).join(" ")
+    const title =
+      purpose === "DescribeScene"
+        ? (
+            try tryPromise({
+              try: (signal) =>
+                runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+                  imageUrl: captured.dataUrl,
+                  prompt: buildSceneDescriptionPrompt(prompt),
+                  signal,
+                  stream: false,
+                }),
+              catch: () =>
+                new VisionRefused({
+                  reason: "No image description provider could answer this capture.",
+                }),
+            })
+          ).description
+        : ocr
+    if (
+      mode !== resolveSpecVisionMode(runtime) ||
+      camera !== readVisionSetting(runtime, "VISION_CAMERA_INPUT") ||
+      (source === "ScreenSource" && (try screenIsProtected(runtime)))
+    ) {
+      throw new VisionRefused({
+        reason: "The capture authorization changed while its result was being prepared.",
+      })
+    }
+    return {
+      text: title,
+      width: captured.width,
+      height: captured.height,
+      bytes: captured.bytes,
+      elements,
+      image: releaseVisionImage(snapshot, revision) ? captured.dataUrl : undefined,
+    }
+  }
+}
+
+export class VisionService extends Service {
+  static override serviceType: string = VisionServiceType.VISION
+  override capabilityDescription =
+    "Owner-authorized camera and desktop vision with OCR, tiling, Set-of-Marks grounding, entity tracking, and backpressure control."
+
+  private readonly captureController = new VisionCaptureController()
+  private readonly backpressure = new DescribeBackpressureController()
+  private readonly entityTracker: EntityTracker
+  private visionMode: VisionMode
+  private cameraInfo: CameraInfo | null = null
+  private latestScene: EnhancedSceneDescription | null = null
+  private latestScreenCapture: ScreenCapture | null = null
+  private latestCameraImage: Uint8Array | null = null
+  private active = true
+  private screenConnected: boolean
+
+  constructor(runtime?: IAgentRuntime, config: VisionConfig = {}) {
+    super(runtime)
+    this.entityTracker = new EntityTracker("default-world")
+    const runtimeMode = runtime ? fromSpecVisionMode(resolveSpecVisionMode(runtime)) : VisionMode.OFF
+    this.visionMode = config.visionMode ?? runtimeMode
+    const cameraInput = config.cameraName ?? (runtime ? readVisionSetting(runtime, "VISION_CAMERA_INPUT") : "")
+    if (cameraInput) {
+      this.cameraInfo = { id: cameraInput, name: cameraInput, connected: true }
+    }
+    this.screenConnected = hasDesktopCapture()
+    this.syncCaptureConfig(false)
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<VisionService> {
+    return Promise.resolve(new VisionService(runtime))
+  }
+
+  private syncCaptureConfig(protectedScreen: boolean): void {
+    this.captureController.configure({
+      mode: toSpecVisionMode(this.visionMode),
+      cameraConnected: Boolean(this.cameraInfo?.connected),
+      screenConnected: this.screenConnected,
+      protectedScreen,
+    })
+  }
+
+  isActive(): boolean {
+    return this.active && this.visionMode !== VisionMode.OFF
+  }
+
+  getVisionMode(): VisionMode {
+    return this.visionMode
+  }
+
+  setVisionMode(mode: VisionMode, options?: { protectedScreen?: boolean }): void {
+    this.visionMode = mode
+    this.active = mode !== VisionMode.OFF
+    this.syncCaptureConfig(options?.protectedScreen ?? false)
+  }
+
+  setCameraInfo(info: CameraInfo | null): void {
+    this.cameraInfo = info
+    this.syncCaptureConfig(this.captureController.getState().protectedScreen)
+  }
+
+  setScreenAvailability(connected: boolean, protectedScreen = false): void {
+    this.screenConnected = connected
+    this.syncCaptureConfig(protectedScreen)
+  }
+
+  getCameraInfo(): CameraInfo | null {
+    return this.cameraInfo
+  }
+
+  getCapabilities(): VisionCapabilities {
+    const cameraReady = Boolean(this.cameraInfo?.connected)
+    const screenReady = this.screenConnected && !this.captureController.getState().protectedScreen
+    return {
+      camera: cameraReady,
+      screenCapture: screenReady,
+      ocr: true,
+      objectDetection: true,
+      faceRecognition: false,
+      unavailableReasons: {
+        ...(!cameraReady ? { camera: "No camera configured or connected" } : {}),
+        ...(!screenReady ? { screenCapture: "Screen capture unavailable or protected" } : {}),
+      },
+    }
+  }
+
+  hasReadyInput(): boolean {
+    return hasReadyInputForMode(this.getCapabilities(), this.visionMode)
+  }
+
+  getEntityTracker(): EntityTracker {
+    return this.entityTracker
+  }
+
+  getBackpressureController(): DescribeBackpressureController {
+    return this.backpressure
+  }
+
+  getCaptureController(): VisionCaptureController {
+    return this.captureController
+  }
+
+  getSceneDescription(): Promise<SceneDescription | null> {
+    return Promise.resolve(this.latestScene)
+  }
+
+  getEnhancedSceneDescription(): Promise<EnhancedSceneDescription | null> {
+    return Promise.resolve(this.latestScene)
+  }
+
+  getScreenCapture(): Promise<ScreenCapture | null> {
+    return Promise.resolve(this.latestScreenCapture)
+  }
+
+  setSceneSnapshot(scene: EnhancedSceneDescription, screenCapture?: ScreenCapture): void {
+    this.latestScene = scene
+    if (screenCapture) {
+      this.latestScreenCapture = screenCapture
+    }
+    const state = this.captureController.getState()
+    const frameContext =
+      state.phase === "FrameReady"
+        ? { revision: Number(state.revision), frameRef: state.frameRef }
+        : undefined
+    this.entityTracker.updateEntities(scene.objects, scene.people, undefined, frameContext)
+  }
+
+  setCameraImage(bytes: Uint8Array): void {
+    this.latestCameraImage = bytes
+  }
+
+  recordCapturedFrame(args: {
+    source: CaptureSource
+    purpose: CapturePurpose
+    includeImage: boolean
+    bytes: Uint8Array
+    width: number
+    height: number
+    description?: string
+    frameRef?: string
+  }): { accepted: boolean; imageDataUrl?: string; frameRef: string; revision: number } {
+    const current = this.captureController.getState()
+    if (current.phase === "FrameReady" || current.phase === "CaptureFailed") {
+      this.captureController.retire(current.captureId, current.revision)
+    }
+    const captureId = captureIdentity()
+    const frameRef = args.frameRef ?? captureId
+    if (
+      !this.captureController.request({
+        captureId,
+        source: args.source,
+        purpose: args.purpose,
+        includeImage: args.includeImage,
+      })
+    ) {
+      return { accepted: false, frameRef, revision: Number(this.captureController.getState().revision) }
+    }
+    const rev = this.captureController.getState().revision
+    const accepted = this.captureController.accept({
+      captureId,
+      source: args.source,
+      revision: rev,
+      frameRef,
+    })
+    if (!accepted) {
+      this.captureController.fail(captureId, rev)
+      return { accepted: false, frameRef, revision: Number(rev) }
+    }
+    if (args.source === "ScreenSource") {
+      this.latestScreenCapture = {
+        timestamp: Date.now(),
+        width: args.width,
+        height: args.height,
+        data: args.bytes,
+        format: "png",
+        tiles: [],
+      }
+    } else {
+      this.latestCameraImage = args.bytes
+    }
+    if (args.description !== undefined) {
+      this.setSceneSnapshot({
+        timestamp: Date.now(),
+        descriptionTimestamp: Date.now(),
+        description: args.description,
+        objects: this.latestScene?.objects ?? [],
+        people: this.latestScene?.people ?? [],
+        sceneChanged: true,
+        changePercentage: 100,
+        screenCapture: this.latestScreenCapture ?? undefined,
+      })
+    }
+    const imageDataUrl = this.captureController.canReleaseImage(rev)
+      ? bytesToPngDataUrl(args.bytes)
+      : undefined
+    return { accepted: true, imageDataUrl, frameRef, revision: Number(rev) }
+  }
+
+  captureImage(): Promise<Uint8Array | null> {
+    if (this.latestCameraImage) {
+      return Promise.resolve(this.latestCameraImage)
+    }
+    if (!this.runtime) return Promise.resolve(null)
+    return runPromise(
+      effect {
+        const res = try observeVision(this.runtime, "CameraSource", "CameraStill", true, "")
+        this.latestCameraImage = res.bytes
+        return res.bytes
+      },
+    ).catch(() => null)
+  }
+
+  nameObservedSubject(subjectId: string, label: string, ownerRequested = true): boolean {
+    return this.entityTracker.assignNameToEntity(
+      subjectId,
+      label,
+      this.captureController.getState(),
+      ownerRequested,
+    )
+  }
+
+  stop(): Promise<void> {
+    this.active = false
+    this.visionMode = VisionMode.OFF
+    this.syncCaptureConfig(this.captureController.getState().protectedScreen)
+    return Promise.resolve()
+  }
+}

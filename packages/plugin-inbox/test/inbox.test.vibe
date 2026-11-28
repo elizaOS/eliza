@@ -1,11 +1,30 @@
-// spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"; spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/failures.md, "Story: Know what happened when Gmail fails"; spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"
+// spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/reads.md, "Story: Read my mailbox without mixing account pages or endlessly reusing a cursor"; spec/inbox/drafts.md, "Story: Keep drafts recoverable across account switches and provider failures"; spec/inbox/readState.md, "Story: Change a message's read state once, and never repeat a change I did not ask for"; spec/inbox/backgroundNotices.md, "Story: Open the Inbox or ask about the exact notification I tapped"; spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/failures.md, "Story: Know what happened when Gmail fails"; spec/inbox/outgoing.md, "Story: Attach files and send exactly the email I reviewed"; spec/inbox/triage.md, "Story: Triage my unified cross-channel inbox and safely manage subscriptions"
 import { assert, it } from "@effect/vitest"
-import { activityLabel, type CloudLinkService } from "@elizaos/agent-host"
-import { ContextRegistry, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { activityLabel, type CloudLinkService, type RouteInput } from "@elizaos/agent-host"
+import { ContextRegistry, type IAgentRuntime, type Memory, type State, type UUID } from "@elizaos/core"
 import {
   managedGmailClient, type ManagedGmailTransport, AttachmentRefused, MailProtocolFailed, MailUnreachable, checkOutgoingAttachments, classifyGmailFailure, createMailBackground, disconnectGmailAccount, encodeInboxUnsaved, gmailActionGrant, gmailConsentCapabilities, gmailGrantChange, gmailReadCacheKey, gmailReadable, inboxOperation, inboxOperationKey, mailCaches, mailReadKey, mailReadStateGuard, mailboxFeed, openNoticeTap, openProviderDraft, readInboxUnsaved, readSavedMailbox, reviewOpaqueAttachment, saveMailbox, clearMailbox, sha256Hex, type GmailAccount, type InboxOperationStore, type MailBackgroundNative, type MailNoticeTap, type NoticeTapPorts, type ProviderDraftPorts, type SavedLocalDraft, type SavedMailboxStore,
 } from "@elizaos/plugin-inbox-client"
-import { brokerTransport, emailDraftAnswer, gmailTransportOf, inboxPlugin, managedInboxRead } from "../src/index.vibe"
+import {
+  INBOX_TRIAGE_SERVICE_TYPE,
+  InboxTriageService,
+  brokerTransport,
+  buildDeepLink,
+  canExecuteUnsubscribeUrl,
+  clearPriorityScoreCache,
+  crossChannelContextProvider,
+  emailDraftAnswer,
+  extractAsciiEmailAddress,
+  gmailTransportOf,
+  inboxAction,
+  inboxPlugin,
+  inboxRoutes,
+  inboxTriageProvider,
+  managedInboxRead,
+  parseListUnsubscribeHeaders,
+  resetInboxFetchers,
+  setInboxFetchers,
+} from "../src/index.vibe"
 
 module node {
   import { Effect, Layer } from "effect"
@@ -502,7 +521,7 @@ it.effect(`Read the managed inbox fresh for the current account, and hand a new 
   assert.equal(cloud.state.dispatches, 0)
   const runtime = { contexts: try Effect.try(() => new ContextRegistry()) } as unknown as IAgentRuntime
   try promise(() => Promise.resolve(inboxPlugin.init?.({}, runtime)))
-  assert.deepEqual(inboxPlugin.actions?.map((action) => activityLabel(runtime, action)), ["Using Inbox", "Using Inbox"])
+  assert.deepEqual(inboxPlugin.actions?.map((action) => activityLabel(runtime, action)), ["Using Inbox", "Using Inbox", "Using Inbox"])
 })
 
 it.effect(`Read managed mail through the device's broker when the host names one, and through the cloud link otherwise (${story.managed}; ${story.broker}; ${story.brokerRefusals})`, effect () => {
@@ -568,4 +587,138 @@ it.effect(`Read managed mail through the device's broker when the host names one
   assert.strictEqual(try failureOf(200, "not json"), "unavailable")
   assert.strictEqual(try failureOf(200, JSON.stringify({ padding: "x".repeat(8_388_608) })), "unavailable")
   assert.isFalse(fake.sent.some((sent) => sent.url.includes(bearer)), "the bearer never travels in a URL")
+})
+
+it('Unified cross-channel inbox triage, priority scoring, anti-spoof sender extraction, deep links, item lifecycle, safe unsubscribe, providers, and local routes (spec/inbox/triage.md, "Story: Triage my unified cross-channel inbox and safely manage subscriptions")', async () => {
+  clearPriorityScoreCache()
+  resetInboxFetchers()
+  assert.strictEqual(extractAsciiEmailAddress("spoof@evil.example <real@trusted.example>"), "real@trusted.example")
+  assert.strictEqual(buildDeepLink("discord", { messageId: "m9", roomMeta: { channelId: "c1" }, worldMeta: { serverId: "s1" } }), "https://discord.com/channels/s1/c1/m9")
+  assert.strictEqual(buildDeepLink("telegram", { messageId: "42", roomMeta: { username: "eliza" } }), "https://t.me/eliza/42")
+
+  const unsubMeta = parseListUnsubscribeHeaders({
+    "List-Unsubscribe": "<https://lists.example.com/unsub?id=1>, <mailto:unsub@lists.example.com>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  })
+  assert.strictEqual(unsubMeta.method, "one_click_https")
+  assert.strictEqual(canExecuteUnsubscribeUrl("https://lists.example.com/unsub", false), false)
+  assert.strictEqual(canExecuteUnsubscribeUrl("https://127.0.0.1/unsub", true), false)
+  assert.strictEqual(canExecuteUnsubscribeUrl("http://lists.example.com/unsub", true), false)
+  assert.strictEqual(canExecuteUnsubscribeUrl("https://lists.example.com/unsub", true), true)
+
+  const services = new Map<string, unknown>()
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    getSetting: () => undefined,
+    getService: (type: string) => services.get(type) ?? null,
+    contexts: new ContextRegistry(),
+  } as unknown as IAgentRuntime
+  const svc = await InboxTriageService.start(runtime)
+  services.set(INBOX_TRIAGE_SERVICE_TYPE, svc)
+  await inboxPlugin.init?.({}, runtime)
+
+  setInboxFetchers({
+    gmail: async () => [
+      {
+        id: "g-1",
+        platform: "gmail",
+        threadId: "t-1",
+        sender: "CFO <cfo@acme.com>",
+        subject: "URGENT: wire approval deadline today?",
+        snippet: "Please confirm the wire before 5pm.",
+        receivedAt: "2026-11-28T00:10:00.000Z",
+        unread: true,
+        roomMeta: { threadId: "t-1" },
+      },
+      {
+        id: "g-2",
+        platform: "gmail",
+        sender: "News <news@deals.example.com>",
+        subject: "Weekly newsletter sale",
+        snippet: "Unsubscribe anytime from our promo digest.",
+        receivedAt: "2026-11-28T00:05:00.000Z",
+        unread: true,
+        headers: {
+          "List-Unsubscribe": "<https://deals.example.com/unsub/42>",
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      },
+    ],
+    slack: async () => [
+      {
+        id: "s-1",
+        platform: "slack",
+        sender: "Alice",
+        subject: "Wire approval thread",
+        snippet: "Can we check the CFO wire approval?",
+        receivedAt: "2026-11-28T00:12:00.000Z",
+        unread: true,
+        directMention: true,
+        roomMeta: { channelId: "C123" },
+        worldMeta: { teamId: "T999" },
+      },
+    ],
+    discord: async () => Promise.reject(new Error("gateway_offline")),
+  })
+
+  try {
+    const emptyState: State = { values: {}, data: {}, text: "" }
+    const msg: Memory = { id: "00000000-0000-0000-0000-0000000000dd" as UUID, roomId: "00000000-0000-0000-0000-0000000000ee" as UUID, entityId: "00000000-0000-0000-0000-0000000000ff" as UUID, content: { text: "check wire approval" } }
+
+    const triaged = await inboxAction.handler(runtime, msg, emptyState, { parameters: { subaction: "triage", limit: 25 } })
+    assert.strictEqual(triaged?.success, true)
+    assert.strictEqual(triaged?.text?.includes("TriageUrgent"), true)
+    assert.strictEqual(triaged?.text?.includes("Degraded sources: discord"), true)
+
+    const triageProv = await inboxTriageProvider.get(runtime, msg, emptyState)
+    assert.strictEqual(triageProv.text?.includes("Inbox triage"), true)
+    assert.strictEqual(triageProv.text?.includes("Degraded: discord"), true)
+
+    const crossProv = await crossChannelContextProvider.get(runtime, msg, emptyState)
+    assert.strictEqual(crossProv.text?.includes("Related cross-channel messages"), true)
+
+    const snoozed = await inboxAction.handler(runtime, msg, emptyState, { parameters: { subaction: "snooze", itemId: "g-1", snoozeUntilMs: Date.now() + 60000 } })
+    assert.strictEqual(snoozed?.success, true)
+    const archived = await inboxAction.handler(runtime, msg, emptyState, { parameters: { subaction: "archive", itemId: "g-1" } })
+    assert.strictEqual(archived?.success, true)
+
+    const subs = await inboxAction.handler(runtime, msg, emptyState, { parameters: { subaction: "scan_subscriptions" } })
+    assert.strictEqual(subs?.success, true)
+    assert.strictEqual(subs?.text?.includes("news@deals.example.com"), true)
+
+    const refusedUnsub = await inboxAction.handler(runtime, msg, emptyState, {
+      parameters: { subaction: "unsubscribe", senderAddress: "news@deals.example.com", targetUrl: "https://deals.example.com/unsub/42", userAuthorized: false },
+    })
+    assert.strictEqual(refusedUnsub?.success, false)
+
+    const okUnsub = await svc.unsubscribeSender({
+      senderAddress: "news@deals.example.com",
+      targetUrl: "https://deals.example.com/unsub/42",
+      oneClick: true,
+      userAuthorized: true,
+      transport: async () => ({ ok: true, status: 200 }),
+    })
+    assert.strictEqual(okUnsub.executed, true)
+
+    const routes = inboxRoutes(() => svc)
+    const makeInput = (body?: unknown, params?: Record<string, string>, query?: Record<string, string>): RouteInput => ({
+      body,
+      query: new URLSearchParams(query ?? {}),
+      parameters: new Map(Object.entries(params ?? {})),
+      headers: undefined,
+      signal: new AbortController().signal,
+    } as unknown as RouteInput)
+
+    const rDigest = await routes.find((r) => r.path === "/api/inbox/digest")!.handler(makeInput())
+    assert.strictEqual(rDigest.status, 200)
+    const rState = await routes.find((r) => r.path === "/api/inbox/triage/:id/state")!.handler(makeInput({ action: "reopen" }, { id: "g-1" }))
+    assert.strictEqual(rState.status, 200)
+    const rSubs = await routes.find((r) => r.path === "/api/inbox/subscriptions")!.handler(makeInput())
+    assert.strictEqual(rSubs.status, 200)
+    const rUnsubRefused = await routes.find((r) => r.path === "/api/inbox/subscriptions/unsubscribe")!.handler(makeInput({ senderAddress: "news@deals.example.com", targetUrl: "https://deals.example.com/unsub/42", userAuthorized: false }))
+    assert.strictEqual(rUnsubRefused.status, 403)
+  } finally {
+    resetInboxFetchers()
+    await inboxPlugin.dispose?.(runtime)
+  }
 })

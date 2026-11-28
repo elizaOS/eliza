@@ -2,7 +2,16 @@
 import { assert, makeMethods } from "@effect/vitest"
 import { test } from "vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { isSupportedPlatform, observeActivity } from "../src/index.vibe"
+import {
+  __internal,
+  createCollectorSession,
+  isSupportedPlatform,
+  observeActivity,
+  startActivityCollector,
+  type ActivityCollectorEvent,
+  type ActivityCollectorExit,
+  type ActivityCollectorIdleSample,
+} from "../src/index.vibe"
 
 const it = makeMethods(test)
 
@@ -16,5 +25,69 @@ it.effect.skipIf(!isSupportedPlatform())('Observe valid desktop focus and idle e
       { ts: 1714000020000, event: "hid_idle", idleSeconds: 1.25 },
       { ts: 1714000030000, event: "deactivate", bundleId: "", appName: "" },
     ]))
+  }
+})
+
+it.effect('Parse collector lines and track collector session lifecycle (spec/nativeActivityTracker/index.md, "Only a valid line from the current collector is an observation")', effect () => {
+  try Effect.try(() => {
+    assert.deepStrictEqual(__internal.parseCollectorLine(""), { kind: "ignored" })
+    assert.deepStrictEqual(__internal.parseCollectorLine("{broken"), { kind: "ignored" })
+    assert.deepStrictEqual(__internal.parseCollectorLine(JSON.stringify({ ts: 100, event: "hid_idle", idleSeconds: -1 })), { kind: "ignored" })
+    assert.deepStrictEqual(__internal.parseCollectorLine(JSON.stringify({ ts: 100, event: "hid_idle", idleSeconds: 2.5 })), {
+      kind: "idle",
+      value: { ts: 100, event: "hid_idle", idleSeconds: 2.5 },
+    })
+    assert.deepStrictEqual(__internal.parseEventLine(JSON.stringify({ ts: 200, event: "activate", bundleId: " com.apple.Finder ", appName: " Finder ", windowTitle: "Home" })), {
+      ts: 200,
+      event: "activate",
+      bundleId: "com.apple.Finder",
+      appName: "Finder",
+      windowTitle: "Home",
+    })
+    assert.strictEqual(__internal.describeCollectorExit(0, null).clean, true)
+    assert.strictEqual(__internal.describeCollectorExit(1, null).clean, false)
+
+    const session = createCollectorSession()
+    assert.strictEqual(session.start("OtherCollector", true), false)
+    assert.strictEqual(session.start("MacCollector", false), false)
+    assert.strictEqual(session.start("MacCollector", true), true)
+    assert.strictEqual(session.state().running, true)
+    assert.strictEqual(session.observeExit(0), false)
+    assert.strictEqual(session.stop(), true)
+    assert.strictEqual(session.stop(), false)
+  })
+})
+
+it.effect.skipIf(!isSupportedPlatform())('Start and stop callback-based activity collector over real process stdout (spec/nativeActivityTracker/index.md, "Only the current process can close the collector")', effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const fixture = path.join(import.meta.dirname, "fixtures", "desktop-activity.ndjson")
+    const events: ActivityCollectorEvent[] = []
+    const idles: ActivityCollectorIdleSample[] = []
+    const exit = try Effect.promise(() => new Promise<ActivityCollectorExit>((resolve, reject) => {
+      const handle = startActivityCollector({
+        binaryPath: "/bin/cat",
+        args: [fixture],
+        onEvent: (event) => events.push(event),
+        onIdleSample: (sample) => idles.push(sample),
+        onExit: (info) => resolve(info),
+        onFatal: (reason) => reject(new Error(reason)),
+      })
+      assert.ok(handle.pid === null || handle.pid > 0)
+    }))
+    try Effect.try(() => {
+      assert.strictEqual(exit.clean, true)
+      assert.strictEqual(events.length, 2)
+      assert.strictEqual(idles.length, 1)
+    })
+
+    const fatal = try Effect.promise(() => new Promise<string>((resolve) => {
+      startActivityCollector({
+        binaryPath: "/usr/bin/false",
+        onEvent: () => {},
+        onFatal: (reason) => resolve(reason),
+      })
+    }))
+    try Effect.try(() => assert.ok(fatal.includes("code=1")))
   }
 })

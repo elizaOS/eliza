@@ -2,7 +2,9 @@
 
 Device cameras and authorized screen sources supply observations for
 scene description, camera stills, OCR, grounded controls and entity
-tracking. The shell owns feature discovery, platform capture, OCR
+tracking. [Description backpressure](./backpressure.md) governs
+memory-pressure pauses, concurrency bounds, and failure circuit breaking.
+The shell owns feature discovery, platform capture, OCR
 workers and image decoding. The [device](../os/) owns protected surfaces.
 
 ## Story: Control which of my visual sources the assistant can use

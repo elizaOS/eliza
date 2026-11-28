@@ -1,0 +1,587 @@
+// spec/assistant/advancedMemory.md, "Memory consolidation and first-run onboarding preserve capacity and completion invariants"
+import {
+  Service,
+  type Action,
+  type IAgentRuntime,
+  type Provider,
+  type RegisteredEvaluator,
+} from "@elizaos/core"
+import {
+  answerFirstRunQuestion,
+  canAnswerFirstRunQuestion,
+  canCompleteFirstRun,
+  canConsolidateSummary,
+  canEvictOldestMemory,
+  canRecordMemoryItem,
+  canSkipFirstRun,
+  canStartFirstRun,
+  completeFirstRun,
+  consolidateSummary,
+  evictOldestMemory,
+  initial,
+  recordMemoryItem,
+  skipFirstRun,
+  startFirstRun,
+  type MemoryFirstRunState,
+} from "../gen/assistant__advancedMemory.effect.vibe"
+import { readActionParameters, summarizeAssistantResult } from "./autonomy.vibe"
+
+export const ADVANCED_MEMORY_SERVICE_TYPE = "advanced-memory"
+export const EXPERIENCE_SERVICE_TYPE = "experience"
+
+export type LongTermMemoryKind = "fact" | "preference" | "reflection" | "skill" | "experience"
+
+export interface LongTermMemoryEntry {
+  id: string
+  kind: LongTermMemoryKind
+  text: string
+  keywords: string[]
+  confidence: number
+  source?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ConsolidatedSummaryEntry {
+  version: number
+  text: string
+  itemCount: number
+  createdAt: number
+}
+
+export interface ExperienceEntry {
+  id: string
+  domain: string
+  outcome: "positive" | "negative" | "neutral"
+  lesson: string
+  confidence: number
+  createdAt: number
+}
+
+const STOP_WORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "have", "will", "your", "about", "into",
+])
+
+const NEGATION_WORDS = new Set(["not", "never", "dont", "doesn", "cannot", "no", "dislike", "avoid"])
+
+export function buildFactKeywordsForStorage(text: string): string[] {
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !STOP_WORDS.has(w))
+  return [...new Set(words)].slice(0, 24)
+}
+
+export function factLexicalSimilarity(a: string, b: string): number {
+  const setA = new Set(buildFactKeywordsForStorage(a))
+  const setB = new Set(buildFactKeywordsForStorage(b))
+  if (setA.size === 0 || setB.size === 0) return 0
+  let overlap = 0
+  for (const w of setA) {
+    if (setB.has(w)) overlap += 1
+  }
+  const union = setA.size + setB.size - overlap
+  return union > 0 ? overlap / union : 0
+}
+
+export function factPolarityDiffers(a: string, b: string): boolean {
+  const hasNeg = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .some((w) => NEGATION_WORDS.has(w))
+  return hasNeg(a) !== hasNeg(b)
+}
+
+export function factClaimsEquivalent(a: string, b: string): boolean {
+  return !factPolarityDiffers(a, b) && factLexicalSimilarity(a, b) >= 0.75
+}
+
+export class MemoryFirstRunController {
+  private state: MemoryFirstRunState = initial
+
+  getState(): MemoryFirstRunState {
+    return this.state
+  }
+
+  recordMemoryItem(): boolean {
+    if (!canRecordMemoryItem(this.state)) return false
+    this.state = recordMemoryItem(this.state)
+    return true
+  }
+
+  consolidateSummary(): boolean {
+    if (!canConsolidateSummary(this.state)) return false
+    this.state = consolidateSummary(this.state)
+    return true
+  }
+
+  evictOldestMemory(): boolean {
+    if (!canEvictOldestMemory(this.state)) return false
+    this.state = evictOldestMemory(this.state)
+    return true
+  }
+
+  startFirstRun(): boolean {
+    if (!canStartFirstRun(this.state)) return false
+    this.state = startFirstRun(this.state)
+    return true
+  }
+
+  answerFirstRunQuestion(): boolean {
+    if (!canAnswerFirstRunQuestion(this.state)) return false
+    this.state = answerFirstRunQuestion(this.state)
+    return true
+  }
+
+  completeFirstRun(): boolean {
+    if (!canCompleteFirstRun(this.state)) return false
+    this.state = completeFirstRun(this.state)
+    return true
+  }
+
+  skipFirstRun(): boolean {
+    if (!canSkipFirstRun(this.state)) return false
+    this.state = skipFirstRun(this.state)
+    return true
+  }
+}
+
+export class AdvancedMemoryService extends Service {
+  static override serviceType: string = ADVANCED_MEMORY_SERVICE_TYPE
+  override capabilityDescription =
+    "Stores deduplicated owner facts, preferences, reflections, skills, and consolidated summaries."
+
+  private readonly controller = new MemoryFirstRunController()
+  private readonly items: LongTermMemoryEntry[] = []
+  private readonly summaries: ConsolidatedSummaryEntry[] = []
+  private readonly maxItems: number
+  private seq = 0
+
+  constructor(runtime?: IAgentRuntime, maxItems = 250) {
+    super(runtime)
+    this.maxItems = Math.max(4, maxItems)
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<AdvancedMemoryService> {
+    return Promise.resolve(new AdvancedMemoryService(runtime))
+  }
+
+  getController(): MemoryFirstRunController {
+    return this.controller
+  }
+
+  storeMemory(input: {
+    kind: LongTermMemoryKind
+    text: string
+    confidence?: number
+    source?: string
+  }): LongTermMemoryEntry {
+    const cleaned = input.text.trim()
+    const now = Date.now()
+    const existing = this.items.find(
+      (item) => item.kind === input.kind && factClaimsEquivalent(item.text, cleaned),
+    )
+    if (existing) {
+      existing.text = cleaned
+      existing.keywords = buildFactKeywordsForStorage(cleaned)
+      existing.confidence = Math.max(existing.confidence, input.confidence ?? 0.8)
+      existing.updatedAt = now
+      return existing
+    }
+    if (this.items.length >= this.maxItems) {
+      this.items.shift()
+      this.controller.evictOldestMemory()
+    }
+    this.seq += 1
+    const entry: LongTermMemoryEntry = {
+      id: `mem-${this.seq}`,
+      kind: input.kind,
+      text: cleaned,
+      keywords: buildFactKeywordsForStorage(cleaned),
+      confidence: input.confidence ?? 0.85,
+      source: input.source,
+      createdAt: now,
+      updatedAt: now,
+    }
+    this.items.push(entry)
+    if (!this.controller.recordMemoryItem()) {
+      this.controller.evictOldestMemory()
+      this.controller.recordMemoryItem()
+    }
+    return entry
+  }
+
+  deleteMemory(id: string): boolean {
+    const idx = this.items.findIndex((item) => item.id === id)
+    if (idx < 0) return false
+    this.items.splice(idx, 1)
+    this.controller.evictOldestMemory()
+    return true
+  }
+
+  listMemories(kind?: LongTermMemoryKind, limit = 25): LongTermMemoryEntry[] {
+    const filtered = kind ? this.items.filter((item) => item.kind === kind) : this.items
+    return filtered.slice(-limit).reverse()
+  }
+
+  searchMemories(query: string, kind?: LongTermMemoryKind, limit = 10): LongTermMemoryEntry[] {
+    const needle = query.trim().toLowerCase()
+    const pool = kind ? this.items.filter((item) => item.kind === kind) : this.items
+    return pool
+      .map((item) => ({
+        item,
+        score:
+          (item.text.toLowerCase().includes(needle) ? 1 : 0) +
+          factLexicalSimilarity(item.text, query),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((entry) => entry.item)
+  }
+
+  consolidateSessionSummary(): ConsolidatedSummaryEntry | null {
+    if (this.items.length === 0) return null
+    this.controller.consolidateSummary()
+    const version = this.summaries.length + 1
+    const text = this.items
+      .slice(-12)
+      .map((item) => `[${item.kind}] ${item.text}`)
+      .join(" | ")
+    const summary: ConsolidatedSummaryEntry = {
+      version,
+      text,
+      itemCount: this.items.length,
+      createdAt: Date.now(),
+    }
+    this.summaries.push(summary)
+    return summary
+  }
+
+  getSessionSummaries(): ReadonlyArray<ConsolidatedSummaryEntry> {
+    return [...this.summaries]
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export class ExperienceService extends Service {
+  static override serviceType: string = EXPERIENCE_SERVICE_TYPE
+  override capabilityDescription =
+    "Records and retrieves experiential lessons from completed assistant tasks."
+
+  private readonly experiences: ExperienceEntry[] = []
+  private seq = 0
+
+  static override start(runtime: IAgentRuntime): Promise<ExperienceService> {
+    return Promise.resolve(new ExperienceService(runtime))
+  }
+
+  recordExperience(input: {
+    domain: string
+    outcome: "positive" | "negative" | "neutral"
+    lesson: string
+    confidence?: number
+  }): ExperienceEntry {
+    this.seq += 1
+    const entry: ExperienceEntry = {
+      id: `exp-${this.seq}`,
+      domain: input.domain.trim() || "general",
+      outcome: input.outcome,
+      lesson: input.lesson.trim(),
+      confidence: input.confidence ?? 0.8,
+      createdAt: Date.now(),
+    }
+    this.experiences.push(entry)
+    return entry
+  }
+
+  searchExperiences(query: string, limit = 10): ExperienceEntry[] {
+    const q = query.trim().toLowerCase()
+    return this.experiences
+      .filter(
+        (e) =>
+          e.lesson.toLowerCase().includes(q) ||
+          e.domain.toLowerCase().includes(q) ||
+          factLexicalSimilarity(e.lesson, query) >= 0.25,
+      )
+      .slice(-limit)
+      .reverse()
+  }
+
+  listExperiences(limit = 20): ExperienceEntry[] {
+    return this.experiences.slice(-limit).reverse()
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export const memoryAction: Action = {
+  name: "MEMORY_MANAGE",
+  similes: ["MEMORIES", "LONG_TERM_MEMORY", "FACTS", "MANAGE_EXPERIENCE", "SEARCH_EXPERIENCES"],
+  description:
+    "Store, search, list, consolidate, or delete owner long-term facts, preferences, reflections, skills, and experiences.",
+  descriptionCompressed: "Store, search, list, delete, or consolidate owner facts and experiences.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  parameters: [
+    { name: "domain", description: "Experience domain.", schema: { type: "string" } },
+    { name: "id", description: "Memory ID to delete.", schema: { type: "string" } },
+    { name: "kind", description: "Memory kind.", schema: { type: "string", enum: ["fact", "preference", "reflection", "skill", "experience"] } },
+    { name: "limit", description: "Maximum items to return.", schema: { type: "integer" } },
+    { name: "op", description: "Memory operation.", required: true, schema: { type: "string", enum: ["store", "search", "list", "delete", "consolidate", "record_experience", "search_experiences"] } },
+    { name: "outcome", description: "Experience outcome.", schema: { type: "string", enum: ["positive", "negative", "neutral"] } },
+    { name: "query", description: "Search query.", schema: { type: "string" } },
+    { name: "text", description: "Fact, preference, reflection, skill, or lesson text.", schema: { type: "string" } },
+  ],
+  summarize: (result) => summarizeAssistantResult(result, "Memory updated."),
+  validate: () => Promise.resolve(true),
+  handler: (runtime, _message, _state, options) => {
+    const params = readActionParameters(options)
+    const op = typeof params.op === "string" ? params.op : "list"
+    const memSvc = runtime.getService<AdvancedMemoryService>(ADVANCED_MEMORY_SERVICE_TYPE)
+    const expSvc = runtime.getService<ExperienceService>(EXPERIENCE_SERVICE_TYPE)
+    if (!memSvc) return Promise.resolve({ success: false, text: "Advanced memory service unavailable." })
+    const kind =
+      params.kind === "fact" ||
+      params.kind === "preference" ||
+      params.kind === "reflection" ||
+      params.kind === "skill" ||
+      params.kind === "experience"
+        ? params.kind
+        : undefined
+    const limit = typeof params.limit === "number" && params.limit > 0 ? Math.min(params.limit, 50) : 15
+    if (op === "store") {
+      const text = typeof params.text === "string" ? params.text.trim() : ""
+      if (!text) return Promise.resolve({ success: false, text: "Provide memory text to store." })
+      const stored = memSvc.storeMemory({ kind: kind ?? "fact", text })
+      return Promise.resolve({ success: true, text: `Stored ${stored.kind}: ${stored.text}`, data: { entry: stored } })
+    }
+    if (op === "search") {
+      const query = typeof params.query === "string" ? params.query : ""
+      const hits = memSvc.searchMemories(query, kind, limit)
+      return Promise.resolve({
+        success: true,
+        text: hits.length === 0 ? "No matching memories found." : hits.map((h) => `[${h.id}] ${h.text}`).join("\n"),
+        data: { memories: hits },
+      })
+    }
+    if (op === "delete") {
+      const id = typeof params.id === "string" ? params.id : ""
+      const removed = memSvc.deleteMemory(id)
+      return Promise.resolve({ success: removed, text: removed ? `Deleted memory ${id}.` : `Memory ${id} not found.` })
+    }
+    if (op === "consolidate") {
+      const summary = memSvc.consolidateSessionSummary()
+      return Promise.resolve({
+        success: summary !== null,
+        text: summary ? `Consolidated summary v${summary.version} (${summary.itemCount} items).` : "No memories to consolidate.",
+        data: { summary },
+      })
+    }
+    if (op === "record_experience") {
+      const text = typeof params.text === "string" ? params.text.trim() : ""
+      if (!expSvc || !text) return Promise.resolve({ success: false, text: "Provide lesson text and ensure ExperienceService is active." })
+      const outcome = params.outcome === "positive" || params.outcome === "negative" ? params.outcome : "neutral"
+      const exp = expSvc.recordExperience({
+        domain: typeof params.domain === "string" ? params.domain : "general",
+        outcome,
+        lesson: text,
+      })
+      return Promise.resolve({ success: true, text: `Recorded experience ${exp.id}.`, data: { experience: exp } })
+    }
+    if (op === "search_experiences") {
+      const query = typeof params.query === "string" ? params.query : ""
+      const hits = expSvc ? expSvc.searchExperiences(query, limit) : []
+      return Promise.resolve({
+        success: true,
+        text: hits.length === 0 ? "No matching experiences." : hits.map((e) => `[${e.domain}] ${e.lesson}`).join("\n"),
+        data: { experiences: hits },
+      })
+    }
+    const items = memSvc.listMemories(kind, limit)
+    return Promise.resolve({
+      success: true,
+      text: items.length === 0 ? "No stored long-term memories." : items.map((m) => `- [${m.kind}] ${m.text}`).join("\n"),
+      data: { memories: items },
+    })
+  },
+}
+
+export const longTermMemoryProvider: Provider = {
+  name: "LONG_TERM_MEMORY",
+  description: "Bounded digest of the owner's long-term memories and latest consolidated summary.",
+  descriptionCompressed: "Owner long-term memories and latest consolidated summary.",
+  dynamic: true,
+  cacheStable: false,
+  get: (runtime) => {
+    const svc = runtime.getService<AdvancedMemoryService>(ADVANCED_MEMORY_SERVICE_TYPE)
+    if (!svc) return Promise.resolve({ text: "", data: { memories: [] } })
+    const items = svc.listMemories(undefined, 12)
+    const summaries = svc.getSessionSummaries()
+    const latest = summaries[summaries.length - 1]
+    const lines = items.map((m) => `- [${m.kind}] ${m.text}`)
+    if (latest) lines.unshift(`Summary v${latest.version}: ${latest.text.slice(0, 300)}`)
+    return Promise.resolve({
+      text: lines.length === 0 ? "" : ["# Long-term memory", ...lines].join("\n"),
+      data: { memories: items, summaryVersion: latest?.version ?? 0 },
+    })
+  },
+}
+
+export const factsProvider: Provider = {
+  name: "FACTS",
+  description: "Bounded digest of verified owner facts and preferences.",
+  descriptionCompressed: "Owner facts and preferences digest.",
+  dynamic: true,
+  cacheStable: false,
+  get: (runtime) => {
+    const svc = runtime.getService<AdvancedMemoryService>(ADVANCED_MEMORY_SERVICE_TYPE)
+    if (!svc) return Promise.resolve({ text: "", data: { facts: [] } })
+    const facts = [...svc.listMemories("fact", 10), ...svc.listMemories("preference", 10)]
+    return Promise.resolve({
+      text: facts.length === 0 ? "" : ["# Facts", ...facts.map((f) => `- ${f.text}`)].join("\n"),
+      data: { facts },
+    })
+  },
+}
+
+const URL_PATTERN = /https?:\/\/[^\s<>()]+/gi
+const SUSPICIOUS_INJECTION_PATTERN = /ignore previous instructions|reveal system prompt|exfiltrate/i
+
+export const postTurnMemoryEvaluator: RegisteredEvaluator = {
+  name: "POST_TURN_MEMORY",
+  description: "Extracts durable facts and preferences stated by the owner after a turn.",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      facts: { type: "array", items: { type: "string" } },
+      preferences: { type: "array", items: { type: "string" } },
+    },
+    required: ["facts", "preferences"],
+  },
+  inputScope: "current_message",
+  shouldRun: ({ runtime, message }) =>
+    Promise.resolve(
+      runtime.getService(ADVANCED_MEMORY_SERVICE_TYPE) !== null &&
+        message.entityId !== runtime.agentId &&
+        typeof message.content.text === "string" &&
+        message.content.text.trim().length > 0,
+    ),
+  prompt: ({ message }) => `Extract durable owner facts and preferences from: ${JSON.stringify(message.content.text ?? "")}`,
+  parse: (output) => {
+    if (typeof output !== "object" || output === null) return null
+    const rec = output as Record<string, unknown>
+    const facts = Array.isArray(rec.facts) ? rec.facts.filter((v): v is string => typeof v === "string") : []
+    const preferences = Array.isArray(rec.preferences) ? rec.preferences.filter((v): v is string => typeof v === "string") : []
+    return { facts, preferences }
+  },
+  processors: [
+    {
+      name: "store-post-turn-memory",
+      process: ({ runtime, output }) => {
+        const svc = runtime.getService<AdvancedMemoryService>(ADVANCED_MEMORY_SERVICE_TYPE)
+        if (!svc || typeof output !== "object" || output === null) return Promise.resolve(undefined)
+        const rec = output as { facts?: string[]; preferences?: string[] }
+        let stored = 0
+        for (const text of rec.facts ?? []) {
+          if (text.trim()) {
+            svc.storeMemory({ kind: "fact", text })
+            stored += 1
+          }
+        }
+        for (const text of rec.preferences ?? []) {
+          if (text.trim()) {
+            svc.storeMemory({ kind: "preference", text })
+            stored += 1
+          }
+        }
+        return Promise.resolve({ success: true, text: `Stored ${stored} memory items.`, data: { stored } })
+      },
+    },
+  ],
+}
+
+export const securityEvaluator: RegisteredEvaluator = {
+  name: "SECURITY_EVALUATOR",
+  description: "Flags prompt-injection or credential-exfiltration patterns on inbound messages.",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: { flagged: { type: "boolean" }, reason: { type: "string" } },
+    required: ["flagged", "reason"],
+  },
+  inputScope: "current_message",
+  shouldRun: ({ message }) =>
+    Promise.resolve(
+      typeof message.content.text === "string" &&
+        SUSPICIOUS_INJECTION_PATTERN.test(message.content.text),
+    ),
+  prompt: ({ message }) => `Assess prompt-injection risk for: ${JSON.stringify(message.content.text ?? "")}`,
+  parse: (output) => {
+    if (typeof output !== "object" || output === null) return null
+    const rec = output as Record<string, unknown>
+    if (typeof rec.flagged !== "boolean") return null
+    return { flagged: rec.flagged, reason: typeof rec.reason === "string" ? rec.reason : "" }
+  },
+  processors: [
+    {
+      name: "assess-security-risk",
+      process: ({ message, output }) => {
+        const text = typeof message.content.text === "string" ? message.content.text : ""
+        const heuristicFlag = SUSPICIOUS_INJECTION_PATTERN.test(text)
+        const parsedFlag = typeof output === "object" && output !== null && (output as { flagged?: boolean }).flagged === true
+        const flagged = heuristicFlag || parsedFlag
+        return Promise.resolve({
+          success: true,
+          text: flagged ? "Potential prompt injection flagged." : "Message passed security check.",
+          data: { flagged },
+        })
+      },
+    },
+  ],
+}
+
+export const linkExtractionEvaluator: RegisteredEvaluator = {
+  name: "LINK_EXTRACTION",
+  description: "Extracts HTTPS links shared in messages for downstream retrieval.",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: { links: { type: "array", items: { type: "string" } } },
+    required: ["links"],
+  },
+  inputScope: "current_message",
+  shouldRun: ({ message }) =>
+    Promise.resolve(typeof message.content.text === "string" && URL_PATTERN.test(message.content.text)),
+  prompt: ({ message }) => `Extract links from: ${JSON.stringify(message.content.text ?? "")}`,
+  parse: (output) => {
+    if (typeof output !== "object" || output === null) return null
+    const rec = output as Record<string, unknown>
+    if (!Array.isArray(rec.links)) return null
+    return { links: rec.links.filter((v): v is string => typeof v === "string") }
+  },
+  processors: [
+    {
+      name: "extract-links",
+      process: ({ message }) => {
+        const text = typeof message.content.text === "string" ? message.content.text : ""
+        const matches = [...new Set(text.match(URL_PATTERN) ?? [])]
+        return Promise.resolve({
+          success: true,
+          text: `Extracted ${matches.length} links.`,
+          data: { links: matches },
+        })
+      },
+    },
+  ],
+}

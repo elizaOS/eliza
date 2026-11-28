@@ -1,0 +1,22 @@
+// spec/os/android/reminderAlarms.md, "Story: Get my reminder at its time, even after a reboot"
+export interface AppleRemindersMacosBridgeCandidate {
+  readonly label: string
+  readonly path: string
+}
+
+export const APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME = "libMacWindowEffects.dylib"
+
+export function appleRemindersMacosBridgeCandidates(args?: {
+  readonly envDylibPath?: string | null
+}): AppleRemindersMacosBridgeCandidate[] {
+  return [
+    {
+      label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
+      path: args?.envDylibPath ?? "",
+    },
+    {
+      label: "local Apple permissions bridge",
+      path: `../../../../packages/app/native/macos/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
+    },
+  ].filter((candidate) => candidate.path.trim().length > 0)
+}

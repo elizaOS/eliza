@@ -1,0 +1,332 @@
+// spec/vision/index.md, "Story: Control which of my visual sources the assistant can use"; spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"; spec/vision/index.md, "A subject matches the current observation and an explicit instruction"
+import {
+  resolveCanonicalOwnerId,
+  validateUuid,
+  type Action,
+  type ActionResult,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core"
+import { VISION_OPS, normalizeOp, normalizeVisionMode, type VisionOp } from "./action-params.vibe"
+import { buildGetScreen, summarizeGetScreen } from "./get-screen-elements.vibe"
+import {
+  SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+  getOcrWithCoordsService,
+  readPngDimensions,
+  type ScreenCaptureBridgeService,
+} from "./ocr.vibe"
+import { VisionRefused, observeVision, type VisionService } from "./service.vibe"
+import { VisionMode, VisionServiceType } from "./types.vibe"
+
+module actionNode {
+  import sharp from "sharp"
+
+  /** @throws {never} */
+  export function bytesToDataUrl(bytes: Uint8Array): string {
+    return "data:image/png;base64," + Buffer.from(bytes).toString("base64")
+  }
+
+  export async function ensurePng(bytes: Uint8Array, format: "png" | "jpeg"): Promise<Uint8Array> {
+    if (format === "png") return bytes
+    return new Uint8Array(await sharp(Buffer.from(bytes)).png().toBuffer())
+  }
+}
+import { bytesToDataUrl, ensurePng } from actionNode
+
+function readParams(options: unknown): Record<string, unknown> {
+  if (typeof options !== "object" || options === null) return {}
+  const direct = options as Record<string, unknown>
+  const nested =
+    typeof direct.parameters === "object" && direct.parameters !== null
+      ? (direct.parameters as Record<string, unknown>)
+      : {}
+  return { ...direct, ...nested }
+}
+
+function isOwner(runtime: IAgentRuntime, message: Memory): boolean {
+  const configured = validateUuid(resolveCanonicalOwnerId(runtime))
+  return configured !== null && configured === message.entityId
+}
+
+function computeNextMode(current: VisionMode, op: VisionOp, requestedMode: VisionMode | null): VisionMode | null {
+  if (op === "set_mode") return requestedMode
+  if (op === "enable_camera") {
+    return current === VisionMode.SCREEN || current === VisionMode.BOTH ? VisionMode.BOTH : VisionMode.CAMERA
+  }
+  if (op === "disable_camera") {
+    return current === VisionMode.BOTH || current === VisionMode.SCREEN ? VisionMode.SCREEN : VisionMode.OFF
+  }
+  if (op === "enable_screen") {
+    return current === VisionMode.CAMERA || current === VisionMode.BOTH ? VisionMode.BOTH : VisionMode.SCREEN
+  }
+  if (op === "disable_screen") {
+    return current === VisionMode.BOTH || current === VisionMode.CAMERA ? VisionMode.CAMERA : VisionMode.OFF
+  }
+  return null
+}
+
+function handleModeOp(service: VisionService | null, op: VisionOp, rawMode: unknown): ActionResult {
+  if (!service) {
+    return { success: false, text: "Vision service is not available." }
+  }
+  const nextMode = computeNextMode(service.getVisionMode(), op, normalizeVisionMode(rawMode))
+  if (!nextMode) {
+    return { success: false, text: "Specify a valid vision mode: OFF, CAMERA, SCREEN, or BOTH." }
+  }
+  service.setVisionMode(nextMode)
+  return {
+    success: true,
+    text: `Vision mode set to ${nextMode}.`,
+    data: { mode: nextMode, active: service.isActive() },
+  }
+}
+
+function handleEntityOp(
+  service: VisionService | null,
+  op: "name_entity" | "identify_person" | "track_entity",
+  params: Record<string, unknown>,
+): ActionResult {
+  if (!service) {
+    return { success: false, text: "Vision service is not available." }
+  }
+  const tracker = service.getEntityTracker()
+  if (op === "name_entity") {
+    const entityId = typeof params.entityId === "string" ? params.entityId.trim() : ""
+    const name = typeof params.name === "string" ? params.name.trim() : ""
+    const targetId = entityId || tracker.getActiveEntities().find((e) => e.entityType === "person")?.id || ""
+    if (!targetId || !name) {
+      return { success: false, text: "Provide a visible entity and a non-empty name." }
+    }
+    const named = service.nameObservedSubject(targetId, name, true)
+    if (!named) {
+      return {
+        success: false,
+        text: "Cannot assign a name to a stale or absent subject.",
+        data: { entityId: targetId, named: false },
+      }
+    }
+    return {
+      success: true,
+      text: `Named subject ${targetId} as ${name}.`,
+      data: { entityId: targetId, name, named: true },
+    }
+  }
+  if (op === "identify_person") {
+    const people = tracker.getActiveEntities().filter((e) => e.entityType === "person")
+    const summary =
+      people.length === 0
+        ? "No people currently detected in view."
+        : people.map((p) => `${p.attributes.name ?? p.id} (${p.lastPosition.x},${p.lastPosition.y})`).join("; ")
+    return { success: true, text: summary, data: { people } }
+  }
+  const stats = tracker.getStatistics()
+  const active = tracker.getActiveEntities()
+  return {
+    success: true,
+    text: `Tracking ${stats.activeEntities} active entities (${stats.people} people, ${stats.objects} objects).`,
+    data: { activeEntities: active, statistics: stats },
+  }
+}
+
+effect function handleGetScreen(
+  runtime: IAgentRuntime,
+  service: VisionService | null,
+  params: Record<string, unknown>,
+) {
+  const includeImage = params.includeImage === true
+  const displayId = typeof params.displayId === "number" && Number.isSafeInteger(params.displayId) && params.displayId >= 0
+    ? params.displayId
+    : undefined
+  const cap = service ? (try tryPromise({ try: () => service.getScreenCapture(), catch: () => new VisionRefused({ reason: "Failed to read cached screen capture." }) })) : null
+  let pngBytes: Uint8Array | null = cap?.data && cap.data.byteLength > 0 ? cap.data : null
+  let resolvedDisplayId = displayId ?? cap?.displayId
+  if (!pngBytes) {
+    const bridge = runtime.getService<ScreenCaptureBridgeService>(SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE)
+    if (bridge) {
+      const frame = try tryPromise({
+        try: () => bridge.requestFrame(displayId),
+        catch: () => new VisionRefused({ reason: "Screen capture bridge failed." }),
+      })
+      if (frame) {
+        pngBytes = try tryPromise({
+          try: () => ensurePng(frame.imageBytes, frame.format),
+          catch: () => new VisionRefused({ reason: "Failed to normalize screen capture to PNG." }),
+        })
+        resolvedDisplayId = frame.displayId
+      }
+    }
+  }
+  if (pngBytes && service) {
+    const state = service.getCaptureController().getState()
+    if (state.protectedScreen) {
+      throw new VisionRefused({ reason: "The screen surface is protected and cannot be read." })
+    }
+    const dims = try tryPromise({
+      try: () => readPngDimensions(pngBytes),
+      catch: () => new VisionRefused({ reason: "Invalid screen image buffer." }),
+    })
+    const ocrService = getOcrWithCoordsService()
+    const ocr = ocrService
+      ? try tryPromise({
+          try: () =>
+            ocrService.describe({
+              displayId: String(resolvedDisplayId ?? 0),
+              sourceX: 0,
+              sourceY: 0,
+              pngBytes,
+            }),
+          catch: () => new VisionRefused({ reason: "OCR failed." }),
+        })
+      : { blocks: [] }
+    const result = buildGetScreen({
+      ocrBoxes: ocr.blocks.map((block) => ({
+        text: block.text,
+        bbox: [block.bbox.x, block.bbox.y, block.bbox.width, block.bbox.height] as const,
+      })),
+      width: dims.width,
+      height: dims.height,
+      displayId: resolvedDisplayId,
+    })
+    const recorded = service.recordCapturedFrame({
+      source: "ScreenSource",
+      purpose: "ReadControls",
+      includeImage,
+      bytes: pngBytes,
+      width: dims.width,
+      height: dims.height,
+    })
+    const image = includeImage && recorded.imageDataUrl ? recorded.imageDataUrl : undefined
+    return {
+      success: true,
+      text: summarizeGetScreen(result),
+      data: { ...result, ...(image ? { image } : {}) },
+    }
+  }
+  const observed = try observeVision(runtime, "ScreenSource", "ReadControls", includeImage, "")
+  return {
+    success: true,
+    text: observed.text || "The source showed no readable text.",
+    data: {
+      width: observed.width,
+      height: observed.height,
+      elements: observed.elements,
+      ...(observed.image ? { image: observed.image } : {}),
+    },
+  }
+}
+
+export const visionAction: Action = {
+  name: "VISION",
+  similes: ["GET_SCREEN", "DESCRIBE_SCENE", "CAPTURE_IMAGE", "SET_VISION_MODE"],
+  description:
+    "Capture an authorized camera still, describe the scene, read screen OCR with grounded element coordinates, switch vision modes, or name and track observed entities.",
+  descriptionCompressed:
+    "Camera/screen vision: describe, capture, get_screen OCR+coords, mode control, name/track entities.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  contexts: ["media", "screen_time", "automation", "memory", "settings"],
+  contextGate: { anyOf: ["media", "screen_time", "automation", "memory", "settings"] },
+  parameters: [
+    { name: "displayId", description: "Optional non-negative display identifier.", schema: { type: "number" } },
+    { name: "entityId", description: "Tracked entity ID for naming.", schema: { type: "string" } },
+    { name: "includeImage", description: "Opt in to include a base64 screen image.", schema: { type: "boolean" } },
+    { name: "mode", description: "Target vision mode (OFF, CAMERA, SCREEN, BOTH).", schema: { type: "string", enum: ["OFF", "CAMERA", "SCREEN", "BOTH"] } },
+    { name: "name", description: "Label to assign to a currently visible entity.", schema: { type: "string" } },
+    { name: "op", description: "Vision operation to execute.", schema: { type: "string", enum: [...VISION_OPS] } },
+    { name: "prompt", description: "Optional scene description prompt.", schema: { type: "string" } },
+    { name: "source", description: "Source to describe (camera or screen).", schema: { type: "string", enum: ["camera", "screen"] } },
+    { name: "subaction", description: "Alias for op.", schema: { type: "string", enum: [...VISION_OPS] } },
+  ],
+  summarize: (result) => {
+    if (!result) return undefined
+    const text = typeof result.text === "string" ? result.text.trim() : ""
+    if (!text) return result.success ? "Vision action completed." : "Vision action failed."
+    return text.length <= 160 ? text : `${text.slice(0, 157)}...`
+  },
+  validate: (runtime, message) => Promise.resolve(isOwner(runtime, message)),
+  handler: (runtime, message, _state, options) =>
+    runPromise(
+      effect {
+        if (!isOwner(runtime, message)) {
+          throw new VisionRefused({ reason: "Only the device owner may request visual capture." })
+        }
+        const params = readParams(options)
+        const op = normalizeOp(params.op ?? params.subaction)
+        if (!op) {
+          throw new VisionRefused({
+            reason: "Select a valid vision operation (describe, capture, get_screen, set_mode, enable/disable camera/screen, name_entity, identify_person, track_entity).",
+          })
+        }
+        const service = runtime.getService<VisionService>(VisionServiceType.VISION)
+        if (
+          op === "set_mode" ||
+          op === "enable_camera" ||
+          op === "disable_camera" ||
+          op === "enable_screen" ||
+          op === "disable_screen"
+        ) {
+          return handleModeOp(service, op, params.mode)
+        }
+        if (op === "name_entity" || op === "identify_person" || op === "track_entity") {
+          return handleEntityOp(service, op, params)
+        }
+        if (op === "get_screen") {
+          return try handleGetScreen(runtime, service, params)
+        }
+        if (op === "capture") {
+          if (service) {
+            const bytes = try tryPromise({
+              try: () => service.captureImage(),
+              catch: () => new VisionRefused({ reason: "Camera capture failed." }),
+            })
+            if (bytes && bytes.byteLength > 0) {
+              return {
+                success: true,
+                text: "Camera capture completed.",
+                data: { image: bytesToDataUrl(bytes), bytesLength: bytes.byteLength },
+              }
+            }
+          }
+          const observed = try observeVision(runtime, "CameraSource", "CameraStill", true, "")
+          return {
+            success: true,
+            text: observed.text || "Camera capture completed.",
+            data: observed,
+          }
+        }
+        const source = params.source === "screen" ? "ScreenSource" : "CameraSource"
+        const prompt = typeof params.prompt === "string" ? params.prompt : ""
+        if (service) {
+          const scene = try tryPromise({
+            try: () => service.getEnhancedSceneDescription(),
+            catch: () => new VisionRefused({ reason: "Failed to read scene description." }),
+          })
+          if (scene) {
+            return {
+              success: true,
+              text: scene.description,
+              data: {
+                description: scene.description,
+                objects: scene.objects,
+                people: scene.people,
+                describePaused: scene.describePaused,
+                describePauseReason: scene.describePauseReason,
+              },
+            }
+          }
+        }
+        const observed = try observeVision(
+          runtime,
+          source,
+          "DescribeScene",
+          params.includeImage === true,
+          prompt,
+        )
+        return {
+          success: true,
+          text: observed.text || "The source showed no readable text.",
+          data: observed,
+        }
+      },
+    ),
+}

@@ -1,0 +1,485 @@
+// spec/x/index.md, "Story: Read recent X direct messages without replaying old messages on first connection"; spec/x/index.md, "Story: Respect the X account's direct-message and autonomous publishing policy"; spec/x/index.md, "Story: Do not repeat an X direct message that may already have reached the recipient"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+  ConnectorAccountManager,
+  InMemoryConnectorAccountStorage,
+  type IAgentRuntime,
+  type UUID,
+} from "@elizaos/core"
+import * as xOracle from "../gen/x.ts"
+import {
+  DEFAULT_TWITTER_DM_POLICY,
+  DEFAULT_X_ACCOUNT_ID,
+  MessageType,
+  OAuth2PKCEAuthProvider,
+  RuntimeCacheTokenStore,
+  TWEET_MAX_LENGTH,
+  TwitterError,
+  TwitterErrorType,
+  XDmAdapter,
+  XPlugin,
+  XService,
+  addToRecentTweets,
+  checkTwitterDmAccess,
+  countTwitterWeightedLength,
+  createCodeChallenge,
+  createCodeVerifier,
+  createXConnectorAccountProvider,
+  extractTwitterUrlsWithIndices,
+  extractXWriteReceiptId,
+  getTwitterProviderStatus,
+  isDuplicateTweet,
+  isEndpointOwnedByCloudBase,
+  isExplicitTwitterRejection,
+  isPermanentTwitterRejection,
+  isValidTweet,
+  materializeEnvAccountIfMissing,
+  maxResultsFor,
+  normalizeTwitterProviderError,
+  normalizeXAccountId,
+  parseActionResponseFromText,
+  parseTwitterCount,
+  parseTwitterInterval,
+  quoteThreadFirstChunkMaxLength,
+  quoteTweetText,
+  resolveCloudApiKeyForXEndpoint,
+  resolveTwitterAccountConfig,
+  resolveTwitterDmPolicy,
+  sendTextAsTweetThread,
+  shouldTargetUser,
+  splitTweetContent,
+  splitXDirectMessageContent,
+  validateTwitterConfig,
+  xIdentityProvider,
+  type XApiTransport,
+} from "../src/index.vibe"
+import { driver } from "./drivers/x.ts"
+
+module node {
+  import { once } from "node:events"
+  import { createServer } from "node:http"
+
+  export async function startLocalXOAuthServer(): Promise<{
+    tokenUrl: string
+    usersMeUrl: string
+    refreshCount: () => number
+    close: () => Promise<void>
+  }> {
+    let refreshes = 0
+    const server = createServer((req, res) => {
+      const url = req.url ?? "/"
+      let body = ""
+      req.on("data", (chunk) => {
+        body += String(chunk)
+      })
+      req.on("end", () => {
+        res.writeHead(200, { "content-type": "application/json" })
+        if (url.includes("/2/oauth2/token")) {
+          const params = new URLSearchParams(body)
+          const grant = params.get("grant_type")
+          if (grant === "refresh_token") {
+            refreshes += 1
+            res.end(
+              JSON.stringify({
+                access_token: `refreshed-token-${refreshes}`,
+                refresh_token: `refresh-${refreshes}`,
+                expires_in: 7200,
+                scope: "tweet.read tweet.write users.read offline.access",
+                token_type: "bearer",
+              }),
+            )
+            return
+          }
+          res.end(
+            JSON.stringify({
+              access_token: "oauth2-access-1",
+              refresh_token: "oauth2-refresh-1",
+              expires_in: 7200,
+              scope: "tweet.read tweet.write users.read offline.access",
+              token_type: "bearer",
+            }),
+          )
+          return
+        }
+        if (url.includes("/2/users/me")) {
+          res.end(
+            JSON.stringify({
+              data: { id: "987654321", username: "eliza_x", name: "Eliza X" },
+            }),
+          )
+          return
+        }
+        res.writeHead(404)
+        res.end()
+      })
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address() as { port: number }
+    const base = `http://127.0.0.1:${address.port}`
+    return {
+      tokenUrl: `${base}/2/oauth2/token`,
+      usersMeUrl: `${base}/2/users/me`,
+      refreshCount: () => refreshes,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+}
+import { startLocalXOAuthServer } from node
+
+function makeXRuntime(settings: Record<string, unknown> = {}) {
+  const cache = new Map<string, unknown>()
+  const vault = new Map<string, string>()
+  const credentialRefs: Array<Record<string, unknown>> = []
+  const services = new Map<string, unknown>()
+  services.set("vault", {
+    set: async (key: string, value: string) => {
+      vault.set(key, value)
+    },
+  })
+  const storage = new InMemoryConnectorAccountStorage()
+  const storageWithRefs = Object.assign(storage, {
+    setConnectorAccountCredentialRef: async (ref: Record<string, unknown>) => {
+      credentialRefs.push(ref)
+    },
+  })
+  services.set(CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE, storageWithRefs)
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000003" as UUID,
+    character: { name: "Eliza", settings: {} },
+    getSetting: (key: string) => settings[key],
+    getService: <T>(name: string) => (services.get(name) as T | undefined) ?? null,
+    getCache: async <T>(key: string) => cache.get(key) as T | undefined,
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value)
+      return true
+    },
+    deleteCache: async (key: string) => cache.delete(key),
+    ensureConnection: async () => undefined,
+  } as unknown as IAgentRuntime
+  const manager = new ConnectorAccountManager(runtime, storageWithRefs)
+  services.set("connector_account", manager)
+  return { runtime, manager, cache, vault, credentialRefs, services }
+}
+
+function makeFakeTransport(): { transport: XApiTransport; tweets: string[]; dms: Array<{ to: string; text: string }>; actions: string[] } {
+  const tweets: string[] = []
+  const dms: Array<{ to: string; text: string }> = []
+  const actions: string[] = []
+  const transport: XApiTransport = {
+    me: async () => ({ id: "42", username: "eliza_x", name: "Eliza X", description: "Autonomous X agent" }),
+    tweet: async ({ text }) => {
+      tweets.push(text)
+      return { id: String(1000 + tweets.length), text }
+    },
+    deleteTweet: async (id) => {
+      actions.push(`delete:${id}`)
+    },
+    like: async (_u, id) => {
+      actions.push(`like:${id}`)
+    },
+    unlike: async (_u, id) => {
+      actions.push(`unlike:${id}`)
+    },
+    retweet: async (_u, id) => {
+      actions.push(`retweet:${id}`)
+    },
+    unretweet: async (_u, id) => {
+      actions.push(`unretweet:${id}`)
+    },
+    bookmark: async (_u, id) => {
+      actions.push(`bookmark:${id}`)
+    },
+    searchRecent: async (query) => [{ id: "501", text: `match for ${query}`, author_id: "99" }],
+    userTimeline: async () => [{ id: "502", text: "timeline post", author_id: "42" }],
+    userMentions: async () => [{ id: "503", text: "@eliza_x hi", author_id: "88" }],
+    sendDmToParticipant: async (participantId, text) => {
+      dms.push({ to: participantId, text })
+      return { dm_event_id: `dm-${dms.length}` }
+    },
+    sendDmInConversation: async (conversationId, text) => {
+      dms.push({ to: conversationId, text })
+      return { dm_event_id: `dm-${dms.length}` }
+    },
+    listDmEvents: async () => [
+      { id: "701", text: "hello from bob", sender_id: "bob-1", dm_conversation_id: "conv-1", created_at: "2026-01-01T00:00:00Z" },
+    ],
+  }
+  return { transport, tweets, dms, actions }
+}
+
+describe(`X plugin E2E & parity (spec/x/index.md, "Story: Respect the X account's direct-message and autonomous publishing policy")`, () => {
+  it(`Computes weighted tweet lengths, splits quote threads and DMs safely, deduplicates recent posts, and classifies X errors (spec/x/index.md, "The X direct-message journal retries only a confirmed transient refusal before any part was accepted")`, async () => {
+    assert.strictEqual(countTwitterWeightedLength("hello"), 5)
+    assert.strictEqual(countTwitterWeightedLength("https://example.com/a/very/long/url/that/counts/as/23"), 23)
+    assert.strictEqual(extractTwitterUrlsWithIndices("see https://example.com.").length, 1)
+    assert.strictEqual(countTwitterWeightedLength("世界"), 4)
+
+    const firstLimit = quoteThreadFirstChunkMaxLength("1234567890", TWEET_MAX_LENGTH)
+    assert.strictEqual(firstLimit, 256)
+    const longQuote = "word ".repeat(80).trim()
+    const chunks = splitTweetContent(longQuote, TWEET_MAX_LENGTH, firstLimit)
+    assert.ok(chunks.length >= 2)
+    assert.ok(countTwitterWeightedLength(quoteTweetText(chunks[0]!, "1234567890")) <= TWEET_MAX_LENGTH)
+    assert.strictEqual(chunks.join(""), longQuote)
+
+    const dmChunks = splitXDirectMessageContent("a".repeat(10_005))
+    assert.strictEqual(dmChunks.length, 2)
+    assert.strictEqual(dmChunks.join("").length, 10_005)
+
+    const partialErr = await sendTextAsTweetThread(
+      longQuote,
+      async (_chunk, _prev, index) => {
+        if (index === 0) return { id: "t-1" }
+        throw new Error("boom")
+      },
+      TWEET_MAX_LENGTH,
+      firstLimit,
+    ).catch((err: unknown) => err)
+    assert.ok(partialErr instanceof TwitterError)
+    assert.strictEqual((partialErr as TwitterError).code, "X_THREAD_PARTIALLY_POSTED")
+
+    assert.strictEqual(isValidTweet({ text: "hello #one @two" }), true)
+    assert.strictEqual(isValidTweet({ text: "#a #b @c @d $e" }), false)
+    assert.deepStrictEqual(parseActionResponseFromText("[LIKE]\n[REPLY]").actions, {
+      like: true,
+      retweet: false,
+      quote: false,
+      reply: true,
+    })
+    assert.strictEqual(await extractXWriteReceiptId({ data: { id: "999" } }), "999")
+
+    assert.strictEqual(getTwitterProviderStatus({ status: 429 }), 429)
+    assert.strictEqual(normalizeTwitterProviderError({ status: 429 })?.type, TwitterErrorType.RATE_LIMIT)
+    assert.strictEqual(isExplicitTwitterRejection({ status: 403 }), true)
+    assert.strictEqual(isPermanentTwitterRejection({ status: 403, data: { errors: [{ code: 349 }] } }), true)
+    assert.strictEqual(isPermanentTwitterRejection({ status: 429 }), false)
+
+    const env = makeXRuntime()
+    await addToRecentTweets(env.runtime, "acct-1", "GM ☀️")
+    await addToRecentTweets(env.runtime, "acct-1", "☀️")
+    assert.strictEqual(await isDuplicateTweet(env.runtime, "acct-1", "gm frens"), true)
+    assert.strictEqual(await isDuplicateTweet(env.runtime, "acct-1", "wagmi"), false)
+    assert.strictEqual(await isDuplicateTweet(env.runtime, "acct-1", "☀️"), true)
+  })
+
+  it(`Validates env config, resolves multi-account state, enforces DM policies, and runs OAuth2 PKCE + single-flight refresh against local HTTP (spec/x/index.md, "Direct requests, discovered items and autonomous actions use their own policy gates")`, async () => {
+    const server = await startLocalXOAuthServer()
+    try {
+      const env = makeXRuntime({
+        TWITTER_AUTH_MODE: "oauth",
+        TWITTER_CLIENT_ID: "x-cid-1",
+        TWITTER_REDIRECT_URI: "https://app.example.com/oauth/x",
+        TWITTER_API_KEY: "k1",
+        TWITTER_API_SECRET_KEY: "s1",
+        TWITTER_ACCESS_TOKEN: "t1",
+        TWITTER_ACCESS_TOKEN_SECRET: "ts1",
+        TWITTER_DRY_RUN: "yes",
+        TWITTER_DM_POLICY: "allowlist",
+        TWITTER_ACCOUNTS: JSON.stringify({
+          alt: { authMode: "oauth", clientId: "alt-cid", redirectUri: "https://app.example.com/alt" },
+        }),
+      })
+
+      const cfg = await validateTwitterConfig(env.runtime)
+      assert.strictEqual(cfg.TWITTER_AUTH_MODE, "oauth")
+      assert.strictEqual(cfg.TWITTER_DRY_RUN, "true")
+      assert.strictEqual(resolveTwitterDmPolicy("unknown_mode"), DEFAULT_TWITTER_DM_POLICY)
+      assert.strictEqual(parseTwitterCount("0", 5), 0)
+      assert.strictEqual(parseTwitterInterval("90", 60), 90)
+      assert.strictEqual(shouldTargetUser("@Ada", "ada,bob"), true)
+      assert.strictEqual(maxResultsFor(2, 10), 10)
+      assert.strictEqual(isEndpointOwnedByCloudBase("https://api.eliza.app/v1/x", "https://api.eliza.app/v1"), true)
+      assert.strictEqual(resolveCloudApiKeyForXEndpoint("https://evil.example.com/v1", "secret"), undefined)
+
+      const altState = await resolveTwitterAccountConfig(env.runtime, { accountId: "alt" })
+      assert.strictEqual(altState.TWITTER_CLIENT_ID, "alt-cid")
+      const ghostState = await resolveTwitterAccountConfig(env.runtime, { accountId: "ghost" })
+      assert.strictEqual(ghostState.TWITTER_API_KEY, "")
+      assert.strictEqual(normalizeXAccountId(undefined), DEFAULT_X_ACCOUNT_ID)
+
+      const dmAllowed = await checkTwitterDmAccess(env.runtime, {
+        policy: "allowlist",
+        senderId: "u-1",
+        allowlist: new Set(["u-1"]),
+      })
+      assert.strictEqual(dmAllowed.allowed, true)
+      const dmDenied = await checkTwitterDmAccess(env.runtime, { policy: "disabled", senderId: "u-1" })
+      assert.strictEqual(dmDenied.allowed, false)
+
+      const verifier = createCodeVerifier()
+      assert.ok(verifier.length >= 43)
+      assert.ok(createCodeChallenge(verifier).length > 20)
+
+      const store = new RuntimeCacheTokenStore(env.runtime, "default")
+      await store.save({
+        access_token: "expired-token",
+        refresh_token: "r0",
+        expires_at: Date.now() - 10_000,
+      })
+      const pkce = new OAuth2PKCEAuthProvider(env.runtime, undefined, store, undefined, undefined, server.tokenUrl)
+      const [tokA, tokB] = await Promise.all([pkce.getAccessToken(), pkce.getAccessToken()])
+      assert.strictEqual(tokA, "refreshed-token-1")
+      assert.strictEqual(tokB, "refreshed-token-1")
+      assert.strictEqual(server.refreshCount(), 1)
+
+      const provider = createXConnectorAccountProvider(env.runtime, {
+        tokenUrl: server.tokenUrl,
+        usersMeUrl: server.usersMeUrl,
+      })
+      const started = await provider.startOAuth!(
+        {
+          provider: "x",
+          redirectUri: "https://app.example.com/oauth/x",
+          flow: {
+            id: "x-flow-1",
+            provider: "x",
+            state: "x-st-1",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+          },
+        },
+        env.manager,
+      )
+      assert.ok(started.authUrl.includes("code_challenge_method=S256"))
+      assert.ok(started.codeVerifier)
+
+      const completed = await provider.completeOAuth!(
+        {
+          provider: "x",
+          code: "x-code-1",
+          query: {},
+          flow: {
+            id: "x-flow-1",
+            provider: "x",
+            state: "x-st-1",
+            status: "pending",
+            codeVerifier: started.codeVerifier,
+            redirectUri: "https://app.example.com/oauth/x",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+          },
+        },
+        env.manager,
+      )
+      assert.strictEqual(completed.account?.status, "connected")
+      assert.strictEqual(env.vault.size, 1)
+      assert.strictEqual(env.credentialRefs.length, 1)
+
+      await materializeEnvAccountIfMissing(env.runtime)
+      const envAccount = await env.manager.getAccount("x", DEFAULT_X_ACCOUNT_ID)
+      assert.strictEqual(envAccount?.status, "connected")
+    } finally {
+      await server.close()
+    }
+  })
+
+  it(`Operates XService posts/threads/actions/DMs/rate-limits, TWITTER_IDENTITY provider, and XDmAdapter drafts (spec/x/index.md, "Story: Respect the X account's direct-message and autonomous publishing policy")`, async () => {
+    const env = makeXRuntime()
+    const fake = makeFakeTransport()
+    const service = new XService(env.runtime, fake.transport)
+    env.services.set("twitter", service)
+    env.services.set("x", service)
+
+    const identity = await xIdentityProvider.get(env.runtime, {} as never, {} as never)
+    assert.ok(identity.text?.includes("@eliza_x"))
+    assert.strictEqual(xIdentityProvider.cacheStable, false)
+
+    service.recordRateLimit("tweets", Date.now() + 60_000, 0)
+    assert.strictEqual(service.isRateLimited("tweets"), true)
+    const status = await service.getAccountStatus()
+    assert.strictEqual(status.connected, true)
+    assert.deepStrictEqual(status.rateLimitedEndpoints, ["tweets"])
+
+    const receipts = await service.createPostForAccount(undefined, {
+      text: "Hello world from Vibestack",
+      quotedTweetId: "555",
+    })
+    assert.strictEqual(receipts.length, 1)
+    assert.ok(fake.tweets[0]!.includes("https://twitter.com/i/status/555"))
+
+    await service.likePostForAccount(undefined, "1001")
+    await service.unlikePostForAccount(undefined, "1001")
+    await service.repostForAccount(undefined, "1001")
+    await service.unrepostForAccount(undefined, "1001")
+    await service.bookmarkPostForAccount(undefined, "1001")
+    await service.deletePostForAccount(undefined, "1001")
+    assert.strictEqual(fake.actions.length, 6)
+
+    assert.strictEqual((await service.searchPostsForAccount(undefined, "eliza")).length, 1)
+    assert.strictEqual((await service.fetchFeedForAccount(undefined)).length, 1)
+    assert.strictEqual((await service.getMentionsForAccount(undefined)).length, 1)
+
+    const postSvc = service.createPostService()
+    const createdPost = await postSvc.createPost({
+      agentId: env.runtime.agentId,
+      roomId: "00000000-0000-0000-0000-000000000010" as UUID,
+      text: "Post service test",
+    })
+    assert.ok(createdPost.id)
+
+    const msgSvc = service.createMessageService()
+    const sentMsg = await msgSvc.sendMessage({
+      agentId: env.runtime.agentId,
+      roomId: "bob-1" as UUID,
+      text: "Hi Bob",
+      type: MessageType.DIRECT_MESSAGE,
+    })
+    assert.strictEqual(sentMsg.id, "dm-1")
+
+    const dmAdapter = new XDmAdapter()
+    assert.strictEqual(dmAdapter.isAvailable(env.runtime), true)
+    const listed = await dmAdapter.listMessages(env.runtime, { limit: 10 })
+    assert.strictEqual(listed.length, 1)
+    assert.strictEqual(listed[0]!.body, "hello from bob")
+    const draft = await dmAdapter.createDraft(env.runtime, {
+      to: [{ identifier: "bob-1" }],
+      body: "Draft reply to Bob",
+    })
+    const sentDraft = await dmAdapter.sendDraft(env.runtime, draft.draftId)
+    assert.strictEqual(sentDraft.externalId, "dm-2")
+    assert.strictEqual(XPlugin.name, "@elizaos/plugin-x")
+  })
+
+  it(`Conformance driver matches the Quint oracle across bind, seed, and advance events (spec/x/index.md, "X cursors compare complete decimal provider IDs and stay with the selected session")`, async () => {
+    await driver.reset()
+    let expected = xOracle.initial
+    assert.deepStrictEqual(await driver.observe("a"), expected)
+
+    const steps = [
+      { by: "XExternal" as const, event: { type: "bindX" as const, binding: xOracle.sampleXSession } },
+      { by: "XAdapter" as const, event: { type: "bindX" as const, binding: xOracle.sampleXSession } },
+      {
+        by: "XAdapter" as const,
+        event: { type: "seedXCursor" as const, binding: xOracle.sampleXSession, eventId: [1] },
+      },
+      {
+        by: "XAdapter" as const,
+        event: { type: "advanceXCursor" as const, binding: xOracle.sampleXSession, eventId: [2], eventFinalized: false },
+      },
+      {
+        by: "XAdapter" as const,
+        event: { type: "advanceXCursor" as const, binding: xOracle.sampleXSession, eventId: [2], eventFinalized: true },
+      },
+      {
+        by: "XAdapter" as const,
+        event: { type: "advanceXCursor" as const, binding: xOracle.sampleXSession, eventId: [1, 0], eventFinalized: true },
+      },
+    ]
+
+    for (const item of steps) {
+      const shouldAccept = xOracle.enabled(expected, item.event, item.by)
+      const actual = await driver.dispatch("a", item.event, item.by)
+      assert.strictEqual(actual, shouldAccept ? "accepted" : "refused")
+      if (shouldAccept) {
+        expected = xOracle.step(expected, item.event, item.by)
+      }
+      assert.deepStrictEqual(await driver.observe("a"), expected)
+    }
+    assert.deepStrictEqual(expected.cursor, [1, 0])
+  })
+})

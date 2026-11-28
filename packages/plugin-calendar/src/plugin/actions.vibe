@@ -862,7 +862,8 @@ export effect function runCalendarAction(host: CalendarHost, ask: CalendarAsk, i
   return try handle(host, ask, parameters)
 }
 
-function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
+export function calendarServiceOf(runtime: IAgentRuntime): CalendarHost | undefined {
+  if (typeof runtime.getService !== "function") return undefined
   const found: unknown = runtime.getService(calendarServiceType)
   return found instanceof CalendarService ? found.host : undefined
 }
@@ -870,6 +871,7 @@ function serviceOf(runtime: IAgentRuntime): CalendarHost | undefined {
 const assistantServiceType = "personal-assistant"
 
 async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
+  if (typeof runtime.getService !== "function") return undefined
   const assistant: unknown = runtime.getService(assistantServiceType)
   const read = typeof assistant === "object" && assistant !== null && "ownerCalendarZone" in assistant ? assistant.ownerCalendarZone : undefined
   if (typeof read !== "function") return undefined
@@ -880,47 +882,51 @@ async function ownerZone(runtime: IAgentRuntime): Promise<string | undefined> {
 export const calendarAction: Action = {
   name: calendarActionName,
   description: "Owner's calendar. Reads: search_events, next_event, trip_window (events during trip at query place), check_availability (window free?), propose_times (<=2 openings of durationMinutes; neither books). Writes: create_event, update_event, delete_event (declines invites); connected providers require approval; native phone calendar uses PROPOSE_DEVICE_ACTION when offered. Set statedClock on new startAt/availability windows. Chat creates review unless owner asked to save now. Built-in delete removes <=1 occurrence; runs at once only with ownerAnswer=yes + unique exact title or selected event; else asks, then re-call with eventId+ownerAnswer.",
+  descriptionCompressed: "Read calendar, check availability, or create/update/delete events.",
   similes: ["CALENDAR_SEARCH", "SCHEDULE", "AGENDA", "CALENDAR_TRIP_WINDOW", "CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES", "CREATE_EVENT", "UPDATE_EVENT", "DELETE_EVENT"],
   tags: ["capability:schedule", "effect:receipt-required"],
+  toolSchemaStrict: true,
+  cacheStable: true,
   parameters: [
-    { name: "subaction", required: true, description: "Op.", schema: { type: "string", enum: [...subactions] } },
-    { name: "query", required: false, description: "Match title/notes/location/guest; place for trip_window.", schema: { type: "string" } },
-    { name: "timeMin", required: false, description: "Range start: ISO-8601 w/ offset or wall time (2030-03-04T09:00, request zone). Req for availability/propose_times; start no earlier than now.", schema: { type: "string" } },
-    { name: "timeMax", required: false, description: "Range end (same format). Req for availability/propose_times; morning<=12:00, afternoon 12:00-17:00 (request zone).", schema: { type: "string" } },
+    { name: "addGuests", required: false, description: "update_event: exact guest emails owner wrote.", schema: { type: "array", items: { type: "string" } } },
+    { name: "afternoonOnly", required: false, description: "Availability: true if afternoon-only (incl. errand-framed: 'tomorrow when I can pick up groceries in the afternoon', 'tomorrow afternoon where I can pick up these groceries'); window 12:00-17:00 or stated outer clock.", schema: { type: "boolean" } },
+    { name: "attendees", required: false, description: "create_event: exact guest emails owner wrote; never guess/lookup.", schema: { type: "array", items: { type: "string" } } },
+    { name: "calendarId", required: false, description: "Calendar id.", schema: { type: "string" } },
+    { name: "confirmedPastStart", required: false, description: "Owner confirmed past start.", schema: { type: "boolean" } },
     { name: "date", required: false, description: "search_events whole-day start (YYYY-MM-DD, request zone); omit timeMin/timeMax.", schema: { type: "string" } },
+    { name: "description", required: false, description: "Exact notes.", schema: { type: "string" } },
+    { name: "durationMinutes", required: false, description: "propose_times slot min (5-480; 'a free hour'=60); create_event min if no endAt. Don't guess.", schema: { type: "integer", minimum: 1, maximum: 44640 } },
+    { name: "endAt", required: false, description: "End (like startAt). Default: durationMinutes, else 1h (1d all-day); update keeps length.", schema: { type: "string" } },
     { name: "endDate", required: false, description: "search_events whole-day inclusive end (YYYY-MM-DD); needs date.", schema: { type: "string" } },
     { name: "eventId", required: false, description: "Event id from a prior result.", schema: { type: "string" } },
-    { name: "calendarId", required: false, description: "Calendar id.", schema: { type: "string" } },
-    { name: "title", required: false, description: "Exact title.", schema: { type: "string" } },
-    { name: "description", required: false, description: "Exact notes.", schema: { type: "string" } },
-    { name: "location", required: false, description: "Exact location.", schema: { type: "string" } },
-    { name: "startAt", required: false, description: "Start: ISO-8601 w/ offset or wall time (2030-03-04T09:00; owner zone on create, request zone on update, YYYY-MM-DDT00:00 if all-day).", schema: { type: "string" } },
-    { name: "endAt", required: false, description: "End (like startAt). Default: durationMinutes, else 1h (1d all-day); update keeps length.", schema: { type: "string" } },
     { name: "isAllDay", required: false, description: "All-day.", schema: { type: "boolean" } },
-    { name: "timeZone", required: false, description: "IANA zone; with create wall time, set only if owner named it.", schema: { type: "string" } },
-    { name: "durationMinutes", required: false, description: "propose_times slot min (5-480; 'a free hour'=60); create_event min if no endAt. Don't guess.", schema: { type: "integer", minimum: 1, maximum: 44640 } },
-    { name: "confirmedPastStart", required: false, description: "Owner confirmed past start.", schema: { type: "boolean" } },
-    { name: "reviewBeforeCreate", required: false, description: "create_event: false only if owner asked to save now; else reviews first.", schema: { type: "boolean" } },
-    { name: "reviewBeforeSaving", required: false, description: "create_event: true if owner asked to preview/review first (takes priority; keep on follow-ups).", schema: { type: "boolean" } },
+    { name: "location", required: false, description: "Exact location.", schema: { type: "string" } },
+    { name: "morningOnly", required: false, description: "Availability: true if morning-only; the window then ends by that day's noon.", schema: { type: "boolean" } },
+    { name: "notifyAttendees", required: false, description: "update/delete: true only if owner asked to notify guests.", schema: { type: "boolean" } },
+    { name: "ownerAnswer", required: false, description: "Built-in delete_event: yes if owner asked/agreed, no if declined/keep; omit else.", schema: { type: "string", enum: ["yes", "no"] } },
+    { name: "phoneCalendar", required: false, description: "create_event: true only for phone's native calendar (any language); omit for Eliza/connected.", schema: { type: "boolean" } },
+    { name: "query", required: false, description: "Match title/notes/location/guest; place for trip_window.", schema: { type: "string" } },
+    { name: "recurrenceScope", required: false, description: "Repeating scope (instance=this, series=all). Set if stated; else asks, then re-call w/ eventId.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
+    { name: "removeGuests", required: false, description: "update_event: guest emails/names owner used.", schema: { type: "array", items: { type: "string" } } },
     { name: "repeat", required: false, description: "create_event recurrence.", schema: { type: "string", enum: ["daily", "weekdays", "weekly"] } },
     { name: "repeatUntil", required: false, description: "create_event last start (ISO-8601 w/ offset).", schema: { type: "string" } },
+    { name: "reviewBeforeCreate", required: false, description: "create_event: false only if owner asked to save now; else reviews first.", schema: { type: "boolean" } },
+    { name: "reviewBeforeSaving", required: false, description: "create_event: true if owner asked to preview/review first (takes priority; keep on follow-ups).", schema: { type: "boolean" } },
     { name: "skipStarts", required: false, description: "create_event skipped starts (ISO-8601 w/ offset).", schema: { type: "array", items: { type: "string" } } },
-    { name: "attendees", required: false, description: "create_event: exact guest emails owner wrote; never guess/lookup.", schema: { type: "array", items: { type: "string" } } },
-    { name: "addGuests", required: false, description: "update_event: exact guest emails owner wrote.", schema: { type: "array", items: { type: "string" } } },
-    { name: "removeGuests", required: false, description: "update_event: guest emails/names owner used.", schema: { type: "array", items: { type: "string" } } },
-    { name: "notifyAttendees", required: false, description: "update/delete: true only if owner asked to notify guests.", schema: { type: "boolean" } },
-    { name: "recurrenceScope", required: false, description: "Repeating scope (instance=this, series=all). Set if stated; else asks, then re-call w/ eventId.", schema: { type: "string", enum: ["instance", "this_and_following", "series"] } },
+    { name: "startAt", required: false, description: "Start: ISO-8601 w/ offset or wall time (2030-03-04T09:00; owner zone on create, request zone on update, YYYY-MM-DDT00:00 if all-day).", schema: { type: "string" } },
     { name: "statedClock", required: false, description: "New startAt/endAt or free-time window: start=owner gave start clock ('at 3pm', 'noon', 'to 4'), range=start+end ('between noon and five', 'from one ten PM to two PM'), none=you chose time ('tomorrow afternoon', 'move it to Friday'). Unstated clock requires none.", schema: { type: "string", enum: ["start", "range", "none"] } },
-    { name: "phoneCalendar", required: false, description: "create_event: true only for phone's native calendar (any language); omit for Eliza/connected.", schema: { type: "boolean" } },
-    { name: "morningOnly", required: false, description: "Availability: true if morning-only; the window then ends by that day's noon.", schema: { type: "boolean" } },
-    { name: "afternoonOnly", required: false, description: "Availability: true if afternoon-only (incl. errand-framed: 'tomorrow when I can pick up groceries in the afternoon', 'tomorrow afternoon where I can pick up these groceries'); window 12:00-17:00 or stated outer clock.", schema: { type: "boolean" } },
-    { name: "ownerAnswer", required: false, description: "Built-in delete_event: yes if owner asked/agreed, no if declined/keep; omit else.", schema: { type: "string", enum: ["yes", "no"] } },
+    { name: "subaction", required: true, description: "Op.", schema: { type: "string", enum: [...subactions] } },
+    { name: "timeMax", required: false, description: "Range end (same format). Req for availability/propose_times; morning<=12:00, afternoon 12:00-17:00 (request zone).", schema: { type: "string" } },
+    { name: "timeMin", required: false, description: "Range start: ISO-8601 w/ offset or wall time (2030-03-04T09:00, request zone). Req for availability/propose_times; start no earlier than now.", schema: { type: "string" } },
+    { name: "timeZone", required: false, description: "IANA zone; with create wall time, set only if owner named it.", schema: { type: "string" } },
+    { name: "title", required: false, description: "Exact title.", schema: { type: "string" } },
   ],
+  summarize: (result) => result?.text ?? "Calendar action complete.",
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  validate: async (runtime) => serviceOf(runtime) !== undefined,
+  validate: async (runtime) => calendarServiceOf(runtime) !== undefined,
   handler: async (runtime, message, _state, options) => {
-    const host = serviceOf(runtime)
+    const host = calendarServiceOf(runtime)
     if (host === undefined) return { success: false, text: "The calendar isn't running.", userFacingText: "The calendar isn't running.", verifiedUserFacing: true }
     const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
     const phoneCalendar = phoneCalendarOffered(runtime, message)
@@ -933,12 +939,14 @@ showsApp(calendarAction, calendarContext.id)
 export const calendarProvider: Provider = {
   name: "CALENDAR_CONTEXT",
   description: "The owner's events over the next 24 hours from the active account's calendars",
+  descriptionCompressed: "Owner's calendar events over the next 24 hours.",
   dynamic: true,
+  cacheStable: false,
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 
   get: async (runtime, message) => {
-    const host = serviceOf(runtime)
+    const host = calendarServiceOf(runtime)
     if (host === undefined) return {}
     const now = Date.now()
     const found = await runPromise(host.search({ timeMin: now, timeMax: now + contextLookahead }))

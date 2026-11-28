@@ -33,6 +33,10 @@ public final class SpeechOutputGate {
     return focus.ducked();
   }
 
+  synchronized void setDucked(boolean ducked) {
+    focus.setDucked(ducked);
+  }
+
   public synchronized boolean callActive() {
     return SpeechAudioFocusPolicy.callActive(mode);
   }

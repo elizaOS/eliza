@@ -1,9 +1,29 @@
-// spec/nativeSettings/index.md, "Story: Adjust the device settings from the local overlay"
-import { System } from "@elizaos/os-bridges"
-import type { ControlReading, SystemClient, SystemVolumeStream } from "@elizaos/os-bridges"
-import { settingsLevelAllowed, settingsOutcome, type ControlLimit } from "../gen/nativeSettings.effect.vibe"
+// spec/nativeSettings/index.md, "Story: Adjust the device settings from the local overlay"; spec/nativeSettings/index.md, "A setting write is admitted by its current capability and valid level"
+import type { Plugin } from "@elizaos/core"
+import {
+  System,
+  systemClient,
+  type AndroidRoleName,
+  type ControlReading,
+  type RoleRequestReport,
+  type SettingsHandoff,
+  type SystemClient,
+  type SystemSettingsPage,
+  type SystemVolumeStream,
+} from "@elizaos/os-bridges"
+import { settingsLevelAllowed, settingsOutcome, type ControlLimit, type SettingsOutcome } from "../gen/nativeSettings.effect.vibe"
 
-export { systemClient } from "@elizaos/os-bridges"
+export { systemClient }
+export type { AndroidRoleName, ControlReading, RoleRequestReport, SettingsHandoff, SettingsOutcome, SystemClient, SystemSettingsPage, SystemVolumeStream }
+
+export const DEVICE_SETTINGS_APP_NAME = "@elizaos/plugin-native-settings"
+
+export const DEVICE_SETTINGS_ROLES: readonly AndroidRoleName[] = [
+  "assistant",
+  "dialer",
+  "sms",
+  "home",
+]
 
 export error DeviceSettingRefused { requestedLevel: number }
 
@@ -31,3 +51,23 @@ export effect function applyVolume(stream: SystemVolumeStream, requestedLevel: n
   const changed = try tryPromise(() => device.setVolume({ stream, volume: requestedLevel }))
   return settingsOutcome(limits, requestedLevel, observedLevel(changed.reading, requestedLevel), false)
 }
+
+export effect function openNativeSettingsShortcut(page: SystemSettingsPage, device: SystemClient = System) {
+  const handoff = try tryPromise(() => device.openSettingsPage({ page }))
+  const outcome = settingsOutcome({ maxLevel: 255, canWrite: true }, 0, false, true)
+  return { handoff, outcome }
+}
+
+export effect function requestAndroidRoleShortcut(role: AndroidRoleName, device: SystemClient = System) {
+  const report = try tryPromise(() => device.requestRole({ role }))
+  const outcome = settingsOutcome({ maxLevel: 255, canWrite: true }, 0, false, true)
+  return { report, outcome }
+}
+
+export const appDeviceSettingsPlugin: Plugin = {
+  name: DEVICE_SETTINGS_APP_NAME,
+  description: "Android Device Settings overlay: inspect roles and control brightness or volume through the native system bridge.",
+}
+
+const defaultAppDeviceSettingsPlugin: Plugin = appDeviceSettingsPlugin
+export default defaultAppDeviceSettingsPlugin

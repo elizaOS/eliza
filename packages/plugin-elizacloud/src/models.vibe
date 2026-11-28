@@ -1,0 +1,580 @@
+// spec/elizaCloud/inference.md, "Story: Route Cloud inference with bounded retries and uniform wire tool schemas"
+import {
+  ModelType,
+  VECTOR_DIMS,
+  type AudioProcessingParams,
+  type BatchTextEmbeddingParams,
+  type DetokenizeTextParams,
+  type GenerateTextParams,
+  type IAgentRuntime,
+  type ImageDescriptionParams,
+  type ImageDescriptionResult,
+  type ImageGenerationParams,
+  type ImageGenerationResult,
+  type ModelTypeName,
+  type ResearchParams,
+  type ResearchResult,
+  type TextEmbeddingParams,
+  type TextStreamResult,
+  type TextToSpeechParams,
+  type TokenUsage,
+  type TokenizeTextParams,
+  type TranscriptionParams,
+  type VideoProcessingParams,
+} from "@elizaos/core"
+import { Exit, Queue, Schema, Stream, type Cause } from "effect"
+import * as Sse from "effect/encoding/Sse"
+import { wireToolStrictMode } from "../gen/elizaCloud__inference.effect.vibe"
+import {
+  DEFAULT_TTS_VOICE,
+  getSetting,
+  isCloudSttAvailable,
+  isCloudTtsAvailable,
+  resolveSlotModel,
+} from "./config.vibe"
+import {
+  CloudApiFailure,
+  CloudSttUnavailableError,
+  cloudBytesFetch,
+  cloudJsonFetch,
+  cloudRawFetch,
+  cloudUsageSchema,
+  toCloudTokenUsage,
+  unavailableResearchError,
+} from "./http.vibe"
+import { isOpenAiVoiceAlias } from "./voice-catalog.vibe"
+
+module node {
+  import type { IAgentRuntime } from "@elizaos/core"
+  import { getEncoding, getEncodingNameForModel, type TiktokenEncoding, type TiktokenModel } from "js-tiktoken"
+
+  const encodings = new Map<TiktokenEncoding, ReturnType<typeof getEncoding>>()
+
+  export function getTokenizer(name: TiktokenEncoding): ReturnType<typeof getEncoding> {
+    const existing = encodings.get(name)
+    if (existing) return existing
+    const loaded = getEncoding(name)
+    encodings.set(name, loaded)
+    return loaded
+  }
+
+  /** @throws {never} */
+  export function lookupTokenizerName(modelName: string): string {
+    const slash = modelName.indexOf("/")
+    const bare = slash >= 0 ? modelName.slice(slash + 1) : modelName
+    const base = bare.split(":")[0] || bare
+    for (const candidate of [modelName, bare, base]) {
+      try {
+        return getEncodingNameForModel(candidate as TiktokenModel)
+      } catch {
+        continue
+      }
+    }
+    return "o200k_base"
+  }
+
+  export async function fetchUrlBytes(url: string, signal?: AbortSignal): Promise<Uint8Array> {
+    const response = await globalThis.fetch(url, { redirect: "error", signal })
+    if (!response.ok) throw new Error(`Media download returned HTTP ${response.status}`)
+    return new Uint8Array(await response.arrayBuffer())
+  }
+
+  /** @throws {never} */
+  export function buildAudioForm(modelId: string, audioBytes: Uint8Array, promptText?: string, language?: string): FormData {
+    const form = new FormData()
+    form.set("model", modelId)
+    form.set("file", new Blob([Uint8Array.from(audioBytes)], { type: "audio/wav" }), "audio.wav")
+    if (promptText) form.set("prompt", promptText)
+    if (language) form.set("language", language)
+    return form
+  }
+
+  interface PendingEmbedding {
+    readonly controller: AbortController
+    readonly promise: Promise<number[][]>
+    consumers: number
+    settled: boolean
+  }
+
+  const pendingEmbeddings = new WeakMap<IAgentRuntime, Map<string, PendingEmbedding>>()
+
+  export function coalesceEmbeddingBatch(
+    runtime: IAgentRuntime,
+    key: string,
+    signal: AbortSignal | undefined,
+    execute: (innerSignal: AbortSignal) => Promise<number[][]>,
+  ): Promise<number[][]> {
+    if (signal?.aborted) return Promise.reject(signal.reason)
+    let byKey = pendingEmbeddings.get(runtime)
+    if (!byKey) {
+      byKey = new Map<string, PendingEmbedding>()
+      pendingEmbeddings.set(runtime, byKey)
+    }
+    let entry = byKey.get(key)
+    if (!entry) {
+      const controller = new AbortController()
+      const created: PendingEmbedding = {
+        controller,
+        consumers: 0,
+        settled: false,
+        promise: Promise.resolve().then(() => execute(controller.signal)),
+      }
+      const tracked = created.promise.finally(() => {
+        created.settled = true
+        if (byKey?.get(key) === created) byKey.delete(key)
+      })
+      entry = { ...created, promise: tracked }
+      byKey.set(key, entry)
+    }
+    const active = entry
+    active.consumers += 1
+    return new Promise<number[][]>((resolve, reject) => {
+      let released = false
+      const release = () => {
+        if (released) return
+        released = true
+        signal?.removeEventListener("abort", onAbort)
+        active.consumers -= 1
+        if (active.consumers === 0 && !active.settled) {
+          if (byKey?.get(key) === active) byKey.delete(key)
+          active.controller.abort(signal?.reason)
+        }
+      }
+      const onAbort = () => {
+        release()
+        reject(signal?.reason)
+      }
+      signal?.addEventListener("abort", onAbort, { once: true })
+      active.promise.then(
+        (vectors) => {
+          release()
+          resolve(vectors)
+        },
+        (err) => {
+          release()
+          reject(err)
+        },
+      )
+    })
+  }
+}
+import { buildAudioForm, coalesceEmbeddingBatch, fetchUrlBytes, getTokenizer, lookupTokenizerName } from node
+
+type MediaJsonValue = string | number | boolean | null | MediaJsonValue[] | { [key: string]: MediaJsonValue }
+
+const VALID_ENCODINGS = new Set<string>(["cl100k_base", "o200k_base", "gpt2", "r50k_base", "p50k_base", "p50k_edit"])
+
+export function resolveTokenizerEncodingName(modelName: string): "cl100k_base" | "o200k_base" | "gpt2" | "r50k_base" | "p50k_base" | "p50k_edit" {
+  const found = lookupTokenizerName(modelName)
+  return VALID_ENCODINGS.has(found) ? (found as "cl100k_base" | "o200k_base" | "gpt2" | "r50k_base" | "p50k_base" | "p50k_edit") : "o200k_base"
+}
+
+function isStrictSchemaNode(node: unknown): boolean {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return false
+  const rec = node as Record<string, unknown>
+  if (rec.type === "object") {
+    if (rec.additionalProperties !== false) return false
+    const props = rec.properties
+    if (!props || typeof props !== "object" || Array.isArray(props)) return false
+    const keys = Object.keys(props)
+    const req = Array.isArray(rec.required) ? new Set(rec.required.filter((entry): entry is string => typeof entry === "string")) : new Set<string>()
+    for (const key of keys) {
+      if (!req.has(key)) return false
+      const child = (props as Record<string, unknown>)[key]
+      if (child && typeof child === "object" && !Array.isArray(child)) {
+        const childType = (child as Record<string, unknown>).type
+        if ((childType === "object" || childType === "array") && !isStrictSchemaNode(child)) return false
+      }
+    }
+    return true
+  }
+  if (rec.type === "array") {
+    const items = rec.items
+    if (items && typeof items === "object" && !Array.isArray(items)) {
+      const itemType = (items as Record<string, unknown>).type
+      if (itemType === "object" || itemType === "array") return isStrictSchemaNode(items)
+    }
+    return true
+  }
+  return true
+}
+
+const chatReplySchema = Schema.Struct({
+  choices: Schema.NonEmptyArray(Schema.Struct({
+    message: Schema.Struct({
+      content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      tool_calls: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+    }),
+    finish_reason: Schema.String,
+  })),
+  usage: Schema.optionalKey(Schema.NullOr(cloudUsageSchema)),
+})
+
+const streamFrameSchema = Schema.Struct({
+  choices: Schema.Array(Schema.Struct({
+    delta: Schema.Struct({ content: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
+    finish_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  })),
+  usage: Schema.optionalKey(Schema.NullOr(cloudUsageSchema)),
+})
+
+const decodeChatReply = Schema.decodeUnknownEffect(chatReplySchema)
+const decodeStreamFrame = Schema.decodeUnknownEffect(Schema.fromJsonString(streamFrameSchema))
+
+const embeddingReplySchema = Schema.Struct({
+  data: Schema.NonEmptyArray(Schema.Struct({
+    embedding: Schema.Array(Schema.Number),
+    index: Schema.optionalKey(Schema.Int),
+  })),
+})
+
+const imageReplySchema = Schema.Struct({
+  data: Schema.Array(Schema.Struct({
+    url: Schema.optionalKey(Schema.String),
+    b64_json: Schema.optionalKey(Schema.String),
+  })),
+})
+
+const transcriptionReplySchema = Schema.Struct({
+  text: Schema.String,
+})
+
+function observed<T>(promise: Promise<T>): Promise<T> {
+  void promise.catch(() => undefined)
+  return promise
+}
+
+function purposeForSlot(slot: ModelTypeName): string {
+  const key = String(slot)
+  if (key === ModelType.ACTION_PLANNER) return "action_planner"
+  if (key === ModelType.RESPONSE_HANDLER) return "response_handler"
+  if (key === ModelType.TEXT_NANO) return "text_nano"
+  if (key === ModelType.TEXT_SMALL) return "text_small"
+  if (key === ModelType.TEXT_MEDIUM) return "text_medium"
+  if (key === ModelType.TEXT_MEGA) return "text_mega"
+  return "text_large"
+}
+
+effect function streamChatResponse(response: Response) {
+  if (response.body === null || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream") {
+    try Effect.ignore(tryPromise(async () => { await response.body?.cancel() }))
+    throw new CloudApiFailure({ status: 502, code: "not_event_stream", reason: "Eliza Cloud did not return an SSE completion stream.", retryable: false })
+  }
+  const body = response.body
+  const events = Stream.fromReadableStream({
+    evaluate: () => body,
+    onError: () => new CloudApiFailure({ status: 502, code: "stream_disconnected", reason: "Eliza Cloud event stream disconnected.", retryable: true }),
+  }).pipe(Stream.decodeText(), Stream.pipeThroughChannel(Sse.decode({ maxEventSize: 1048576 })))
+  const queue = try Queue.unbounded<string, CloudApiFailure | Cause.Done>()
+  const produce = effect {
+    let text = ""
+    let reason: string | undefined
+    let usage: TokenUsage | undefined
+    let done = false
+    for try (const event of events) {
+      if (event.data === "[DONE]") {
+        done = true
+        break
+      }
+      const frame = try decodeStreamFrame(event.data)
+      if (frame.usage != null) usage = toCloudTokenUsage(frame.usage)
+      for (const choice of frame.choices) {
+        if (choice.finish_reason != null) reason = choice.finish_reason
+        const delta = choice.delta.content
+        if (delta == null || delta === "") continue
+        if (text.length + delta.length > 4194304) {
+          throw new CloudApiFailure({ status: 502, code: "stream_budget_exceeded", reason: "Eliza Cloud stream exceeded text budget.", retryable: false })
+        }
+        text += delta
+        try Queue.offer(queue, delta)
+      }
+    }
+    if (!done || reason !== "stop") {
+      throw new CloudApiFailure({ status: 502, code: "stream_incomplete", reason: "Eliza Cloud event stream ended before stop.", retryable: false })
+    }
+    return { text, reason, usage }
+  }
+  return {
+    queue,
+    produce: Effect.onExit(produce, (outcome) => Exit.isSuccess(outcome)
+      ? Queue.end(queue)
+      : Queue.fail(queue, new CloudApiFailure({ status: 502, code: "stream_failed", reason: "Eliza Cloud stream failed.", retryable: false }))),
+  } as const
+}
+
+function createTextSlotHandler(slot: ModelTypeName) {
+  return async (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string | TextStreamResult> => {
+    const resolved = resolveSlotModel(runtime, slot)
+    const modelId = params.model?.trim() || resolved.modelId
+    const messages = params.messages ?? [
+      ...(params.system === undefined ? [] : [{ role: "system", content: params.system }]),
+      { role: "user", content: params.prompt ?? "" },
+    ]
+    const toolsList = params.tools ?? []
+    const allToolsStrict = toolsList.length > 0 && toolsList.every((tool) => tool.strict === true && isStrictSchemaNode(tool.parameters))
+    const emitStrict = wireToolStrictMode(toolsList.length, allToolsStrict)
+    const wantsStream = params.stream === true && params.responseSchema === undefined && toolsList.length === 0 && params.toolChoice === undefined
+    const payload: Record<string, unknown> = {
+      model: modelId,
+      messages,
+      stream: wantsStream,
+      ...(wantsStream ? { stream_options: { include_usage: true } } : {}),
+      ...(params.temperature === undefined ? {} : { temperature: params.temperature }),
+      ...(params.topP === undefined ? {} : { top_p: params.topP }),
+      ...(!params.omitMaxTokens && params.maxTokens !== undefined ? { max_completion_tokens: params.maxTokens } : {}),
+      ...(params.stopSequences === undefined ? {} : { stop: params.stopSequences }),
+      ...(params.seed === undefined ? {} : { seed: params.seed }),
+      ...(toolsList.length > 0
+        ? {
+            tools: toolsList.map((tool) => ({
+              type: "function",
+              function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+                ...(emitStrict ? { strict: true } : {}),
+              },
+            })),
+          }
+        : {}),
+      ...(params.toolChoice === undefined ? {} : { tool_choice: params.toolChoice }),
+      ...(params.responseSchema !== undefined
+        ? { response_format: { type: "json_schema", json_schema: { name: "response", strict: true, schema: params.responseSchema } } }
+        : params.responseFormat !== undefined
+          ? { response_format: params.responseFormat }
+          : {}),
+    }
+
+    const headers = { "X-Eliza-Llm-Purpose": purposeForSlot(slot) }
+
+    if (wantsStream) {
+      const streamed = await runPromise(effect {
+        const response = try cloudRawFetch(runtime, { method: "POST", path: "/api/v1/chat/completions", body: payload, headers })
+        return try streamChatResponse(response)
+      }, { signal: params.signal })
+      const completion = observed(runPromise(streamed.produce, { signal: params.signal }))
+      return {
+        textStream: Stream.toAsyncIterable(Stream.fromQueue(streamed.queue)),
+        text: observed(completion.then((res) => res.text)),
+        finishReason: observed(completion.then((res) => res.reason)),
+        usage: observed(completion.then((res) => res.usage)),
+      }
+    }
+
+    const decoded = await runPromise(effect {
+      const raw = try cloudJsonFetch(runtime, { method: "POST", path: "/api/v1/chat/completions", body: payload, headers })
+      return decodeChatReply(raw) catch effect () => {
+        throw new CloudApiFailure({ status: 502, code: "invalid_completion_shape", reason: "Eliza Cloud returned an invalid completion shape.", retryable: false })
+      }
+    }, { signal: params.signal })
+
+    const choice = decoded.choices[0]
+    if (choice.finish_reason !== "stop" && choice.finish_reason !== "tool_calls") {
+      throw new CloudApiFailure({ status: 502, code: "incomplete_completion", reason: `Eliza Cloud ended with finish_reason=${choice.finish_reason}.`, retryable: false })
+    }
+    const text = choice.message.content ?? ""
+    const usage = decoded.usage != null ? toCloudTokenUsage(decoded.usage) : undefined
+    if (!params.stream && choice.message.tool_calls === undefined) return text
+    return {
+      textStream: (async function* () { if (text !== "") yield text })(),
+      text: Promise.resolve(text),
+      usage: Promise.resolve(usage),
+      finishReason: Promise.resolve(choice.finish_reason),
+      toolCalls: choice.message.tool_calls,
+    } as TextStreamResult
+  }
+}
+
+export const handleTextNano = createTextSlotHandler(ModelType.TEXT_NANO)
+export const handleTextSmall = createTextSlotHandler(ModelType.TEXT_SMALL)
+export const handleTextMedium = createTextSlotHandler(ModelType.TEXT_MEDIUM)
+export const handleTextLarge = createTextSlotHandler(ModelType.TEXT_LARGE)
+export const handleTextMega = createTextSlotHandler(ModelType.TEXT_MEGA)
+export const handleResponseHandler = createTextSlotHandler(ModelType.RESPONSE_HANDLER)
+export const handleActionPlanner = createTextSlotHandler(ModelType.ACTION_PLANNER)
+
+function fallbackZeroVector(): number[] {
+  return Array.from({ length: VECTOR_DIMS.XXL }, (_item, idx) => (idx === 0 ? 0.1 : 0))
+}
+
+export async function handleBatchTextEmbedding(runtime: IAgentRuntime, params: BatchTextEmbeddingParams): Promise<number[][]> {
+  const texts = params.texts
+  if (texts.length === 0) return []
+  const modelId = resolveSlotModel(runtime, ModelType.TEXT_EMBEDDING_BATCH).modelId
+  const cacheKey = JSON.stringify([modelId, texts])
+  const extra = params as unknown as Record<string, unknown>
+  const outerSignal = extra.signal instanceof AbortSignal ? extra.signal : undefined
+  return coalesceEmbeddingBatch(runtime, cacheKey, outerSignal, async (signal) => {
+    const raw = await runPromise(cloudJsonFetch(runtime, {
+      method: "POST",
+      path: "/api/v1/embeddings",
+      body: { model: modelId, input: texts },
+    }), { signal })
+    const decoded = await runPromise(Schema.decodeUnknownEffect(embeddingReplySchema)(raw))
+    const ordered = [...decoded.data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    const vectors = ordered.map((item) => [...item.embedding])
+    if (vectors.length !== texts.length || !vectors.every((vec) => vec.length > 0 && vec.every(Number.isFinite))) {
+      throw new CloudApiFailure({ status: 502, code: "invalid_embedding_vector", reason: "Eliza Cloud returned invalid embedding vectors.", retryable: false })
+    }
+    return vectors
+  })
+}
+
+export async function handleTextEmbedding(runtime: IAgentRuntime, params: TextEmbeddingParams | string | null): Promise<number[]> {
+  if (params === null) return fallbackZeroVector()
+  const text = typeof params === "string" ? params : params.text
+  if (!text || text.trim().length === 0) return fallbackZeroVector()
+  const signal = typeof params === "object" ? params.signal : undefined
+  const [vector] = await handleBatchTextEmbedding(runtime, { texts: [text], ...(signal ? { signal } : {}) })
+  return vector ?? fallbackZeroVector()
+}
+
+export async function handleImageGeneration(runtime: IAgentRuntime, params: ImageGenerationParams): Promise<ImageGenerationResult[]> {
+  const modelId = resolveSlotModel(runtime, ModelType.IMAGE).modelId
+  const raw = await runPromise(cloudJsonFetch(runtime, {
+    method: "POST",
+    path: "/api/v1/images/generations",
+    body: {
+      model: modelId,
+      prompt: params.prompt,
+      ...(params.size === undefined ? {} : { size: params.size }),
+      ...(params.count === undefined ? {} : { n: params.count }),
+    },
+  }))
+  const decoded = await runPromise(Schema.decodeUnknownEffect(imageReplySchema)(raw))
+  return decoded.data.flatMap((item) => item.url !== undefined
+    ? [{ url: item.url }]
+    : item.b64_json !== undefined
+      ? [{ url: `data:image/png;base64,${item.b64_json}` }]
+      : [])
+}
+
+export async function handleImageDescription(runtime: IAgentRuntime, input: ImageDescriptionParams | string): Promise<ImageDescriptionResult> {
+  const params = typeof input === "string" ? { imageUrl: input } : input
+  const modelId = resolveSlotModel(runtime, ModelType.IMAGE_DESCRIPTION).modelId
+  const raw = await runPromise(cloudJsonFetch(runtime, {
+    method: "POST",
+    path: "/api/v1/chat/completions",
+    body: {
+      model: modelId,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: params.prompt ?? "Describe this image." },
+          { type: "image_url", image_url: { url: params.imageUrl } },
+        ],
+      }],
+    },
+  }), { signal: "signal" in params ? params.signal : undefined })
+  const decoded = await runPromise(decodeChatReply(raw))
+  const description = decoded.choices[0].message.content
+  if (description == null) {
+    throw new CloudApiFailure({ status: 502, code: "empty_image_description", reason: "Eliza Cloud returned no image description.", retryable: false })
+  }
+  return { title: "", description }
+}
+
+function asMediaRecord(raw: unknown): Record<string, MediaJsonValue> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, MediaJsonValue>
+  }
+  return { result: String(raw) }
+}
+
+export async function handleAudioGeneration(runtime: IAgentRuntime, params: AudioProcessingParams): Promise<Record<string, MediaJsonValue>> {
+  const modelId = resolveSlotModel(runtime, ModelType.AUDIO).modelId
+  const raw = await runPromise(cloudJsonFetch(runtime, {
+    method: "POST",
+    path: "/api/v1/generate-music",
+    body: { model: modelId, ...(params as unknown as Record<string, unknown>) },
+  }))
+  return asMediaRecord(raw)
+}
+
+export async function handleVideoGeneration(runtime: IAgentRuntime, params: VideoProcessingParams): Promise<Record<string, MediaJsonValue>> {
+  const modelId = resolveSlotModel(runtime, ModelType.VIDEO).modelId
+  const raw = await runPromise(cloudJsonFetch(runtime, {
+    method: "POST",
+    path: "/api/v1/generate-video",
+    body: { model: modelId, ...(params as unknown as Record<string, unknown>) },
+  }))
+  return asMediaRecord(raw)
+}
+
+export async function fetchTextToSpeech(runtime: IAgentRuntime, input: TextToSpeechParams | string): Promise<Uint8Array> {
+  if (!isCloudTtsAvailable(runtime)) {
+    throw new CloudApiFailure({ status: 503, code: "tts_unavailable", reason: "Eliza Cloud TTS is not available.", retryable: false })
+  }
+  const params = typeof input === "string" ? { text: input } : input
+  const text = params.text.trim()
+  if (!text) {
+    throw new CloudApiFailure({ status: 400, code: "empty_tts_text", reason: "TTS text must not be empty.", retryable: false })
+  }
+  const voice = params.voice?.trim() || getSetting(runtime, "ELIZAOS_CLOUD_TTS_VOICE") || DEFAULT_TTS_VOICE
+  const extra = params as unknown as Record<string, unknown>
+  const requestedModel = typeof extra.model === "string" ? extra.model.trim() : ""
+  const model = requestedModel || resolveSlotModel(runtime, ModelType.TEXT_TO_SPEECH).modelId
+  const path = isOpenAiVoiceAlias(voice) ? "/api/v1/audio/speech" : "/api/elevenlabs/tts"
+  const body = isOpenAiVoiceAlias(voice)
+    ? { model, voice, input: text }
+    : { modelId: model, voiceId: voice, text }
+  return runPromise(cloudBytesFetch(runtime, {
+    method: "POST",
+    path,
+    body,
+    headers: { Accept: "audio/mpeg, application/octet-stream" },
+  }))
+}
+
+export async function handleTextToSpeech(runtime: IAgentRuntime, input: TextToSpeechParams | string): Promise<Uint8Array> {
+  return fetchTextToSpeech(runtime, input)
+}
+
+export async function handleTranscription(runtime: IAgentRuntime, input: TranscriptionParams | Buffer | string): Promise<string> {
+  if (!isCloudSttAvailable(runtime)) {
+    throw new CloudSttUnavailableError({ reason: "Eliza Cloud STT is not available." })
+  }
+  const modelId = resolveSlotModel(runtime, ModelType.TRANSCRIPTION).modelId
+  let audioBytes: Uint8Array
+  let promptText: string | undefined
+  let language: string | undefined
+  if (typeof input === "string") {
+    audioBytes = await fetchUrlBytes(input)
+  } else if (input instanceof Uint8Array) {
+    audioBytes = input
+  } else {
+    promptText = input.prompt
+    const record = input as unknown as Record<string, unknown>
+    language = typeof record.language === "string" ? record.language : undefined
+    const inlineAudio = record.audio
+    if (inlineAudio instanceof Uint8Array) {
+      audioBytes = inlineAudio
+    } else if (inlineAudio instanceof ArrayBuffer) {
+      audioBytes = new Uint8Array(inlineAudio)
+    } else if (typeof input.audioUrl === "string" && input.audioUrl.trim() !== "") {
+      audioBytes = await fetchUrlBytes(input.audioUrl)
+    } else {
+      throw new CloudApiFailure({ status: 400, code: "missing_audio", reason: "Transcription requires audio bytes or an audioUrl.", retryable: false })
+    }
+  }
+  const form = buildAudioForm(modelId, audioBytes, promptText, language)
+  const raw = await runPromise(cloudJsonFetch(runtime, { method: "POST", path: "/api/v1/audio/transcriptions", body: form }))
+  const decoded = await runPromise(Schema.decodeUnknownEffect(transcriptionReplySchema)(raw))
+  return decoded.text
+}
+
+export async function handleTokenizerEncode(runtime: IAgentRuntime, params: TokenizeTextParams): Promise<number[]> {
+  const modelName = resolveSlotModel(runtime, params.modelType).modelId
+  const encoding = resolveTokenizerEncodingName(modelName)
+  return getTokenizer(encoding).encode(params.prompt)
+}
+
+export async function handleTokenizerDecode(runtime: IAgentRuntime, params: DetokenizeTextParams): Promise<string> {
+  const modelName = resolveSlotModel(runtime, params.modelType).modelId
+  const encoding = resolveTokenizerEncodingName(modelName)
+  return getTokenizer(encoding).decode(params.tokens)
+}
+
+export async function handleResearch(_runtime: IAgentRuntime, _params: ResearchParams): Promise<ResearchResult> {
+  throw unavailableResearchError()
+}

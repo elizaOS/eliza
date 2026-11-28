@@ -1,0 +1,172 @@
+// spec/imessage/index.md, "Story: Store incoming iMessages without sending unsolicited replies"
+import { logger } from "@elizaos/core"
+import { formatPhoneNumber } from "./types.vibe"
+
+export interface ResolvedContact {
+  name: string
+}
+
+export type ContactsMap = Map<string, ResolvedContact>
+
+export interface FullContact {
+  id: string
+  name: string
+  firstName: string | null
+  lastName: string | null
+  phones: Array<{ label: string | null; value: string }>
+  emails: Array<{ label: string | null; value: string }>
+}
+
+export interface NewContactInput {
+  firstName?: string
+  lastName?: string
+  phones?: Array<{ label?: string; value: string }>
+  emails?: Array<{ label?: string; value: string }>
+}
+
+export interface ContactPatch {
+  firstName?: string
+  lastName?: string
+  addPhones?: Array<{ label?: string; value: string }>
+  removePhones?: string[]
+  addEmails?: Array<{ label?: string; value: string }>
+  removeEmails?: string[]
+}
+
+export interface NativeContactsPort {
+  loadContacts(): Promise<ContactsMap>
+  listAllContacts(): Promise<FullContact[]>
+  addContact(input: NewContactInput): Promise<string | null>
+  updateContact(personId: string, patch: ContactPatch): Promise<boolean>
+  deleteContact(personId: string): Promise<boolean>
+}
+
+export type ContactsFailure = "bridge_unavailable" | "native_error" | "permission" | null
+
+let activePort: NativeContactsPort | null = null
+let lastContactsFailure: ContactsFailure = null
+
+export function setNativeContactsPort(port: NativeContactsPort | null): void {
+  activePort = port
+}
+
+export function getLastContactsFailure(): ContactsFailure {
+  return lastContactsFailure
+}
+
+export function normalizeContactHandle(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ""
+  if (trimmed.includes("@")) return trimmed.toLowerCase()
+  const hasPlus = trimmed.startsWith("+")
+  const digitsOnly = trimmed.replace(/[^\d]/g, "")
+  return formatPhoneNumber(hasPlus ? `+${digitsOnly}` : digitsOnly)
+}
+
+export function parseContactsOutput(raw: string): ContactsMap {
+  const map: ContactsMap = new Map()
+  if (!raw.trim()) return map
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const fields = trimmed.split("\t")
+    if (fields.length < 3) continue
+    const [, handle, name] = fields
+    if (!handle || !name) continue
+    const normalized = normalizeContactHandle(handle)
+    if (!normalized || map.has(normalized)) continue
+    map.set(normalized, { name: name.trim() })
+  }
+  return map
+}
+
+export async function loadContacts(): Promise<ContactsMap> {
+  if (!activePort) {
+    lastContactsFailure = "bridge_unavailable"
+    logger.debug("[imessage] Native Contacts bridge unavailable; using raw handles")
+    return new Map()
+  }
+  try {
+    const map = await activePort.loadContacts()
+    lastContactsFailure = null
+    return map
+  } catch (error) {
+    lastContactsFailure = "native_error"
+    logger.warn(`[imessage] loadContacts failed: ${error instanceof Error ? error.message : String(error)}`)
+    return new Map()
+  }
+}
+
+export async function listAllContacts(): Promise<FullContact[]> {
+  if (!activePort) {
+    lastContactsFailure = "bridge_unavailable"
+    return []
+  }
+  try {
+    const contacts = await activePort.listAllContacts()
+    lastContactsFailure = null
+    return contacts
+  } catch (error) {
+    lastContactsFailure = "native_error"
+    logger.warn(`[imessage] listAllContacts failed: ${error instanceof Error ? error.message : String(error)}`)
+    return []
+  }
+}
+
+export async function addContact(input: NewContactInput): Promise<string | null> {
+  if (!activePort) {
+    lastContactsFailure = "bridge_unavailable"
+    return null
+  }
+  try {
+    const id = await activePort.addContact(input)
+    lastContactsFailure = id ? null : "native_error"
+    return id
+  } catch (error) {
+    lastContactsFailure = "native_error"
+    logger.warn(`[imessage] addContact failed: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
+export async function updateContact(personId: string, patch: ContactPatch): Promise<boolean> {
+  if (
+    patch.firstName === undefined &&
+    patch.lastName === undefined &&
+    (patch.addPhones?.length ?? 0) === 0 &&
+    (patch.removePhones?.length ?? 0) === 0 &&
+    (patch.addEmails?.length ?? 0) === 0 &&
+    (patch.removeEmails?.length ?? 0) === 0
+  ) {
+    return true
+  }
+  if (!activePort) {
+    lastContactsFailure = "bridge_unavailable"
+    return false
+  }
+  try {
+    const ok = await activePort.updateContact(personId, patch)
+    lastContactsFailure = ok ? null : "native_error"
+    return ok
+  } catch (error) {
+    lastContactsFailure = "native_error"
+    logger.warn(`[imessage] updateContact failed: ${error instanceof Error ? error.message : String(error)}`)
+    return false
+  }
+}
+
+export async function deleteContact(personId: string): Promise<boolean> {
+  if (!activePort) {
+    lastContactsFailure = "bridge_unavailable"
+    return false
+  }
+  try {
+    const ok = await activePort.deleteContact(personId)
+    lastContactsFailure = ok ? null : "native_error"
+    return ok
+  } catch (error) {
+    lastContactsFailure = "native_error"
+    logger.warn(`[imessage] deleteContact failed: ${error instanceof Error ? error.message : String(error)}`)
+    return false
+  }
+}

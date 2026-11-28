@@ -1,16 +1,35 @@
-// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"
+// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/models.md, "A slot is assigned only to an installed model whose role serves it, one slot per change"; spec/localInference/models.md, "An unreadable assignment record is reported, never rewritten from empty"; spec/localInference/models.md, "Only an installed model whose evaluations passed is activated"; spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows"
 import type { LocalRoute } from "@elizaos/agent-host"
 import { modelNamed } from "./catalog.vibe"
-import type { InferenceEngine } from "./engine.vibe"
+import { InferenceEngine } from "./engine.vibe"
+import {
+  classifyDeviceTier,
+  detectEmbeddingPreset,
+  probeHardware,
+  sanitizeLocalInferenceSpeechText,
+  sniffAudioContentType,
+} from "./hardware-policy.vibe"
 import { slotNamed, type LocalModelsApi } from "./models.vibe"
+import { detectTranscriptPiiTerms } from "./pii.vibe"
+import { speakLocally } from "./speech.vibe"
+import type {
+  AudioRedactionPort,
+  CaptureConsent,
+  InMemoryTranscriptPrivacyStore,
+  Requester,
+  ShareMode,
+} from "./transcript-privacy.vibe"
 
 export const endOfTurnPath = "/api/asr/local-inference/end-of-turn"
+export const localInferenceTtsPath = "/api/tts/local-inference"
+export const localInferenceHardwarePath = "/api/local-inference/hardware"
 
 const maxTranscriptCharacters = 4096
 
 const decodeModelChoice = Schema.decodeUnknownOption(Schema.Struct({ modelId: Schema.String }))
 const decodeSlotChoice = Schema.decodeUnknownOption(Schema.Struct({ slot: Schema.String, modelId: Schema.optionalKey(Schema.NullOr(Schema.String)) }))
 const decodeTranscript = Schema.decodeUnknownOption(Schema.Struct({ transcript: Schema.String }))
+const decodeTtsRequest = Schema.decodeUnknownOption(Schema.Struct({ text: Schema.String }))
 
 type Answer = { readonly status: number; readonly body: object }
 
@@ -33,6 +52,21 @@ export function localInferenceRoutes(models: LocalModelsApi, engine: InferenceEn
 
   return [
     { method: "GET", path: "/api/local-inference/models", handler: ({ signal }) => answer(Effect.void, signal) },
+    {
+      method: "GET",
+      path: localInferenceHardwarePath,
+      handler: () => {
+        const hardware = probeHardware()
+        return {
+          status: 200,
+          body: {
+            hardware,
+            assessment: classifyDeviceTier(hardware),
+            embeddingPreset: detectEmbeddingPreset(),
+          },
+        } satisfies Answer
+      },
+    },
     {
       method: "POST", path: "/api/local-inference/downloads", maxBodyBytes: 4096,
       handler: ({ body, signal }) => {
@@ -82,6 +116,152 @@ export function localInferenceRoutes(models: LocalModelsApi, engine: InferenceEn
         if (transcript === undefined || transcript === "") return refused(400, "transcript must be a non-empty string")
         if (transcript.length > maxTranscriptCharacters) return refused(400, `transcript must be at most ${maxTranscriptCharacters} characters`)
         return runPromise(map(engine.scoreEndOfTurn(transcript), (score): Answer => ({ status: 200, body: score })), { signal })
+      },
+    },
+    {
+      method: "POST",
+      path: localInferenceTtsPath,
+      maxBodyBytes: 32768,
+      handler: ({ body, signal }) => {
+        const raw = Option.getOrUndefined(decodeTtsRequest(body))
+        if (raw === undefined) return refused(400, "text must be a non-empty string")
+        const sanitized = sanitizeLocalInferenceSpeechText(raw.text)
+        if (sanitized.length === 0) return refused(400, "text is empty after sanitization")
+        return runPromise(
+          Effect.provideService(
+            effect {
+              return (effect {
+                const wav = try speakLocally(sanitized)
+                return {
+                  status: 200,
+                  body: { contentType: sniffAudioContentType(wav), byteLength: wav.byteLength },
+                } satisfies Answer
+              } catch (failure) => refused(failure._tag === "SpeechInputRefused" ? 400 : 503, failure._tag))
+            },
+            InferenceEngine,
+            engine,
+          ),
+          { signal },
+        )
+      },
+    },
+  ]
+}
+
+function parseRequester(value: unknown): Requester {
+  if (value === "AdminRequester" || value === "OwnerRequester") return value
+  return "OtherRequester"
+}
+
+function parseConsent(value: unknown): CaptureConsent | null {
+  if (
+    value === "ConsentGranted" ||
+    value === "ConsentNotRequired" ||
+    value === "ConsentDenied" ||
+    value === "ConsentUnknown"
+  ) {
+    return value
+  }
+  return null
+}
+
+function runTranscriptEffect<A, E extends { readonly _tag: string }>(
+  work: A!E,
+): Promise<{ readonly ok: true; readonly value: A } | { readonly ok: false; readonly tag: string }> {
+  return runPromise(
+    Effect.match(work, {
+      onFailure: (error) => ({ ok: false as const, tag: error._tag }),
+      onSuccess: (value) => ({ ok: true as const, value }),
+    }),
+  )
+}
+
+async function prepareTranscriptMutation(
+  store: InMemoryTranscriptPrivacyStore,
+  parameters: ReadonlyMap<string, string>,
+  body: unknown,
+): Promise<
+  | { readonly ok: false; readonly answer: Answer }
+  | {
+      readonly ok: true
+      readonly transcriptId: string
+      readonly rec: Readonly<Record<string, unknown>>
+      readonly requester: Requester
+      readonly piiTerms: readonly string[]
+    }
+> {
+  const transcriptId = parameters.get("transcriptId") ?? ""
+  const existing = store.get(transcriptId)
+  if (existing === null) return { ok: false, answer: refused(404, "TranscriptNotFound") }
+  const rec = typeof body === "object" && body !== null ? (body as Readonly<Record<string, unknown>>) : {}
+  const requester = parseRequester(rec.requester)
+  const piiTerms = await detectTranscriptPiiTerms(existing.segments)
+  return { ok: true, transcriptId, rec, requester, piiTerms }
+}
+
+function privacyAnswer(
+  transcriptId: string,
+  res: { readonly ok: true; readonly value: { readonly privacy: unknown } } | { readonly ok: false; readonly tag: string },
+): Answer {
+  if (!res.ok) return refused(res.tag === "TranscriptNotFound" ? 404 : 409, res.tag)
+  return { status: 200, body: { transcriptId, privacy: res.value.privacy } } satisfies Answer
+}
+
+export function transcriptPrivacyRoutes(
+  store: InMemoryTranscriptPrivacyStore,
+  audioPort?: AudioRedactionPort,
+): readonly LocalRoute[] {
+  return [
+    {
+      method: "POST",
+      path: "/api/local-inference/transcripts/{transcriptId}/consent",
+      maxBodyBytes: 4096,
+      handler: async ({ parameters, body }) => {
+        const transcriptId = parameters.get("transcriptId") ?? ""
+        const consent =
+          typeof body === "object" && body !== null && "consent" in body
+            ? parseConsent((body as { readonly consent?: unknown }).consent)
+            : null
+        if (consent === null) return refused(400, "invalid-consent")
+        return privacyAnswer(transcriptId, await runTranscriptEffect(store.recordConsent(transcriptId, consent)))
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/local-inference/transcripts/{transcriptId}/redact",
+      maxBodyBytes: 4096,
+      handler: async ({ parameters, body }) => {
+        const prep = await prepareTranscriptMutation(store, parameters, body)
+        if (!prep.ok) return prep.answer
+        return privacyAnswer(
+          prep.transcriptId,
+          await runTranscriptEffect(store.redact(prep.transcriptId, prep.requester, prep.piiTerms, audioPort)),
+        )
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/local-inference/transcripts/{transcriptId}/share",
+      maxBodyBytes: 4096,
+      handler: async ({ parameters, body }) => {
+        const prep = await prepareTranscriptMutation(store, parameters, body)
+        if (!prep.ok) return prep.answer
+        if (prep.rec.redactForAll === true) {
+          return privacyAnswer(
+            prep.transcriptId,
+            await runTranscriptEffect(store.redactForAll(prep.transcriptId, prep.requester, prep.piiTerms, audioPort)),
+          )
+        }
+        const grantee =
+          typeof prep.rec.grantee === "string" && prep.rec.grantee.trim().length > 0 ? prep.rec.grantee.trim() : null
+        if (grantee === null) return refused(400, "missing-grantee")
+        const mode: ShareMode = prep.rec.mode === "FullShare" || prep.rec.mode === "full" ? "FullShare" : "RedactedShare"
+        return privacyAnswer(
+          prep.transcriptId,
+          await runTranscriptEffect(
+            store.share(prep.transcriptId, prep.requester, grantee, mode, prep.piiTerms, audioPort),
+          ),
+        )
       },
     },
   ]

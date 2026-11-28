@@ -1,0 +1,164 @@
+// spec/form/index.md, "Each captured answer belongs to one field in the participant's current form"
+import { formatCalendarDate, parseCalendarDate } from "./calendar-date.vibe"
+import { basicEmailValid } from "./email.vibe"
+import type { ControlType, FormControl, JsonValue, ValidationResult } from "./types.vibe"
+import { testControlPattern } from "./validation.vibe"
+
+function validateEnumChoice(str: string, allowed: readonly string[] | undefined): ValidationResult {
+  if (allowed && !allowed.includes(str)) {
+    return { valid: false, error: `Must be one of: ${allowed.join(", ")}` }
+  }
+  return { valid: true }
+}
+
+const textType: ControlType = {
+  id: "text",
+  builtin: true,
+  validate: (value: JsonValue, control: FormControl): ValidationResult => {
+    if (value === null || value === undefined) return { valid: true }
+    const str = String(value)
+    if (control.minLength !== undefined && str.length < control.minLength) {
+      return { valid: false, error: `Must be at least ${control.minLength} characters` }
+    }
+    if (control.maxLength !== undefined && str.length > control.maxLength) {
+      return { valid: false, error: `Must be at most ${control.maxLength} characters` }
+    }
+    if (control.pattern) {
+      const checked = testControlPattern(control.pattern, str)
+      if (!checked.ok) return { valid: false, error: "Invalid format" }
+    }
+    return validateEnumChoice(str, control.enum)
+  },
+  parse: (value: string): string => String(value).trim(),
+  format: (value: JsonValue): string => String(value ?? ""),
+  extractionPrompt: "a text string",
+}
+
+const numberType: ControlType = {
+  id: "number",
+  builtin: true,
+  validate: (value: JsonValue, control: FormControl): ValidationResult => {
+    if (value === null || value === undefined || value === "") return { valid: true }
+    const num = typeof value === "number" ? value : parseFloat(String(value))
+    if (!Number.isFinite(num)) return { valid: false, error: "Must be a valid number" }
+    if (control.min !== undefined && num < control.min) {
+      return { valid: false, error: `Must be at least ${control.min}` }
+    }
+    if (control.max !== undefined && num > control.max) {
+      return { valid: false, error: `Must be at most ${control.max}` }
+    }
+    return { valid: true }
+  },
+  parse: (value: string): number => parseFloat(value.replace(/[,$\s]/g, "")),
+  format: (value: JsonValue): string => {
+    if (value === null || value === undefined) return ""
+    const num = typeof value === "number" ? value : parseFloat(String(value))
+    return Number.isNaN(num) ? String(value) : num.toLocaleString()
+  },
+  extractionPrompt: "a number (integer or decimal)",
+}
+
+const emailType: ControlType = {
+  id: "email",
+  builtin: true,
+  validate: (value: JsonValue): ValidationResult => {
+    if (value === null || value === undefined || value === "") return { valid: true }
+    const str = String(value).trim().toLowerCase()
+    return basicEmailValid(str) ? { valid: true } : { valid: false, error: "Invalid email format" }
+  },
+  parse: (value: string): string => value.trim().toLowerCase(),
+  format: (value: JsonValue): string => String(value ?? "").toLowerCase(),
+  extractionPrompt: "an email address (e.g., user@example.com)",
+}
+
+const booleanType: ControlType = {
+  id: "boolean",
+  builtin: true,
+  validate: (value: JsonValue): ValidationResult => {
+    if (value === null || value === undefined) return { valid: true }
+    if (typeof value === "boolean") return { valid: true }
+    const validValues = ["true", "false", "yes", "no", "1", "0", "on", "off"]
+    return validValues.includes(String(value).toLowerCase())
+      ? { valid: true }
+      : { valid: false, error: "Must be yes/no or true/false" }
+  },
+  parse: (value: string): boolean => ["true", "yes", "1", "on"].includes(value.toLowerCase()),
+  extractionPrompt: "a yes/no or true/false value",
+}
+
+const selectType: ControlType = {
+  id: "select",
+  builtin: true,
+  validate: (value: JsonValue, control: FormControl): ValidationResult => {
+    if (value === null || value === undefined || value === "") return { valid: true }
+    const str = String(value)
+    if (control.options) {
+      if (!control.options.some((option) => option.value === str)) {
+        return { valid: false, error: `Must be one of: ${control.options.map((option) => option.label).join(", ")}` }
+      }
+      return { valid: true }
+    }
+    return validateEnumChoice(str, control.enum)
+  },
+  parse: (value: string): string => value.trim(),
+  extractionPrompt: "one of the available options",
+}
+
+const dateType: ControlType = {
+  id: "date",
+  builtin: true,
+  validate: (value: JsonValue): ValidationResult => {
+    if (value === null || value === undefined || value === "") return { valid: true }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+      return { valid: false, error: "Must be in YYYY-MM-DD format" }
+    }
+    return parseCalendarDate(String(value)) ? { valid: true } : { valid: false, error: "Invalid date" }
+  },
+  parse: (value: string): string => parseCalendarDate(value) ?? value.trim(),
+  format: (value: JsonValue): string => (value ? (formatCalendarDate(String(value)) ?? String(value)) : ""),
+  extractionPrompt: "a date (preferably in YYYY-MM-DD format)",
+}
+
+const fileType: ControlType = {
+  id: "file",
+  builtin: true,
+  validate: (value: JsonValue): ValidationResult => {
+    if (value === null || value === undefined) return { valid: true }
+    return typeof value === "object" ? { valid: true } : { valid: false, error: "Invalid file data" }
+  },
+  format: (value: JsonValue): string => {
+    if (!value) return ""
+    if (Array.isArray(value)) return `${value.length} file(s)`
+    if (typeof value === "object" && "name" in value) return String((value as { name: string }).name)
+    return "File attached"
+  },
+  extractionPrompt: "a file attachment (upload required)",
+}
+
+export const BUILTIN_TYPES: ControlType[] = [
+  textType,
+  numberType,
+  emailType,
+  booleanType,
+  selectType,
+  dateType,
+  fileType,
+]
+
+export const BUILTIN_TYPE_MAP: Map<string, ControlType> = new Map(BUILTIN_TYPES.map((type) => [type.id, type]))
+
+export function registerBuiltinTypes(
+  registerFn: (type: ControlType, options?: { allowOverride?: boolean }) => void,
+): void {
+  for (const type of BUILTIN_TYPES) {
+    registerFn(type)
+  }
+}
+
+export function getBuiltinType(id: string): ControlType | undefined {
+  return BUILTIN_TYPE_MAP.get(id)
+}
+
+export function isBuiltinType(id: string): boolean {
+  return BUILTIN_TYPE_MAP.has(id)
+}

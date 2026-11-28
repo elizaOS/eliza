@@ -37,6 +37,7 @@
     "nativeAppblocker": "packages/plugin-native-appblocker",
     "nativeCanvas": "packages/plugin-native-canvas",
     "nativeContacts": "packages/plugin-native-contacts",
+    "nativeDesktop": "packages/plugin-native-desktop",
     "nativeElizaTasks": "packages/plugin-native-eliza-tasks",
     "nativeFilesystem": "packages/plugin-native-filesystem",
     "nativeGateway": "packages/plugin-native-gateway",

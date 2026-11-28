@@ -1,0 +1,978 @@
+// spec/form/index.md, "Story: Complete a form across several turns"; spec/form/index.md, "Only a complete, current form can be submitted, and its result is frozen"
+import {
+  type EventPayload,
+  type IAgentRuntime,
+  logger,
+  Service,
+  type Task,
+  type UUID,
+} from "@elizaos/core"
+import {
+  canCancelForm,
+  canResumeForm,
+  canStartForm,
+  canStashForm,
+  canSubmitForm,
+  initial as initialFormMachine,
+  requiredAnswersConfirmed,
+  type FormAnswer,
+  type FormSession as FormMachineState,
+} from "../gen/form.effect.vibe"
+import { registerBuiltinTypes } from "./builtins.vibe"
+import { prettify } from "./defaults.vibe"
+import { assertFormControlGraphs } from "./form-control-graph.vibe"
+import {
+  deleteSession as storageDeleteSession,
+  getActiveSession as storageGetActiveSession,
+  getAllActiveSessions as storageGetAllActiveSessions,
+  getAutofillData,
+  getSessionById,
+  getStashedSessions as storageGetStashedSessions,
+  getSubmissions as storageGetSubmissions,
+  saveAutofillData,
+  saveSession as storageSaveSession,
+  saveSubmission,
+} from "./storage.vibe"
+import { calculateTTL as computeTTL, shouldConfirmCancel as checkConfirmCancel } from "./ttl.vibe"
+import {
+  FORM_CONTROL_DEFAULTS,
+  FORM_DEFINITION_DEFAULTS,
+  type ActivationContext,
+  type ControlType,
+  type ExternalActivation,
+  type FieldHistoryEntry,
+  type FieldState,
+  type FilledFieldSummary,
+  type FormContextState,
+  type FormControl,
+  type FormDefinition,
+  type FormSession,
+  type FormSubmission,
+  type JsonValue,
+  type MissingFieldSummary,
+  type PendingExternalFieldSummary,
+  type UncertainFieldSummary,
+} from "./types.vibe"
+import { formatValue, getTypeHandler, parseValue, validateField } from "./validation.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  export function nextServiceUuid(): string {
+    return randomUUID()
+  }
+  export class FormConfirmationRequiredError extends Error {
+    override readonly name = "FormConfirmationRequiredError"
+    readonly code = "FORM_FIELD_CONFIRMATION_REQUIRED" as const
+    readonly severity = "ephemeral" as const
+    readonly context: Record<string, unknown>
+
+    constructor(message: string, context: Record<string, unknown>) {
+      super(message)
+      this.context = context
+    }
+  }
+  export function failService(message: string): never {
+    throw new Error(message)
+  }
+}
+import { failService, FormConfirmationRequiredError, nextServiceUuid } from node
+export { FormConfirmationRequiredError }
+
+const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "prototype", "constructor"])
+
+function assertSafeObjectKey(kind: string, key: unknown): asserts key is string {
+  if (typeof key !== "string" || key.trim() === "") {
+    failService(`${kind} must be a non-empty string`)
+  }
+  if (UNSAFE_OBJECT_KEYS.has(key)) {
+    failService(`${kind} uses unsafe object key: ${key}`)
+  }
+}
+
+function createValueMap<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>
+}
+
+function controlSatisfiesDependency(control: FormControl, fields: Record<string, FieldState>): boolean {
+  const dep = control.dependsOn
+  if (!dep) return true
+  const parent = fields[dep.field]
+  const hasValue = parent?.status === "filled" && parent.value !== undefined && parent.value !== null && parent.value !== ""
+  if (dep.condition === "exists") return hasValue
+  if (dep.condition === "equals") return hasValue && parent.value === dep.value
+  return !hasValue || parent.value !== dep.value
+}
+
+function toMachinePhase(status: FormSession["status"]): FormMachineState["formPhase"] {
+  if (status === "stashed") return "StashedForm"
+  if (status === "submitted") return "SubmittedForm"
+  if (status === "cancelled") return "CancelledForm"
+  if (status === "expired") return "ExpiredForm"
+  return "WorkingForm"
+}
+
+function projectToMachine(session: FormSession, form: FormDefinition): FormMachineState {
+  const visibleFields: string[] = []
+  const requiredFields: string[] = []
+  const answers: FormAnswer[] = []
+  for (const control of form.controls) {
+    if (!controlSatisfiesDependency(control, session.fields)) continue
+    visibleFields.push(control.key)
+    if (control.required) requiredFields.push(control.key)
+    const state = session.fields[control.key]
+    if (state?.status === "filled" || state?.status === "uncertain") {
+      const answerText = state.value === undefined || state.value === null ? "" : String(state.value)
+      if (answerText !== "") {
+        answers.push({
+          question: control.key,
+          answerText,
+          certainty: state.status === "filled" ? "ConfirmedAnswer" : "SuggestedAnswer",
+        })
+      }
+    }
+  }
+  return {
+    formPhase: toMachinePhase(session.status),
+    ownerId: session.entityId,
+    formId: session.formId,
+    revision: Math.max(1, session.effort.interactionCount + 1),
+    expiresAt: session.expiresAt,
+    visibleFields,
+    requiredFields,
+    answers,
+  }
+}
+
+export class FormService extends Service {
+  static override serviceType = "FORM"
+  override capabilityDescription = "Manages conversational forms for data collection"
+
+  private forms: Map<string, FormDefinition> = new Map()
+  private controlTypes: Map<string, ControlType> = new Map()
+
+  static override async start(runtime: IAgentRuntime): Promise<FormService> {
+    const service = new FormService(runtime)
+    registerBuiltinTypes((type, options) => service.registerControlType(type, options))
+    logger.info("[FormService] Started with built-in types")
+    return service
+  }
+
+  override async stop(): Promise<void> {
+    logger.info("[FormService] Stopped")
+  }
+
+  registerForm(definition: FormDefinition): void {
+    assertSafeObjectKey("Form id", definition?.id)
+    if (!Array.isArray(definition.controls)) failService("Form controls must be an array")
+    assertFormControlGraphs(definition.controls)
+    const controlKeys = new Set<string>()
+    for (const control of definition.controls) {
+      assertSafeObjectKey("Control key", control?.key)
+      if (controlKeys.has(control.key)) failService(`Duplicate control key: ${control.key}`)
+      controlKeys.add(control.key)
+      if (control.dbbind !== undefined) assertSafeObjectKey("Control dbbind", control.dbbind)
+    }
+    const form: FormDefinition = {
+      ...definition,
+      version: definition.version ?? FORM_DEFINITION_DEFAULTS.version,
+      status: definition.status ?? FORM_DEFINITION_DEFAULTS.status,
+      ux: { ...FORM_DEFINITION_DEFAULTS.ux, ...definition.ux },
+      ttl: { ...FORM_DEFINITION_DEFAULTS.ttl, ...definition.ttl },
+      nudge: { ...FORM_DEFINITION_DEFAULTS.nudge, ...definition.nudge },
+      debug: definition.debug ?? FORM_DEFINITION_DEFAULTS.debug,
+      controls: definition.controls.map((control) => ({
+        ...control,
+        type: control.type || FORM_CONTROL_DEFAULTS.type,
+        required: control.required ?? FORM_CONTROL_DEFAULTS.required,
+        confirmThreshold: control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold,
+        label: control.label || prettify(control.key),
+      })),
+    }
+    this.forms.set(form.id, form)
+    logger.debug(`[FormService] Registered form: ${form.id}`)
+  }
+
+  getForm(formId: string): FormDefinition | undefined {
+    return this.forms.get(formId)
+  }
+
+  listForms(): FormDefinition[] {
+    return Array.from(this.forms.values())
+  }
+
+  registerControlType(type: ControlType, options?: { allowOverride?: boolean }): void {
+    const existing = this.controlTypes.get(type.id)
+    if (existing) {
+      if (existing.builtin && !options?.allowOverride) {
+        logger.warn(`[FormService] Cannot override builtin type '${type.id}' without allowOverride: true`)
+        return
+      }
+      logger.warn(`[FormService] Overriding control type: ${type.id}`)
+    }
+    this.controlTypes.set(type.id, type)
+    logger.debug(`[FormService] Registered control type: ${type.id}`)
+  }
+
+  getControlType(typeId: string): ControlType | undefined {
+    return this.controlTypes.get(typeId)
+  }
+
+  listControlTypes(): ControlType[] {
+    return Array.from(this.controlTypes.values())
+  }
+
+  isCompositeType(typeId: string): boolean {
+    return Boolean(this.controlTypes.get(typeId)?.getSubControls)
+  }
+
+  isExternalType(typeId: string): boolean {
+    return Boolean(this.controlTypes.get(typeId)?.activate)
+  }
+
+  getSubControls(control: FormControl): FormControl[] {
+    const type = this.controlTypes.get(control.type)
+    return type?.getSubControls ? type.getSubControls(control, this.runtime) : []
+  }
+
+  private normalizeBuiltinDateValue(value: JsonValue, control: FormControl): JsonValue {
+    const type = this.getControlType(control.type)
+    if (control.type === "date" && typeof value === "string" && type?.builtin && getTypeHandler(control.type, type) === type) {
+      return parseValue(value, control, type)
+    }
+    return value
+  }
+
+  async startSession(
+    formId: string,
+    entityId: UUID,
+    roomId: UUID,
+    options?: { context?: Record<string, JsonValue>; initialValues?: Record<string, JsonValue>; locale?: string },
+  ): Promise<FormSession> {
+    const form = this.getForm(formId)
+    if (!form) throw new Error(`Form not found: ${formId}`)
+    const existing = await storageGetActiveSession(this.runtime, entityId, roomId)
+    if (existing) throw new Error(`Active session already exists for this user/room: ${existing.id}`)
+    const now = Date.now()
+    const ttlDays = form.ttl?.minDays ?? 14
+    const expiresAt = now + ttlDays * 24 * 60 * 60 * 1000
+    const allKeys = form.controls.map((c) => c.key)
+    const reqKeys = form.controls.filter((c) => c.required).map((c) => c.key)
+    if (!canStartForm(initialFormMachine, entityId, formId, allKeys, reqKeys, expiresAt)) {
+      throw new Error(`Invalid form session start for form: ${formId}`)
+    }
+    const fields = createValueMap<FieldState>()
+    for (const control of form.controls) {
+      const seedValue = options?.initialValues?.[control.key]
+      if (seedValue !== undefined) {
+        const value = this.normalizeBuiltinDateValue(seedValue, control)
+        const validation = validateField(value, control, this.getControlType(control.type))
+        fields[control.key] = {
+          status: validation.valid ? "filled" : "invalid",
+          value,
+          source: "manual",
+          updatedAt: now,
+          error: validation.error,
+        }
+      } else if (control.defaultValue !== undefined) {
+        const value = this.normalizeBuiltinDateValue(control.defaultValue, control)
+        const validation = validateField(value, control, this.getControlType(control.type))
+        fields[control.key] = {
+          status: validation.valid ? "filled" : "invalid",
+          value,
+          source: "default",
+          updatedAt: now,
+          error: validation.error,
+        }
+      } else {
+        fields[control.key] = { status: "empty" }
+      }
+    }
+    const session: FormSession = {
+      id: nextServiceUuid(),
+      formId,
+      formVersion: form.version,
+      entityId,
+      roomId,
+      status: "active",
+      fields,
+      history: [],
+      context: options?.context,
+      locale: options?.locale,
+      effort: { interactionCount: 0, timeSpentMs: 0, firstInteractionAt: now, lastInteractionAt: now },
+      expiresAt,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await storageSaveSession(this.runtime, session)
+    if (form.hooks?.onStart) await this.executeHook(session, "onStart")
+    logger.debug(`[FormService] Started session ${session.id} for form ${formId}`)
+    return session
+  }
+
+  async getActiveSession(entityId: UUID, roomId: UUID): Promise<FormSession | null> {
+    return storageGetActiveSession(this.runtime, entityId, roomId)
+  }
+
+  async getAllActiveSessions(entityId: UUID): Promise<FormSession[]> {
+    return storageGetAllActiveSessions(this.runtime, entityId)
+  }
+
+  async getStashedSessions(entityId: UUID): Promise<FormSession[]> {
+    return storageGetStashedSessions(this.runtime, entityId)
+  }
+
+  async saveSession(session: FormSession): Promise<void> {
+    await storageSaveSession(this.runtime, session, true)
+  }
+
+  async updateField(
+    sessionId: string,
+    entityId: UUID,
+    field: string,
+    value: JsonValue,
+    confidence: number,
+    source: FieldState["source"],
+    messageId?: string,
+  ): Promise<void> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    if (session.status === "submitted") throw new Error("Cannot edit a submitted form session")
+    const form = this.getForm(session.formId)
+    if (!form) throw new Error(`Form not found: ${session.formId}`)
+    const control = form.controls.find((c) => c.key === field)
+    if (!control) throw new Error(`Field not found: ${field}`)
+    const oldState = session.fields[field]
+    const oldValue = oldState?.value
+    const normalized = this.normalizeBuiltinDateValue(value, control)
+    const validation = validateField(normalized, control, this.getControlType(control.type))
+    let status: FieldState["status"]
+    if (!validation.valid) {
+      status = "invalid"
+    } else if (confidence < (control.confirmThreshold ?? 0.8)) {
+      status = "uncertain"
+    } else {
+      status = "filled"
+    }
+    const now = Date.now()
+    const historyEntry: FieldHistoryEntry = {
+      field,
+      ...(oldState && oldValue !== undefined
+        ? {
+            oldValue,
+            oldStatus: oldState.status,
+            ...(oldState.confidence !== undefined ? { oldConfidence: oldState.confidence } : {}),
+          }
+        : {}),
+      newValue: normalized,
+      timestamp: now,
+    }
+    session.history.push(historyEntry)
+    const maxUndo = form.ux?.maxUndoSteps ?? 5
+    if (session.history.length > maxUndo) {
+      session.history = maxUndo > 0 ? session.history.slice(-maxUndo) : []
+    }
+    session.fields[field] = {
+      status,
+      value: normalized,
+      confidence,
+      source,
+      messageId,
+      updatedAt: now,
+      error: !validation.valid ? validation.error : undefined,
+    }
+    this.pruneHiddenDependentFields(session, form)
+    session.effort.interactionCount += 1
+    session.effort.lastInteractionAt = now
+    session.effort.timeSpentMs = now - session.effort.firstInteractionAt
+    session.expiresAt = this.calculateTTL(session)
+    await this.reconcileReadyStatus(session, form)
+    session.updatedAt = now
+    await storageSaveSession(this.runtime, session)
+    if (form.hooks?.onFieldChange) {
+      const hookPayload: Record<string, JsonValue> = { field, value: normalized }
+      if (oldValue !== undefined) hookPayload.oldValue = oldValue
+      await this.executeHook(session, "onFieldChange", hookPayload)
+    }
+  }
+
+  async undoLastChange(sessionId: string, entityId: UUID): Promise<{ field: string; restoredValue: JsonValue | undefined } | null> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    const form = this.getForm(session.formId)
+    if (!form?.ux?.allowUndo) return null
+    const lastChange = session.history.pop()
+    if (!lastChange) return null
+    if (lastChange.oldValue !== undefined) {
+      const control = form.controls.find((c) => c.key === lastChange.field)
+      const validation = control
+        ? validateField(lastChange.oldValue, control, this.getControlType(control.type))
+        : undefined
+      const invalid = validation ? !validation.valid : lastChange.oldStatus === "invalid"
+      let status: FieldState["status"] = "filled"
+      if (invalid) {
+        status = "invalid"
+      } else if (lastChange.oldStatus === "uncertain") {
+        status = "uncertain"
+      }
+      session.fields[lastChange.field] = {
+        status,
+        value: lastChange.oldValue,
+        ...(lastChange.oldConfidence !== undefined ? { confidence: lastChange.oldConfidence } : {}),
+        source: "correction",
+        updatedAt: Date.now(),
+        ...(status === "invalid" ? { error: validation?.error } : {}),
+      }
+    } else {
+      session.fields[lastChange.field] = { status: "empty" }
+    }
+    this.pruneHiddenDependentFields(session, form)
+    await this.reconcileReadyStatus(session, form)
+    session.updatedAt = Date.now()
+    await storageSaveSession(this.runtime, session)
+    return { field: lastChange.field, restoredValue: lastChange.oldValue }
+  }
+
+  async skipField(sessionId: string, entityId: UUID, field: string): Promise<boolean> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    const form = this.getForm(session.formId)
+    if (!form?.ux?.allowSkip) return false
+    const control = form.controls.find((c) => c.key === field)
+    if (!control || control.required) return false
+    session.fields[field] = { status: "skipped", updatedAt: Date.now() }
+    session.updatedAt = Date.now()
+    await storageSaveSession(this.runtime, session)
+    return true
+  }
+
+  async confirmField(sessionId: string, entityId: UUID, field: string, accepted: boolean): Promise<void> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    const fieldState = session.fields[field]
+    if (fieldState?.status !== "uncertain") return
+    const now = Date.now()
+    if (accepted) {
+      fieldState.status = "filled"
+      fieldState.confirmedAt = now
+    } else {
+      fieldState.status = "empty"
+      fieldState.value = undefined
+      fieldState.confidence = undefined
+    }
+    fieldState.updatedAt = now
+    const form = this.getForm(session.formId)
+    if (form) {
+      this.pruneHiddenDependentFields(session, form)
+      await this.reconcileReadyStatus(session, form)
+    }
+    session.updatedAt = now
+    await storageSaveSession(this.runtime, session)
+  }
+
+  private async requireSessionAndForm(
+    sessionId: string,
+    entityId: UUID,
+  ): Promise<{ session: FormSession; form: FormDefinition }> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    const form = this.getForm(session.formId)
+    if (!form) throw new Error(`Form not found: ${session.formId}`)
+    return { session, form }
+  }
+
+  async updateSubField(
+    sessionId: string,
+    entityId: UUID,
+    parentField: string,
+    subField: string,
+    value: JsonValue,
+    confidence: number,
+    messageId?: string,
+  ): Promise<void> {
+    const { session, form } = await this.requireSessionAndForm(sessionId, entityId)
+    const parentControl = form.controls.find((c) => c.key === parentField)
+    if (!parentControl) throw new Error(`Parent field not found: ${parentField}`)
+    const controlType = this.getControlType(parentControl.type)
+    if (!controlType?.getSubControls) throw new Error(`Control type '${parentControl.type}' is not a composite type`)
+    const subControl = controlType.getSubControls(parentControl, this.runtime).find((c) => c.key === subField)
+    if (!subControl) throw new Error(`Subfield not found: ${subField} in ${parentField}`)
+    const now = Date.now()
+    if (!session.fields[parentField]) session.fields[parentField] = { status: "empty" }
+    if (!session.fields[parentField].subFields) session.fields[parentField].subFields = {}
+    const validation = controlType.validate
+      ? controlType.validate(value, subControl)
+      : validateField(value, subControl, this.getControlType(subControl.type))
+    const subFieldStatus: FieldState["status"] = !validation.valid
+      ? "invalid"
+      : confidence < (subControl.confirmThreshold ?? 0.8)
+        ? "uncertain"
+        : "filled"
+    session.fields[parentField].subFields[subField] = {
+      status: subFieldStatus,
+      value,
+      confidence,
+      source: "extraction",
+      messageId,
+      updatedAt: now,
+      error: !validation.valid ? validation.error : undefined,
+    }
+    session.effort.interactionCount += 1
+    session.effort.lastInteractionAt = now
+    session.effort.timeSpentMs = now - session.effort.firstInteractionAt
+    session.expiresAt = this.calculateTTL(session)
+    session.updatedAt = now
+    await storageSaveSession(this.runtime, session)
+    logger.debug(`[FormService] Updated subfield ${parentField}.${subField}`)
+  }
+
+  areSubFieldsFilled(session: FormSession, parentField: string): boolean {
+    const form = this.getForm(session.formId)
+    if (!form) return false
+    const parentControl = form.controls.find((c) => c.key === parentField)
+    if (!parentControl) return false
+    const controlType = this.getControlType(parentControl.type)
+    if (!controlType?.getSubControls) return false
+    const subControls = controlType.getSubControls(parentControl, this.runtime)
+    const subFields = session.fields[parentField]?.subFields || {}
+    for (const subControl of subControls) {
+      if (!subControl.required) continue
+      if (subFields[subControl.key]?.status !== "filled") return false
+    }
+    return true
+  }
+
+  getSubFieldValues(session: FormSession, parentField: string): Record<string, JsonValue> {
+    const subFields = session.fields[parentField]?.subFields || {}
+    const values: Record<string, JsonValue> = {}
+    for (const [key, state] of Object.entries(subFields)) {
+      if (state.value !== undefined) values[key] = state.value
+    }
+    return values
+  }
+
+  async activateExternalField(sessionId: string, entityId: UUID, field: string): Promise<ExternalActivation> {
+    const { session, form } = await this.requireSessionAndForm(sessionId, entityId)
+    const control = form.controls.find((c) => c.key === field)
+    if (!control) throw new Error(`Field not found: ${field}`)
+    const controlType = this.getControlType(control.type)
+    if (!controlType?.activate) throw new Error(`Control type '${control.type}' does not support activation`)
+    const context: ActivationContext = {
+      runtime: this.runtime,
+      session,
+      control,
+      subValues: this.getSubFieldValues(session, field),
+    }
+    const activation = await controlType.activate(context)
+    const now = Date.now()
+    if (!session.fields[field]) session.fields[field] = { status: "empty" }
+    session.fields[field].status = "pending"
+    session.fields[field].externalState = {
+      status: "pending",
+      reference: activation.reference,
+      instructions: activation.instructions,
+      address: activation.address,
+      activatedAt: now,
+    }
+    session.updatedAt = now
+    await storageSaveSession(this.runtime, session)
+    logger.info(`[FormService] Activated external field ${field} with reference ${activation.reference}`)
+    return activation
+  }
+
+  async confirmExternalField(
+    sessionId: string,
+    entityId: UUID,
+    field: string,
+    value: JsonValue,
+    externalData?: Record<string, JsonValue>,
+  ): Promise<void> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    const fieldState = session.fields[field]
+    if (fieldState?.status !== "pending") {
+      logger.warn(`[FormService] Cannot confirm field ${field}: not in pending state`)
+      return
+    }
+    const now = Date.now()
+    fieldState.status = "filled"
+    fieldState.value = value
+    fieldState.source = "external"
+    fieldState.updatedAt = now
+    if (fieldState.externalState) {
+      fieldState.externalState.status = "confirmed"
+      fieldState.externalState.confirmedAt = now
+      fieldState.externalState.externalData = externalData
+    }
+    const form = this.getForm(session.formId)
+    if (form) await this.reconcileReadyStatus(session, form)
+    session.updatedAt = now
+    await storageSaveSession(this.runtime, session)
+    await this.safeEmitEvent("FORM_FIELD_CONFIRMED", { sessionId, entityId, field, value, externalData })
+    logger.info(`[FormService] Confirmed external field ${field}`)
+  }
+
+  async cancelExternalField(sessionId: string, entityId: UUID, field: string, reason: string): Promise<void> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    const form = this.getForm(session.formId)
+    const control = form?.controls.find((c) => c.key === field)
+    const controlType = control ? this.getControlType(control.type) : undefined
+    if (controlType?.deactivate && control) {
+      try {
+        await controlType.deactivate({
+          runtime: this.runtime,
+          session,
+          control,
+          subValues: this.getSubFieldValues(session, field),
+        })
+      } catch (error) {
+        logger.error(`[FormService] Deactivate failed for ${field}: ${String(error)}`)
+      }
+    }
+    const fieldState = session.fields[field]
+    if (fieldState) {
+      fieldState.status = "empty"
+      fieldState.error = reason
+      if (fieldState.externalState) fieldState.externalState.status = "failed"
+    }
+    session.updatedAt = Date.now()
+    await storageSaveSession(this.runtime, session)
+    await this.safeEmitEvent("FORM_FIELD_CANCELLED", { sessionId, entityId, field, reason })
+    logger.info(`[FormService] Cancelled external field ${field}: ${reason}`)
+  }
+
+  async submit(sessionId: string, entityId: UUID): Promise<FormSubmission> {
+    const { session, form } = await this.requireSessionAndForm(sessionId, entityId)
+    const now = Date.now()
+    const projected = projectToMachine(session, form)
+    if (!this.checkAllRequiredFilled(session, form) || !requiredAnswersConfirmed(projected)) {
+      throw new Error("Not all required fields are filled")
+    }
+    if (!canSubmitForm(projected, entityId, projected.revision, now)) {
+      throw new Error(`Session cannot be submitted in status: ${session.status}`)
+    }
+    const values = createValueMap<JsonValue>()
+    const mappedValues = createValueMap<JsonValue>()
+    const files = createValueMap<NonNullable<FieldState["files"]>>()
+    for (const control of form.controls) {
+      if (!controlSatisfiesDependency(control, session.fields)) continue
+      const fieldState = session.fields[control.key]
+      if (fieldState?.status === "uncertain") {
+        throw new FormConfirmationRequiredError(`Field ${control.key} requires confirmation`, {
+          formId: form.id,
+          field: control.key,
+        })
+      }
+      if (fieldState?.value !== undefined) {
+        const validation = validateField(fieldState.value, control, this.getControlType(control.type))
+        if (!validation.valid) {
+          throw new Error(`Field ${control.key} is invalid: ${validation.error ?? "validation failed"}`)
+        }
+        values[control.key] = fieldState.value
+        mappedValues[control.dbbind || control.key] = fieldState.value
+      }
+      if (fieldState?.files) files[control.key] = fieldState.files
+    }
+    const submission: FormSubmission = {
+      id: nextServiceUuid(),
+      formId: session.formId,
+      formVersion: session.formVersion,
+      sessionId: session.id,
+      entityId: session.entityId,
+      values,
+      mappedValues,
+      files: Object.keys(files).length > 0 ? files : undefined,
+      submittedAt: now,
+      meta: session.meta,
+    }
+    await saveSubmission(this.runtime, submission)
+    const autofillValues = createValueMap<JsonValue>()
+    for (const control of form.controls) {
+      if (control.sensitive) continue
+      const value = values[control.key]
+      if (value !== undefined) autofillValues[control.key] = value
+    }
+    await saveAutofillData(this.runtime, entityId, session.formId, autofillValues)
+    session.status = "submitted"
+    session.submittedAt = now
+    session.updatedAt = now
+    await storageSaveSession(this.runtime, session)
+    if (form.hooks?.onSubmit) {
+      await this.executeHook(session, "onSubmit", { submission: JSON.parse(JSON.stringify(submission)) as JsonValue })
+    }
+    logger.debug(`[FormService] Submitted session ${sessionId}`)
+    return submission
+  }
+
+  async stash(sessionId: string, entityId: UUID): Promise<void> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    const form = this.getForm(session.formId)
+    if (form) {
+      const projected = projectToMachine(session, form)
+      if (!canStashForm(projected, entityId, projected.revision, Date.now())) {
+        throw new Error(`Session cannot be stashed in status: ${session.status}`)
+      }
+    }
+    session.status = "stashed"
+    session.updatedAt = Date.now()
+    await storageSaveSession(this.runtime, session)
+    logger.debug(`[FormService] Stashed session ${sessionId}`)
+  }
+
+  async restore(sessionId: string, entityId: UUID, roomId?: UUID): Promise<FormSession> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    if (session.status !== "stashed") throw new Error(`Session is not stashed: ${session.status}`)
+    const form = this.getForm(session.formId)
+    if (form) {
+      const projected = projectToMachine(session, form)
+      if (!canResumeForm(projected, entityId, projected.revision, Date.now())) {
+        throw new Error(`Session cannot be restored: ${session.id}`)
+      }
+    }
+    const targetRoomId = roomId ?? session.roomId
+    const existing = await storageGetActiveSession(this.runtime, entityId, targetRoomId)
+    if (existing && existing.id !== sessionId) {
+      throw new Error(`Active session already exists in room: ${existing.id}`)
+    }
+    if (targetRoomId !== session.roomId) {
+      await storageDeleteSession(this.runtime, session)
+      session.roomId = targetRoomId
+    }
+    session.status = "active"
+    session.updatedAt = Date.now()
+    session.expiresAt = this.calculateTTL(session)
+    await storageSaveSession(this.runtime, session)
+    logger.debug(`[FormService] Restored session ${sessionId}`)
+    return session
+  }
+
+  async cancel(sessionId: string, entityId: UUID, force = false): Promise<boolean> {
+    const session = await getSessionById(this.runtime, entityId, sessionId)
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+    if (!force && this.shouldConfirmCancel(session) && !session.cancelConfirmationAsked) {
+      session.cancelConfirmationAsked = true
+      session.updatedAt = Date.now()
+      await storageSaveSession(this.runtime, session)
+      return false
+    }
+    const form = this.getForm(session.formId)
+    if (form) {
+      const projected = projectToMachine(session, form)
+      if (!canCancelForm(projected, entityId, projected.revision, Date.now())) {
+        throw new Error(`Session cannot be cancelled in status: ${session.status}`)
+      }
+    }
+    session.status = "cancelled"
+    session.updatedAt = Date.now()
+    await storageSaveSession(this.runtime, session)
+    if (form?.hooks?.onCancel) await this.executeHook(session, "onCancel")
+    logger.debug(`[FormService] Cancelled session ${sessionId}`)
+    return true
+  }
+
+  async getSubmissions(entityId: UUID, formId?: string): Promise<FormSubmission[]> {
+    return storageGetSubmissions(this.runtime, entityId, formId)
+  }
+
+  async getAutofill(entityId: UUID, formId: string): Promise<Record<string, JsonValue> | null> {
+    const data = await getAutofillData(this.runtime, entityId, formId)
+    return data?.values || null
+  }
+
+  async applyAutofill(session: FormSession): Promise<string[]> {
+    const form = this.getForm(session.formId)
+    if (!form?.ux?.allowAutofill) return []
+    const autofill = await getAutofillData(this.runtime, session.entityId, session.formId)
+    if (!autofill) return []
+    const appliedFields: string[] = []
+    const now = Date.now()
+    for (const control of form.controls) {
+      if (control.sensitive || session.fields[control.key]?.status !== "empty") continue
+      const rawValue = autofill.values[control.key]
+      if (rawValue === undefined) continue
+      const value = this.normalizeBuiltinDateValue(rawValue, control)
+      const validation = validateField(value, control, this.getControlType(control.type))
+      if (!validation.valid) continue
+      session.fields[control.key] = { status: "filled", value, source: "autofill", updatedAt: now }
+      appliedFields.push(control.key)
+    }
+    if (appliedFields.length > 0) {
+      await this.reconcileReadyStatus(session, form)
+      session.updatedAt = now
+      await storageSaveSession(this.runtime, session)
+    }
+    return appliedFields
+  }
+
+  getSessionContext(session: FormSession): FormContextState {
+    const form = this.getForm(session.formId)
+    if (!form) {
+      return {
+        hasActiveForm: false,
+        progress: 0,
+        filledFields: [],
+        missingRequired: [],
+        uncertainFields: [],
+        nextField: null,
+        pendingExternalFields: [],
+      }
+    }
+    const filledFields: FilledFieldSummary[] = []
+    const missingRequired: MissingFieldSummary[] = []
+    const uncertainFields: UncertainFieldSummary[] = []
+    const pendingExternalFields: PendingExternalFieldSummary[] = []
+    let nextField: FormControl | null = null
+    let filledCount = 0
+    let totalRequired = 0
+    for (const control of form.controls) {
+      if (control.hidden || !controlSatisfiesDependency(control, session.fields)) continue
+      const fieldState = session.fields[control.key]
+      if (control.required) totalRequired += 1
+      if (fieldState?.status === "filled") {
+        if (control.required) filledCount += 1
+        filledFields.push({
+          key: control.key,
+          label: control.label,
+          displayValue: formatValue(fieldState.value ?? null, control, this.getControlType(control.type)),
+        })
+      } else if (fieldState?.status === "pending") {
+        if (fieldState.externalState) {
+          pendingExternalFields.push({
+            key: control.key,
+            label: control.label,
+            instructions: fieldState.externalState.instructions || "Waiting for confirmation...",
+            reference: fieldState.externalState.reference || "",
+            activatedAt: fieldState.externalState.activatedAt || Date.now(),
+            address: fieldState.externalState.address,
+          })
+        }
+      } else if (fieldState?.status === "uncertain") {
+        uncertainFields.push({
+          key: control.key,
+          label: control.label,
+          value: control.sensitive ? formatValue(fieldState.value ?? null, control) : (fieldState.value ?? null),
+          confidence: fieldState.confidence ?? 0,
+        })
+      } else if (fieldState?.status === "invalid") {
+        missingRequired.push({
+          key: control.key,
+          label: control.label,
+          description: control.description,
+          askPrompt: control.askPrompt,
+        })
+        if (!nextField) nextField = control
+      } else if (control.required && fieldState?.status !== "skipped") {
+        missingRequired.push({
+          key: control.key,
+          label: control.label,
+          description: control.description,
+          askPrompt: control.askPrompt,
+        })
+        if (!nextField) nextField = control
+      } else if (!nextField && fieldState?.status === "empty") {
+        nextField = control
+      }
+    }
+    const progress = totalRequired > 0 ? Math.round((filledCount / totalRequired) * 100) : 100
+    return {
+      hasActiveForm: true,
+      formId: session.formId,
+      formName: form.name,
+      progress,
+      filledFields,
+      missingRequired,
+      uncertainFields,
+      nextField,
+      status: session.status,
+      pendingCancelConfirmation:
+        session.cancelConfirmationAsked && (session.status === "active" || session.status === "ready"),
+      pendingExternalFields,
+    }
+  }
+
+  getValues(session: FormSession): Record<string, JsonValue> {
+    const values = createValueMap<JsonValue>()
+    for (const [key, state] of Object.entries(session.fields)) {
+      if (state.value !== undefined) values[key] = state.value
+    }
+    return values
+  }
+
+  getMappedValues(session: FormSession): Record<string, JsonValue> {
+    const form = this.getForm(session.formId)
+    if (!form) return {}
+    const values = createValueMap<JsonValue>()
+    for (const control of form.controls) {
+      const state = session.fields[control.key]
+      if (state?.value !== undefined) values[control.dbbind || control.key] = state.value
+    }
+    return values
+  }
+
+  calculateTTL(session: FormSession): number {
+    return computeTTL(session, this.getForm(session.formId))
+  }
+
+  shouldConfirmCancel(session: FormSession): boolean {
+    return checkConfirmCancel(session)
+  }
+
+  private pruneHiddenDependentFields(session: FormSession, form: FormDefinition): void {
+    for (const control of form.controls) {
+      if (!control.dependsOn) continue
+      if (!controlSatisfiesDependency(control, session.fields) && session.fields[control.key]?.status !== "empty") {
+        session.fields[control.key] = { status: "empty" }
+      }
+    }
+  }
+
+  private async reconcileReadyStatus(session: FormSession, form: FormDefinition): Promise<void> {
+    const allRequiredFilled = this.checkAllRequiredFilled(session, form)
+    if (!allRequiredFilled && session.status === "ready") {
+      session.status = "active"
+    } else if (allRequiredFilled && session.status === "active") {
+      session.status = "ready"
+      if (form.hooks?.onReady) await this.executeHook(session, "onReady")
+    }
+  }
+
+  private async safeEmitEvent(eventName: string, payload: Record<string, unknown>): Promise<void> {
+    if (typeof this.runtime.emitEvent !== "function") return
+    try {
+      await this.runtime.emitEvent(eventName, { runtime: this.runtime, ...payload } as EventPayload)
+    } catch {
+      logger.debug(`[FormService] No event handler for ${eventName}`)
+    }
+  }
+
+  private async executeHook(
+    session: FormSession,
+    hookName: keyof NonNullable<FormDefinition["hooks"]>,
+    options?: Record<string, JsonValue>,
+  ): Promise<void> {
+    const form = this.getForm(session.formId)
+    const workerName = form?.hooks?.[hookName]
+    if (!workerName) return
+    const worker = this.runtime.getTaskWorker(workerName)
+    if (!worker) {
+      logger.warn(`[FormService] Hook worker not found: ${workerName}`)
+      return
+    }
+    try {
+      const task: Task = { id: session.id as UUID, name: workerName, roomId: session.roomId, entityId: session.entityId, tags: [] }
+      await worker.execute(this.runtime, { session, form, ...options }, task)
+    } catch (error) {
+      logger.error(`[FormService] Hook execution failed: ${hookName}`, String(error))
+    }
+  }
+
+  private checkAllRequiredFilled(session: FormSession, form: FormDefinition): boolean {
+    for (const control of form.controls) {
+      if (!control.required || !controlSatisfiesDependency(control, session.fields)) continue
+      if (session.fields[control.key]?.status !== "filled") return false
+    }
+    return true
+  }
+}

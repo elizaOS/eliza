@@ -1,0 +1,273 @@
+// spec/network/index.md, "Only the authenticated turn may request a state write or relay"
+export const NETWORK_APP_IDS = ["ntwrk", "slop", "peon", "friends"] as const
+export type NetworkAppId = (typeof NETWORK_APP_IDS)[number]
+
+export const TURN_PATH = "/internal/turn" as const
+export const TURN_RECEIPT_PATH = "/internal/turn-receipt" as const
+export const SET_STATE_PATH = "/internal/set-state" as const
+export const SIGNALS_PATH = "/internal/signals" as const
+export const UPDATES_PATH = "/internal/updates" as const
+export const RELAY_PATH = "/internal/relay" as const
+
+export const SVC_TS_HEADER = "x-ntwrk-svc-ts" as const
+export const SVC_ID_HEADER = "x-ntwrk-svc-id" as const
+export const SVC_SIG_HEADER = "x-ntwrk-svc-sig" as const
+export const SVC_MAX_SKEW_S = 60
+export const SVC_MIN_SECRET = 32
+
+export const NETWORK_CONTEXTS = ["network"] as const
+export type NetworkContext = (typeof NETWORK_CONTEXTS)[number]
+
+export const NETWORK_MEMBER_STATES = ["open", "busy", "traveling", "paused"] as const
+export type NetworkMemberState = (typeof NETWORK_MEMBER_STATES)[number]
+
+export type ParticipationState = "active" | "quiet" | "away" | "paused"
+
+export const NETWORK_STATE_TO_PARTICIPATION: Readonly<Record<NetworkMemberState, ParticipationState>> = {
+  open: "active",
+  busy: "quiet",
+  traveling: "away",
+  paused: "paused",
+}
+
+export const NETWORK_EDGE_COMPATIBILITY = {
+  target: "edge",
+  state: "host-injected",
+  effects: ["network-store-read", "network-store-write"],
+  requiredBindings: [],
+  requiredSecrets: [],
+} as const
+
+export type NetworkRouting = "planner" | "structured"
+
+export interface NetworkRouteAuthority {
+  readonly version: 1
+  readonly routeId: string
+  readonly generation: string
+  readonly audience: string
+  readonly realmId: string
+}
+
+export interface NetworkActiveItem {
+  readonly id: string
+  readonly kind: string
+  readonly summary: string
+}
+
+export interface NetworkMemberContext {
+  readonly memberId: string
+  readonly firstName: string
+  readonly city: string
+  readonly state: NetworkMemberState
+  readonly stateFrom?: string | null
+  readonly stateUntil: string | null
+  readonly facets: readonly string[]
+  readonly activeItems: readonly NetworkActiveItem[] | null
+  readonly singlePlayer?: boolean
+  readonly timeZone?: string | null
+}
+
+export interface SetStateInput {
+  readonly memberId: string
+  readonly messageId: string
+  readonly idempotencyKey: string
+  readonly state: NetworkMemberState
+  readonly from: string | null
+  readonly until: string | null
+  readonly note?: string | null
+}
+
+export interface SetStateResult {
+  readonly eventId: string | null
+  readonly previous: NetworkMemberState
+  readonly current: NetworkMemberState
+  readonly from: string | null
+  readonly until: string | null
+  readonly committedAt: string
+  readonly replayed: boolean
+  readonly unchanged: boolean
+}
+
+export interface SetStateExecution {
+  readonly ok: boolean
+  readonly state?: NetworkMemberState
+  readonly from?: string | null
+  readonly until?: string | null
+  readonly result?: SetStateResult
+  readonly reason?: string
+}
+
+export interface NetworkSignal {
+  readonly kind: "opt_out" | "travel" | "safety_concern"
+  readonly evidence: string
+}
+
+export interface RecordSignalsInput {
+  readonly memberId: string
+  readonly messageId: string
+  readonly signals: readonly NetworkSignal[]
+}
+
+export interface RecordSignalsResult {
+  readonly recorded: number
+}
+
+export interface NetworkUpdateItem {
+  readonly id?: string
+  readonly summary: string
+}
+
+export interface ReadUpdatesInput {
+  readonly memberId: string
+  readonly messageId: string
+}
+
+export interface ReadUpdatesResult {
+  readonly items: readonly NetworkUpdateItem[]
+}
+
+export interface RelayInput {
+  readonly memberId: string
+  readonly messageId: string
+  readonly itemId: string | null
+  readonly text: string
+}
+
+export interface RelayResult {
+  readonly decision: "pass" | "hold" | "block" | "none"
+  readonly senderNotice: string
+  readonly delivered: boolean
+  readonly replayed: boolean
+}
+
+export interface NetworkStore {
+  getMemberContext(memberId: string): Promise<NetworkMemberContext | null>
+  setState(input: SetStateInput): Promise<SetStateResult>
+  recordSignals(input: RecordSignalsInput): Promise<RecordSignalsResult>
+  readUpdates?(input: ReadUpdatesInput): Promise<ReadUpdatesResult>
+  relay?(input: RelayInput): Promise<RelayResult>
+}
+
+export interface NetworkStoreTurnAuthority {
+  readonly memberId: string
+  readonly messageId: string
+  readonly app?: NetworkAppId
+  readonly channel?: "blooio" | "twilio"
+  readonly text?: string
+  readonly timeZone?: string | null
+  readonly singlePlayer?: boolean
+  readonly route?: NetworkRouteAuthority
+}
+
+export interface TurnContextWire {
+  readonly firstName: string | null
+  readonly city: string | null
+  readonly state: NetworkMemberState
+  readonly stateFrom: string | null
+  readonly stateUntil: string | null
+  readonly facets: readonly string[]
+  readonly singlePlayer: boolean
+  readonly activeItems: readonly NetworkActiveItem[] | null
+}
+
+export interface TurnConsentWire {
+  readonly state: "opted_out" | "opted_in"
+  readonly scope: "all" | "app"
+  readonly app: NetworkAppId | null
+  readonly at: number
+}
+
+export interface TurnRequest {
+  readonly messageId: string
+  readonly channel: "blooio" | "twilio"
+  readonly from: string
+  readonly to: string
+  readonly text: string
+  readonly receivedAt?: number
+  readonly app?: NetworkAppId
+}
+
+export type TurnResponse =
+  | { readonly outcome: "ignored"; readonly reason: string }
+  | {
+      readonly outcome: "open"
+      readonly channel: "blooio" | "twilio"
+      readonly app: NetworkAppId
+      readonly memberId: string
+      readonly context: TurnContextWire
+    }
+  | {
+      readonly outcome: "handled"
+      readonly replies: readonly string[]
+      readonly replyIds: readonly string[]
+      readonly delivery: "collected"
+      readonly replyKind: "reply" | "compliance"
+      readonly accountEligible: boolean
+      readonly app: NetworkAppId | null
+      readonly memberId: string | null
+      readonly reason: string
+      readonly consent?: TurnConsentWire
+    }
+
+export interface TurnReceiptRequest {
+  readonly messageId: string
+  readonly replyIds: readonly string[]
+  readonly acceptedAt: number
+}
+
+export interface TurnReceiptResponse {
+  readonly ok: true
+  readonly replayed: boolean
+}
+
+export interface SetStateRequest {
+  readonly memberId: string
+  readonly app: NetworkAppId
+  readonly channel: "blooio" | "twilio"
+  readonly messageId: string
+  readonly idempotencyKey: string
+  readonly state: NetworkMemberState
+  readonly from: string | null
+  readonly until: string | null
+  readonly note: string | null
+  readonly networkAuthority?: NetworkRouteAuthority
+}
+
+export type SetStateResponse = SetStateResult
+
+export interface SignalsRequest {
+  readonly memberId: string
+  readonly app: NetworkAppId
+  readonly channel: "blooio" | "twilio"
+  readonly messageId: string
+  readonly signals: readonly NetworkSignal[]
+  readonly networkAuthority?: NetworkRouteAuthority
+}
+
+export type SignalsResponse = RecordSignalsResult
+
+export interface UpdatesRequest {
+  readonly memberId: string
+  readonly app: NetworkAppId
+  readonly channel: "blooio" | "twilio"
+  readonly messageId: string
+  readonly networkAuthority?: NetworkRouteAuthority
+}
+
+export type UpdatesResponse = ReadUpdatesResult
+
+export interface RelaySendRequest {
+  readonly memberId: string
+  readonly app: NetworkAppId
+  readonly channel: "blooio" | "twilio"
+  readonly messageId: string
+  readonly itemId: string | null
+  readonly text: string
+  readonly networkAuthority?: NetworkRouteAuthority
+}
+
+export type RelaySendResponse = RelayResult
+
+export type SvcVerify =
+  | { readonly ok: true; readonly id: string }
+  | { readonly ok: false; readonly reason: "missing" | "stale" | "bad_signature" | "no_secret" }

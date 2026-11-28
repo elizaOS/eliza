@@ -1,0 +1,192 @@
+// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Manual English captions outrank automatic English captions and audio"
+import { compactVideoDateValid, selectManualCaptionTrack, selectVideoCaption, type ManualCaptionTrack, type PinnedCaption } from "../gen/video.effect.vibe"
+
+export interface YtDlpSubtitleTrack {
+  readonly url: string
+  readonly ext?: string
+}
+
+export interface YtDlpMetadata {
+  readonly id?: string
+  readonly title?: string
+  readonly description?: string
+  readonly channel?: string
+  readonly duration?: number
+  readonly thumbnail?: string
+  readonly view_count?: number
+  readonly upload_date?: string
+  readonly formats?: unknown
+  readonly categories?: readonly string[]
+  readonly subtitles?: Readonly<Record<string, readonly YtDlpSubtitleTrack[]>>
+  readonly automatic_captions?: Readonly<Record<string, readonly YtDlpSubtitleTrack[]>>
+}
+
+export const CAPTION_PARSE_ERROR = "Error: Unable to parse captions"
+
+function captionUrl(offered: readonly YtDlpSubtitleTrack[] | undefined, type?: string): string {
+  if (!Array.isArray(offered)) return ""
+  return offered.find((entry) => typeof entry?.url === "string" && entry.url !== "" && (type === undefined ? !entry.ext : entry.ext === type))?.url ?? ""
+}
+
+function toManualCaptionTrack(language: string, offered: readonly YtDlpSubtitleTrack[]): ManualCaptionTrack {
+  return { primaryEnglish: language === "en", srtUrl: captionUrl(offered, "srt"), vttUrl: captionUrl(offered, "vtt"), untypedUrl: captionUrl(offered) }
+}
+
+export function pinVideoCaption(metadata: {
+  readonly subtitles?: Readonly<Record<string, readonly YtDlpSubtitleTrack[]>>
+  readonly automatic_captions?: Readonly<Record<string, readonly YtDlpSubtitleTrack[]>>
+}): PinnedCaption {
+  const manual = selectManualCaptionTrack(
+    Object.entries(metadata.subtitles ?? {})
+      .filter(([language]) => /^en(?:-|$)/i.test(language))
+      .map(([language, offered]) => toManualCaptionTrack(language, offered)),
+  )
+  const automatic = metadata.automatic_captions?.["en"] ?? []
+  return selectVideoCaption(manual.srtUrl, manual.vttUrl, manual.untypedUrl, captionUrl(automatic, "json3"), captionUrl(automatic))
+}
+
+export function parseYtDlpUploadDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined
+  const compact = value.match(/^(\d{4})(\d{2})(\d{2})$/)
+  if (compact) {
+    const year = Number(compact[1])
+    const month = Number(compact[2])
+    const day = Number(compact[3])
+    if (!compactVideoDateValid(year, month, day)) return undefined
+    const d = new Date(0)
+    d.setUTCFullYear(year, month - 1, day)
+    if (Number.isNaN(d.getTime()) || d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return undefined
+    return d
+  }
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
+export function normalizeCaptionNewlines(text: string): string {
+  return text.replace(/\r\n?/g, "\n").replace(/\n/g, " ")
+}
+
+export function parseCaptionJson(captionContent: string): string {
+  if (!captionContent || typeof captionContent !== "string") return ""
+  try {
+    const parsed: unknown = JSON.parse(captionContent)
+    if (typeof parsed !== "object" || parsed === null || !("events" in parsed) || !Array.isArray((parsed as { events?: unknown }).events)) {
+      return CAPTION_PARSE_ERROR
+    }
+    const events = (parsed as { events: readonly unknown[] }).events
+    const joined = events
+      .filter((event): event is { segs: readonly { utf8?: unknown }[] } => typeof event === "object" && event !== null && "segs" in event && Array.isArray((event as { segs?: unknown }).segs))
+      .map((event) => event.segs.map((seg) => (typeof seg?.utf8 === "string" ? seg.utf8 : "")).join(""))
+      .reduce((text, cue) => (text && cue && !/\s$/.test(text) && !/^\s/.test(cue) ? `${text} ${cue}` : text + cue), "")
+    return normalizeCaptionNewlines(joined)
+  } catch {
+    return CAPTION_PARSE_ERROR
+  }
+}
+
+export function parseSrtOrVtt(srtContent: string): string {
+  if (!srtContent || typeof srtContent !== "string") return ""
+  return srtContent
+    .replace(/\r\n?/g, "\n")
+    .split(/\n[ \t]*\n/)
+    .map((block) => {
+      const lines = block.split("\n").map((line) => line.trim()).filter((line) => line.length > 0)
+      if (/^(?:NOTE|WEBVTT)(?:[ \t]|$)|^(?:STYLE|REGION)$/.test(lines[0] ?? "")) return ""
+      const timing = lines.findIndex((line) => line.includes("-->"))
+      return timing === -1 ? "" : lines.slice(timing + 1).join(" ")
+    })
+    .filter((text) => text.length > 0)
+    .join(" ")
+}
+
+module node {
+  import { ElizaError, type VideoFormat } from "@elizaos/core"
+
+  function invalidFormatField(index: number, field: string, value: unknown): never {
+    throw new ElizaError("yt-dlp returned an invalid format field.", {
+      code: "VIDEO_METADATA_FORMAT_FIELD_INVALID",
+      context: { index, field, receivedType: typeof value },
+      severity: "ephemeral",
+    })
+  }
+
+  function optionalFormatString(format: Record<string, unknown>, field: string, index: number): string | undefined {
+    const value = format[field]
+    if (value === undefined || value === null) return undefined
+    if (typeof value !== "string") invalidFormatField(index, field, value)
+    return value
+  }
+
+  function optionalFormatNumber(format: Record<string, unknown>, field: string, index: number): number | undefined {
+    const value = format[field]
+    if (value === undefined || value === null) return undefined
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) invalidFormatField(index, field, value)
+    return value
+  }
+
+  function formatQuality(format: Record<string, unknown>, index: number): string {
+    const value = format.quality
+    if (value === undefined || value === null || value === "") return "unknown"
+    if (typeof value === "string") return value
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return String(value)
+    return invalidFormatField(index, "quality", value)
+  }
+
+  export function assertMetadataRecord(value: unknown): Record<string, unknown> {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new ElizaError("yt-dlp returned invalid metadata.", {
+        code: "VIDEO_METADATA_INVALID",
+        context: { receivedType: typeof value },
+        severity: "ephemeral",
+      })
+    }
+    return value as Record<string, unknown>
+  }
+
+  export function parseYtDlpFormats(value: unknown): VideoFormat[] {
+    if (value === undefined || value === null) return []
+    if (!Array.isArray(value)) {
+      throw new ElizaError("yt-dlp returned a non-array formats field.", {
+        code: "VIDEO_METADATA_FORMATS_INVALID",
+        context: { receivedType: typeof value },
+        severity: "ephemeral",
+      })
+    }
+    return value.map((format, index) => {
+      if (typeof format !== "object" || format === null || Array.isArray(format)) {
+        throw new ElizaError("yt-dlp returned an invalid format entry.", {
+          code: "VIDEO_METADATA_FORMAT_ENTRY_INVALID",
+          context: { index, receivedType: typeof format },
+          severity: "ephemeral",
+        })
+      }
+      const row = format as Record<string, unknown>
+      return {
+        formatId: optionalFormatString(row, "format_id", index) ?? "",
+        url: optionalFormatString(row, "url", index) ?? "",
+        extension: optionalFormatString(row, "ext", index) ?? "",
+        quality: formatQuality(row, index),
+        fileSize: optionalFormatNumber(row, "filesize", index),
+        videoCodec: optionalFormatString(row, "vcodec", index),
+        audioCodec: optionalFormatString(row, "acodec", index),
+        resolution: optionalFormatString(row, "resolution", index),
+        fps: optionalFormatNumber(row, "fps", index),
+        bitrate: optionalFormatNumber(row, "tbr", index),
+      }
+    })
+  }
+}
+
+import { assertMetadataRecord, parseYtDlpFormats } from node
+export { assertMetadataRecord, parseYtDlpFormats }
+
+export function isSupportedVideoUrl(url: string): boolean {
+  const parsed = URL.parse(url)
+  if (!parsed) return false
+  const { hostname } = parsed
+  return hostname === "youtube.com" || hostname.endsWith(".youtube.com") || hostname === "youtu.be" || hostname === "vimeo.com" || hostname.endsWith(".vimeo.com")
+}
+
+export function extractYoutubeVideoId(url: string): string {
+  return url.match(/(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^/&?]+)/)?.[1] ?? url
+}

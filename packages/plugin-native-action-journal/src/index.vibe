@@ -1,3 +1,78 @@
-// spec/nativeActionJournal/index.md, "Story: Resume an approved operation after the device restarts"
+// spec/nativeActionJournal/index.md, "Story: Resume an approved operation after the device restarts"; spec/nativeActionJournal/index.md, "Only a reservation starts applying and a terminal receipt cannot change"
+import type { ActionJournalEntry } from "@elizaos/os-bridges"
+import {
+  Machine,
+  machine,
+  type Entry,
+  type Event as ActionJournalEvent,
+} from "../gen/nativeActionJournal.effect.vibe"
+
 export { actionJournalPlugin as registerActionJournal, createActionJournalClient, createDeferredDeletions } from "@elizaos/os-bridges"
 export type { ActionJournalClient, ActionJournalEntry, ActionJournalPlugin, ActionJournalTarget, JournalScope } from "@elizaos/os-bridges"
+
+export type JournalNextStep =
+  | { readonly kind: "dispatch" }
+  | { readonly kind: "reconcile"; readonly since: number | null }
+  | { readonly kind: "settled"; readonly entry: ActionJournalEntry }
+
+const SCOPE_RE = /^[a-f0-9]{64}$/
+const ID_RE = /^[A-Za-z0-9_-]{1,128}$/
+
+export function isJournalEntry(value: unknown): value is ActionJournalEntry {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const entry = value as Record<string, unknown>
+  if (typeof entry.scope !== "string" || !SCOPE_RE.test(entry.scope)) return false
+  if (typeof entry.proposalId !== "string" || !ID_RE.test(entry.proposalId)) return false
+  if (typeof entry.operationId !== "string" || !ID_RE.test(entry.operationId)) return false
+  if (typeof entry.operationHash !== "string" || !SCOPE_RE.test(entry.operationHash)) return false
+  if (!entry.record || typeof entry.record !== "object" || Array.isArray(entry.record)) return false
+  if (typeof entry.createdAt !== "number") return false
+  if (entry.phase === "reserved") return entry.status === undefined
+  if (entry.phase === "applying") return typeof entry.attemptId === "string" && entry.status === undefined
+  if (entry.phase !== "terminal") return false
+  return (
+    ["succeeded", "failed", "unknown", "cancelled"].includes(entry.status as string) &&
+    typeof entry.summary === "string" &&
+    (entry.status !== "succeeded" || typeof entry.attemptId === "string")
+  )
+}
+
+export function nextStep(entry: ActionJournalEntry): JournalNextStep {
+  if (entry.phase === "reserved") return { kind: "dispatch" }
+  if (entry.phase === "applying") {
+    return { kind: "reconcile", since: typeof entry.applyingAt === "number" ? entry.applyingAt : null }
+  }
+  if (entry.phase === "terminal" && entry.status) {
+    return entry.status === "unknown"
+      ? { kind: "reconcile", since: entry.finishedAt ?? null }
+      : { kind: "settled", entry }
+  }
+  return { kind: "reconcile", since: null }
+}
+
+export interface ActionJournalMachineHandle {
+  readonly state: () => Entry
+  readonly dispatch: (event: ActionJournalEvent) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown) => Promise<"accepted" | "refused">
+}
+
+export function createActionJournalMachineHandle(): ActionJournalMachineHandle {
+  const created = runSync(effect {
+    provide machine() {
+      const m = try Machine
+      return m
+    }
+  })
+  return {
+    state: () => runSync(created.get()),
+    dispatch: (event) => runPromise(created.send(event).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+    receive: (raw) => runPromise(created.receive(raw).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("NotAnEvent", () => Effect.succeed("refused" as const)),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+  }
+}

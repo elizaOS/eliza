@@ -13,6 +13,7 @@
   "dependencies": {
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-websiteblocker": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },

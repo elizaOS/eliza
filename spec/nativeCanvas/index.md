@@ -1,6 +1,6 @@
 # Native canvas
 
-A canvas is a logical document with layers, presentation and interaction on its chosen host. Native rendering, pixels, snapshots, pointer callbacks, navigation and A2UI transport stay in the shell.
+A canvas is a logical document with layers, presentation and interaction on its chosen host. Native rendering, pixels, snapshots, pointer callbacks, navigation and A2UI transport stay in the shell. See also [Session](./session.md).
 
 ## Story: Render and interact with the current canvas only
 

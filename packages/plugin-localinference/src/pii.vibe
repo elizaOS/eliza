@@ -1,0 +1,265 @@
+// spec/localInference/transcriptPrivacy.md, "Redaction makes a variant and never changes the original"
+import {
+  detectPii,
+  getInferencePriorityGate,
+  logger,
+  PII_ENTITY_RECOGNIZER_SERVICE,
+  Service,
+  thrown,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  type EntitySpan,
+  type IAgentRuntime,
+  type PiiEntityRecognizer,
+  type PiiEntityRecognizerService,
+  type ServiceTypeName,
+} from "@elizaos/core"
+import type { TranscriptSegment } from "./transcript-privacy.vibe"
+
+export type LocalPiiGenerate = (args: {
+  readonly prompt: string
+  readonly maxTokens?: number
+  readonly temperature?: number
+  readonly stopSequences?: readonly string[]
+}) => Promise<string>
+
+export const PII_LLM_KINDS = ["person", "org", "location"] as const
+export type PiiLlmKind = (typeof PII_LLM_KINDS)[number]
+
+export const PII_CHUNK_CHARS = 4_000
+
+const PROMPT_HEADER = `You are a named-entity extractor. Read the text between <text> tags and list every personal name (person), organization/company name (org), and place name (location) that appears in it.
+
+Rules:
+- Output ONLY a JSON array, no prose: [{"kind":"person","value":"..."}]
+- "kind" must be exactly "person", "org", or "location".
+- "value" must be copied VERBATIM from the text (exact characters, casing, spacing).
+- List entities in the order they first appear. No duplicates.
+- If there are none, output [].
+
+<text>
+`
+
+const PROMPT_FOOTER = `
+</text>
+
+JSON array:`
+
+export function buildPiiExtractionPrompt(chunk: string): string {
+  return PROMPT_HEADER + chunk + PROMPT_FOOTER
+}
+
+export function chunkPiiText(
+  text: string,
+  chunkChars: number = PII_CHUNK_CHARS,
+): Array<{ readonly text: string; readonly offset: number }> {
+  if (text.length <= chunkChars) return [{ text, offset: 0 }]
+  const chunks: Array<{ readonly text: string; readonly offset: number }> = []
+  let offset = 0
+  while (offset < text.length) {
+    let end = Math.min(offset + chunkChars, text.length)
+    if (end < text.length) {
+      const lastSpace = text.lastIndexOf(" ", end)
+      if (lastSpace > offset + chunkChars / 2) end = lastSpace
+    }
+    chunks.push({ text: text.slice(offset, end), offset })
+    offset = end
+  }
+  return chunks
+}
+
+export interface ReportedEntity {
+  readonly kind: string
+  readonly value: string
+}
+
+export error LocalPiiParseError { message: string }
+
+effect function failPiiParseEffect(message: string): never!LocalPiiParseError {
+  throw new LocalPiiParseError({ message })
+}
+
+export function parseReportedEntities(completion: string): ReportedEntity[] {
+  const start = completion.indexOf("[")
+  const end = completion.lastIndexOf("]")
+  if (start === -1 || end === -1 || end < start) {
+    return thrown(failPiiParseEffect)(
+      `[LocalPii] model output contains no JSON array: ${JSON.stringify(truncateWellFormed(toWellFormedUnicode(completion), 200))}`,
+    )
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(completion.slice(start, end + 1)) as unknown
+  } catch {
+    return thrown(failPiiParseEffect)(
+      `[LocalPii] model output is not valid JSON: ${JSON.stringify(completion.slice(start, start + 200))}`,
+    )
+  }
+  if (!Array.isArray(parsed)) {
+    return thrown(failPiiParseEffect)("[LocalPii] model output parsed to a non-array")
+  }
+  const kinds: readonly string[] = PII_LLM_KINDS
+  const entities: ReportedEntity[] = []
+  for (const item of parsed) {
+    if (item === null || typeof item !== "object") continue
+    const rec = item as { readonly kind?: unknown; readonly value?: unknown }
+    if (typeof rec.kind !== "string" || typeof rec.value !== "string") continue
+    const trimmedKind = rec.kind.trim().toLowerCase()
+    if (!kinds.includes(trimmedKind)) continue
+    if (rec.value.trim().length === 0) continue
+    entities.push({ kind: trimmedKind, value: rec.value })
+  }
+  return entities
+}
+
+export function relocateEntities(
+  chunk: string,
+  base: number,
+  reported: readonly ReportedEntity[],
+): EntitySpan[] {
+  const spans: EntitySpan[] = []
+  let cursor = 0
+  for (const entity of reported) {
+    let idx = chunk.indexOf(entity.value, cursor)
+    if (idx === -1) {
+      idx = chunk.indexOf(entity.value)
+    }
+    if (idx === -1) {
+      logger.debug({ kind: entity.kind }, "[LocalPii] dropped non-verbatim entity")
+      continue
+    }
+    spans.push({
+      kind: entity.kind,
+      value: entity.value,
+      start: base + idx,
+      end: base + idx + entity.value.length,
+    })
+    cursor = Math.max(cursor, idx + entity.value.length)
+  }
+  return spans
+}
+
+export class LlmEntityRecognizer implements PiiEntityRecognizer {
+  readonly name = "local-llm-ner"
+  readonly #generate: LocalPiiGenerate
+  readonly #chunkChars: number
+
+  constructor(generate: LocalPiiGenerate, chunkChars: number = PII_CHUNK_CHARS) {
+    this.#generate = generate
+    this.#chunkChars = chunkChars
+  }
+
+  async recognize(text: string): Promise<EntitySpan[]> {
+    if (text.trim().length === 0) return []
+    const chunks = chunkPiiText(text, this.#chunkChars)
+    const allSpans: EntitySpan[] = []
+    for (const chunk of chunks) {
+      const prompt = buildPiiExtractionPrompt(chunk.text)
+      const completion = await this.#generate({
+        prompt,
+        maxTokens: 512,
+        temperature: 0,
+        stopSequences: ["\n\n", "</text>"],
+      })
+      const reported = parseReportedEntities(completion)
+      allSpans.push(...relocateEntities(chunk.text, chunk.offset, reported))
+    }
+    return allSpans
+  }
+}
+
+export async function detectTranscriptPiiTerms(
+  segments: readonly TranscriptSegment[],
+  recognizer?: PiiEntityRecognizer | null,
+): Promise<string[]> {
+  const terms = new Set<string>()
+  for (const segment of segments) {
+    for (const match of detectPii(segment.text)) {
+      if (match.value.trim().length > 0) terms.add(match.value)
+    }
+  }
+  if (recognizer !== undefined && recognizer !== null) {
+    const corpus = segments.map((s) => s.text).join("\n")
+    try {
+      const spans = await recognizer.recognize(corpus)
+      for (const span of spans) {
+        if (span.value.trim().length > 0) terms.add(span.value)
+      }
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "[LocalPii] NER recognition degraded to regex-only",
+      )
+    }
+  }
+  return [...terms]
+}
+
+const BACKEND_SERVICE_NAMES = [
+  "localInferenceLoader",
+  "localInference",
+  "LOCAL_INFERENCE",
+] as const
+
+interface GenerateCapableBackend {
+  generate(args: {
+    readonly prompt: string
+    readonly maxTokens?: number
+    readonly temperature?: number
+    readonly stopSequences?: readonly string[]
+  }): Promise<string>
+}
+
+function activeBackend(runtime: IAgentRuntime): GenerateCapableBackend | null {
+  for (const name of BACKEND_SERVICE_NAMES) {
+    const candidate: unknown = runtime.getService(name)
+    if (
+      candidate !== null &&
+      typeof candidate === "object" &&
+      typeof (candidate as { readonly generate?: unknown }).generate === "function"
+    ) {
+      return candidate as GenerateCapableBackend
+    }
+  }
+  return null
+}
+
+export class LocalPiiRecognizerService extends Service implements PiiEntityRecognizerService {
+  static override readonly serviceType: ServiceTypeName =
+    PII_ENTITY_RECOGNIZER_SERVICE as ServiceTypeName
+
+  override capabilityDescription =
+    "Supplies a local-LLM named-entity recognizer (person / org / location) to the runtime's PII pseudonymization layer, running on the resident local backend."
+
+  #recognizer: LlmEntityRecognizer | null = null
+
+  static async start(runtime: IAgentRuntime): Promise<LocalPiiRecognizerService> {
+    const service = new LocalPiiRecognizerService(runtime)
+    service.#recognizer = new LlmEntityRecognizer(async (args) => {
+      const backend = activeBackend(runtime)
+      if (backend === null) {
+        return Promise.reject(
+          new Error("[LocalPii] no active local inference backend; PII layer degrades to regex-only"),
+        )
+      }
+      return getInferencePriorityGate().runExclusive(
+        {
+          priority: "interactive",
+          label: `pii-ner local-service (${args.prompt.length} chars)`,
+        },
+        () => backend.generate(args),
+      )
+    })
+    logger.info("[LocalPii] PII entity recognizer service registered")
+    return service
+  }
+
+  getRecognizer(): PiiEntityRecognizer | null {
+    if (this.#recognizer === null || activeBackend(this.runtime) === null) return null
+    return this.#recognizer
+  }
+
+  override async stop(): Promise<void> {
+    this.#recognizer = null
+  }
+}

@@ -1,0 +1,162 @@
+// spec/elizaCloud/inference.md, "Warming retries occur only before output is published and within the retry budget"; spec/elizaCloud/index.md, "Credential authority binds the exact owner and service origin"
+import { ElizaError, type IAgentRuntime, type TokenUsage } from "@elizaos/core"
+import { Schema } from "effect"
+import { Machine, machine, mayRetryWarming } from "../gen/elizaCloud__inference.effect.vibe"
+import { getApiKey, getBaseURL, isApprovedCloudOrigin, resolveCloudTimeoutMs } from "./config.vibe"
+
+export error CloudAccountUnavailable { reason: string }
+export error CloudApiFailure { status: number; code: string; reason: string; retryable: boolean }
+export error CloudSttUnavailableError { reason: string }
+
+export function unavailableResearchError(): ElizaError {
+  return new ElizaError("Eliza Cloud no longer provides a RESEARCH model; install a research-capable provider", {
+    code: "ELIZA_CLOUD_RESEARCH_UNAVAILABLE",
+    severity: "fatal",
+  })
+}
+
+module node {
+  import { fetchWithConfidentialInference } from "@elizaos/core"
+
+  export function dispatchFetch(
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    body: string | FormData | undefined,
+    signal: AbortSignal,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const combined = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    return fetchWithConfidentialInference(
+      url,
+      { method, redirect: "error", signal: combined, headers, ...(body === undefined ? {} : { body }) },
+      globalThis.fetch,
+    )
+  }
+
+  export function readBytes(response: Response): Promise<Uint8Array> {
+    return response.arrayBuffer().then((buf) => new Uint8Array(buf))
+  }
+
+  /** @throws {never} */
+  export function isWarmingBody(status: number, text: string): boolean {
+    if (status === 503) return true
+    const lower = text.toLowerCase()
+    return lower.includes("service_unavailable") || lower.includes("gateway_warming")
+  }
+
+  /** @throws {never} */
+  export function isFormDataPayload(value: unknown): value is FormData {
+    return value instanceof FormData
+  }
+}
+import { dispatchFetch, isFormDataPayload, isWarmingBody, readBytes } from node
+
+export const cloudUsageSchema = Schema.Struct({
+  prompt_tokens: Schema.Int,
+  completion_tokens: Schema.Int,
+  total_tokens: Schema.Int,
+  prompt_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    cached_tokens: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+  }))),
+  completion_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    reasoning_tokens: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+  }))),
+})
+
+export function toCloudTokenUsage(reported: typeof cloudUsageSchema.Type): TokenUsage {
+  const cached = reported.prompt_tokens_details?.cached_tokens
+  return {
+    promptTokens: reported.prompt_tokens,
+    completionTokens: reported.completion_tokens,
+    totalTokens: reported.total_tokens,
+    ...(typeof cached === "number" ? { cacheReadInputTokens: cached } : {}),
+  }
+}
+
+export interface CloudRequestOptions {
+  readonly method: "GET" | "POST" | "PUT" | "DELETE"
+  readonly path: string
+  readonly body?: object | FormData
+  readonly headers?: Record<string, string>
+  readonly maxWarmingRetries?: number
+  readonly requireKey?: boolean
+}
+
+export effect function cloudRawFetch(runtime: IAgentRuntime, options: CloudRequestOptions): Response!CloudApiFailure {
+  const baseUrl = getBaseURL(runtime)
+  if (!isApprovedCloudOrigin(baseUrl)) {
+    throw new CloudApiFailure({ status: 400, code: "invalid_origin", reason: "Eliza Cloud base URL origin is not approved.", retryable: false })
+  }
+  const apiKey = getApiKey(runtime)
+  if ((options.requireKey ?? true) && apiKey === "") {
+    throw new CloudApiFailure({ status: 401, code: "missing_api_key", reason: "ELIZAOS_CLOUD_API_KEY is not configured.", retryable: false })
+  }
+  const normalizedPath = options.path.startsWith("/") ? options.path : `/${options.path}`
+  const targetUrl = `${baseUrl}${normalizedPath}`
+  const timeoutMs = resolveCloudTimeoutMs(runtime)
+  const maxRetries = Math.max(0, Math.min(3, options.maxWarmingRetries ?? 2))
+
+  provide machine() {
+    const attempt = try Machine
+    let state = attempt.send({ type: "startAttempt", maxRetries }) catch effect () => {
+      throw new CloudApiFailure({ status: 500, code: "attempt_rejected", reason: "Could not start Eliza Cloud attempt.", retryable: false })
+    }
+    while (state.phase === "AttemptRunning") {
+      const isMultipart = isFormDataPayload(options.body)
+      const payload = options.body === undefined
+        ? undefined
+        : isMultipart
+          ? options.body
+          : JSON.stringify(options.body)
+      const headers: Record<string, string> = {
+        ...(apiKey !== "" ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(isMultipart || options.body === undefined ? {} : { "Content-Type": "application/json" }),
+        Accept: "application/json",
+        ...options.headers,
+      }
+      const response = try tryPromise({
+        try: (signal) => dispatchFetch(targetUrl, options.method, headers, payload, signal, timeoutMs),
+        catch: () => new CloudApiFailure({ status: 503, code: "network_error", reason: "Eliza Cloud endpoint could not be reached.", retryable: true }),
+      })
+      if (response.ok) {
+        try Effect.ignore(attempt.send({ type: "publishOutput" }))
+        try Effect.ignore(attempt.send({ type: "completeAttempt" }))
+        return response
+      }
+      const errorText = (tryPromise(() => response.text())) catch () => ""
+      const warming = isWarmingBody(response.status, errorText)
+      if (mayRetryWarming(state.retries, state.maxRetries, warming, state.outputPublished)) {
+        state = attempt.send({ type: "retryAttemptWarming" }) catch effect () => {
+          throw new CloudApiFailure({ status: 503, code: "service_unavailable", reason: "Warming retry budget exhausted.", retryable: true })
+        }
+        try Effect.sleep("50 millis")
+        continue
+      }
+      try Effect.ignore(attempt.send({ type: "failAttempt" }))
+      throw new CloudApiFailure({
+        status: response.status,
+        code: warming ? "service_unavailable" : `http_${response.status}`,
+        reason: errorText.trim() || `Eliza Cloud returned HTTP ${response.status}.`,
+        retryable: response.status === 429 || response.status >= 500,
+      })
+    }
+    throw new CloudApiFailure({ status: 500, code: "attempt_exhausted", reason: "Eliza Cloud request did not complete.", retryable: false })
+  }
+}
+
+export effect function cloudJsonFetch(runtime: IAgentRuntime, options: CloudRequestOptions): unknown!CloudApiFailure {
+  const response = try cloudRawFetch(runtime, options)
+  return try tryPromise({
+    try: (): Promise<unknown> => response.json(),
+    catch: () => new CloudApiFailure({ status: 502, code: "invalid_json", reason: "Eliza Cloud response was not valid JSON.", retryable: false }),
+  })
+}
+
+export effect function cloudBytesFetch(runtime: IAgentRuntime, options: CloudRequestOptions): Uint8Array!CloudApiFailure {
+  const response = try cloudRawFetch(runtime, options)
+  return try tryPromise({
+    try: () => readBytes(response),
+    catch: () => new CloudApiFailure({ status: 502, code: "invalid_binary", reason: "Eliza Cloud response body could not be read.", retryable: false }),
+  })
+}

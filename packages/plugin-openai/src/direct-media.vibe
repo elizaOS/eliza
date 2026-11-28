@@ -1,0 +1,312 @@
+// spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability"
+import { ElizaError, thrown, toWellFormedUnicode } from "@elizaos/core"
+
+export type MediaProviderResult<T> =
+  | { readonly success: true; readonly data: T }
+  | { readonly success: false; readonly error: string }
+
+export interface OpenAIImageProviderConfig {
+  readonly apiKey: string
+  readonly model?: string
+  readonly quality?: "standard" | "hd"
+  readonly style?: "natural" | "vivid"
+  readonly baseUrl?: string
+}
+
+export interface OpenAIImageGenerationOptions {
+  readonly prompt: string
+  readonly size?: string
+  readonly quality?: "standard" | "hd"
+  readonly style?: "natural" | "vivid"
+  readonly signal?: AbortSignal
+}
+
+export interface OpenAIImageGenerationData {
+  readonly imageUrl: string
+  readonly revisedPrompt?: string
+}
+
+export interface OpenAIVideoProviderConfig {
+  readonly apiKey: string
+  readonly model?: string
+  readonly baseUrl?: string
+}
+
+export interface OpenAIVideoGenerationOptions {
+  readonly prompt: string
+  readonly duration?: number
+  readonly aspectRatio?: string
+  readonly imageUrl?: string
+  readonly signal?: AbortSignal
+}
+
+export interface OpenAIVideoGenerationData {
+  readonly videoUrl: string
+  readonly duration?: number
+}
+
+export interface OpenAIVisionProviderConfig {
+  readonly apiKey: string
+  readonly model?: string
+  readonly maxTokens?: number
+  readonly baseUrl?: string
+}
+
+export interface OpenAIVisionAnalysisOptions {
+  readonly imageUrl?: string
+  readonly imageBase64?: string
+  readonly mediaType?: string
+  readonly prompt?: string
+  readonly maxTokens?: number
+  readonly signal?: AbortSignal
+}
+
+export interface OpenAIVisionAnalysisData {
+  readonly description: string
+}
+
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+const DIRECT_MEDIA_TIMEOUT_MS = 120_000
+
+module node {
+  import { fetchWithConfidentialInference } from "@elizaos/core"
+
+  /** @throws {unknown} */
+  export function postDirectMedia(
+    url: string,
+    apiKey: string,
+    body: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+    timeoutMs: number,
+  ): Promise<Response> {
+    return fetchWithConfidentialInference(
+      url,
+      {
+        method: "POST",
+        redirect: "error",
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+          : AbortSignal.timeout(timeoutMs),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      },
+      globalThis.fetch,
+    )
+  }
+}
+import { postDirectMedia } from node
+
+effect function requireApiKeyEffect(name: string, apiKey: string): string!ElizaError {
+  const trimmed = apiKey.trim()
+  if (trimmed.length === 0) {
+    throw new ElizaError(`${name} API key is required`, { code: "OPENAI_API_KEY_REQUIRED" })
+  }
+  return trimmed
+}
+
+const requireApiKey = thrown(requireApiKeyEffect)
+
+function normalizeBaseUrl(raw: string | undefined): string {
+  const trimmed = raw?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed.replace(/\/+$/, "") : DEFAULT_OPENAI_BASE_URL
+}
+
+function boundaryError(name: string, cause: unknown): MediaProviderResult<never> {
+  const message = cause instanceof Error ? cause.message : String(cause)
+  return { success: false, error: `${name} error: ${message}` }
+}
+
+export class OpenAIImageProvider {
+  readonly name = "openai"
+  readonly #apiKey: string
+  readonly #model: string
+  readonly #quality: "standard" | "hd"
+  readonly #style: "natural" | "vivid"
+  readonly #baseUrl: string
+
+  constructor(config: OpenAIImageProviderConfig) {
+    this.#apiKey = requireApiKey(this.name, config.apiKey)
+    this.#model = config.model?.trim() || "dall-e-3"
+    this.#quality = config.quality ?? "standard"
+    this.#style = config.style ?? "vivid"
+    this.#baseUrl = normalizeBaseUrl(config.baseUrl)
+  }
+
+  async generate(
+    options: OpenAIImageGenerationOptions,
+  ): Promise<MediaProviderResult<OpenAIImageGenerationData>> {
+    try {
+      const response = await postDirectMedia(
+        `${this.#baseUrl}/images/generations`,
+        this.#apiKey,
+        {
+          model: this.#model,
+          prompt: toWellFormedUnicode(options.prompt),
+          n: 1,
+          size: options.size ?? "1024x1024",
+          quality: options.quality ?? this.#quality,
+          style: options.style ?? this.#style,
+        },
+        options.signal,
+        DIRECT_MEDIA_TIMEOUT_MS,
+      )
+      if (!response.ok) {
+        const text = await response.text()
+        return { success: false, error: `OpenAI error: ${text}` }
+      }
+      const data = (await response.json()) as {
+        data?: Array<{ url?: string; revised_prompt?: string }>
+      }
+      const image = data.data?.[0]
+      if (!image?.url) {
+        return { success: false, error: "No image returned from OpenAI" }
+      }
+      return {
+        success: true,
+        data: {
+          imageUrl: image.url,
+          ...(image.revised_prompt !== undefined ? { revisedPrompt: image.revised_prompt } : {}),
+        },
+      }
+    } catch (cause) {
+      return boundaryError(this.name, cause)
+    }
+  }
+}
+
+export class OpenAIVideoProvider {
+  readonly name = "openai"
+  readonly #apiKey: string
+  readonly #model: string
+  readonly #baseUrl: string
+
+  constructor(config: OpenAIVideoProviderConfig) {
+    this.#apiKey = requireApiKey(this.name, config.apiKey)
+    this.#model = config.model?.trim() || "sora-1.0-turbo"
+    this.#baseUrl = normalizeBaseUrl(config.baseUrl)
+  }
+
+  async generate(
+    options: OpenAIVideoGenerationOptions,
+  ): Promise<MediaProviderResult<OpenAIVideoGenerationData>> {
+    try {
+      const response = await postDirectMedia(
+        `${this.#baseUrl}/videos/generations`,
+        this.#apiKey,
+        {
+          model: this.#model,
+          prompt: toWellFormedUnicode(options.prompt),
+          n: 1,
+          duration: options.duration ?? 5,
+          aspect_ratio: options.aspectRatio ?? "16:9",
+          ...(options.imageUrl ? { image: options.imageUrl } : {}),
+        },
+        options.signal,
+        DIRECT_MEDIA_TIMEOUT_MS,
+      )
+      if (!response.ok) {
+        const text = await response.text()
+        return { success: false, error: `OpenAI Sora error: ${text}` }
+      }
+      const data = (await response.json()) as {
+        data?: Array<{ url?: string; duration?: number }>
+      }
+      const video = data.data?.[0]
+      if (!video?.url) {
+        return { success: false, error: "No video returned from OpenAI Sora" }
+      }
+      return {
+        success: true,
+        data: {
+          videoUrl: video.url,
+          ...(video.duration !== undefined ? { duration: video.duration } : {}),
+        },
+      }
+    } catch (cause) {
+      return boundaryError(this.name, cause)
+    }
+  }
+}
+
+export class OpenAIVisionProvider {
+  readonly name = "openai"
+  readonly #apiKey: string
+  readonly #model: string
+  readonly #maxTokens: number | undefined
+  readonly #baseUrl: string
+
+  constructor(config: OpenAIVisionProviderConfig) {
+    this.#apiKey = requireApiKey(this.name, config.apiKey)
+    this.#model = config.model?.trim() || "gpt-5-mini"
+    this.#maxTokens = config.maxTokens
+    this.#baseUrl = normalizeBaseUrl(config.baseUrl)
+  }
+
+  async analyze(
+    options: OpenAIVisionAnalysisOptions,
+  ): Promise<MediaProviderResult<OpenAIVisionAnalysisData>> {
+    const imageUrl = options.imageBase64
+      ? `data:${options.mediaType?.trim() || "image/jpeg"};base64,${options.imageBase64}`
+      : options.imageUrl?.trim()
+    if (!imageUrl) {
+      return { success: false, error: "OpenAI vision analysis requires an imageUrl or imageBase64" }
+    }
+    try {
+      const effectiveMaxTokens = options.maxTokens ?? this.#maxTokens
+      const response = await postDirectMedia(
+        `${this.#baseUrl}/chat/completions`,
+        this.#apiKey,
+        {
+          model: this.#model,
+          ...(effectiveMaxTokens !== undefined ? { max_tokens: effectiveMaxTokens } : {}),
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: toWellFormedUnicode(options.prompt ?? "Describe this image in detail."),
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: imageUrl },
+                },
+              ],
+            },
+          ],
+        },
+        options.signal,
+        DIRECT_MEDIA_TIMEOUT_MS,
+      )
+      if (!response.ok) {
+        const text = await response.text()
+        return { success: false, error: `OpenAI error: ${text}` }
+      }
+      const data = (await response.json()) as {
+        choices?: Array<{
+          finish_reason?: string
+          message?: { content?: string }
+        }>
+      }
+      if (data.choices?.[0]?.finish_reason === "length") {
+        return {
+          success: false,
+          error: "OpenAI returned an incomplete vision description after reaching an output limit",
+        }
+      }
+      const description = data.choices?.[0]?.message?.content
+      if (!description) {
+        return { success: false, error: "No description returned from OpenAI" }
+      }
+      return {
+        success: true,
+        data: { description },
+      }
+    } catch (cause) {
+      return boundaryError(this.name, cause)
+    }
+  }
+}

@@ -1,0 +1,448 @@
+// spec/mcp/index.md, "A server connection needs enabled configuration and a validated transport"; spec/mcp/index.md, "Provider schema projections retain the meaning of omitted constraints in the prompt"
+import { Service, isElizaError, logger, type IAgentRuntime } from "@elizaos/core"
+import type { CallToolResult, Resource, ResourceTemplate, Tool } from "@modelcontextprotocol/sdk/types.js"
+import { connectionAllowed } from "../gen/mcp.effect.vibe"
+import {
+  createMcpToolCompatibilitySync,
+  type McpJsonSchema,
+  type McpToolCompatibility,
+} from "./compatibility.vibe"
+import {
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+  assertMcpJsonSchemaBudget,
+  buildMcpProviderProjection,
+} from "./protocol.vibe"
+import {
+  DEFAULT_MCP_TIMEOUT_MS,
+  MCP_SERVICE_NAME,
+  isMcpSettings,
+  type ConnectionState,
+  type McpClientConnection,
+  type McpProvider,
+  type McpResourceResponse,
+  type McpServerConfig,
+  type McpServerRecord,
+  type McpSettings,
+} from "./types.vibe"
+
+module node {
+  import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+  import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
+  import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+  import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+  import { BLOCKED_SPAWN_ENV_KEYS, BLOCKED_SPAWN_ENV_PREFIXES, ElizaError, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core"
+  import type { HttpMcpServerConfig, McpServerConfig, StdioMcpServerConfig } from "./types.vibe"
+
+  const ALLOWED_STDIO_COMMANDS = new Set(["npx", "node", "bun", "bunx", "deno", "python", "python3", "uvx", "uv", "docker", "podman"])
+  const BLOCKED_INTERPRETER_FLAGS = new Set(["-e", "--eval", "-p", "--print", "-r", "--require", "--import", "--loader", "--experimental-loader", "--preload", "-c", "-m", "--inspect", "--inspect-brk"])
+  const BLOCKED_CONTAINER_FLAGS = new Set(["--privileged", "-v", "--volume", "--volumes-from", "--mount", "--cap-add", "--security-opt", "--pid", "--network", "--net", "--device"])
+
+  export function validateMcpServerConfigSecurity(config: McpServerConfig, allowLoopback = false): string | null {
+    if (config.type === "stdio") {
+      const cmd = config.command.trim()
+      if (!cmd) return "MCP stdio server command is required"
+      const base = cmd.split(/[\\/]/).pop()?.toLowerCase() ?? ""
+      if (!ALLOWED_STDIO_COMMANDS.has(base) && !allowLoopback) {
+        return `MCP stdio command "${cmd}" is not in the allowed executable list`
+      }
+      const args = config.args ?? []
+      for (const arg of args) {
+        const flag = arg.split("=")[0] ?? arg
+        if (["node", "bun", "python", "python3", "deno"].includes(base) && BLOCKED_INTERPRETER_FLAGS.has(flag)) {
+          return `Blocked interpreter flag "${flag}" in MCP stdio config`
+        }
+        if (["docker", "podman"].includes(base) && BLOCKED_CONTAINER_FLAGS.has(flag)) {
+          return `Blocked container flag "${flag}" in MCP stdio config`
+        }
+      }
+      for (const key of Object.keys(config.env ?? {})) {
+        const upper = key.toUpperCase()
+        if (BLOCKED_SPAWN_ENV_KEYS.has(upper) || BLOCKED_SPAWN_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
+          return `Blocked environment variable "${key}" in MCP stdio config`
+        }
+      }
+      return null
+    }
+    const parsed = URL.parse(config.url)
+    if (!parsed || (parsed.protocol !== "https:" && parsed.protocol !== "http:")) {
+      return `MCP remote server URL must use http or https`
+    }
+    if (parsed.username || parsed.password) return "MCP remote server URL must not include embedded credentials"
+    const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase()
+    const isLoopback = host === "127.0.0.1" || host === "localhost" || host === "::1"
+    if (!allowLoopback && (isBlockedHostname(host) || isPrivateIpAddress(host))) {
+      return `MCP remote server host "${host}" is blocked by SSRF policy`
+    }
+    if (parsed.protocol === "http:" && !isLoopback && !allowLoopback) {
+      return "MCP remote server URL must use HTTPS for non-loopback hosts"
+    }
+    return null
+  }
+
+  export function readEnvMcpServers(): Record<string, McpServerConfig> {
+    const servers: Record<string, McpServerConfig> = {}
+    for (const [key, value] of Object.entries(process.env)) {
+      const match = key.match(/^MCP_SERVER_(.+)_URL$/)
+      if (!match || !value?.trim()) continue
+      const name = match[1].toLowerCase()
+      const typeRaw = process.env[`MCP_SERVER_${match[1]}_TYPE`]?.trim().toLowerCase()
+      const type = typeRaw === "http" || typeRaw === "sse" ? typeRaw : "streamable-http"
+      servers[name] = { type, url: value.trim() }
+    }
+    return servers
+  }
+
+  export function createMcpClientAndTransport(
+    name: string,
+    config: McpServerConfig,
+    options: { readonly allowLoopback?: boolean; readonly fetchImpl?: typeof fetch } = {},
+  ): { readonly client: Client; readonly transport: StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport } {
+    const rejection = validateMcpServerConfigSecurity(config, options.allowLoopback === true)
+    if (rejection) {
+      throw new ElizaError(`MCP server "${name}" rejected: ${rejection}`, {
+        code: "MCP_SERVER_CONFIG_REJECTED",
+        context: { server: name, rejection },
+        severity: "fatal",
+      })
+    }
+    const client = new Client({ name: "elizaOS", version: "4.0.0" }, { capabilities: {} })
+    if (config.type === "stdio") {
+      const stdio = config as StdioMcpServerConfig
+      const transport = new StdioClientTransport({
+        command: stdio.command,
+        args: stdio.args ? [...stdio.args] : undefined,
+        env: { ...stdio.env, ...(process.env.PATH ? { PATH: process.env.PATH } : {}) },
+        stderr: "pipe",
+        cwd: stdio.cwd,
+      })
+      return { client, transport }
+    }
+    const httpCfg = config as HttpMcpServerConfig
+    const url = new URL(httpCfg.url)
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch
+    const transport = httpCfg.type === "sse"
+      ? new SSEClientTransport(url, { fetch: fetchImpl })
+      : new StreamableHTTPClientTransport(url, { fetch: fetchImpl })
+    return { client, transport }
+  }
+
+  export function throwMcpElizaError(message: string, code: string, context?: Record<string, unknown>): never {
+    throw new ElizaError(message, { code, ...(context ? { context } : {}), severity: "ephemeral" })
+  }
+
+  export function throwMcpError(message: string): never {
+    throw new Error(message)
+  }
+
+  export function isTestEnv(): boolean {
+    return process.env.NODE_ENV === "test" || process.env.VITEST === "true"
+  }
+
+  export function parseConfigJson(raw: string): McpServerConfig {
+    return JSON.parse(raw) as McpServerConfig
+  }
+}
+
+import {
+  createMcpClientAndTransport,
+  isTestEnv,
+  parseConfigJson,
+  readEnvMcpServers,
+  throwMcpElizaError,
+  throwMcpError,
+  validateMcpServerConfigSecurity,
+} from node
+
+export { validateMcpServerConfigSecurity }
+
+const MAX_DISCOVERY_PAGES = 1000
+
+export function buildMcpProviderData(servers: readonly McpServerRecord[]): McpProvider {
+  return buildMcpProviderProjection(servers) as McpProvider
+}
+
+export class McpService extends Service {
+  static override readonly serviceType: string = MCP_SERVICE_NAME
+  override readonly capabilityDescription = "Enables the agent to interact with MCP (Model Context Protocol) servers"
+
+  private readonly connections = new Map<string, McpClientConnection>()
+  private readonly connectionStates = new Map<string, ConnectionState>()
+  private toolCompatibility: McpToolCompatibility | null = null
+  private compatibilityInitialized = false
+  private initializationPromise: Promise<void> | null = null
+  private serverEpoch = 0
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+    if (runtime) {
+      this.initializationPromise = this.initializeMcpServers()
+    }
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<McpService> {
+    const service = new McpService(runtime)
+    if (service.initializationPromise) await service.initializationPromise
+    return service
+  }
+
+  async waitForInitialization(): Promise<void> {
+    if (this.initializationPromise) await this.initializationPromise
+  }
+
+  override async stop(): Promise<void> {
+    for (const name of [...this.connections.keys()]) {
+      await this.deleteConnection(name)
+    }
+    this.connections.clear()
+    this.connectionStates.clear()
+  }
+
+  private async initializeMcpServers(): Promise<void> {
+    const settings = this.getMcpSettings()
+    if (!settings?.servers || Object.keys(settings.servers).length === 0) return
+    await this.updateServerConnections(settings.servers)
+  }
+
+  private getMcpSettings(): McpSettings | undefined {
+    const configured = this.getConfiguredMcpSettings()
+    const envServers = readEnvMcpServers()
+    if (Object.keys(envServers).length === 0) return configured
+    return { ...(configured ?? {}), servers: { ...(configured?.servers ?? {}), ...envServers } }
+  }
+
+  private getConfiguredMcpSettings(): McpSettings | undefined {
+    const rawSettings = this.runtime.getSetting("mcp")
+    if (rawSettings !== undefined && rawSettings !== null) {
+      if (!isMcpSettings(rawSettings)) throwMcpElizaError("MCP settings are malformed", "MCP_SETTINGS_INVALID")
+      return rawSettings
+    }
+    const characterSettings = this.runtime.character?.settings
+    if (characterSettings && typeof characterSettings === "object" && "mcp" in characterSettings) {
+      const charMcp = (characterSettings as { mcp?: unknown }).mcp
+      if (!isMcpSettings(charMcp)) throwMcpElizaError("Character MCP settings are malformed", "MCP_SETTINGS_INVALID")
+      return charMcp
+    }
+    return undefined
+  }
+
+  private async updateServerConnections(serverConfigs: Readonly<Record<string, McpServerConfig>>): Promise<void> {
+    const allowLoopback = isTestEnv()
+    for (const [name, config] of Object.entries(serverConfigs)) {
+      const rejection = validateMcpServerConfigSecurity(config, allowLoopback)
+      if (rejection) throwMcpElizaError(`MCP server "${name}" has an invalid or unsafe config`, "MCP_SERVER_CONFIG_REJECTED", { server: name, rejection })
+    }
+    const newNames = new Set(Object.keys(serverConfigs))
+    for (const name of [...this.connections.keys()]) {
+      if (!newNames.has(name)) await this.deleteConnection(name)
+    }
+    await Promise.all(
+      Object.entries(serverConfigs).map(async ([name, config]) => {
+        try {
+          const current = this.connections.get(name)
+          if (!current) {
+            await this.initializeConnection(name, config)
+          } else if (JSON.stringify(config) !== current.server.config) {
+            await this.deleteConnection(name)
+            await this.initializeConnection(name, config)
+          }
+        } catch (error) {
+          const runtimeWithReport = this.runtime as { reportError?: (tag: string, err: unknown, meta?: Record<string, unknown>) => void }
+          runtimeWithReport.reportError?.("mcp.connect", error, { serverName: name })
+        }
+      }),
+    )
+  }
+
+  private async initializeConnection(name: string, config: McpServerConfig): Promise<void> {
+    await this.deleteConnection(name)
+    const epoch = ++this.serverEpoch
+    const transportKind = config.type === "stdio" ? ("StdioTransport" as const) : ("HttpTransport" as const)
+    if (!connectionAllowed({ serverId: name, serverEpoch: epoch, transport: transportKind, enabled: true }, true)) {
+      throwMcpElizaError(`MCP server "${name}" connection not admitted`, "MCP_SERVER_CONFIG_REJECTED")
+    }
+    const serialized = JSON.stringify(config)
+    const state: ConnectionState = { status: "connecting", reconnectAttempts: 0, consecutivePingFailures: 0, config: serialized }
+    this.connectionStates.set(name, state)
+    const { client, transport } = createMcpClientAndTransport(name, config, { allowLoopback: isTestEnv() })
+    const connection: McpClientConnection = {
+      server: { name, config: serialized, status: "connecting" },
+      client,
+      transport,
+    }
+    this.connections.set(name, connection)
+    try {
+      await client.connect(transport)
+      const capabilities = client.getServerCapabilities()
+      const tools = capabilities?.tools ? await this.fetchToolsList(name) : []
+      const resources = capabilities?.resources ? await this.fetchResourcesList(name) : []
+      const resourceTemplates = capabilities?.resources ? await this.fetchResourceTemplatesList(name) : []
+      connection.server = { status: "connected", name, config: serialized, error: "", tools, resources, resourceTemplates }
+      state.status = "connected"
+      state.lastConnected = new Date()
+      state.reconnectAttempts = 0
+      state.consecutivePingFailures = 0
+    } catch (error) {
+      await this.closeConnectionResources(name, connection)
+      connection.server.status = "disconnected"
+      state.status = "disconnected"
+      state.lastError = error instanceof Error ? error : new Error(String(error))
+      connection.server.error = state.lastError.message
+      if (this.connectionStates.get(name) === state && !this.connections.has(name)) {
+        this.connections.set(name, connection)
+      }
+      throwMcpError(state.lastError.message)
+    }
+  }
+
+  private async closeConnectionResources(name: string, connection: McpClientConnection): Promise<void> {
+    if (this.connections.get(name) === connection) this.connections.delete(name)
+    const results = await Promise.allSettled([connection.transport.close(), connection.client.close()])
+    for (const res of results) {
+      if (res.status === "rejected") logger.warn({ error: res.reason, serverName: name }, `Failed to close MCP connection for "${name}"`)
+    }
+  }
+
+  async deleteConnection(name: string): Promise<void> {
+    const connection = this.connections.get(name)
+    this.connectionStates.delete(name)
+    if (connection) await this.closeConnectionResources(name, connection)
+  }
+
+  private connectionRequestTimeout(connection: McpClientConnection): number {
+    const config = parseConfigJson(connection.server.config)
+    return config.type === "stdio" ? (config.timeoutInMillis ?? DEFAULT_MCP_TIMEOUT_MS) : (config.timeout ?? DEFAULT_MCP_TIMEOUT_MS)
+  }
+
+  private async fetchAllPages<T>(
+    serverName: string,
+    list: string,
+    fetchPage: (cursor?: string) => Promise<{ readonly items: readonly T[]; readonly nextCursor?: string }>,
+  ): Promise<T[]> {
+    const items: T[] = []
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    let pageCount = 0
+    do {
+      if (pageCount++ === MAX_DISCOVERY_PAGES) {
+        throwMcpElizaError("MCP discovery exceeded its pagination limit", "MCP_PAGINATION_LIMIT_EXCEEDED", { serverName, list, maxPages: MAX_DISCOVERY_PAGES })
+      }
+      const page = await fetchPage(cursor)
+      for (const item of page.items) items.push(item)
+      cursor = page.nextCursor
+      if (cursor !== undefined) {
+        if (seenCursors.has(cursor)) {
+          throwMcpElizaError("MCP server repeated a pagination cursor", "MCP_PAGINATION_CURSOR_REPEATED", { serverName, list })
+        }
+        seenCursors.add(cursor)
+      }
+    } while (cursor !== undefined)
+    return items
+  }
+
+  private async fetchToolsList(serverName: string): Promise<Tool[]> {
+    const connection = this.connections.get(serverName)
+    if (!connection) return []
+    const discovered = await this.fetchAllPages(serverName, "tools/list", async (cursor) => {
+      const response = await connection.client.listTools(cursor === undefined ? undefined : { cursor }, { timeout: this.connectionRequestTimeout(connection) })
+      return { items: response?.tools ?? [], nextCursor: response?.nextCursor }
+    })
+    return discovered.flatMap((tool) => {
+      if (tool.inputSchema) {
+        if (!this.compatibilityInitialized) this.initializeToolCompatibility()
+        try {
+          this.applyToolCompatibility(tool.inputSchema as McpJsonSchema)
+        } catch (error) {
+          if (isElizaError(error) && error.code === MCP_TOOL_SCHEMA_UNBOUNDED) {
+            logger.warn({ src: "plugin:mcp:service", serverName, tool: tool.name }, "MCP tool schema rejected as unbounded")
+            return []
+          }
+          throwMcpError(error instanceof Error ? error.message : String(error))
+        }
+      }
+      return [tool]
+    })
+  }
+
+  private async fetchResourcesList(serverName: string): Promise<Resource[]> {
+    const connection = this.connections.get(serverName)
+    if (!connection) return []
+    return this.fetchAllPages(serverName, "resources/list", async (cursor) => {
+      const response = await connection.client.listResources(cursor === undefined ? undefined : { cursor }, { timeout: this.connectionRequestTimeout(connection) })
+      return { items: response?.resources ?? [], nextCursor: response?.nextCursor }
+    })
+  }
+
+  private async fetchResourceTemplatesList(serverName: string): Promise<ResourceTemplate[]> {
+    const connection = this.connections.get(serverName)
+    if (!connection) return []
+    return this.fetchAllPages(serverName, "resources/templates/list", async (cursor) => {
+      const response = await connection.client.listResourceTemplates(cursor === undefined ? undefined : { cursor }, { timeout: this.connectionRequestTimeout(connection) })
+      return { items: response?.resourceTemplates ?? [], nextCursor: response?.nextCursor }
+    })
+  }
+
+  getServers(): McpServerRecord[] {
+    return Array.from(this.connections.values())
+      .filter((conn) => !conn.server.disabled)
+      .map((conn) => conn.server)
+  }
+
+  getProviderData(): McpProvider {
+    return buildMcpProviderData(this.getServers())
+  }
+
+  private requireConnected(serverName: string): McpClientConnection {
+    const connection = this.connections.get(serverName)
+    if (!connection) throwMcpError(`No connection found for server: ${serverName}`)
+    if (connection.server.disabled) throwMcpError(`Server "${serverName}" is disabled`)
+    if (connection.server.status !== "connected") throwMcpError(`Server "${serverName}" is not connected (status: ${connection.server.status})`)
+    return connection
+  }
+
+  async callTool(serverName: string, toolName: string, toolArguments?: Readonly<Record<string, unknown>>): Promise<CallToolResult> {
+    const connection = this.requireConnected(serverName)
+    const result = await connection.client.callTool(
+      { name: toolName, arguments: toolArguments ? { ...toolArguments } : undefined },
+      undefined,
+      { timeout: this.connectionRequestTimeout(connection) },
+    )
+    if (!result.content) throwMcpError("Invalid tool result: missing content array")
+    return result as CallToolResult
+  }
+
+  async readResource(serverName: string, uri: string): Promise<McpResourceResponse> {
+    const connection = this.requireConnected(serverName)
+    return (await connection.client.readResource({ uri }, { timeout: this.connectionRequestTimeout(connection) })) as McpResourceResponse
+  }
+
+  async restartConnection(serverName: string): Promise<void> {
+    const connection = this.connections.get(serverName)
+    const config = connection?.server?.config
+    if (!config) return
+    connection.server.status = "connecting"
+    connection.server.error = ""
+    let parsed: McpServerConfig
+    try {
+      parsed = JSON.parse(config) as McpServerConfig
+    } catch (error) {
+      connection.server.status = "error"
+      connection.server.error = `Invalid server configuration JSON: ${error instanceof Error ? error.message : String(error)}`
+      return
+    }
+    await this.deleteConnection(serverName)
+    await this.initializeConnection(serverName, parsed)
+  }
+
+  private initializeToolCompatibility(): void {
+    if (this.compatibilityInitialized) return
+    this.toolCompatibility = createMcpToolCompatibilitySync(this.runtime)
+    this.compatibilityInitialized = true
+  }
+
+  applyToolCompatibility<TSchema extends McpJsonSchema>(toolSchema: TSchema): TSchema {
+    assertMcpJsonSchemaBudget(toolSchema)
+    if (!this.compatibilityInitialized) this.initializeToolCompatibility()
+    if (!this.toolCompatibility || !toolSchema) return toolSchema
+    return this.toolCompatibility.transformToolSchema(toolSchema)
+  }
+}

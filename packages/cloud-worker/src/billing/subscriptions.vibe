@@ -98,9 +98,7 @@ effect function applyPeriods(tx: Tx, organizationId: string, out: ReadonlyArray<
   return deployment.value.environment
 }
 
-type SubscriptionStateEvent = Extract<Event, { readonly type: "claimCommand" | "releaseCommand" | "scheduleDowngrade" | "expireDunning" }>
-
-effect function sendSubscription(tx: Tx, organizationId: string, event: SubscriptionStateEvent, now: number) {
+export effect function stepSubscription(tx: Tx, organizationId: string, event: Event, now: number) {
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
   const held = try load(tx, organizationId)
   const stepped = try apply(held.state, event)
@@ -109,15 +107,15 @@ effect function sendSubscription(tx: Tx, organizationId: string, event: Subscrip
 }
 
 export effect function claimLiveCommand(tx: Tx, organizationId: string, kind: CommandKind, commandId: string, expectedRevision: number, now: number) {
-  try sendSubscription(tx, organizationId, { type: "claimCommand", kind, commandId, expectedRevision }, now)
+  try stepSubscription(tx, organizationId, { type: "claimCommand", kind, commandId, expectedRevision }, now)
 }
 
 export effect function releaseLiveCommand(tx: Tx, organizationId: string, commandId: string, now: number) {
-  try sendSubscription(tx, organizationId, { type: "releaseCommand", commandId }, now)
+  try stepSubscription(tx, organizationId, { type: "releaseCommand", commandId }, now)
 }
 
 export effect function scheduleDowngrade(tx: Tx, organizationId: string, commandId: string, planKey: PlanKey, now: number) {
-  return (try sendSubscription(tx, organizationId, { type: "scheduleDowngrade", commandId, planKey }, now)).state
+  return (try stepSubscription(tx, organizationId, { type: "scheduleDowngrade", commandId, planKey }, now)).state
 }
 
 effect function recover(organizationId: string, row: Row, observed: SubscriptionObservation, now: number): Subscription!RowCorrupt {
@@ -233,7 +231,7 @@ effect function expireDunning(store: Store.Shape, now: number): number!! {
     const done = store.transaction(effect (tx: Tx) => {
       if ((try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE SKIP LOCKED", [organizationId])).length === 0) return false
       if (!canExpireDunning(try readSubscription(tx, organizationId), now)) return false
-      try sendSubscription(tx, organizationId, { type: "expireDunning", now }, now)
+      try stepSubscription(tx, organizationId, { type: "expireDunning", now }, now)
       return true
     }) catch effect (failure) => {
       try annotateLogs(logError("subscription sweep could not end a dunning window"), { organizationId, failure: failure._tag })

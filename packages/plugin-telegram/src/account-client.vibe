@@ -1,0 +1,343 @@
+// spec/telegram/delivery.md, "Owner pairing fails closed on rate limit or missing backend, arbitrary senders never own a world, and history rejects cursors"
+import { ElizaError, Service, type IAgentRuntime } from "@elizaos/core"
+import { historyQueryValid } from "../gen/telegram__delivery.effect.vibe"
+import { TELEGRAM_PERSONAL_SERVICE_TYPE } from "./types.vibe"
+
+module node {
+  import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
+  import fs from "node:fs"
+  import path from "node:path"
+
+  /** @throws {never} */
+  export function encryptSessionPayload(secretKey: string, plaintext: string): string {
+    const key = createHash("sha256").update(secretKey).digest()
+    const iv = randomBytes(12)
+    const cipher = createCipheriv("aes-256-gcm", key, iv)
+    const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()])
+    const tag = cipher.getAuthTag()
+    return JSON.stringify({
+      v: 1,
+      iv: iv.toString("base64"),
+      tag: tag.toString("base64"),
+      data: encrypted.toString("base64"),
+    })
+  }
+
+  export function decryptSessionPayload(secretKey: string, encoded: string): string {
+    const parsed = JSON.parse(encoded) as { readonly iv: string; readonly tag: string; readonly data: string }
+    const key = createHash("sha256").update(secretKey).digest()
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(parsed.iv, "base64"))
+    decipher.setAuthTag(Buffer.from(parsed.tag, "base64"))
+    return Buffer.concat([decipher.update(Buffer.from(parsed.data, "base64")), decipher.final()]).toString("utf8")
+  }
+
+  export function writeEncryptedFile(filePath: string, content: string): void {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, content, { mode: 0o600 })
+  }
+
+  export function readEncryptedFile(filePath: string): string | undefined {
+    if (!fs.existsSync(filePath)) return undefined
+    return fs.readFileSync(filePath, "utf8")
+  }
+
+  export function removeEncryptedFile(filePath: string): void {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+  }
+}
+import { decryptSessionPayload, encryptSessionPayload, readEncryptedFile, removeEncryptedFile, writeEncryptedFile } from node
+
+export type TelegramAccountAuthStatus =
+  | "idle"
+  | "waiting_for_provisioning_code"
+  | "waiting_for_telegram_code"
+  | "waiting_for_password"
+  | "configured"
+  | "connected"
+  | "error"
+
+export interface TelegramAccountAuthAccount {
+  readonly id: string
+  readonly username: string | null
+  readonly firstName: string | null
+  readonly lastName: string | null
+  readonly phone: string | null
+}
+
+export interface TelegramAccountAuthSnapshot {
+  readonly status: TelegramAccountAuthStatus
+  readonly phone: string | null
+  readonly error: string | null
+  readonly isCodeViaApp: boolean
+  readonly account: TelegramAccountAuthAccount | null
+}
+
+export interface TelegramAccountApiCredentials {
+  readonly apiId: number
+  readonly apiHash: string
+}
+
+export interface TelegramAccountTransport {
+  sendCode(phone: string, credentials: TelegramAccountApiCredentials): Promise<{ readonly isCodeViaApp: boolean }>
+  signInWithCode(code: string): Promise<
+    | { readonly kind: "signed_in"; readonly session: string; readonly account: TelegramAccountAuthAccount }
+    | { readonly kind: "password_required" }
+  >
+  signInWithPassword(password: string): Promise<{ readonly session: string; readonly account: TelegramAccountAuthAccount }>
+  fetchHistoryPage(input: {
+    readonly peerId: string
+    readonly offsetId: number
+    readonly limit: number
+    readonly threadId?: number
+  }): Promise<readonly TelegramAccountHistoryMessage[]>
+  disconnect(): Promise<void>
+}
+
+export interface TelegramAccountHistoryMessage {
+  readonly id: number
+  readonly peerId: string
+  readonly senderId: string
+  readonly date: number
+  readonly text: string
+  readonly threadId?: number
+}
+
+export interface TelegramHistoryQuery {
+  readonly limit?: number
+  readonly cursor?: string
+  readonly before?: string
+  readonly after?: string
+  readonly threadId?: number
+  readonly expectedPeerId?: string
+}
+
+function parseIsoEpochSeconds(value: string | undefined): number | "invalid" | undefined {
+  if (value === undefined) return undefined
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? ms / 1000 : "invalid"
+}
+
+export async function readTelegramAccountHistory(
+  transport: Pick<TelegramAccountTransport, "fetchHistoryPage">,
+  peerId: string,
+  query: TelegramHistoryQuery = {},
+  assertAdmission: () => Promise<void> = async () => undefined,
+): Promise<TelegramAccountHistoryMessage[]> {
+  const rawBefore = parseIsoEpochSeconds(query.before)
+  const rawAfter = parseIsoEpochSeconds(query.after)
+  if (rawBefore === "invalid" || rawAfter === "invalid") {
+    throw new ElizaError("Provide an ISO timestamp for Telegram history bounds.", {
+      code: "TELEGRAM_HISTORY_QUERY_INVALID",
+    })
+  }
+  const before = rawBefore
+  const after = rawAfter
+  const hasLimit = query.limit !== undefined
+  const limitValue = query.limit ?? 1
+  if (hasLimit && !Number.isSafeInteger(limitValue)) {
+    throw new ElizaError("Telegram history limit must be a positive integer.", {
+      code: "TELEGRAM_HISTORY_QUERY_INVALID",
+    })
+  }
+  if (query.threadId !== undefined && (!Number.isSafeInteger(query.threadId) || query.threadId < 1)) {
+    throw new ElizaError("Telegram thread ID must be a positive provider message ID.", {
+      code: "TELEGRAM_HISTORY_QUERY_INVALID",
+    })
+  }
+  const ordered = before === undefined || after === undefined ? true : after < before
+  if (!historyQueryValid(query.cursor !== undefined, hasLimit, limitValue, after !== undefined, before !== undefined, ordered)) {
+    if (query.cursor !== undefined) {
+      throw new ElizaError("Telegram history returns the complete requested range. Remove the cursor or request an explicit result limit.", {
+        code: "TELEGRAM_HISTORY_CURSOR_UNSUPPORTED",
+      })
+    }
+    throw new ElizaError("Invalid Telegram history query bounds.", {
+      code: "TELEGRAM_HISTORY_QUERY_INVALID",
+    })
+  }
+
+  const collected: TelegramAccountHistoryMessage[] = []
+  let offsetId = 0
+  let expectedPeerId = query.expectedPeerId
+  for (;;) {
+    await assertAdmission()
+    const page = await transport.fetchHistoryPage({
+      peerId,
+      offsetId,
+      limit: 100,
+      ...(query.threadId !== undefined ? { threadId: query.threadId } : {}),
+    })
+    if (page.length === 0) break
+    let lowestId = Number.POSITIVE_INFINITY
+    let stoppedByLowerBound = false
+    for (const msg of page) {
+      if (expectedPeerId !== undefined && msg.peerId !== expectedPeerId) {
+        throw new ElizaError("Telegram history returned messages for a different peer.", {
+          code: "TELEGRAM_HISTORY_PEER_MISMATCH",
+        })
+      }
+      expectedPeerId ??= msg.peerId
+      if (msg.id < lowestId) lowestId = msg.id
+      if (before !== undefined && msg.date >= before) continue
+      if (after !== undefined && msg.date <= after) {
+        stoppedByLowerBound = true
+        break
+      }
+      collected.push(msg)
+      if (query.limit !== undefined && collected.length >= query.limit) {
+        return collected
+      }
+    }
+    if (stoppedByLowerBound || !Number.isFinite(lowestId) || (offsetId !== 0 && lowestId >= offsetId)) {
+      break
+    }
+    offsetId = lowestId
+  }
+  return collected
+}
+
+export function saveTelegramAccountSession(filePath: string, secretKey: string, sessionString: string): void {
+  writeEncryptedFile(filePath, encryptSessionPayload(secretKey, sessionString))
+}
+
+export function loadTelegramAccountSession(filePath: string, secretKey: string): string | undefined {
+  const encoded = readEncryptedFile(filePath)
+  if (encoded === undefined) return undefined
+  return decryptSessionPayload(secretKey, encoded)
+}
+
+export function clearTelegramAccountSessionFile(filePath: string): void {
+  removeEncryptedFile(filePath)
+}
+
+export class TelegramAccountAuthSession {
+  private status: TelegramAccountAuthStatus = "idle"
+  private phone: string | null = null
+  private error: string | null = null
+  private isCodeViaApp = false
+  private account: TelegramAccountAuthAccount | null = null
+  private sessionString: string | null = null
+
+  constructor(private readonly transport: TelegramAccountTransport) {}
+
+  getSnapshot(): TelegramAccountAuthSnapshot {
+    return {
+      status: this.status,
+      phone: this.phone,
+      error: this.error,
+      isCodeViaApp: this.isCodeViaApp,
+      account: this.account,
+    }
+  }
+
+  getSessionString(): string | null {
+    return this.sessionString
+  }
+
+  async start(options: { readonly phone: string; readonly credentials: TelegramAccountApiCredentials }): Promise<TelegramAccountAuthSnapshot> {
+    const phone = options.phone.trim()
+    if (phone === "") {
+      this.status = "error"
+      this.error = "Phone number is required."
+      return this.getSnapshot()
+    }
+    this.phone = phone
+    this.error = null
+    const sent = await this.transport.sendCode(phone, options.credentials)
+    this.isCodeViaApp = sent.isCodeViaApp
+    this.status = "waiting_for_telegram_code"
+    return this.getSnapshot()
+  }
+
+  async submit(input: { readonly telegramCode?: string; readonly password?: string }): Promise<TelegramAccountAuthSnapshot> {
+    if (this.status === "waiting_for_telegram_code" && input.telegramCode !== undefined) {
+      const signed = await this.transport.signInWithCode(input.telegramCode.trim())
+      if (signed.kind === "password_required") {
+        this.status = "waiting_for_password"
+        return this.getSnapshot()
+      }
+      this.sessionString = signed.session
+      this.account = signed.account
+      this.status = "connected"
+      return this.getSnapshot()
+    }
+    if (this.status === "waiting_for_password" && input.password !== undefined) {
+      const signed = await this.transport.signInWithPassword(input.password)
+      this.sessionString = signed.session
+      this.account = signed.account
+      this.status = "connected"
+      return this.getSnapshot()
+    }
+    this.status = "error"
+    this.error = "Invalid auth state transition."
+    return this.getSnapshot()
+  }
+
+  async stop(): Promise<void> {
+    await this.transport.disconnect()
+    this.status = "idle"
+  }
+}
+
+export class TelegramAccountService extends Service {
+  static override serviceType = TELEGRAM_PERSONAL_SERVICE_TYPE
+  override capabilityDescription = "Manages personal Telegram user-account sessions and bounded history reads."
+
+  private generation = 0
+  private transport: TelegramAccountTransport | null = null
+  private summary: TelegramAccountAuthAccount | null = null
+  private lastError: string | null = null
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<TelegramAccountService> {
+    return Promise.resolve(new TelegramAccountService(runtime))
+  }
+
+  attachSession(transport: TelegramAccountTransport, summary: TelegramAccountAuthAccount): number {
+    this.generation += 1
+    this.transport = transport
+    this.summary = summary
+    this.lastError = null
+    return this.generation
+  }
+
+  isConnected(): boolean {
+    return this.transport !== null && this.summary !== null
+  }
+
+  getAccountSummary(): TelegramAccountAuthAccount | null {
+    return this.summary
+  }
+
+  getAccountError(): string | null {
+    return this.lastError
+  }
+
+  async readHistory(peerId: string, query: TelegramHistoryQuery = {}): Promise<TelegramAccountHistoryMessage[]> {
+    const activeGen = this.generation
+    const activeTransport = this.transport
+    if (activeTransport === null) {
+      throw new ElizaError("Personal Telegram account is not connected.", {
+        code: "TELEGRAM_ACCOUNT_DISCONNECTED",
+      })
+    }
+    return readTelegramAccountHistory(activeTransport, peerId, query, async () => {
+      if (this.generation !== activeGen || this.transport !== activeTransport) {
+        throw new ElizaError("Telegram account session generation changed during history read.", {
+          code: "TELEGRAM_ACCOUNT_SESSION_STALE",
+        })
+      }
+    })
+  }
+
+  override async stop(): Promise<void> {
+    this.generation += 1
+    const prev = this.transport
+    this.transport = null
+    this.summary = null
+    await prev?.disconnect()
+  }
+}

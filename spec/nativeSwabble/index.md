@@ -1,6 +1,6 @@
 # Native wake detection
 
-Swabble owns the app-local wake detection and speech callback surface. [Android wake listening](../os/voice/listener.md) owns device service permissions, microphone ownership and consent.
+Swabble owns the app-local wake detection and speech callback surface. [Android wake listening](../os/voice/listener.md) owns device service permissions, microphone ownership and consent. Session lifecycle transitions for start, pause, resume, device switch and stop live in [wake session lifecycle](./session.md).
 
 ## Story: Listen for a wake phrase only during the current authorized session
 

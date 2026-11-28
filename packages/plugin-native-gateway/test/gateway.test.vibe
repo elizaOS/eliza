@@ -1,0 +1,165 @@
+// spec/nativeGateway/index.md, "Story: Connect to the gateway I chose and isolate its replies"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  GatewayWeb,
+  assertRpcMethod,
+  createGatewayConnectionSession,
+  openGatewaySession,
+} from "../src/index.vibe"
+
+module wsServer {
+  import { createHash } from "node:crypto"
+  import http from "node:http"
+  import type { Duplex } from "node:stream"
+
+  const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+  function encodeTextFrame(text: string): Buffer {
+    const payload = Buffer.from(text, "utf8")
+    if (payload.length < 126) {
+      return Buffer.concat([Buffer.from([0x81, payload.length]), payload])
+    }
+    const header = Buffer.alloc(4)
+    header[0] = 0x81
+    header[1] = 126
+    header.writeUInt16BE(payload.length, 2)
+    return Buffer.concat([header, payload])
+  }
+
+  function decodeFrames(buf: Buffer): { messages: string[]; rest: Buffer } {
+    const messages: string[] = []
+    let offset = 0
+    while (offset + 2 <= buf.length) {
+      const opcode = buf[offset] & 0x0f
+      const masked = (buf[offset + 1] & 0x80) !== 0
+      let len = buf[offset + 1] & 0x7f
+      let head = offset + 2
+      if (len === 126) {
+        if (head + 2 > buf.length) break
+        len = buf.readUInt16BE(head)
+        head += 2
+      }
+      const maskLen = masked ? 4 : 0
+      if (head + maskLen + len > buf.length) break
+      const mask = masked ? buf.subarray(head, head + 4) : null
+      const data = Buffer.from(buf.subarray(head + maskLen, head + maskLen + len))
+      if (mask) {
+        for (let i = 0; i < data.length; i += 1) data[i] ^= mask[i % 4]
+      }
+      if (opcode === 0x01) messages.push(data.toString("utf8"))
+      offset = head + maskLen + len
+    }
+    return { messages, rest: buf.subarray(offset) }
+  }
+
+  export async function startLoopbackGateway(): Promise<{ url: string; close: () => Promise<void> }> {
+    const sockets = new Set<Duplex>()
+    const server = http.createServer((_req, res) => {
+      res.statusCode = 404
+      res.end()
+    })
+    server.on("upgrade", (req, socket) => {
+      const key = req.headers["sec-websocket-key"]
+      if (typeof key !== "string") {
+        socket.destroy()
+        return
+      }
+      const accept = createHash("sha1").update(key + WS_GUID).digest("base64")
+      socket.write([
+        "HTTP/1.1 101 Switching Protocols",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        `Sec-WebSocket-Accept: ${accept}`,
+        "",
+        "",
+      ].join("\r\n"))
+      sockets.add(socket)
+      let pending: Buffer = Buffer.alloc(0)
+      socket.on("data", (chunk: Buffer) => {
+        pending = Buffer.concat([pending, chunk])
+        const parsed = decodeFrames(pending)
+        pending = parsed.rest
+        for (const msg of parsed.messages) {
+          const frame = JSON.parse(msg) as { id?: string; method?: string; params?: Record<string, unknown> }
+          if (frame.method === "connect") {
+            socket.write(encodeTextFrame(JSON.stringify({
+              type: "res",
+              id: frame.id,
+              ok: true,
+              payload: { sessionId: "gw-sess-1", protocol: 3, role: "operator", methods: ["ping"], events: ["tick"] },
+            })))
+            socket.write(encodeTextFrame(JSON.stringify({ type: "event", event: "tick", seq: 1, payload: { ok: true } })))
+          } else {
+            socket.write(encodeTextFrame(JSON.stringify({
+              type: "res",
+              id: frame.id,
+              ok: true,
+              payload: { echo: frame.method, params: frame.params ?? {} },
+            })))
+          }
+        }
+      })
+      socket.on("close", () => sockets.delete(socket))
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    const addr = server.address()
+    const port = typeof addr === "object" && addr ? addr.port : 0
+    return {
+      url: `ws://127.0.0.1:${port}/`,
+      close: async () => {
+        for (const s of sockets) s.destroy()
+        await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())))
+      },
+    }
+  }
+}
+import { startLoopbackGateway } from wsServer
+
+describe('plugin-native-gateway (spec/nativeGateway/index.md, "Story: Connect to the gateway I chose and isolate its replies")', () => {
+  it('connects, sends RPC, receives realtime events, and disconnects over real loopback WebSocket (spec/nativeGateway/index.md, "Discovery does not create a connected gateway")', async () => {
+    assert.strictEqual(assertRpcMethod(" ping "), "ping")
+    assert.throws(() => assertRpcMethod("   "))
+
+    const gw = await startLoopbackGateway()
+    try {
+      const web = new GatewayWeb()
+      const discovered = await web.startDiscovery()
+      assert.deepStrictEqual(discovered.gateways, [])
+      const events: string[] = []
+      const handle = await web.addListener("gatewayEvent", (ev) => events.push(ev.event))
+      const conn = await web.connect({ url: gw.url, token: "secret" })
+      assert.strictEqual(conn.connected, true)
+      assert.strictEqual(conn.sessionId, "gw-sess-1")
+      assert.deepStrictEqual(await web.isConnected(), { connected: true })
+      const reply = await web.send({ method: "ping", params: { n: 1 } })
+      assert.strictEqual(reply.ok, true)
+      assert.deepStrictEqual(reply.payload, { echo: "ping", params: { n: 1 } })
+      assert.ok(events.includes("tick"))
+      assert.strictEqual(web.getLastSeq(), 1)
+      await handle.remove()
+      await web.disconnect()
+      assert.deepStrictEqual(await web.isConnected(), { connected: false })
+    } finally {
+      await gw.close()
+    }
+
+    const session = createGatewayConnectionSession()
+    assert.strictEqual(session.connect(""), false)
+    assert.strictEqual(session.connect("first"), true)
+    assert.strictEqual(session.confirm("first", 1, true), true)
+    assert.strictEqual(session.disconnect(), true)
+  })
+
+  it.effect('routes scoped RPCs through openGatewaySession over real loopback WebSocket (spec/nativeGateway/index.md, "Discovery does not create a connected gateway")', effect () => {
+    const gw = try Effect.promise(() => startLoopbackGateway())
+    try Effect.ensuring(
+      Effect.scoped(effect {
+        const web = new GatewayWeb()
+        const session = try openGatewaySession({ url: gw.url }, web)
+        const reply = try session.send({ method: "ping", params: { ok: true } })
+        try Effect.try(() => assert.strictEqual(reply.ok, true))
+      }),
+      Effect.promise(() => gw.close()),
+    )
+  })
+})

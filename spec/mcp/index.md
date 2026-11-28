@@ -1,5 +1,7 @@
 # MCP capabilities
 
+MCP servers expose tools and resources over validated transports with schema budgets, provider projections, and bounded argument retries. See also [schema worker lifecycle](./workerLifecycle.md).
+
 ## Story: Call an explicitly enabled server with valid tool arguments
 
 > As the owner, I can select an MCP server and invoke its advertised tools through the agent with input that satisfies the original schema.

@@ -1,0 +1,151 @@
+// spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
+module codec {
+  import { ElizaError } from "@elizaos/core"
+
+  export const RECORD_CODEC = "eliza-json-v1"
+  const TAG = "$eliza_sqlite_tag"
+  const decoder = new TextDecoder("utf-8", { fatal: true })
+  const prefix = Buffer.from(`eliza-record:${RECORD_CODEC}\n`, "utf8")
+
+  function serializeValue(value: unknown, seen: WeakSet<object>): unknown {
+    if (value === undefined) return { [TAG]: "undefined" }
+    if (value === null || typeof value === "boolean" || typeof value === "string") return value
+    if (typeof value === "number") {
+      if (Number.isNaN(value)) return { [TAG]: "number", v: "NaN" }
+      if (value === Infinity) return { [TAG]: "number", v: "Infinity" }
+      if (value === -Infinity) return { [TAG]: "number", v: "-Infinity" }
+      if (Object.is(value, -0)) return { [TAG]: "number", v: "-0" }
+      return value
+    }
+    if (typeof value === "bigint") return { [TAG]: "bigint", v: value.toString() }
+    if (typeof value === "function" || typeof value === "symbol") {
+      throw new Error(`Unsupported value type: ${typeof value}`)
+    }
+    if (typeof value !== "object") throw new Error("Unsupported value")
+    if (seen.has(value)) throw new Error("Circular references are not supported")
+    seen.add(value)
+    try {
+      if (value instanceof Date) return { [TAG]: "date", v: value.getTime() }
+      if (Buffer.isBuffer(value)) return { [TAG]: "buffer", v: value.toString("base64") }
+      if (value instanceof Uint8Array) {
+        return { [TAG]: "uint8array", v: Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString("base64") }
+      }
+      if (value instanceof RegExp) return { [TAG]: "regexp", s: value.source, f: value.flags }
+      if (value instanceof Map) {
+        const entries: Array<[unknown, unknown]> = []
+        for (const [k, v] of value.entries()) entries.push([serializeValue(k, seen), serializeValue(v, seen)])
+        return { [TAG]: "map", v: entries }
+      }
+      if (value instanceof Set) {
+        const items: unknown[] = []
+        for (const item of value.values()) items.push(serializeValue(item, seen))
+        return { [TAG]: "set", v: items }
+      }
+      if (Array.isArray(value)) return value.map((item) => serializeValue(item, seen))
+      const proto = Object.getPrototypeOf(value)
+      if (proto !== Object.prototype && proto !== null) {
+        throw new Error("Unsupported class instance in portable record")
+      }
+      const out: Record<string, unknown> = {}
+      const entries = Object.entries(value)
+      if (Object.prototype.hasOwnProperty.call(value, TAG)) {
+        const escaped: Record<string, unknown> = {}
+        for (const [k, v] of entries) escaped[k] = serializeValue(v, seen)
+        return { [TAG]: "escaped", v: escaped }
+      }
+      for (const [k, v] of entries) out[k] = serializeValue(v, seen)
+      return out
+    } finally {
+      seen.delete(value)
+    }
+  }
+
+  function decodeBase64Strict(encoded: unknown): Buffer {
+    if (typeof encoded !== "string") throw new Error("Invalid base64 payload")
+    const result = Buffer.from(encoded, "base64")
+    if (result.toString("base64") !== encoded) throw new Error("Non-canonical base64 payload")
+    return result
+  }
+
+  function deserializeValue(value: unknown): unknown {
+    if (value === null || typeof value !== "object") return value
+    if (Array.isArray(value)) return value.map((item) => deserializeValue(item))
+    const record = value as Record<string, unknown>
+    const tag = record[TAG]
+    if (typeof tag === "string") {
+      if (tag === "undefined") return undefined
+      if (tag === "number") {
+        if (record.v === "NaN") return Number.NaN
+        if (record.v === "Infinity") return Number.POSITIVE_INFINITY
+        if (record.v === "-Infinity") return Number.NEGATIVE_INFINITY
+        if (record.v === "-0") return -0
+        throw new Error("Invalid tagged number")
+      }
+      if (tag === "bigint" && typeof record.v === "string") return BigInt(record.v)
+      if (tag === "date" && typeof record.v === "number") return new Date(record.v)
+      if (tag === "buffer") return decodeBase64Strict(record.v)
+      if (tag === "uint8array") {
+        const buf = decodeBase64Strict(record.v)
+        return new Uint8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
+      }
+      if (tag === "regexp" && typeof record.s === "string" && typeof record.f === "string") {
+        return new RegExp(record.s, record.f)
+      }
+      if (tag === "map" && Array.isArray(record.v)) {
+        const map = new Map<unknown, unknown>()
+        for (const entry of record.v) {
+          if (!Array.isArray(entry) || entry.length !== 2) throw new Error("Invalid map entry")
+          map.set(deserializeValue(entry[0]), deserializeValue(entry[1]))
+        }
+        return map
+      }
+      if (tag === "set" && Array.isArray(record.v)) {
+        const set = new Set<unknown>()
+        for (const item of record.v) set.add(deserializeValue(item))
+        return set
+      }
+      if (tag === "escaped" && record.v !== null && typeof record.v === "object" && !Array.isArray(record.v)) {
+        const out: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(record.v as Record<string, unknown>)) out[k] = deserializeValue(v)
+        return out
+      }
+      throw new Error(`Unknown record tag: ${tag}`)
+    }
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(record)) out[k] = deserializeValue(v)
+    return out
+  }
+
+  export function encodeRecord(value: unknown): Uint8Array {
+    try {
+      const text = JSON.stringify(serializeValue(value, new WeakSet<object>()))
+      return Buffer.concat([prefix, Buffer.from(text, "utf8")])
+    } catch (cause) {
+      throw new ElizaError("Record contains a value unsupported by the portable SQLite codec", {
+        code: "SQLITE_RECORD_ENCODING_UNSUPPORTED",
+        cause,
+      })
+    }
+  }
+
+  export function decodeRecord(bytes: Uint8Array): unknown {
+    const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    if (buffer.length < prefix.length || !buffer.subarray(0, prefix.length).equals(prefix)) {
+      throw new ElizaError("Record codec is unknown; use a compatible database migration", {
+        code: "SQLITE_RECORD_CODEC_UNSUPPORTED",
+      })
+    }
+    try {
+      const parsed: unknown = JSON.parse(decoder.decode(buffer.subarray(prefix.length)))
+      return deserializeValue(parsed)
+    } catch (cause) {
+      throw new ElizaError("Portable SQLite record cannot be decoded", {
+        code: "SQLITE_RECORD_INVALID",
+        cause,
+      })
+    }
+  }
+}
+
+import { RECORD_CODEC, decodeRecord, encodeRecord } from codec
+export { RECORD_CODEC, decodeRecord, encodeRecord }

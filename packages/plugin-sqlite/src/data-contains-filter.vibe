@@ -1,0 +1,170 @@
+// spec/sqlite/index.md, "Story: Bound nested component-data filter walks against hostile payloads"
+import { MAX_FILTER_DEPTH, MAX_FILTER_NODES } from "../gen/sqlite.effect.vibe"
+
+module filterWalk {
+  import { ElizaError } from "@elizaos/core"
+  import { mayAdvanceFilterWalk } from "../gen/sqlite.effect.vibe"
+
+  export const INMEMORY_FILTER_UNBOUNDED = "INMEMORY_FILTER_UNBOUNDED"
+
+  interface WalkContext {
+    visits: number
+    visitingValues: WeakSet<object>
+    visitingFilters: WeakSet<object>
+  }
+
+  function failUnbounded(context: Record<string, unknown>): never {
+    throw new ElizaError("In-memory component filter exceeds the match walk budget", {
+      code: INMEMORY_FILTER_UNBOUNDED,
+      context,
+      severity: "fatal",
+    })
+  }
+
+  function reserve(ctx: WalkContext, depth: number, count: number, maxNodes: number): void {
+    if (!mayAdvanceFilterWalk(depth, ctx.visits, count, false)) {
+      failUnbounded({ visits: ctx.visits + count, maxNodes, depth })
+    }
+    ctx.visits += count
+  }
+
+  function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+  }
+
+  function ownEnumerableDataEntries(value: object): Array<[string, unknown]> {
+    const entries: Array<[string, unknown]> = []
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") continue
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      if (!descriptor?.enumerable) continue
+      if (!("value" in descriptor)) failUnbounded({ accessor: true, side: "filter" })
+      entries.push([key, descriptor.value])
+    }
+    return entries
+  }
+
+  function ownDataValue(value: object, key: string, side: "filter" | "value"): unknown {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor) return undefined
+    if (!("value" in descriptor)) failUnbounded({ accessor: true, side })
+    return descriptor.value
+  }
+
+  function arrayLength(value: unknown[], side: "filter" | "value"): number {
+    const length = ownDataValue(value, "length", side)
+    if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0) {
+      failUnbounded({ arrayLength: true, side })
+    }
+    return length
+  }
+
+  function enter(value: object, set: "visitingValues" | "visitingFilters", depth: number, ctx: WalkContext): void {
+    if (ctx[set].has(value) || !mayAdvanceFilterWalk(depth, ctx.visits, 0, false)) {
+      failUnbounded({ cycle: ctx[set].has(value), depth })
+    }
+    ctx[set].add(value)
+  }
+
+  function matchArrayContainment(
+    actual: unknown[],
+    expected: unknown[],
+    depth: number,
+    ctx: WalkContext,
+    maxDepth: number,
+    maxNodes: number,
+  ): boolean {
+    const expectedLength = arrayLength(expected, "filter")
+    const actualLength = arrayLength(actual, "value")
+    reserve(ctx, depth, expectedLength + actualLength, maxNodes)
+    for (let expectedIndex = 0; expectedIndex < expectedLength; expectedIndex += 1) {
+      const expectedDescriptor = Object.getOwnPropertyDescriptor(expected, String(expectedIndex))
+      if (!expectedDescriptor) continue
+      if (!("value" in expectedDescriptor)) failUnbounded({ accessor: true, side: "filter" })
+      const expectedItem = expectedDescriptor.value
+      let found = false
+      for (let actualIndex = 0; actualIndex < actualLength; actualIndex += 1) {
+        const actualDescriptor = Object.getOwnPropertyDescriptor(actual, String(actualIndex))
+        if (!actualDescriptor) continue
+        if (!("value" in actualDescriptor)) failUnbounded({ accessor: true, side: "value" })
+        reserve(ctx, depth, 1, maxNodes)
+        const actualItem = actualDescriptor.value
+        const matched = isPlainObject(expectedItem)
+          ? dataContainsFilterInner(actualItem, expectedItem, depth + 1, ctx, maxDepth, maxNodes, true)
+          : actualItem === expectedItem
+        if (matched) {
+          found = true
+          break
+        }
+      }
+      if (!found) return false
+    }
+    return true
+  }
+
+  function dataContainsFilterInner(
+    value: unknown,
+    filterObject: Record<string, unknown>,
+    depth: number,
+    ctx: WalkContext,
+    maxDepth: number,
+    maxNodes: number,
+    visitAlreadyReserved = false,
+  ): boolean {
+    if (!mayAdvanceFilterWalk(depth, ctx.visits, visitAlreadyReserved ? 0 : 1, false)) {
+      failUnbounded({ depth, max: maxDepth, visits: ctx.visits, maxNodes })
+    }
+    if (!visitAlreadyReserved) ctx.visits += 1
+    if (!isPlainObject(value)) return false
+    enter(value, "visitingValues", depth, ctx)
+    enter(filterObject, "visitingFilters", depth, ctx)
+    try {
+      const expectedEntries = ownEnumerableDataEntries(filterObject)
+      reserve(ctx, depth, expectedEntries.length, maxNodes)
+      for (const [key, expected] of expectedEntries) {
+        const actual = ownDataValue(value, key, "value")
+        if (isPlainObject(expected)) {
+          if (!dataContainsFilterInner(actual, expected, depth + 1, ctx, maxDepth, maxNodes, true)) return false
+          continue
+        }
+        if (Array.isArray(expected)) {
+          if (!Array.isArray(actual)) return false
+          if (!matchArrayContainment(actual, expected, depth, ctx, maxDepth, maxNodes)) return false
+          continue
+        }
+        if (actual !== expected) return false
+      }
+      return true
+    } finally {
+      ctx.visitingFilters.delete(filterObject)
+      ctx.visitingValues.delete(value)
+    }
+  }
+
+  export function runDataContainsFilter(
+    value: unknown,
+    filterObject: Record<string, unknown> | undefined,
+    maxDepth: number,
+    maxNodes: number,
+  ): boolean {
+    if (!filterObject) return true
+    return dataContainsFilterInner(
+      value,
+      filterObject,
+      0,
+      { visits: 0, visitingValues: new WeakSet<object>(), visitingFilters: new WeakSet<object>() },
+      maxDepth,
+      maxNodes,
+    )
+  }
+}
+
+import { INMEMORY_FILTER_UNBOUNDED, runDataContainsFilter } from filterWalk
+
+export const MAX_INMEMORY_FILTER_DEPTH = MAX_FILTER_DEPTH
+export const MAX_INMEMORY_FILTER_NODES = MAX_FILTER_NODES
+export { INMEMORY_FILTER_UNBOUNDED }
+
+export function dataContainsFilter(value: unknown, filterObject: Record<string, unknown> | undefined): boolean {
+  return runDataContainsFilter(value, filterObject, MAX_FILTER_DEPTH, MAX_FILTER_NODES)
+}

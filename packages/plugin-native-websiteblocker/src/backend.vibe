@@ -1,0 +1,137 @@
+// spec/nativeWebsiteblocker/index.md, "Story: See which websites my device is actually blocking"
+import type {
+  StartWebsiteBlockOptions,
+  WebsiteBlockerEngine,
+  WebsiteBlockerPermissionResult,
+  WebsiteBlockerPlugin,
+  WebsiteBlockerStatus,
+} from "./native-contract.vibe"
+
+export type SelfControlMatchMode = "exact" | "subdomain"
+
+export interface SelfControlStatus {
+  available: boolean
+  active: boolean
+  hostsFilePath: string | null
+  startedAt: string | null
+  endsAt: string | null
+  websites: string[]
+  blockedWebsites: string[]
+  allowedWebsites: string[]
+  requestedWebsites: string[]
+  matchMode: SelfControlMatchMode
+  managedBy: string | null
+  metadata: Record<string, unknown> | null
+  scheduledByAgentId: string | null
+  canUnblockEarly: boolean
+  requiresElevation: boolean
+  engine: WebsiteBlockerEngine
+  platform: string
+  supportsElevationPrompt: boolean
+  elevationPromptMethod: "osascript" | "pkexec" | "powershell-runas" | "vpn-consent" | "system-settings" | null
+  reason?: string
+}
+
+export interface SelfControlPermissionState {
+  id: "website-blocking"
+  status: "granted" | "denied" | "not-determined" | "not-applicable"
+  lastChecked: number
+  canRequest: boolean
+  reason?: string
+  hostsFilePath?: string | null
+  supportsElevationPrompt?: boolean
+}
+
+export interface SelfControlBlockRequest {
+  websites: string[]
+  durationMinutes: number | null
+  metadata?: Record<string, unknown> | null
+  scheduledByAgentId?: string | null
+}
+
+export type BackendStartBlockResult =
+  | { success: true; endsAt: string | null }
+  | { success: false; error: string; status?: SelfControlStatus }
+
+export type BackendStopBlockResult =
+  | { success: true; removed: boolean; status: SelfControlStatus }
+  | { success: false; error: string; status?: SelfControlStatus }
+
+export interface NativeWebsiteBlockerBackend {
+  getStatus(): Promise<SelfControlStatus>
+  startBlock(request: SelfControlBlockRequest): Promise<BackendStartBlockResult>
+  stopBlock(): Promise<BackendStopBlockResult>
+  getPermissionState(): Promise<SelfControlPermissionState>
+  requestPermission(): Promise<SelfControlPermissionState>
+}
+
+function toElevationMethod(method: WebsiteBlockerStatus["elevationPromptMethod"]): SelfControlStatus["elevationPromptMethod"] {
+  return method === "osascript" || method === "pkexec" || method === "powershell-runas" || method === "vpn-consent" || method === "system-settings"
+    ? method
+    : null
+}
+
+function toSelfControlStatus(status: WebsiteBlockerStatus): SelfControlStatus {
+  return {
+    available: status.available,
+    active: status.active,
+    hostsFilePath: status.hostsFilePath,
+    startedAt: null,
+    endsAt: status.endsAt,
+    websites: status.websites,
+    blockedWebsites: status.blockedWebsites,
+    allowedWebsites: status.allowedWebsites,
+    requestedWebsites: status.requestedWebsites,
+    matchMode: status.matchMode,
+    managedBy: null,
+    metadata: null,
+    scheduledByAgentId: null,
+    canUnblockEarly: status.canUnblockEarly,
+    requiresElevation: status.requiresElevation,
+    engine: status.engine,
+    platform: status.platform,
+    supportsElevationPrompt: status.supportsElevationPrompt,
+    elevationPromptMethod: toElevationMethod(status.elevationPromptMethod),
+    reason: status.reason,
+  }
+}
+
+function toSelfControlPermissionState(permission: WebsiteBlockerPermissionResult): SelfControlPermissionState {
+  return {
+    id: "website-blocking",
+    status: permission.status,
+    lastChecked: Date.now(),
+    canRequest: permission.canRequest,
+    reason: permission.reason,
+    supportsElevationPrompt: permission.canRequest,
+  }
+}
+
+export function createNativeWebsiteBlockerBackend(plugin: WebsiteBlockerPlugin): NativeWebsiteBlockerBackend {
+  return {
+    async getStatus() {
+      return toSelfControlStatus(await plugin.getStatus())
+    },
+    async startBlock(request) {
+      const options: StartWebsiteBlockOptions = {
+        websites: request.websites,
+        durationMinutes: request.durationMinutes,
+      }
+      const result = await plugin.startBlock(options)
+      if (result.success) return { success: true, endsAt: result.endsAt }
+      return { success: false, error: result.error }
+    },
+    async stopBlock() {
+      const result = await plugin.stopBlock()
+      const status = toSelfControlStatus(await plugin.getStatus())
+      if (result.success) return { success: true, removed: result.removed, status }
+      return { success: false, error: result.error, status }
+    },
+    async getPermissionState() {
+      return toSelfControlPermissionState(await plugin.checkPermissions())
+    },
+    async requestPermission() {
+      return toSelfControlPermissionState(await plugin.requestPermissions())
+    },
+  }
+}

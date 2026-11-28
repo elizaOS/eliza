@@ -1,0 +1,315 @@
+// spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+import { getOcrWithCoordsService, type OcrWithCoordsService } from "./ocr.vibe"
+import { tileScreenshot } from "./screen-tiler.vibe"
+import type { ScreenTile } from "./types.vibe"
+
+module augmenterNode {
+  import { createHash } from "node:crypto"
+  import sharp from "sharp"
+
+  /** @throws {never} */
+  export function hashTileBytes(bytes: Uint8Array): bigint {
+    const digest = createHash("sha256").update(bytes).digest()
+    return digest.readBigUInt64BE(0)
+  }
+
+  /** @throws {never} */
+  export function decodeBase64(value: string): Uint8Array {
+    return new Uint8Array(Buffer.from(value, "base64"))
+  }
+
+  export async function normalizeToPng(bytes: Uint8Array): Promise<Uint8Array> {
+    if (
+      bytes.byteLength >= 8 &&
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4e &&
+      bytes[3] === 0x47
+    ) {
+      return bytes
+    }
+    const png = await sharp(Buffer.from(bytes)).png().toBuffer()
+    return new Uint8Array(png)
+  }
+}
+import { decodeBase64, hashTileBytes, normalizeToPng } from augmenterNode
+
+export const APPROX_TOKENS_PER_TILE = 256
+
+export interface DescribedTile {
+  id: string
+  displayId: string
+  sourceX: number
+  sourceY: number
+  sourceW: number
+  sourceH: number
+  description: string
+  cached: boolean
+}
+
+export interface DirtyTileElement {
+  id: string
+  kind: string
+  desc: string
+  bbox: [number, number, number, number]
+  displayId: number
+}
+
+export interface DirtyTileDescription {
+  tiles: DescribedTile[]
+  vlmScene: string
+  elements: DirtyTileElement[]
+}
+
+export interface DirtyTileStats {
+  tilesDescribed: number
+  tilesSkipped: number
+  describeCallsSaved: number
+  approxTokensSaved: number
+}
+
+export interface DirtyTileDescriberDeps {
+  hashTile?: (png: Uint8Array) => bigint | null
+  describeTile: (tile: ScreenTile) => Promise<string>
+  maxEdge?: number
+  overlapFraction?: number
+  approxTokensPerTile?: number
+}
+
+function composeVlmScene(tiles: ReadonlyArray<DescribedTile>): string {
+  return tiles
+    .map((t) => t.description.trim())
+    .filter((text) => text.length > 0)
+    .join("\n")
+}
+
+export class DirtyTileDescriber {
+  private readonly cache = new Map<string, { hash: bigint | null; description: string }>()
+  private readonly hashTileFn: (png: Uint8Array) => bigint | null
+  private stats: DirtyTileStats = {
+    tilesDescribed: 0,
+    tilesSkipped: 0,
+    describeCallsSaved: 0,
+    approxTokensSaved: 0,
+  }
+
+  constructor(private readonly deps: DirtyTileDescriberDeps) {
+    this.hashTileFn = deps.hashTile ?? hashTileBytes
+  }
+
+  getStats(): DirtyTileStats {
+    return { ...this.stats }
+  }
+
+  async describe(input: {
+    displayId: number
+    width: number
+    height: number
+    pngBytes: Uint8Array
+  }): Promise<DirtyTileDescription> {
+    const tiles = await tileScreenshot(
+      {
+        displayId: String(input.displayId),
+        width: input.width,
+        height: input.height,
+        pngBytes: input.pngBytes,
+      },
+      {
+        maxEdge: this.deps.maxEdge ?? 1280,
+        overlapFraction: this.deps.overlapFraction ?? 0.12,
+      },
+    )
+    const tokensPerTile = this.deps.approxTokensPerTile ?? APPROX_TOKENS_PER_TILE
+    const seen = new Set<string>()
+    const described: DescribedTile[] = []
+
+    for (const tile of tiles) {
+      seen.add(tile.id)
+      const hash = this.hashTileFn(tile.pngBytes)
+      const prior = this.cache.get(tile.id)
+      const reusable =
+        prior !== undefined &&
+        prior.hash !== null &&
+        hash !== null &&
+        prior.hash === hash
+      if (reusable) {
+        this.stats.tilesSkipped += 1
+        this.stats.describeCallsSaved += 1
+        this.stats.approxTokensSaved += tokensPerTile
+        described.push(this.toDescribed(tile, prior.description, true))
+        continue
+      }
+      const description = await this.deps.describeTile(tile)
+      this.stats.tilesDescribed += 1
+      if (description.trim().length > 0) {
+        this.cache.set(tile.id, { hash, description })
+      }
+      described.push(this.toDescribed(tile, description, false))
+    }
+
+    for (const id of this.cache.keys()) {
+      if (!seen.has(id)) this.cache.delete(id)
+    }
+
+    return {
+      tiles: described,
+      vlmScene: composeVlmScene(described),
+      elements: described
+        .filter((t) => t.description.trim().length > 0)
+        .map((t) => ({
+          id: t.id,
+          kind: "tile",
+          desc: t.description,
+          bbox: [t.sourceX, t.sourceY, t.sourceW, t.sourceH] as [number, number, number, number],
+          displayId: input.displayId,
+        })),
+    }
+  }
+
+  private toDescribed(tile: ScreenTile, description: string, cached: boolean): DescribedTile {
+    return {
+      id: tile.id,
+      displayId: tile.displayId,
+      sourceX: tile.sourceX,
+      sourceY: tile.sourceY,
+      sourceW: tile.sourceW,
+      sourceH: tile.sourceH,
+      description,
+      cached,
+    }
+  }
+}
+
+export interface FusedVisionSignals {
+  ocrText?: string
+  objects?: string
+  faces?: string
+}
+
+export type AugmenterImageInput =
+  | { kind: "bytes"; bytes: Uint8Array; mimeType?: string }
+  | { kind: "base64"; base64: string; mimeType?: string }
+  | { kind: "dataUrl"; dataUrl: string }
+  | { kind: "url"; url: string; mimeType?: string }
+
+export interface VisionAugmentInput {
+  image: AugmenterImageInput
+  basePrompt?: string
+}
+
+export interface VisionAugmentOutput {
+  prompt: string
+  fused: FusedVisionSignals
+}
+
+export interface VisionAugmenterDetectors {
+  getOcr?: () => OcrWithCoordsService | null
+  detectObjects?: (
+    imageBytes: Uint8Array,
+  ) => Promise<ReadonlyArray<{ type: string; confidence: number }>>
+  detectFaces?: (imageBytes: Uint8Array) => Promise<number>
+}
+
+const DEFAULT_DESCRIBE_PROMPT = "Describe what is in this image."
+const FUSED_CONTEXT_MARKER = "Detected context — pre-extracted from this image"
+
+export function isMeaningfulOcrText(text: string): boolean {
+  return (text.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= 2
+}
+
+export function buildAugmentedPrompt(
+  basePrompt: string | undefined,
+  fused: FusedVisionSignals,
+): string {
+  const base = basePrompt?.trim() || DEFAULT_DESCRIBE_PROMPT
+  const lines: string[] = []
+  if (fused.ocrText) lines.push(`Text (OCR): ${fused.ocrText}`)
+  if (fused.objects) lines.push(`Objects: ${fused.objects}`)
+  if (fused.faces) lines.push(`Faces: ${fused.faces}`)
+  if (lines.length === 0) return base
+  return [
+    base,
+    "",
+    `${FUSED_CONTEXT_MARKER} to ground your answer. Use these signals; correct them only if the image clearly contradicts them.`,
+    ...lines.map((line) => `- ${line}`),
+  ].join("\n")
+}
+
+function resolveImageBytes(image: AugmenterImageInput): Uint8Array | null {
+  switch (image.kind) {
+    case "bytes":
+      return image.bytes
+    case "base64":
+      return decodeBase64(image.base64)
+    case "dataUrl": {
+      const comma = image.dataUrl.indexOf(",")
+      if (comma < 0) return null
+      return decodeBase64(image.dataUrl.slice(comma + 1))
+    }
+    case "url":
+      return null
+  }
+}
+
+export class FusedVisionContextAugmenter {
+  readonly name = "vision-fused-context"
+
+  constructor(private readonly deps: VisionAugmenterDetectors = {}) {}
+
+  async augmentImagePrompt(input: VisionAugmentInput): Promise<VisionAugmentOutput | null> {
+    if (input.basePrompt?.includes(FUSED_CONTEXT_MARKER)) return null
+    const bytes = resolveImageBytes(input.image)
+    if (!bytes || bytes.byteLength === 0) return null
+
+    const fused: FusedVisionSignals = {}
+    const ocr = (this.deps.getOcr ?? getOcrWithCoordsService)()
+    if (ocr) {
+      try {
+        const res = await ocr.describe({
+          displayId: "vision-describe",
+          sourceX: 0,
+          sourceY: 0,
+          pngBytes: await normalizeToPng(bytes),
+        })
+        const lines = res.blocks.map((b) => b.text.trim()).filter(isMeaningfulOcrText)
+        if (lines.length > 0) {
+          fused.ocrText = lines.map((t) => `"${t}"`).join(", ")
+        }
+      } catch {
+        fused.ocrText = undefined
+      }
+    }
+
+    if (this.deps.detectObjects) {
+      try {
+        const objs = await this.deps.detectObjects(bytes)
+        if (objs.length > 0) {
+          fused.objects = objs.map((o) => `${o.type} (${o.confidence.toFixed(2)})`).join(", ")
+        }
+      } catch {
+        fused.objects = undefined
+      }
+    }
+
+    if (this.deps.detectFaces) {
+      try {
+        const count = await this.deps.detectFaces(bytes)
+        if (count > 0) fused.faces = `${count} ${count === 1 ? "face" : "faces"}`
+      } catch {
+        fused.faces = undefined
+      }
+    }
+
+    if (!fused.ocrText && !fused.objects && !fused.faces) return null
+    return {
+      prompt: buildAugmentedPrompt(input.basePrompt, fused),
+      fused,
+    }
+  }
+}
+
+export function createDefaultVisionAugmenter(
+  deps?: VisionAugmenterDetectors,
+): FusedVisionContextAugmenter {
+  return new FusedVisionContextAugmenter(deps)
+}

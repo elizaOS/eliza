@@ -1,0 +1,320 @@
+// spec/nativeGateway/index.md, "Story: Connect to the gateway I chose and isolate its replies"
+import type { PluginListenerHandle } from "@capacitor/core"
+import type {
+  GatewayConnectOptions,
+  GatewayConnectResult,
+  GatewayDiscoveryEvent,
+  GatewayDiscoveryOptions,
+  GatewayDiscoveryResult,
+  GatewayErrorEvent,
+  GatewayEvent,
+  GatewayPlugin,
+  GatewaySendOptions,
+  GatewaySendResult,
+  GatewayStateEvent,
+  JsonValue,
+} from "./native-contract.vibe"
+
+interface PendingRequest {
+  resolve: (result: GatewaySendResult) => void
+  reject: (error: Error) => void
+}
+
+module gatewayEdge {
+  import { randomUUID } from "node:crypto"
+
+  export function failGateway(message: string): never {
+    throw new Error(message)
+  }
+
+  export function nextRequestId(): string {
+    return randomUUID()
+  }
+
+  export function parseJsonMessage(raw: string): Record<string, unknown> | null {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null
+    } catch {
+      return null
+    }
+  }
+
+  export function parseWsUrl(raw: string): string {
+    const parsed = new URL(raw)
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+      throw new Error(`Gateway URL must use ws:// or wss://: ${raw}`)
+    }
+    return parsed.toString()
+  }
+
+  export function createSocket(url: string): WebSocket {
+    return new WebSocket(url)
+  }
+}
+import { createSocket, failGateway, nextRequestId, parseJsonMessage, parseWsUrl } from gatewayEdge
+
+export function assertRpcMethod(method: unknown): string {
+  if (typeof method !== "string" || method.trim().length === 0) {
+    failGateway("Gateway RPC method must be a non-empty string")
+  }
+  return method.trim()
+}
+
+const WS_CONNECTING = 0
+const WS_OPEN = 1
+
+export class GatewayWeb implements GatewayPlugin {
+  private ws: WebSocket | null = null
+  private readonly listeners = new Map<string, Array<(event: unknown) => void>>()
+  private options: GatewayConnectOptions | null = null
+  private closed = false
+  private handshakeComplete = false
+  private sessionId: string | null = null
+  private protocol: number | null = null
+  private role: string | null = null
+  private lastSeq: number | null = null
+  private readonly pending = new Map<string, PendingRequest>()
+  private connectResolve: ((result: GatewayConnectResult) => void) | null = null
+  private connectReject: ((error: Error) => void) | null = null
+
+  async startDiscovery(_options?: GatewayDiscoveryOptions): Promise<GatewayDiscoveryResult> {
+    return { gateways: [], status: "Web platform does not support mDNS gateway discovery" }
+  }
+
+  async stopDiscovery(): Promise<void> {}
+
+  async getDiscoveredGateways(): Promise<GatewayDiscoveryResult> {
+    return { gateways: [], status: "Web platform does not support mDNS gateway discovery" }
+  }
+
+  async connect(options: GatewayConnectOptions): Promise<GatewayConnectResult> {
+    const normalizedUrl = parseWsUrl(options.url)
+    await this.disconnect()
+    this.options = { ...options, url: normalizedUrl }
+    this.closed = false
+    this.handshakeComplete = false
+    this.notifyStateChange("connecting")
+
+    return await new Promise<GatewayConnectResult>((resolve, reject) => {
+      this.connectResolve = resolve
+      this.connectReject = reject
+      const socket = createSocket(normalizedUrl)
+      this.ws = socket
+
+      socket.addEventListener("open", () => {
+        if (this.ws !== socket || this.closed) return
+        const id = nextRequestId()
+        const frame = {
+          type: "req",
+          id,
+          method: "connect",
+          params: {
+            minProtocol: 3,
+            maxProtocol: 3,
+            client: {
+              id: options.clientName ?? "eliza-web",
+              version: options.clientVersion ?? "4.0.0-alpha.0",
+              platform: "web",
+              mode: "web",
+            },
+            role: options.role ?? "operator",
+            scopes: options.scopes ?? [],
+            auth: options.token || options.password ? { token: options.token, password: options.password } : undefined,
+          },
+        }
+        this.pending.set(id, {
+          resolve: (res) => {
+            if (!res.ok) {
+              this.failConnect(new Error(res.error?.message ?? "Gateway handshake rejected"))
+              return
+            }
+            const payload = (res.payload ?? {}) as Record<string, unknown>
+            this.handshakeComplete = true
+            this.sessionId = typeof payload.sessionId === "string" ? payload.sessionId : id
+            this.protocol = typeof payload.protocol === "number" ? payload.protocol : 3
+            this.role = typeof payload.role === "string" ? payload.role : (options.role ?? "operator")
+            const okResolve = this.connectResolve
+            this.connectResolve = null
+            this.connectReject = null
+            this.notifyStateChange("connected")
+            okResolve?.({
+              connected: true,
+              sessionId: this.sessionId,
+              protocol: this.protocol,
+              role: this.role,
+              methods: Array.isArray(payload.methods) ? (payload.methods as string[]) : [],
+              events: Array.isArray(payload.events) ? (payload.events as string[]) : [],
+              scopes: Array.isArray(payload.scopes) ? (payload.scopes as string[]) : [],
+            })
+          },
+          reject: (err) => this.failConnect(err),
+        })
+        socket.send(JSON.stringify(frame))
+      })
+
+      socket.addEventListener("message", (event) => {
+        if (this.ws !== socket) return
+        this.handleMessage(typeof event.data === "string" ? event.data : String(event.data))
+      })
+
+      socket.addEventListener("error", () => {
+        if (this.ws !== socket) return
+        if (!this.handshakeComplete) {
+          this.failConnect(new Error("WebSocket connection error"))
+        }
+      })
+
+      socket.addEventListener("close", (event) => {
+        if (this.ws !== socket) return
+        this.handleClose(event.code, event.reason || "Connection closed")
+      })
+    })
+  }
+
+  private handleMessage(raw: string): void {
+    const frame = parseJsonMessage(raw)
+    if (!frame) return
+    if (frame.type === "res" && typeof frame.id === "string") {
+      const pending = this.pending.get(frame.id)
+      if (!pending) return
+      this.pending.delete(frame.id)
+      const result: GatewaySendResult = { ok: Boolean(frame.ok) }
+      if (frame.payload !== undefined) result.payload = frame.payload as JsonValue
+      if (frame.error !== undefined) result.error = frame.error as GatewaySendResult["error"]
+      pending.resolve(result)
+      return
+    }
+    if (frame.type === "event" && typeof frame.event === "string") {
+      const seq = typeof frame.seq === "number" ? frame.seq : undefined
+      if (seq !== undefined) this.lastSeq = seq
+      const ev: GatewayEvent = {
+        event: frame.event,
+        payload: frame.payload as JsonValue | undefined,
+        seq,
+      }
+      this.notifyListeners("gatewayEvent", ev)
+    }
+  }
+
+  private failConnect(error: Error): void {
+    const reject = this.connectReject
+    this.connectResolve = null
+    this.connectReject = null
+    const socket = this.ws
+    this.ws = null
+    if (socket && socket.readyState === WS_OPEN) socket.close(1000, error.message)
+    this.rejectPending(error)
+    this.resetSession()
+    this.notifyStateChange("disconnected", error.message)
+    reject?.(error)
+  }
+
+  private handleClose(code: number, reason: string): void {
+    this.ws = null
+    if (!this.handshakeComplete) {
+      this.failConnect(new Error(`Connection failed: ${reason}`))
+      return
+    }
+    this.rejectPending(new Error(`Connection closed: ${reason}`))
+    this.resetSession()
+    this.notifyStateChange("disconnected", reason)
+    if (!this.closed) {
+      const errEv: GatewayErrorEvent = { message: `Connection lost: ${reason}`, code: String(code), willRetry: false }
+      this.notifyListeners("error", errEv)
+    }
+  }
+
+  private rejectPending(error: Error): void {
+    const entries = [...this.pending.values()]
+    this.pending.clear()
+    for (const entry of entries) entry.reject(error)
+  }
+
+  private resetSession(): void {
+    this.sessionId = null
+    this.protocol = null
+    this.role = null
+    this.lastSeq = null
+  }
+
+  private notifyStateChange(state: GatewayStateEvent["state"], reason?: string): void {
+    this.notifyListeners("stateChange", { state, reason } satisfies GatewayStateEvent)
+  }
+
+  async disconnect(): Promise<void> {
+    this.closed = true
+    this.handshakeComplete = false
+    const socket = this.ws
+    this.ws = null
+    this.rejectPending(new Error("Client disconnect"))
+    if (socket && (socket.readyState === WS_OPEN || socket.readyState === WS_CONNECTING)) {
+      socket.close(1000, "Client disconnect")
+    }
+    this.resetSession()
+    this.notifyStateChange("disconnected", "Client disconnect")
+  }
+
+  async isConnected(): Promise<{ connected: boolean }> {
+    return { connected: this.ws !== null && this.ws.readyState === WS_OPEN && this.handshakeComplete }
+  }
+
+  async send(options: GatewaySendOptions): Promise<GatewaySendResult> {
+    const method = assertRpcMethod(options.method)
+    if (!this.ws || this.ws.readyState !== WS_OPEN || !this.handshakeComplete) {
+      return { ok: false, error: { code: "NOT_CONNECTED", message: "Not connected to gateway" } }
+    }
+    const id = nextRequestId()
+    return await new Promise<GatewaySendResult>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject })
+      this.ws?.send(JSON.stringify({ type: "req", id, method, params: options.params ?? {} }))
+    })
+  }
+
+  async getConnectionInfo(): Promise<{
+    url: string | null
+    sessionId: string | null
+    protocol: number | null
+    role: string | null
+  }> {
+    return {
+      url: this.options?.url ?? null,
+      sessionId: this.sessionId,
+      protocol: this.protocol,
+      role: this.role,
+    }
+  }
+
+  getLastSeq(): number | null {
+    return this.lastSeq
+  }
+
+  private notifyListeners(eventName: string, data: unknown): void {
+    const bucket = this.listeners.get(eventName)
+    if (!bucket) return
+    for (const cb of bucket) cb(data)
+  }
+
+  addListener(eventName: "gatewayEvent", listenerFunc: (event: GatewayEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "stateChange", listenerFunc: (event: GatewayStateEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "error", listenerFunc: (event: GatewayErrorEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "discovery", listenerFunc: (event: GatewayDiscoveryEvent) => void): Promise<PluginListenerHandle>
+  async addListener(eventName: string, listenerFunc: (event: never) => void): Promise<PluginListenerHandle> {
+    const cb = listenerFunc as unknown as (event: unknown) => void
+    const bucket = this.listeners.get(eventName) ?? []
+    bucket.push(cb)
+    this.listeners.set(eventName, bucket)
+    return {
+      remove: async () => {
+        const list = this.listeners.get(eventName)
+        if (!list) return
+        const idx = list.indexOf(cb)
+        if (idx >= 0) list.splice(idx, 1)
+      },
+    }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    this.listeners.clear()
+  }
+}

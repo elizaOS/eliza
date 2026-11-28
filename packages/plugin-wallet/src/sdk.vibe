@@ -1,0 +1,501 @@
+// spec/wallet/index.md, "Story: Enforce exact spend limits when making a payment"; spec/wallet/index.md, "A chain amount compares exactly at every digit"
+import { ElizaError } from "@elizaos/core"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { atMostAtomic, validAtomicAmount, walletPaymentFits } from "../gen/wallet.effect.vibe"
+import { raise, sha256Hex, toBigInt } from "./policy.vibe"
+
+export const NATIVE_TOKEN = "0x0000000000000000000000000000000000000000"
+
+export const AgentAccountFactoryV2Abi = [
+  "function createAccount(address owner, address operator, uint256 salt) returns (address)",
+  "function getAccount(address owner, uint256 salt) view returns (address)",
+] as const
+
+export const AgentAccountV2Abi = [
+  "function agentExecute(address to, uint256 value, bytes data) returns (bytes)",
+  "function approveTransaction(uint256 txId)",
+  "function cancelTransaction(uint256 txId)",
+  "function setSpendPolicy(uint256 perTxLimit, uint256 dailyLimit)",
+  "function pendingNonce() view returns (uint256)",
+] as const
+
+export interface TokenEntry {
+  readonly symbol: string
+  readonly name: string
+  readonly address: string
+  readonly decimals: number
+  readonly chainId: number | string
+  readonly isNative?: boolean
+  readonly isStablecoin?: boolean
+}
+
+export class TokenRegistry {
+  private readonly entries = new Map<string, TokenEntry>()
+
+  constructor(initial: readonly TokenEntry[] = []) {
+    for (const entry of initial) this.add(entry)
+  }
+
+  add(entry: TokenEntry): void {
+    this.entries.set(`${entry.chainId}:${entry.symbol.toUpperCase()}`, entry)
+    this.entries.set(`${entry.chainId}:${entry.address.toLowerCase()}`, entry)
+  }
+
+  find(chainId: number | string, symbolOrAddress: string): TokenEntry | undefined {
+    return this.entries.get(`${chainId}:${symbolOrAddress.toUpperCase()}`)
+      ?? this.entries.get(`${chainId}:${symbolOrAddress.toLowerCase()}`)
+  }
+
+  list(chainId?: number | string): TokenEntry[] {
+    const seen = new Set<string>()
+    const out: TokenEntry[] = []
+    for (const entry of this.entries.values()) {
+      if (chainId !== undefined && String(entry.chainId) !== String(chainId)) continue
+      const key = `${entry.chainId}:${entry.address.toLowerCase()}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(entry)
+    }
+    return out
+  }
+}
+
+export const USDC_ADDRESSES: Readonly<Record<string, string>> = {
+  ethereum: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  arbitrum: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  optimism: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+  polygon: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+  solana: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+}
+
+export const SOLANA_TOKENS: Readonly<Record<string, string>> = {
+  SOL: "So11111111111111111111111111111111111111112",
+  USDC: USDC_ADDRESSES.solana,
+  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+}
+
+export const SOLANA_TOKEN_DECIMALS: Readonly<Record<string, number>> = {
+  SOL: 9,
+  USDC: 6,
+  USDT: 6,
+}
+
+export const DEFAULT_SUPPORTED_NETWORKS = ["ethereum", "base", "arbitrum", "optimism", "polygon", "solana"] as const
+
+export const ETHEREUM_REGISTRY = new TokenRegistry([
+  { symbol: "ETH", name: "Ether", address: NATIVE_TOKEN, decimals: 18, chainId: 1, isNative: true },
+  { symbol: "USDC", name: "USD Coin", address: USDC_ADDRESSES.ethereum, decimals: 6, chainId: 1, isStablecoin: true },
+])
+
+export const BASE_REGISTRY = new TokenRegistry([
+  { symbol: "ETH", name: "Ether", address: NATIVE_TOKEN, decimals: 18, chainId: 8453, isNative: true },
+  { symbol: "USDC", name: "USD Coin", address: USDC_ADDRESSES.base, decimals: 6, chainId: 8453, isStablecoin: true },
+])
+
+export const ARBITRUM_REGISTRY = new TokenRegistry([
+  { symbol: "ETH", name: "Ether", address: NATIVE_TOKEN, decimals: 18, chainId: 42161, isNative: true },
+  { symbol: "USDC", name: "USD Coin", address: USDC_ADDRESSES.arbitrum, decimals: 6, chainId: 42161, isStablecoin: true },
+])
+
+export const POLYGON_REGISTRY = new TokenRegistry([
+  { symbol: "POL", name: "POL", address: NATIVE_TOKEN, decimals: 18, chainId: 137, isNative: true },
+  { symbol: "USDC", name: "USD Coin", address: USDC_ADDRESSES.polygon, decimals: 6, chainId: 137, isStablecoin: true },
+])
+
+export const OPTIMISM_REGISTRY = new TokenRegistry([
+  { symbol: "ETH", name: "Ether", address: NATIVE_TOKEN, decimals: 18, chainId: 10, isNative: true },
+  { symbol: "USDC", name: "USD Coin", address: USDC_ADDRESSES.optimism, decimals: 6, chainId: 10, isStablecoin: true },
+])
+
+const globalRegistry = new TokenRegistry([
+  ...ETHEREUM_REGISTRY.list(),
+  ...BASE_REGISTRY.list(),
+  ...ARBITRUM_REGISTRY.list(),
+  ...POLYGON_REGISTRY.list(),
+  ...OPTIMISM_REGISTRY.list(),
+  { symbol: "SOL", name: "Solana", address: SOLANA_TOKENS.SOL, decimals: 9, chainId: "solana", isNative: true },
+  { symbol: "USDC", name: "USD Coin", address: SOLANA_TOKENS.USDC, decimals: 6, chainId: "solana", isStablecoin: true },
+])
+
+export function getGlobalRegistry(): TokenRegistry {
+  return globalRegistry
+}
+
+export function getNativeToken(chainId: number | string): TokenEntry | undefined {
+  return globalRegistry.list(chainId).find((entry) => entry.isNative === true)
+}
+
+export function isStablecoin(symbol: string): boolean {
+  const upper = symbol.trim().toUpperCase()
+  return upper === "USDC" || upper === "USDT" || upper === "DAI" || upper === "USDS"
+}
+
+export function parseNetworkChainId(network: string): number | "solana" | undefined {
+  const lower = network.trim().toLowerCase()
+  const map: Readonly<Record<string, number | "solana">> = {
+    ethereum: 1, mainnet: 1, "eip155:1": 1,
+    sepolia: 11155111, "eip155:11155111": 11155111,
+    base: 8453, "eip155:8453": 8453,
+    "base-sepolia": 84532, "eip155:84532": 84532,
+    arbitrum: 42161, "eip155:42161": 42161,
+    optimism: 10, "eip155:10": 10,
+    polygon: 137, "eip155:137": 137,
+    solana: "solana", "solana:mainnet": "solana",
+  }
+  return map[lower]
+}
+
+export function resolveAssetAddress(network: string, symbolOrAddress: string): string | undefined {
+  const chainId = parseNetworkChainId(network)
+  if (chainId === undefined) return undefined
+  return globalRegistry.find(chainId, symbolOrAddress)?.address ?? (symbolOrAddress.startsWith("0x") ? symbolOrAddress : undefined)
+}
+
+export function resolveAssetDecimals(network: string, symbolOrAddress: string): number {
+  const chainId = parseNetworkChainId(network)
+  if (chainId === undefined) return 18
+  return globalRegistry.find(chainId, symbolOrAddress)?.decimals ?? (chainId === "solana" ? 9 : 18)
+}
+
+export function parseAmount(human: string, decimals: number): bigint {
+  const cleaned = human.trim()
+  if (!/^\d+(?:\.\d+)?$/.test(cleaned)) {
+    raise(new ElizaError(`Invalid decimal amount "${human}".`, { code: "WALLET_INVALID_AMOUNT" }))
+  }
+  const [whole, frac = ""] = cleaned.split(".")
+  if (frac.length > decimals) {
+    raise(new ElizaError(`Amount "${human}" exceeds ${decimals} decimal places.`, { code: "WALLET_AMOUNT_PRECISION" }))
+  }
+  return toBigInt((whole ?? "0") + frac.padEnd(decimals, "0"))
+}
+
+export function toRaw(human: string, decimals: number): string {
+  return parseAmount(human, decimals).toString(10)
+}
+
+export function toHuman(raw: bigint | string, decimals: number): string {
+  const value = typeof raw === "bigint" ? raw : toBigInt(raw)
+  const str = value.toString(10).padStart(decimals + 1, "0")
+  if (decimals === 0) return str
+  const head = str.slice(0, -decimals)
+  const tail = str.slice(-decimals).replace(/0+$/, "")
+  return tail.length === 0 ? head : `${head}.${tail}`
+}
+
+export function formatBalance(raw: bigint | string, decimals: number, symbol: string): string {
+  return `${toHuman(raw, decimals)} ${symbol}`
+}
+
+export function decimalDigits(amount: bigint | string): number[] {
+  const text = (typeof amount === "bigint" ? amount.toString(10) : amount.trim()).replace(/^0+(?=\d)/, "")
+  if (!/^\d+$/.test(text)) return []
+  return [...text].map((ch) => ch.charCodeAt(0) - 48)
+}
+
+export class X402PaymentError extends ElizaError {
+  constructor(message: string, code = "X402_PAYMENT_FAILED", context?: Record<string, unknown>) {
+    super(message, { code, context })
+  }
+}
+
+export class X402BudgetExceededError extends X402PaymentError {
+  constructor(service: string, requestedAtomic: string, remainingAtomic: string) {
+    super(`x402 payment of ${requestedAtomic} exceeds budget (${remainingAtomic}) for "${service}".`, "X402_BUDGET_EXCEEDED", { service, requestedAtomic, remainingAtomic })
+  }
+}
+
+export interface X402ServiceBudget {
+  readonly globalPerRequestAtomic: string
+  readonly servicePerRequestAtomic: string
+  readonly globalDailyAtomic: string
+  readonly serviceDailyAtomic: string
+}
+
+export interface X402TransactionLog {
+  readonly id: string
+  readonly service: string
+  readonly asset: string
+  readonly amountAtomic: string
+  readonly status: "reserved" | "settled" | "released"
+  readonly createdAt: number
+}
+
+export class X402BudgetTracker {
+  private readonly budget: X402ServiceBudget
+  private readonly logs: X402TransactionLog[] = []
+  private globalSpent = 0n
+  private readonly serviceSpent = new Map<string, bigint>()
+
+  constructor(budget: X402ServiceBudget) {
+    this.budget = budget
+  }
+
+  canPay(service: string, amountAtomic: string): boolean {
+    const amountDigits = decimalDigits(amountAtomic)
+    if (!validAtomicAmount(amountDigits)) return false
+    const globalDayRem = toBigInt(this.budget.globalDailyAtomic) - this.globalSpent
+    const serviceDayRem = toBigInt(this.budget.serviceDailyAtomic) - (this.serviceSpent.get(service) ?? 0n)
+    if (globalDayRem < 0n || serviceDayRem < 0n) return false
+    return walletPaymentFits(amountDigits, {
+      globalRequest: decimalDigits(this.budget.globalPerRequestAtomic),
+      serviceRequest: decimalDigits(this.budget.servicePerRequestAtomic),
+      globalDay: decimalDigits(globalDayRem),
+      serviceDay: decimalDigits(serviceDayRem),
+    })
+  }
+
+  reserve(service: string, asset: string, amountAtomic: string): X402TransactionLog {
+    if (!this.canPay(service, amountAtomic)) {
+      const rem = toBigInt(this.budget.serviceDailyAtomic) - (this.serviceSpent.get(service) ?? 0n)
+      raise(new X402BudgetExceededError(service, amountAtomic, (rem < 0n ? 0n : rem).toString(10)))
+    }
+    const amt = toBigInt(amountAtomic)
+    this.globalSpent += amt
+    this.serviceSpent.set(service, (this.serviceSpent.get(service) ?? 0n) + amt)
+    const entry: X402TransactionLog = {
+      id: `x402_${this.logs.length + 1}`,
+      service,
+      asset,
+      amountAtomic,
+      status: "reserved",
+      createdAt: Date.now(),
+    }
+    this.logs.push(entry)
+    return entry
+  }
+
+  settle(id: string): void {
+    const idx = this.logs.findIndex((entry) => entry.id === id)
+    const entry = idx === -1 ? undefined : this.logs[idx]
+    if (entry !== undefined && entry.status === "reserved") {
+      this.logs[idx] = { ...entry, status: "settled" }
+    }
+  }
+
+  release(id: string): void {
+    const idx = this.logs.findIndex((entry) => entry.id === id)
+    const entry = idx === -1 ? undefined : this.logs[idx]
+    if (entry !== undefined && entry.status === "reserved") {
+      const amt = toBigInt(entry.amountAtomic)
+      this.globalSpent = this.globalSpent >= amt ? this.globalSpent - amt : 0n
+      const prev = this.serviceSpent.get(entry.service) ?? 0n
+      this.serviceSpent.set(entry.service, prev >= amt ? prev - amt : 0n)
+      this.logs[idx] = { ...entry, status: "released" }
+    }
+  }
+
+  history(): readonly X402TransactionLog[] {
+    return [...this.logs]
+  }
+}
+
+export interface X402ClientConfig {
+  readonly budget: X402ServiceBudget
+  readonly pay: (requirement: { readonly service: string; readonly asset: string; readonly amountAtomic: string; readonly recipient: string }) => Promise<string>
+  readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+}
+
+export class X402Client {
+  readonly tracker: X402BudgetTracker
+  private readonly payFn: X402ClientConfig["pay"]
+  private readonly httpLayer: Layer.Layer<HttpClient.HttpClient>
+
+  constructor(config: X402ClientConfig) {
+    this.tracker = new X402BudgetTracker(config.budget)
+    this.payFn = config.pay
+    this.httpLayer = config.httpLayer ?? FetchHttpClient.layer
+  }
+
+  async fetchPaid(url: string, service: string): Promise<{ readonly status: number; readonly body: string; readonly paymentProof?: string }> {
+    const first = await runPromise(
+      Effect.provide(
+        effect {
+          const req = HttpClientRequest.get(url)
+          const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+            throw new X402PaymentError("x402 target request failed.")
+          }
+          const body = res.text catch effect () => ""
+          return { status: res.status, body, paymentHeader: res.headers["x-payment-required"] }
+        },
+        this.httpLayer,
+      ),
+    )
+    if (first.status !== 402) return { status: first.status, body: first.body }
+    const reqParsed = (first.paymentHeader ? JSON.parse(first.paymentHeader) : JSON.parse(first.body)) as {
+      readonly asset?: string
+      readonly amountAtomic?: string
+      readonly recipient?: string
+    }
+    const asset = reqParsed.asset ?? "USDC"
+    const amountAtomic = reqParsed.amountAtomic ?? "0"
+    const recipient = reqParsed.recipient ?? ""
+    const reservation = this.tracker.reserve(service, asset, amountAtomic)
+    let proof: string
+    try {
+      proof = await this.payFn({ service, asset, amountAtomic, recipient })
+    } catch (error) {
+      this.tracker.release(reservation.id)
+      throw error
+    }
+    const retry = await runPromise(
+      Effect.provide(
+        effect {
+          const req = HttpClientRequest.get(url).pipe(HttpClientRequest.setHeader("x-payment", proof))
+          const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+            throw new X402PaymentError("x402 paid retry failed.")
+          }
+          const body = res.text catch effect () => ""
+          return { status: res.status, body }
+        },
+        this.httpLayer,
+      ),
+    )
+    if (retry.status >= 200 && retry.status < 300) this.tracker.settle(reservation.id)
+    return { status: retry.status, body: retry.body, paymentProof: proof }
+  }
+}
+
+export function createX402Client(config: X402ClientConfig): X402Client {
+  return new X402Client(config)
+}
+
+export class BridgeError extends ElizaError {
+  constructor(message: string, code = "WALLET_BRIDGE_ERROR") {
+    super(message, { code })
+  }
+}
+
+export interface BridgeQuote {
+  readonly sourceChain: string
+  readonly destinationChain: string
+  readonly asset: string
+  readonly amountAtomic: string
+  readonly estimatedFeeAtomic: string
+  readonly protocol: "cctp"
+  readonly observedAt: number
+}
+
+export class BridgeModule {
+  private readonly attestationBaseUrl: string
+  private readonly httpLayer: Layer.Layer<HttpClient.HttpClient>
+
+  constructor(options: { readonly attestationBaseUrl?: string; readonly httpLayer?: Layer.Layer<HttpClient.HttpClient> } = {}) {
+    this.attestationBaseUrl = (options.attestationBaseUrl ?? "https://iris-api.circle.com").replace(/\/+$/, "")
+    this.httpLayer = options.httpLayer ?? FetchHttpClient.layer
+  }
+
+  quoteCctp(params: { readonly sourceChain: string; readonly destinationChain: string; readonly amountAtomic: string }): BridgeQuote {
+    if (params.sourceChain === params.destinationChain) {
+      raise(new BridgeError("Source and destination chains must differ for cross-chain bridge.", "WALLET_BRIDGE_SAME_CHAIN"))
+    }
+    if (!validAtomicAmount(decimalDigits(params.amountAtomic)) || toBigInt(params.amountAtomic) <= 0n) {
+      raise(new BridgeError("Bridge amount must be a positive atomic integer.", "WALLET_BRIDGE_INVALID_AMOUNT"))
+    }
+    return {
+      sourceChain: params.sourceChain,
+      destinationChain: params.destinationChain,
+      asset: "USDC",
+      amountAtomic: params.amountAtomic,
+      estimatedFeeAtomic: "100000",
+      protocol: "cctp",
+      observedAt: Date.now(),
+    }
+  }
+
+  async fetchAttestation(messageHash: string): Promise<{ readonly status: string; readonly attestation?: string }> {
+    return runPromise(
+      Effect.provide(
+        effect {
+          const req = HttpClientRequest.get(`${this.attestationBaseUrl}/v1/attestations/${encodeURIComponent(messageHash)}`).pipe(
+            HttpClientRequest.acceptJson,
+          )
+          const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+            throw new BridgeError("Failed to fetch CCTP attestation.", "WALLET_BRIDGE_ATTESTATION_FAILED")
+          }
+          const text = res.text catch effect () => ""
+          if (res.status < 200 || res.status >= 300) {
+            throw new BridgeError(`CCTP attestation lookup returned HTTP ${res.status}.`, "WALLET_BRIDGE_ATTESTATION_FAILED")
+          }
+          return try Effect.try({
+            try: () => JSON.parse(text) as { readonly status: string; readonly attestation?: string },
+            catch: () => new BridgeError("CCTP attestation response was malformed JSON.", "WALLET_BRIDGE_ATTESTATION_FAILED"),
+          })
+        },
+        this.httpLayer,
+      ),
+    )
+  }
+}
+
+export type PaymentRail = "direct-evm" | "direct-solana" | "x402" | "cctp-bridge"
+
+export interface RoutingDecision {
+  readonly rail: PaymentRail
+  readonly reason: string
+}
+
+export class PaymentRouter {
+  route(params: { readonly sourceChain: string; readonly destinationChain: string; readonly requiresX402?: boolean }): RoutingDecision {
+    if (params.requiresX402) return { rail: "x402", reason: "Target resource requires HTTP 402 micropayment." }
+    if (params.sourceChain !== params.destinationChain) return { rail: "cctp-bridge", reason: "Cross-chain transfer routed via CCTP bridge." }
+    if (params.sourceChain.toLowerCase() === "solana") return { rail: "direct-solana", reason: "Same-chain Solana transfer." }
+    return { rail: "direct-evm", reason: "Same-chain EVM transfer." }
+  }
+}
+
+export function encodeHashVerifierData(preimage: string): string {
+  return `0x${sha256Hex(preimage)}`
+}
+
+export function encodeOptimisticVerifierData(disputeWindowSeconds: number): string {
+  return `optimistic:${Math.max(60, Math.trunc(disputeWindowSeconds))}`
+}
+
+export interface EscrowDeal {
+  readonly id: string
+  readonly depositor: string
+  readonly beneficiary: string
+  readonly amountAtomic: string
+  readonly verifierHash: string
+  readonly status: "open" | "released" | "refunded" | "disputed"
+}
+
+export class MutualStakeEscrow {
+  private readonly deals = new Map<string, EscrowDeal>()
+
+  open(params: { readonly id: string; readonly depositor: string; readonly beneficiary: string; readonly amountAtomic: string; readonly secretPreimage: string }): EscrowDeal {
+    const deal: EscrowDeal = {
+      id: params.id,
+      depositor: params.depositor,
+      beneficiary: params.beneficiary,
+      amountAtomic: params.amountAtomic,
+      verifierHash: encodeHashVerifierData(params.secretPreimage),
+      status: "open",
+    }
+    this.deals.set(deal.id, deal)
+    return deal
+  }
+
+  release(id: string, preimage: string): EscrowDeal {
+    const deal = this.deals.get(id)
+    if (deal === undefined || deal.status !== "open") {
+      raise(new ElizaError(`Escrow "${id}" is not open.`, { code: "WALLET_ESCROW_NOT_OPEN" }))
+    }
+    if (encodeHashVerifierData(preimage) !== deal.verifierHash) {
+      raise(new ElizaError(`Escrow "${id}" verifier hash mismatch.`, { code: "WALLET_ESCROW_VERIFIER_MISMATCH" }))
+    }
+    const released: EscrowDeal = { ...deal, status: "released" }
+    this.deals.set(id, released)
+    return released
+  }
+
+  get(id: string): EscrowDeal | undefined {
+    return this.deals.get(id)
+  }
+}
+
+export function checkBudget(requestedAtomic: string, limitAtomic: string): boolean {
+  return atMostAtomic(decimalDigits(requestedAtomic), decimalDigits(limitAtomic))
+}

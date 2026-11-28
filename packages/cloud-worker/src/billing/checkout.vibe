@@ -84,6 +84,8 @@ function checkoutIdOf(organizationId: string, idempotencyKey: string): string {
   return `cmd_${sha256Hex(`${organizationId}\n${idempotencyKey}`).slice(0, 32)}`
 }
 
+export const emptyCheckout: Checkout = initial
+
 export function checkoutAt(state: Checkout, now: number): Checkout {
   return now > nowOf(state) ? elapse(state, now - nowOf(state)) : state
 }
@@ -162,9 +164,16 @@ effect function perform(tx: Tx, organizationId: string, out: CheckoutEffect, now
   }
 }
 
+export effect function stepCheckoutRow(tx: Tx, commandId: string, sent: CheckoutSent, fixed: Columns = {}) {
+  if (sent.event.type === "elapse" && (try loadCheckout(tx, commandId)) === undefined) {
+    return try applyAt(checkoutAt(initial, sent.now), sent)
+  }
+  return (try stepRow(tx, checkoutRows, commandId, sent, (state) => ({ ...fixed, ...columnsOf(state, sent.now) }))).out
+}
+
 export effect function stepCheckout(tx: Tx, organizationId: string, commandId: string, sent: CheckoutSent, fixed: Columns = {}) {
-  const stepped = try stepRow(tx, checkoutRows, commandId, sent, (state) => ({ ...fixed, ...columnsOf(state, sent.now) }))
-  for (const out of stepped.out.out) try perform(tx, organizationId, out, sent.now)
+  const stepped = try stepCheckoutRow(tx, commandId, sent, fixed)
+  for (const out of stepped.out) try perform(tx, organizationId, out, sent.now)
   return stepped.state
 }
 

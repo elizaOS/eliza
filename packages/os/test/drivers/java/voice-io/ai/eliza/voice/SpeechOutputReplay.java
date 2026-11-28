@@ -290,6 +290,13 @@ public final class SpeechOutputReplay {
       }
       case "closeListening":
         return notices(gate.closeListening());
+      case "withVolume":
+        gate.setDucked(switch (text(body, "v")) {
+          case "Ducked" -> true;
+          case "FullVolume" -> false;
+          default -> throw new IllegalArgumentException("unknown volume in " + body);
+        });
+        return true;
       case "focusChanged":
         return notices(gate.focusChanged(switch (text(body, "change")) {
           case "FocusGain" -> SpeechAudioFocusPolicy.Event.GAIN;

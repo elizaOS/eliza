@@ -1,0 +1,29 @@
+// spec/form/index.md, "Each captured answer belongs to one field in the participant's current form"
+
+function emailDomain(value: string): string | null {
+  const at = value.indexOf("@")
+  if (at <= 0 || at !== value.lastIndexOf("@") || /\s/.test(value)) return null
+  return value.slice(at + 1)
+}
+
+export function basicEmailValid(value: string): boolean {
+  const domain = emailDomain(value)
+  return domain !== null && domain.slice(1, -1).includes(".")
+}
+
+export function strictEmailValid(value: string): boolean {
+  const domain = emailDomain(value)
+  if (domain === null) return false
+  let sawDot = false
+  let labelLength = 0
+  for (const char of domain) {
+    if (char === ".") {
+      if (labelLength === 0) return false
+      sawDot = true
+      labelLength = 0
+    } else {
+      labelLength += 1
+    }
+  }
+  return sawDot && labelLength > 0
+}

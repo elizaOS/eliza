@@ -1,0 +1,64 @@
+// spec/nativeActionJournal/index.md, "Story: Resume an approved operation after the device restarts"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  createActionJournalMachineHandle,
+  isJournalEntry,
+  nextStep,
+  type ActionJournalEntry,
+} from "../src/index.vibe"
+
+const HEX64 = "a".repeat(64)
+
+describe("Native action journal (spec/nativeActionJournal/index.md, \"Story: Resume an approved operation after the device restarts\")", () => {
+  it("Validates journal entries, computes recovery next steps, and preserves terminal immutability (spec/nativeActionJournal/index.md, \"Only a reservation starts applying and a terminal receipt cannot change\")", async () => {
+    const reserved: ActionJournalEntry = {
+      scope: HEX64,
+      proposalId: "prop_1",
+      operationId: "op_1",
+      operationHash: HEX64,
+      record: { action: "delete" },
+      createdAt: 1000,
+      phase: "reserved",
+    }
+    const applying: ActionJournalEntry = {
+      ...reserved,
+      phase: "applying",
+      attemptId: "att_1",
+      applyingAt: 1010,
+    }
+    const succeeded: ActionJournalEntry = {
+      ...reserved,
+      phase: "terminal",
+      status: "succeeded",
+      attemptId: "att_1",
+      summary: "deleted",
+      finishedAt: 1020,
+    }
+    const unknown: ActionJournalEntry = {
+      ...reserved,
+      phase: "terminal",
+      status: "unknown",
+      summary: "timed out",
+      finishedAt: 1030,
+    }
+    assert.strictEqual(isJournalEntry(reserved), true)
+    assert.strictEqual(isJournalEntry(applying), true)
+    assert.strictEqual(isJournalEntry(succeeded), true)
+    assert.strictEqual(isJournalEntry({ ...reserved, scope: "short" }), false)
+    assert.strictEqual(isJournalEntry({ ...succeeded, attemptId: undefined }), false)
+    assert.deepStrictEqual(nextStep(reserved), { kind: "dispatch" })
+    assert.deepStrictEqual(nextStep(applying), { kind: "reconcile", since: 1010 })
+    assert.deepStrictEqual(nextStep(unknown), { kind: "reconcile", since: 1030 })
+    assert.strictEqual(nextStep(succeeded).kind, "settled")
+
+    const handle = createActionJournalMachineHandle()
+    const held = { ownerScope: "owner", proposalId: "p1", operationId: "o1", operationHash: "h1", recordDigest: "r1" }
+    assert.strictEqual(await handle.dispatch({ type: "reserve", held }), "accepted")
+    assert.strictEqual(await handle.dispatch({ type: "markApplying", attemptId: "a1" }), "accepted")
+    assert.strictEqual(await handle.dispatch({
+      type: "finish",
+      receipt: { reserved: held, terminal: "JournalSucceeded", summaryDigest: "s1", resultDigest: "res1" },
+    }), "accepted")
+    assert.strictEqual(await handle.dispatch({ type: "markApplying", attemptId: "a2" }), "refused")
+  })
+})

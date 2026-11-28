@@ -1,0 +1,236 @@
+// spec/telegram/index.md, "Story: Run one Telegram long-poller for each bot credential"
+import type { IAgentRuntime, SetupState } from "@elizaos/core"
+import { Telegraf } from "telegraf"
+import type { TelegramAccountAuthSession, TelegramAccountService } from "./account-client.vibe"
+import { resolveTelegramAppCredentials, resolveTelegramAccount } from "./policy.vibe"
+import { getTelegramPollerClaim } from "./poller-lock.vibe"
+import { TELEGRAM_DEFAULT_API_ROOT, TELEGRAM_PERSONAL_SERVICE_TYPE, type TelegramRoute, type TelegramRouteResponse } from "./types.vibe"
+
+interface ConnectorSetupServiceLike {
+  getConfig(): Record<string, unknown>
+  updateConfig(updater: (config: Record<string, unknown>) => void): void
+  persistConfig(config: Record<string, unknown>): void
+}
+
+function getSetupService(runtime: IAgentRuntime): ConnectorSetupServiceLike | undefined {
+  const svc = runtime.getService("connector-setup") as Partial<ConnectorSetupServiceLike> | null | undefined
+  if (svc === null || svc === undefined || typeof svc.getConfig !== "function" || typeof svc.updateConfig !== "function") {
+    return undefined
+  }
+  return svc as ConnectorSetupServiceLike
+}
+
+function bodyRecord(body: unknown): Record<string, unknown> {
+  return typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
+}
+
+function strField(obj: Record<string, unknown>, key: string): string | undefined {
+  const val = obj[key]
+  return typeof val === "string" && val.trim() !== "" ? val.trim() : undefined
+}
+
+function setupError(status: number, code: string, message: string): TelegramRouteResponse {
+  return { status, body: { error: { code, message }, message } }
+}
+
+const authSessions = new Map<IAgentRuntime, TelegramAccountAuthSession>()
+
+export function registerTelegramAccountAuthSession(runtime: IAgentRuntime, session: TelegramAccountAuthSession): void {
+  authSessions.set(runtime, session)
+}
+
+export async function stopTelegramAccountAuthSession(runtime?: IAgentRuntime): Promise<void> {
+  const targets = runtime === undefined ? [...authSessions.keys()] : [runtime]
+  for (const owner of targets) {
+    const session = authSessions.get(owner)
+    if (session !== undefined) {
+      await session.stop()
+      authSessions.delete(owner)
+    }
+  }
+}
+
+export const telegramSetupRoutes: readonly TelegramRoute[] = [
+  {
+    method: "GET",
+    path: "/api/setup/telegram/status",
+    rawPath: true,
+    handler: async (runtime) => {
+      const resolved = resolveTelegramAccount(runtime)
+      const hasToken = resolved.botToken !== undefined
+      const claim = resolved.botToken === undefined ? undefined : await getTelegramPollerClaim(resolved.botToken)
+      const serviceConnected = claim?.connected === true
+      const state: SetupState = serviceConnected ? "paired" : hasToken ? "configuring" : "idle"
+      return {
+        status: 200,
+        body: {
+          connector: "telegram",
+          state,
+          detail: { hasToken, serviceConnected },
+        },
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/setup/telegram/start",
+    rawPath: true,
+    handler: async (runtime, request) => {
+      const body = bodyRecord(request.body)
+      const botToken = strField(body, "botToken") ?? strField(body, "token")
+      if (botToken === undefined) {
+        return setupError(400, "TELEGRAM_TOKEN_REQUIRED", "A Telegram bot token is required.")
+      }
+      const apiRoot = strField(body, "apiRoot") ?? resolveTelegramAccount(runtime).apiRoot ?? TELEGRAM_DEFAULT_API_ROOT
+      const client = new Telegraf(botToken, { telegram: { apiRoot } })
+      const probe = await Effect.runPromise(Effect.result(Effect.tryPromise(() => client.telegram.getMe())))
+      if (probe._tag !== "Success") {
+        return setupError(400, "TELEGRAM_TOKEN_INVALID", "Telegram rejected the provided bot token.")
+      }
+      const me = probe.success
+      const setup = getSetupService(runtime)
+      setup?.updateConfig((cfg) => {
+        const connectors = (cfg.connectors as Record<string, unknown> | undefined) ?? {}
+        cfg.connectors = { ...connectors, telegram: { enabled: true, botToken, apiRoot } }
+      })
+      return {
+        status: 200,
+        body: {
+          connector: "telegram",
+          state: "paired" as SetupState,
+          detail: {
+            hasToken: true,
+            bot: { id: me.id, username: me.username ?? "", firstName: me.first_name },
+          },
+        },
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/setup/telegram/cancel",
+    rawPath: true,
+    handler: async (runtime) => {
+      const setup = getSetupService(runtime)
+      setup?.updateConfig((cfg) => {
+        const connectors = (cfg.connectors as Record<string, unknown> | undefined) ?? {}
+        const next = { ...connectors }
+        delete next.telegram
+        cfg.connectors = next
+      })
+      return {
+        status: 200,
+        body: { connector: "telegram", state: "idle" as SetupState, detail: { hasToken: false } },
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/setup/telegram/disconnect",
+    rawPath: true,
+    handler: async (runtime) => {
+      const setup = getSetupService(runtime)
+      setup?.updateConfig((cfg) => {
+        const connectors = (cfg.connectors as Record<string, unknown> | undefined) ?? {}
+        const current = (connectors.telegram as Record<string, unknown> | undefined) ?? {}
+        cfg.connectors = { ...connectors, telegram: { ...current, enabled: false } }
+      })
+      return {
+        status: 200,
+        body: { connector: "telegram", state: "idle" as SetupState, detail: { serviceConnected: false } },
+      }
+    },
+  },
+]
+
+export const telegramAccountRoutes: readonly TelegramRoute[] = [
+  {
+    method: "GET",
+    path: "/api/setup/telegram-account/status",
+    rawPath: true,
+    handler: async (runtime) => {
+      const service = runtime.getService<TelegramAccountService>(TELEGRAM_PERSONAL_SERVICE_TYPE)
+      const session = authSessions.get(runtime)
+      const snap = session?.getSnapshot()
+      const serviceConnected = service?.isConnected() === true
+      const state: SetupState = serviceConnected || snap?.status === "connected"
+        ? "paired"
+        : snap?.status === "waiting_for_telegram_code" || snap?.status === "waiting_for_password"
+          ? "configuring"
+          : "idle"
+      return {
+        status: 200,
+        body: {
+          connector: "telegram-account",
+          state,
+          detail: {
+            status: snap?.status ?? (serviceConnected ? "connected" : "idle"),
+            serviceConnected,
+            phone: snap?.phone ?? service?.getAccountSummary()?.phone ?? null,
+            isCodeViaApp: snap?.isCodeViaApp ?? false,
+          },
+        },
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/setup/telegram-account/start",
+    rawPath: true,
+    handler: async (runtime, request) => {
+      const body = bodyRecord(request.body)
+      const phone = strField(body, "phone")
+      if (phone === undefined) {
+        return setupError(400, "TELEGRAM_PHONE_REQUIRED", "Phone number is required.")
+      }
+      const session = authSessions.get(runtime)
+      if (session === undefined) {
+        return setupError(503, "TELEGRAM_ACCOUNT_TRANSPORT_UNAVAILABLE", "Telegram personal account transport is not configured.")
+      }
+      const credentials = resolveTelegramAppCredentials(runtime, body)
+      if (!credentials.ok) {
+        return setupError(400, "TELEGRAM_ACCOUNT_CREDENTIALS_UNRESOLVED", credentials.error.message)
+      }
+      const snapshot = await session.start({ phone, credentials: { apiId: credentials.apiId, apiHash: credentials.apiHash } })
+      return { status: 200, body: { connector: "telegram-account", state: "configuring" as SetupState, detail: snapshot } }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/setup/telegram-account/submit-code",
+    rawPath: true,
+    handler: async (runtime, request) => {
+      const session = authSessions.get(runtime)
+      if (session === undefined) {
+        return setupError(400, "TELEGRAM_ACCOUNT_NO_SESSION", "No active Telegram account auth session.")
+      }
+      const body = bodyRecord(request.body)
+      const snapshot = await session.submit({
+        telegramCode: strField(body, "code") ?? strField(body, "telegramCode"),
+        password: strField(body, "password"),
+      })
+      const state: SetupState = snapshot.status === "connected" ? "paired" : snapshot.status === "error" ? "error" : "configuring"
+      return { status: snapshot.status === "error" ? 400 : 200, body: { connector: "telegram-account", state, detail: snapshot } }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/setup/telegram-account/cancel",
+    rawPath: true,
+    handler: async (runtime) => {
+      await stopTelegramAccountAuthSession(runtime)
+      return { status: 200, body: { connector: "telegram-account", state: "idle" as SetupState } }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/setup/telegram-account/disconnect",
+    rawPath: true,
+    handler: async (runtime) => {
+      await stopTelegramAccountAuthSession(runtime)
+      const service = runtime.getService<TelegramAccountService>(TELEGRAM_PERSONAL_SERVICE_TYPE)
+      await service?.stop()
+      return { status: 200, body: { connector: "telegram-account", state: "idle" as SetupState } }
+    },
+  },
+]

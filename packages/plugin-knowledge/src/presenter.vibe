@@ -1,0 +1,220 @@
+// spec/knowledge/index.md, "Ownership is required for changes to a document or its audience"
+import type { Memory } from "@elizaos/core"
+import {
+  documentDeletable,
+  documentEditable,
+  type DocumentProvenance as SpecDocumentProvenance,
+  type DocumentScope,
+} from "../gen/knowledge.effect.vibe"
+
+export type DocumentProvenanceKind =
+  | "uploaded"
+  | "url"
+  | "bundled"
+  | "character"
+  | "transcript"
+  | "note"
+
+export interface DocumentProvenance {
+  readonly kind: DocumentProvenanceKind
+  readonly label: string
+}
+
+export interface PresentedDocument {
+  readonly id: string
+  readonly filename: string
+  readonly contentType: string
+  readonly fileSize: number
+  readonly createdAt: number
+  readonly fragmentCount: number
+  readonly source: DocumentProvenanceKind
+  readonly scope: "owner" | "shared" | "public"
+  readonly scopedToEntityId?: string
+  readonly addedBy?: string
+  readonly addedByRole?: string
+  readonly addedFrom?: string
+  readonly url?: string
+  readonly mediaUrl?: string
+  readonly mediaFileName?: string
+  readonly provenance: DocumentProvenance
+  readonly canEditText: boolean
+  readonly editabilityReason?: string
+  readonly canDelete: boolean
+  readonly deleteabilityReason?: string
+  readonly content?: { readonly text: string }
+  readonly transcriptId?: string
+  readonly transcriptAudioUrl?: string
+}
+
+function asRecord(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function prop(record: Readonly<Record<string, unknown>> | undefined, key: string): unknown {
+  return record === undefined ? undefined : Object.getOwnPropertyDescriptor(record, key)?.value
+}
+
+function toSpecProvenance(kind: DocumentProvenanceKind): SpecDocumentProvenance {
+  if (kind === "bundled") return "BundledDocument"
+  if (kind === "character") return "CharacterDocument"
+  if (kind === "url") return "UrlDocument"
+  if (kind === "transcript") return "TranscriptDocument"
+  if (kind === "note") return "NoteDocument"
+  return "UploadedDocument"
+}
+
+export function normalizeDocumentSource(value: unknown): DocumentProvenanceKind {
+  const raw = asString(value)?.toLowerCase()
+  if (raw === "url" || raw === "web") return "url"
+  if (raw === "bundled" || raw === "seed") return "bundled"
+  if (raw === "character") return "character"
+  if (raw === "transcript" || raw === "meeting") return "transcript"
+  if (raw === "note") return "note"
+  return "uploaded"
+}
+
+export function getDocumentProvenance(metadata: Readonly<Record<string, unknown>> | undefined): DocumentProvenance {
+  const kind = normalizeDocumentSource(prop(metadata, "source") ?? prop(metadata, "provenance"))
+  const labels: Readonly<Record<DocumentProvenanceKind, string>> = {
+    uploaded: "Uploaded",
+    url: "Web URL",
+    bundled: "Bundled",
+    character: "Character",
+    transcript: "Transcript",
+    note: "Note",
+  }
+  return { kind, label: labels[kind] }
+}
+
+export function getDocumentContentType(metadata: Readonly<Record<string, unknown>> | undefined): string {
+  return asString(prop(metadata, "contentType")) ?? "text/plain"
+}
+
+export function getDocumentTitleFromMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  fallbackText?: string,
+): string {
+  const named = asString(prop(metadata, "filename")) ?? asString(prop(metadata, "title"))
+  if (named !== undefined) return named
+  const line = fallbackText?.split(/\r?\n/).map((s) => s.trim()).find((s) => s.length > 0)
+  return line ? line.slice(0, 80) : "Untitled Document"
+}
+
+export function getDocumentVisibilityScope(metadata: Readonly<Record<string, unknown>> | undefined): "owner" | "shared" | "public" {
+  const raw = (asString(prop(metadata, "documentScope")) ?? asString(prop(metadata, "scope")))?.toLowerCase()
+  if (raw === "public") return "public"
+  if (raw === "shared") return "shared"
+  return "owner"
+}
+
+export function scopeToSpec(scope: "owner" | "shared" | "public"): DocumentScope {
+  if (scope === "public") return "PublicDocument"
+  if (scope === "shared") return "SharedDocument"
+  return "OwnerDocument"
+}
+
+const BINARY_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp3", ".mp4", ".wav", ".zip", ".docx", ".xlsx"])
+
+function isBinaryLike(contentType: string, filename: string): boolean {
+  const lowerType = contentType.toLowerCase()
+  if (lowerType.startsWith("image/") || lowerType.startsWith("audio/") || lowerType.startsWith("video/") || lowerType === "application/pdf" || lowerType === "application/octet-stream") {
+    return true
+  }
+  const dot = filename.lastIndexOf(".")
+  return dot >= 0 && BINARY_EXTENSIONS.has(filename.slice(dot).toLowerCase())
+}
+
+function looksLikeBase64(text: string): boolean {
+  const compact = text.replace(/\s+/g, "")
+  return compact.length >= 128 && compact.length % 4 === 0 && /^[A-Za-z0-9+/]+=*$/.test(compact)
+}
+
+export function isDocumentTextBacked(memory: Memory): boolean {
+  const metadata = asRecord(memory.metadata)
+  const explicit = prop(metadata, "textBacked")
+  if (typeof explicit === "boolean") return explicit
+  const filename = getDocumentTitleFromMetadata(metadata, memory.content.text)
+  const contentType = getDocumentContentType(metadata)
+  if (isBinaryLike(contentType, filename)) return false
+  const contentText = memory.content.text
+  if (typeof contentText !== "string" || contentText.trim().length === 0) return false
+  return !looksLikeBase64(contentText)
+}
+
+function getDocumentText(memory: Memory): string | undefined {
+  const contentText = memory.content.text
+  if (typeof contentText !== "string" || contentText.trim().length === 0) return undefined
+  const metadata = asRecord(memory.metadata)
+  if (prop(metadata, "textBacked") !== true && looksLikeBase64(contentText)) return undefined
+  return contentText
+}
+
+export function getDocumentEditability(memory: Memory): { readonly canEditText: boolean; readonly reason?: string } {
+  const metadata = asRecord(memory.metadata)
+  const provenance = getDocumentProvenance(metadata)
+  const textBacked = isDocumentTextBacked(memory)
+  if (documentEditable(toSpecProvenance(provenance.kind), textBacked)) return { canEditText: true }
+  if (provenance.kind === "bundled") return { canEditText: false, reason: "Bundled documents are seeded by the runtime." }
+  if (provenance.kind === "character") return { canEditText: false, reason: "Character documents come from source files or character config." }
+  return { canEditText: false, reason: "Only text-backed documents can be edited here." }
+}
+
+export function getDocumentDeleteability(memory: Memory): { readonly canDelete: boolean; readonly reason?: string } {
+  const provenance = getDocumentProvenance(asRecord(memory.metadata))
+  if (documentDeletable(toSpecProvenance(provenance.kind))) return { canDelete: true }
+  if (provenance.kind === "bundled") return { canDelete: false, reason: "Bundled documents are recreated by the runtime." }
+  return { canDelete: false, reason: "Character documents are backed by the character source." }
+}
+
+export function presentDocument(
+  memory: Memory,
+  fragmentCount: number,
+  options?: { readonly includeContent?: boolean },
+): PresentedDocument {
+  const metadata = asRecord(memory.metadata)
+  const provenance = getDocumentProvenance(metadata)
+  const contentType = getDocumentContentType(metadata)
+  const contentText = options?.includeContent ? getDocumentText(memory) : undefined
+  const editability = getDocumentEditability(memory)
+  const deleteability = getDocumentDeleteability(memory)
+  const mediaUrl = asString(prop(metadata, "mediaUrl"))
+  const mediaFileName = asString(prop(metadata, "mediaFileName"))
+  const transcriptId = asString(prop(metadata, "transcriptId"))
+  const audioUrl = asString(prop(metadata, "audioUrl"))
+
+  return {
+    id: String(memory.id ?? ""),
+    filename: getDocumentTitleFromMetadata(metadata, memory.content.text),
+    contentType,
+    fileSize: asNumber(prop(metadata, "fileSize")) ?? 0,
+    createdAt: asNumber(memory.createdAt) ?? 0,
+    fragmentCount,
+    source: provenance.kind,
+    scope: getDocumentVisibilityScope(metadata),
+    scopedToEntityId: asString(prop(metadata, "scopedToEntityId")),
+    addedBy: asString(prop(metadata, "addedBy")),
+    addedByRole: asString(prop(metadata, "addedByRole")),
+    addedFrom: asString(prop(metadata, "addedFrom")),
+    url: asString(prop(metadata, "url")),
+    ...(mediaUrl !== undefined ? { mediaUrl } : {}),
+    ...(mediaFileName !== undefined ? { mediaFileName } : {}),
+    provenance,
+    canEditText: editability.canEditText,
+    editabilityReason: editability.reason,
+    canDelete: deleteability.canDelete,
+    deleteabilityReason: deleteability.reason,
+    ...(contentText !== undefined ? { content: { text: contentText } } : {}),
+    ...(transcriptId !== undefined ? { transcriptId } : {}),
+    ...(audioUrl !== undefined ? { transcriptAudioUrl: audioUrl } : {}),
+  }
+}

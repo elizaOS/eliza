@@ -1,0 +1,961 @@
+// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "Complete, partial and unconfirmed Slack sends follow distinct part receipts"; spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
+import { App, webApi } from "@slack/bolt"
+import {
+  ChannelType,
+  Service,
+  checkPairingAllowed,
+  createUniqueUuid,
+  requireConfirmedSendHandlerDelivery,
+  type Character,
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  type MessageConnectorRegistration,
+  type MessageConnectorTarget,
+  type SendHandlerOutcome,
+  type TargetInfo,
+} from "@elizaos/core"
+import { fetchRemoteMedia } from "@elizaos/core-node"
+import {
+  Machine,
+  enabled,
+  initial,
+  machineOver,
+  slackReplyTarget,
+  slackRetries,
+  slackSendOutcome,
+  stored,
+  type SlackAdmission,
+  type SlackCallFailure,
+  type SlackCaller,
+  type SlackConversation,
+  type SlackInbound,
+  type SlackInstallation,
+  type SlackPartReceipt,
+} from "../gen/slack.effect.vibe"
+import { listEnabledSlackAccounts, normalizeAccountId } from "./accounts.vibe"
+import { decodeSlackText, splitSlackText } from "./formatting.vibe"
+import { normalizeSlackFiles } from "./inbound-files.vibe"
+import {
+  SLACK_SERVICE_NAME,
+  type ISlackService,
+  type SlackChannel,
+  type SlackMessage,
+  type SlackMessageSendOptions,
+  type SlackUser,
+} from "./types.vibe"
+
+type WebClient = App["client"]
+
+const envelopeSchema = Schema.Struct({
+  team_id: Schema.optionalKey(Schema.String),
+  enterprise_id: Schema.optionalKey(Schema.String),
+})
+
+const slackEventSchema = Schema.Struct({
+  type: Schema.Literals(["message", "app_mention"]),
+  channel: Schema.String,
+  ts: Schema.String,
+  user: Schema.optionalKey(Schema.String),
+  bot_id: Schema.optionalKey(Schema.String),
+  text: Schema.optionalKey(Schema.String),
+  thread_ts: Schema.optionalKey(Schema.String),
+  channel_type: Schema.optionalKey(Schema.String),
+  subtype: Schema.optionalKey(Schema.String),
+})
+
+schema uploadedSlackFilesSchema {
+  files: { files: { id: string }[] }[]
+}
+
+const systemNotices = new Set([
+  "channel_join",
+  "channel_leave",
+  "channel_topic",
+  "channel_name",
+  "channel_purpose",
+  "channel_archive",
+  "channel_unarchive",
+  "group_join",
+  "group_leave",
+  "group_topic",
+  "group_name",
+  "group_purpose",
+  "group_archive",
+  "group_unarchive",
+  "pinned_item",
+  "unpinned_item",
+])
+
+module node {
+  import { createHmac, randomUUID, timingSafeEqual } from "node:crypto"
+  import { Buffer } from "node:buffer"
+  import {
+    SlackApiError as BaseApiError,
+    SlackClientNotAvailableError as BaseClientError,
+  } from "./types.vibe"
+
+  export function nextSlackClaim(): string {
+    return randomUUID()
+  }
+
+  export function failSlackClientUnavailable(): never {
+    throw new BaseClientError()
+  }
+
+  export function failSlackApi(message: string, code?: string): never {
+    throw new BaseApiError(message, code)
+  }
+
+  export function verifySlackSigningSecret(
+    signingSecret: string,
+    timestampHeader: string | undefined,
+    signatureHeader: string | undefined,
+    rawBody: string,
+    nowSeconds: number = Math.floor(Date.now() / 1000),
+  ): boolean {
+    if (!signingSecret || !timestampHeader || !signatureHeader) return false
+    if (!/^\d+$/.test(timestampHeader)) return false
+    const timestamp = Number(timestampHeader)
+    if (!Number.isSafeInteger(timestamp) || Math.abs(nowSeconds - timestamp) > 300) return false
+    if (!signatureHeader.startsWith("v0=")) return false
+    const providedHex = signatureHeader.slice(3)
+    if (!/^[0-9a-f]{64}$/i.test(providedHex)) return false
+    const expected = createHmac("sha256", signingSecret).update(`v0:${timestamp}:${rawBody}`).digest()
+    const provided = Buffer.from(providedHex, "hex")
+    return provided.byteLength === expected.byteLength && timingSafeEqual(provided, expected)
+  }
+}
+import {
+  failSlackApi,
+  failSlackClientUnavailable,
+  nextSlackClaim,
+  verifySlackSigningSecret,
+} from node
+
+export { verifySlackSigningSecret }
+
+export error SlackRequestFailed { stage: string }
+
+export interface SlackConnection {
+  readonly accountId: string
+  readonly botToken: Redacted.Redacted<string>
+  readonly appToken: Redacted.Redacted<string>
+  readonly channels: ReadonlySet<string>
+  readonly directUsers: ReadonlySet<string>
+  readonly allowBots: boolean
+  readonly dmMode: SlackAdmission["dmMode"]
+  readonly groupDms: boolean
+  readonly requireMention: boolean
+  readonly slackApiUrl?: string
+}
+
+export interface SlackUploadReceipt {
+  id: string
+  name?: string
+  permalink?: string
+}
+
+export effect function bindSlackSession(
+  key: string,
+  by: SlackCaller,
+  installation: SlackInstallation,
+) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.send({ type: "bindSlack", installation }, by)
+  }
+}
+
+export effect function claimSlackMessage(
+  key: string,
+  by: SlackCaller,
+  inbound: SlackInbound,
+  policy: SlackAdmission,
+) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.send({ type: "claimSlack", inbound, policy }, by)
+  }
+}
+
+export effect function readSlackSession(key: string) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.get()
+  }
+}
+
+function slackCallFailure(error: Error): SlackCallFailure {
+  if ("code" in error && error.code === webApi.ErrorCode.HTTPError) return "SlackServerAnswer"
+  const cause = "original" in error && error.original instanceof Error ? error.original : error
+  return cause.message.startsWith("A rate limit was exceeded") ? "SlackRateLimited" : "SlackRequestLost"
+}
+
+export const slackWriteRetries = {
+  ...webApi.retryPolicies.tenRetriesInAboutThirtyMinutes,
+  onFailedAttempt: (error: Error): Promise<void> =>
+    slackRetries("SlackWrite", slackCallFailure(error)) ? Promise.resolve() : Promise.reject(error),
+}
+
+function toReceipt(file: Record<string, unknown>): SlackUploadReceipt | null {
+  const id = typeof file.id === "string" && file.id.trim() ? file.id.trim() : undefined
+  if (!id) return null
+  return {
+    id,
+    ...(typeof file.name === "string" && file.name ? { name: file.name } : {}),
+    ...(typeof file.permalink === "string" && file.permalink ? { permalink: file.permalink } : {}),
+  }
+}
+
+export function extractUploadReceipt(result: unknown): SlackUploadReceipt | null {
+  if (!result || typeof result !== "object") return null
+  const record = result as Record<string, unknown>
+  if (record.file && typeof record.file === "object") {
+    const direct = toReceipt(record.file as Record<string, unknown>)
+    if (direct) return direct
+  }
+  if (Array.isArray(record.files)) {
+    for (const entry of record.files) {
+      if (!entry || typeof entry !== "object") continue
+      const entryRecord = entry as Record<string, unknown>
+      const direct = toReceipt(entryRecord)
+      if (direct) return direct
+      if (Array.isArray(entryRecord.files)) {
+        for (const nested of entryRecord.files) {
+          if (!nested || typeof nested !== "object") continue
+          const nestedReceipt = toReceipt(nested as Record<string, unknown>)
+          if (nestedReceipt) return nestedReceipt
+        }
+      }
+    }
+  }
+  return null
+}
+
+export function compareSlackConnectorTargets(
+  left: MessageConnectorTarget,
+  right: MessageConnectorTarget,
+): number {
+  const scoreDiff = (right.score ?? 0) - (left.score ?? 0)
+  if (scoreDiff !== 0) return scoreDiff
+  const labelDiff = (left.label ?? "").localeCompare(right.label ?? "")
+  if (labelDiff !== 0) return labelDiff
+  return (left.target.channelId ?? "").localeCompare(right.target.channelId ?? "")
+}
+
+function kindOf(channelType: string | undefined): SlackConversation {
+  if (channelType === "im") return "SlackDirect"
+  if (channelType === "mpim") return "SlackGroupDirect"
+  if (channelType === "group") return "SlackPrivate"
+  if (channelType === "channel") return "SlackPublic"
+  return "SlackUnknownConversation"
+}
+
+interface SlackAccountRuntime {
+  readonly runtime: IAgentRuntime
+  readonly config: SlackConnection
+  readonly app: App
+  readonly writer: WebClient
+  readonly installation: SlackInstallation
+  readonly active: Ref.Ref<boolean>
+  readonly admission: Machine.Shape
+}
+
+effect function sendSlackAccountMessage(
+  ctx: SlackAccountRuntime,
+  target: TargetInfo,
+  content: Content,
+): SendHandlerOutcome!SlackRequestFailed {
+  if (
+    (target.accountId !== undefined && target.accountId !== ctx.installation.accountId) ||
+    !(try Ref.get(ctx.active))
+  ) {
+    return {
+      kind: "not_delivered",
+      code: "SLACK_ACCOUNT_GONE",
+      message: "The selected Slack account is no longer active.",
+    }
+  }
+  const text = content.text?.trim() ?? ""
+  const attachments = content.attachments ?? []
+  if (
+    (text === "" && attachments.length === 0) ||
+    target.channelId === undefined ||
+    attachments.length > 10 ||
+    attachments.some((attachment) => attachment.url.trim() === "")
+  ) {
+    return {
+      kind: "not_delivered",
+      code: "SLACK_INVALID_CONTENT",
+      message: "Slack needs a channel and text or attachments.",
+    }
+  }
+  const channelId = target.channelId
+  const parts = text === "" ? [] : splitSlackText(text, 4000)
+  const observed: SlackPartReceipt[] = []
+  const ids: string[] = []
+  for (const part of parts) {
+    if (!(try Ref.get(ctx.active))) break
+    const response =
+      tryPromise(() =>
+        ctx.writer.chat.postMessage({
+          channel: channelId,
+          text: part,
+          unfurl_links: false,
+          unfurl_media: false,
+          ...(target.threadId ? { thread_ts: target.threadId } : {}),
+        }),
+      ) catch () => undefined
+    if (response === undefined || typeof response.ts !== "string" || response.ts === "") {
+      observed.push({ tag: "SlackPartUnknown" })
+      break
+    }
+    ids.push(response.ts)
+    observed.push({ tag: "SlackPartAccepted", receiptId: response.ts })
+  }
+  if (ids.length === parts.length) {
+    for (const attachment of attachments) {
+      if (!(try Ref.get(ctx.active))) break
+      const media =
+        tryPromise((signal) =>
+          fetchRemoteMedia({ url: attachment.url, maxBytes: 20 * 1024 * 1024, signal }),
+        ) catch () => undefined
+      if (media === undefined) {
+        observed.push({ tag: "SlackPartRefused" })
+        continue
+      }
+      const upload = {
+        channel_id: channelId,
+        file: media.buffer,
+        filename: media.fileName ?? attachment.filename ?? "attachment",
+      }
+      const threadId = target.threadId
+      const uploaded =
+        tryPromise(() =>
+          threadId
+            ? ctx.writer.files.uploadV2({ ...upload, thread_ts: threadId })
+            : ctx.writer.files.uploadV2(upload),
+        ) catch () => undefined
+      const receipt = Schema.decodeUnknownEffect(uploadedSlackFilesSchema)(uploaded) catch () => undefined
+      const receiptId = receipt?.files[0]?.files[0]?.id ?? extractUploadReceipt(uploaded)?.id
+      if (!receiptId) {
+        observed.push({ tag: "SlackPartUnknown" })
+        continue
+      }
+      ids.push(receiptId)
+      observed.push({ tag: "SlackPartAccepted", receiptId })
+    }
+  }
+  const result = slackSendOutcome({ requestedParts: parts.length + attachments.length, observedParts: observed })
+  const [first, ...rest] = ids
+  if (result === "SlackSendIndeterminate") throw new SlackRequestFailed({ stage: "delivery-unknown" })
+  if (first === undefined) {
+    return { kind: "not_delivered", code: "SLACK_SEND_REFUSED", message: "Slack did not confirm a send." }
+  }
+  const providerMessageIds: [string, ...string[]] = [first, ...rest]
+  const receipt = {
+    providerMessageIds,
+    acceptedAt: try Clock.currentTimeMillis,
+    persistence: { status: "not_attempted" as const, reason: "Slack returned acceptance timestamps." },
+  }
+  return result === "SlackSendComplete"
+    ? { kind: "delivered", receipt, memories: [] }
+    : {
+        kind: "partially_delivered",
+        receipt,
+        memories: [],
+        code: "SLACK_PARTIAL_SEND",
+        message: "Slack confirmed only part of the text. Repeating it may duplicate delivery.",
+      }
+}
+
+effect function handleSlackInbound(ctx: SlackAccountRuntime, input: unknown, requestBody: unknown) {
+  if (!(try Ref.get(ctx.active))) return
+  const body = Schema.decodeUnknownEffect(envelopeSchema)(requestBody) catch () => undefined
+  const raw = Schema.decodeUnknownEffect(slackEventSchema)(input) catch () => undefined
+  const messageService = ctx.runtime.messageService
+  if (raw === undefined || body === undefined || (raw.subtype !== undefined && systemNotices.has(raw.subtype)) || !messageService) {
+    return
+  }
+  const lookup = kindOf(raw.channel_type)
+  const channel =
+    lookup === "SlackUnknownConversation"
+      ? tryPromise(() => ctx.app.client.conversations.info({ channel: raw.channel })) catch () => undefined
+      : undefined
+  const record = channel?.channel
+  const conversation =
+    record === undefined
+      ? lookup
+      : record.is_im
+        ? "SlackDirect"
+        : record.is_mpim
+          ? "SlackGroupDirect"
+          : record.is_private || record.is_group
+            ? "SlackPrivate"
+            : "SlackPublic"
+  const sender = raw.user ?? raw.bot_id ?? ""
+  const text = raw.text ?? ""
+  const event: SlackInbound = {
+    eventAccount: ctx.installation.accountId,
+    eventEpoch: ctx.installation.epoch,
+    eventTeam: body.team_id ?? "",
+    eventEnterprise: body.enterprise_id ?? "",
+    channelId: raw.channel,
+    messageTs: raw.ts,
+    threadTs: raw.thread_ts ?? "",
+    senderId: sender,
+    conversation,
+    eventKind: raw.type === "app_mention" ? "SlackMention" : "SlackMessage",
+    mentionsBot: text.includes(`<@${ctx.installation.botUserId}>`),
+    fromBot: raw.bot_id !== undefined,
+  }
+  if (
+    event.eventTeam !== ctx.installation.teamId ||
+    (event.eventEnterprise !== "" &&
+      ctx.installation.enterpriseId !== "" &&
+      event.eventEnterprise !== ctx.installation.enterpriseId) ||
+    sender === ctx.installation.botUserId
+  ) {
+    return
+  }
+  const pairing =
+    (conversation === "SlackDirect" || conversation === "SlackHome") &&
+    ctx.config.dmMode === "SlackDmPairing" &&
+    !ctx.config.directUsers.has(sender)
+      ? tryPromise(() => checkPairingAllowed(ctx.runtime, { channel: "slack", senderId: sender })) catch () => undefined
+      : undefined
+  if (pairing?.replyMessage && (!event.fromBot || ctx.config.allowBots)) {
+    sendSlackAccountMessage(
+      ctx,
+      { source: "slack", accountId: ctx.installation.accountId, channelId: raw.channel },
+      { text: pairing.replyMessage },
+    ) catch () => undefined
+  }
+  const policy: SlackAdmission = {
+    allowBots: ctx.config.allowBots,
+    dmMode: ctx.config.dmMode,
+    dmEnabled: ctx.config.dmMode !== "SlackDmDisabled",
+    dmAllowlisted: ctx.config.directUsers.has(sender),
+    dmPaired: pairing?.allowed === true,
+    groupDmEnabled: ctx.config.groupDms,
+    groupDmAllowed: ctx.config.channels.size === 0 || ctx.config.channels.has(raw.channel),
+    channelAllowed: ctx.config.channels.size === 0 || ctx.config.channels.has(raw.channel),
+    channelUserAllowed: true,
+    requireMention: ctx.config.requireMention,
+  }
+  const admit = { type: "claimSlack" as const, inbound: event, policy }
+  if (!enabled(try ctx.admission.get(), admit, "SlackSocket")) return
+  const target = slackReplyTarget(event)
+  const scope = `slack:${ctx.installation.teamId}:${ctx.installation.accountId}`
+  const id = try Effect.try(() => createUniqueUuid(ctx.runtime, `${scope}:message:${raw.channel}:${raw.ts}`))
+  const roomId = try Effect.try(() => createUniqueUuid(ctx.runtime, `${scope}:room:${raw.channel}:${raw.thread_ts ?? ""}`))
+  const worldId = try Effect.try(() => createUniqueUuid(ctx.runtime, scope))
+  const entityId = try Effect.try(() => createUniqueUuid(ctx.runtime, `${scope}:user:${sender}`))
+  const channelType = conversation === "SlackDirect" || conversation === "SlackHome" ? ChannelType.DM : ChannelType.GROUP
+  try tryPromise(() =>
+    ctx.runtime.ensureConnection({
+      entityId,
+      roomId,
+      worldId,
+      source: "slack",
+      channelId: raw.channel,
+      serverId: ctx.installation.teamId,
+      type: channelType,
+      metadata: { accountId: ctx.config.accountId },
+    }),
+  )
+  const claimToken = try Effect.try(() => nextSlackClaim())
+  const memory: Memory = {
+    id,
+    entityId,
+    roomId,
+    worldId,
+    agentId: ctx.runtime.agentId,
+    createdAt: Math.trunc(Number(raw.ts) * 1000),
+    content: { text: decodeSlackText(text), source: "slack", channelType },
+    metadata: { type: "message", slackClaimToken: claimToken },
+  }
+  try tryPromise(() => ctx.runtime.createMemory(memory, "messages"))
+  const kept = try tryPromise(() => ctx.runtime.getMemoryById(id))
+  if (
+    kept?.metadata === undefined ||
+    !("slackClaimToken" in kept.metadata) ||
+    kept.metadata.slackClaimToken !== claimToken ||
+    !(try Ref.get(ctx.active))
+  ) {
+    return
+  }
+  const claimed = ctx.admission.send(admit, "SlackSocket") catch () => undefined
+  if (claimed === undefined) return
+  try tryPromise(() =>
+    messageService.handleMessage(ctx.runtime, memory, async (reply) => {
+      requireConfirmedSendHandlerDelivery(
+        await runPromise(
+          sendSlackAccountMessage(
+            ctx,
+            {
+              source: "slack",
+              accountId: target.targetAccount,
+              channelId: target.targetChannel,
+              ...(target.targetThread !== "" ? { threadId: target.targetThread } : {}),
+            },
+            reply,
+          ),
+        ),
+      )
+      return []
+    }),
+  )
+}
+
+export effect function connectSlackAccount(runtime: IAgentRuntime, config: SlackConnection) {
+  const app = try Effect.try({
+    try: () =>
+      new App({
+        token: Redacted.value(config.botToken),
+        appToken: Redacted.value(config.appToken),
+        socketMode: true,
+        ...(config.slackApiUrl ? { clientOptions: { slackApiUrl: config.slackApiUrl } } : {}),
+      }),
+    catch: () => new SlackRequestFailed({ stage: "client" }),
+  })
+  const writer = try Effect.try({
+    try: () =>
+      new webApi.WebClient(Redacted.value(config.botToken), {
+        retryConfig: slackWriteRetries,
+        ...(config.slackApiUrl ? { slackApiUrl: config.slackApiUrl } : {}),
+      }),
+    catch: () => new SlackRequestFailed({ stage: "client" }),
+  })
+  const identity = try tryPromise({
+    try: () => app.client.auth.test(),
+    catch: () => new SlackRequestFailed({ stage: "auth" }),
+  })
+  if (identity.team_id === undefined || identity.user_id === undefined) {
+    throw new SlackRequestFailed({ stage: "identity" })
+  }
+  const installation: SlackInstallation = {
+    accountId: config.accountId,
+    teamId: identity.team_id,
+    enterpriseId: identity.enterprise_id ?? "",
+    botUserId: identity.user_id,
+    epoch: 1,
+  }
+  const state = try Ref.make(initial)
+  const active = try Ref.make(true)
+  const admission = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  try admission.send({ type: "bindSlack", installation }, "SlackSocket")
+  const ctx: SlackAccountRuntime = { runtime, config, app, writer, installation, active, admission }
+  const send = (target: TargetInfo, content: Content) => sendSlackAccountMessage(ctx, target, content)
+  app.event("message", ({ event, body }) => runPromise(handleSlackInbound(ctx, event, body)))
+  app.event("app_mention", ({ event, body }) => runPromise(handleSlackInbound(ctx, event, body)))
+  try tryPromise({ try: () => app.start(), catch: () => new SlackRequestFailed({ stage: "start" }) })
+  try Effect.try(() =>
+    runtime.registerMessageConnector({
+      source: "slack",
+      accountId: installation.accountId,
+      accountRouting: "connector",
+      label: "Slack",
+      sendHandler: (_runtime, target, content) => runPromise(send(target, content)),
+    } as MessageConnectorRegistration),
+  )
+  return {
+    app,
+    writer,
+    installation,
+    send,
+    effect stop() {
+      try Ref.set(active, false)
+      try tryPromise(() => app.stop())
+    },
+  }
+}
+
+function slackIdSet(input: unknown): Set<string> {
+  return new Set(
+    typeof input === "string"
+      ? input
+          .split(",")
+          .map((id) => id.trim())
+          .filter((id) => id !== "")
+      : [],
+  )
+}
+
+function mapRawChannel(raw: Record<string, unknown>): SlackChannel {
+  const topic = raw.topic as Record<string, unknown> | undefined
+  const purpose = raw.purpose as Record<string, unknown> | undefined
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? ""),
+    isChannel: Boolean(raw.is_channel),
+    isGroup: Boolean(raw.is_group),
+    isIm: Boolean(raw.is_im),
+    isMpim: Boolean(raw.is_mpim),
+    isPrivate: Boolean(raw.is_private),
+    isArchived: Boolean(raw.is_archived),
+    isGeneral: Boolean(raw.is_general),
+    isShared: Boolean(raw.is_shared),
+    isOrgShared: Boolean(raw.is_org_shared),
+    isMember: Boolean(raw.is_member),
+    topic: topic ? { value: String(topic.value ?? ""), creator: String(topic.creator ?? ""), lastSet: Number(topic.last_set ?? 0) } : undefined,
+    purpose: purpose ? { value: String(purpose.value ?? ""), creator: String(purpose.creator ?? ""), lastSet: Number(purpose.last_set ?? 0) } : undefined,
+    numMembers: typeof raw.num_members === "number" ? raw.num_members : undefined,
+    created: Number(raw.created ?? 0),
+    creator: String(raw.creator ?? ""),
+  }
+}
+
+function mapRawUser(raw: Record<string, unknown>): SlackUser {
+  const profile = (raw.profile as Record<string, unknown> | undefined) ?? {}
+  return {
+    id: String(raw.id ?? ""),
+    teamId: typeof raw.team_id === "string" ? raw.team_id : undefined,
+    name: String(raw.name ?? ""),
+    deleted: Boolean(raw.deleted),
+    realName: typeof raw.real_name === "string" ? raw.real_name : undefined,
+    tz: typeof raw.tz === "string" ? raw.tz : undefined,
+    tzLabel: typeof raw.tz_label === "string" ? raw.tz_label : undefined,
+    tzOffset: typeof raw.tz_offset === "number" ? raw.tz_offset : undefined,
+    profile: {
+      title: typeof profile.title === "string" ? profile.title : undefined,
+      phone: typeof profile.phone === "string" ? profile.phone : undefined,
+      skype: typeof profile.skype === "string" ? profile.skype : undefined,
+      realName: typeof profile.real_name === "string" ? profile.real_name : undefined,
+      realNameNormalized: typeof profile.real_name_normalized === "string" ? profile.real_name_normalized : undefined,
+      displayName: typeof profile.display_name === "string" ? profile.display_name : undefined,
+      displayNameNormalized: typeof profile.display_name_normalized === "string" ? profile.display_name_normalized : undefined,
+      statusText: typeof profile.status_text === "string" ? profile.status_text : undefined,
+      statusEmoji: typeof profile.status_emoji === "string" ? profile.status_emoji : undefined,
+      statusExpiration: typeof profile.status_expiration === "number" ? profile.status_expiration : undefined,
+      avatarHash: typeof profile.avatar_hash === "string" ? profile.avatar_hash : undefined,
+      email: typeof profile.email === "string" ? profile.email : undefined,
+      image24: typeof profile.image_24 === "string" ? profile.image_24 : undefined,
+      image32: typeof profile.image_32 === "string" ? profile.image_32 : undefined,
+      image48: typeof profile.image_48 === "string" ? profile.image_48 : undefined,
+      image72: typeof profile.image_72 === "string" ? profile.image_72 : undefined,
+      image192: typeof profile.image_192 === "string" ? profile.image_192 : undefined,
+      image512: typeof profile.image_512 === "string" ? profile.image_512 : undefined,
+      image1024: typeof profile.image_1024 === "string" ? profile.image_1024 : undefined,
+      imageOriginal: typeof profile.image_original === "string" ? profile.image_original : undefined,
+      team: typeof profile.team === "string" ? profile.team : undefined,
+    },
+    isAdmin: Boolean(raw.is_admin),
+    isOwner: Boolean(raw.is_owner),
+    isPrimaryOwner: Boolean(raw.is_primary_owner),
+    isRestricted: Boolean(raw.is_restricted),
+    isUltraRestricted: Boolean(raw.is_ultra_restricted),
+    isBot: Boolean(raw.is_bot),
+    isAppUser: Boolean(raw.is_app_user),
+    updated: Number(raw.updated ?? 0),
+  }
+}
+
+function mapRawMessage(raw: Record<string, unknown>): SlackMessage {
+  return {
+    type: String(raw.type ?? "message"),
+    subtype: typeof raw.subtype === "string" ? raw.subtype : undefined,
+    ts: String(raw.ts ?? ""),
+    user: typeof raw.user === "string" ? raw.user : undefined,
+    ...(typeof raw.bot_id === "string" ? { botId: raw.bot_id } : {}),
+    text: decodeSlackText(String(raw.text ?? "")),
+    threadTs: typeof raw.thread_ts === "string" ? raw.thread_ts : undefined,
+    replyCount: typeof raw.reply_count === "number" ? raw.reply_count : undefined,
+    replyUsersCount: typeof raw.reply_users_count === "number" ? raw.reply_users_count : undefined,
+    latestReply: typeof raw.latest_reply === "string" ? raw.latest_reply : undefined,
+    reactions: Array.isArray(raw.reactions)
+      ? (raw.reactions as Array<{ name?: string; count?: number; users?: string[] }>).map((reaction) => ({
+          name: String(reaction.name ?? ""),
+          count: Number(reaction.count ?? 0),
+          users: Array.isArray(reaction.users) ? reaction.users.map(String) : [],
+        }))
+      : undefined,
+    files: normalizeSlackFiles(raw.files),
+    attachments: undefined,
+    blocks: undefined,
+  }
+}
+
+export class SlackService extends Service implements ISlackService {
+  static override serviceType: string = SLACK_SERVICE_NAME
+  override capabilityDescription = "Connects authorized Slack workspaces and channels to the agent"
+
+  app: App | null = null
+  client: WebClient | null = null
+  character: Character
+  botUserId: string | null = null
+  teamId: string | null = null
+
+  private readonly allowedChannelsByAccount = new Map<string, Set<string>>()
+  private readonly userCache = new Map<string, SlackUser>()
+  private readonly channelCache = new Map<string, SlackChannel>()
+  private readonly stopCallbacks: Array<() => Promise<void>> = []
+  private connected = false
+
+  constructor(runtime?: IAgentRuntime, client?: WebClient) {
+    super(runtime)
+    this.character = runtime?.character ?? ({ name: "Eliza" } as Character)
+    if (client) {
+      this.client = client
+      this.connected = true
+    }
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<SlackService> {
+    const service = new SlackService(runtime)
+    const accounts = listEnabledSlackAccounts(runtime)
+    for (const account of accounts) {
+      if (!account.botToken || !account.appToken) continue
+      const channels = new Set<string>([
+        ...(account.config.allowedChannelIds ?? []),
+        ...slackIdSet(runtime.getSetting("SLACK_CHANNEL_IDS")),
+      ])
+      service.allowedChannelsByAccount.set(account.accountId, channels)
+      const connection = await runPromise(
+        connectSlackAccount(runtime, {
+          accountId: account.accountId,
+          botToken: Redacted.make(account.botToken),
+          appToken: Redacted.make(account.appToken),
+          channels,
+          directUsers: slackIdSet(runtime.getSetting("SLACK_ALLOW_FROM")),
+          allowBots: account.config.allowBots ?? false,
+          dmMode:
+            account.dm?.policy === "open"
+              ? "SlackDmOpen"
+              : account.dm?.policy === "disabled"
+                ? "SlackDmDisabled"
+                : account.dm?.policy === "allowlist"
+                  ? "SlackDmAllowlist"
+                  : "SlackDmPairing",
+          groupDms: account.dm?.groupEnabled === true,
+          requireMention: account.requireMention ?? true,
+        }),
+      )
+      if (!service.app) {
+        service.app = connection.app
+        service.client = connection.writer
+        service.botUserId = connection.installation.botUserId
+        service.teamId = connection.installation.teamId
+      }
+      service.connected = true
+      service.stopCallbacks.push(() => runPromise(connection.stop()))
+    }
+    return service
+  }
+
+  static async stop(runtime: IAgentRuntime): Promise<void> {
+    const existing = runtime.getService<SlackService>(SLACK_SERVICE_NAME)
+    if (existing) await existing.stop()
+  }
+
+  override async stop(): Promise<void> {
+    this.connected = false
+    for (const stopFn of this.stopCallbacks) {
+      await stopFn().catch(() => undefined)
+    }
+    this.stopCallbacks.length = 0
+  }
+
+  private requireClient(): WebClient {
+    if (!this.client) failSlackClientUnavailable()
+    return this.client
+  }
+
+  isServiceConnected(): boolean {
+    return this.connected && this.client !== null
+  }
+
+  getBotUserId(): string | null {
+    return this.botUserId
+  }
+
+  getTeamId(): string | null {
+    return this.teamId
+  }
+
+  clearUserCache(): void {
+    this.userCache.clear()
+  }
+
+  clearChannelCache(): void {
+    this.channelCache.clear()
+  }
+
+  addAllowedChannel(channelId: string, accountId?: string | null): void {
+    const key = normalizeAccountId(accountId)
+    let set = this.allowedChannelsByAccount.get(key)
+    if (!set) {
+      set = new Set()
+      this.allowedChannelsByAccount.set(key, set)
+    }
+    set.add(channelId)
+  }
+
+  removeAllowedChannel(channelId: string, accountId?: string | null): void {
+    this.allowedChannelsByAccount.get(normalizeAccountId(accountId))?.delete(channelId)
+  }
+
+  getAllowedChannelIds(accountId?: string | null): string[] {
+    return Array.from(this.allowedChannelsByAccount.get(normalizeAccountId(accountId)) ?? []).sort((a, b) =>
+      a.localeCompare(b),
+    )
+  }
+
+  async sendMessage(
+    channelId: string,
+    text: string,
+    options?: Partial<SlackMessageSendOptions>,
+  ): Promise<{ ts: string; channel: string }> {
+    const client = this.requireClient()
+    const chunks = splitSlackText(text, 4000)
+    let lastTs = ""
+    for (const chunk of chunks) {
+      const baseOpts = {
+        channel: channelId,
+        text: chunk,
+        ...(options?.unfurlLinks !== undefined ? { unfurl_links: options.unfurlLinks } : {}),
+        ...(options?.unfurlMedia !== undefined ? { unfurl_media: options.unfurlMedia } : {}),
+        ...(options?.mrkdwn !== undefined ? { mrkdwn: options.mrkdwn } : {}),
+      }
+      const response =
+        options?.threadTs && options.replyBroadcast === true
+          ? await client.chat.postMessage({ ...baseOpts, thread_ts: options.threadTs, reply_broadcast: true })
+          : options?.threadTs
+            ? await client.chat.postMessage({ ...baseOpts, thread_ts: options.threadTs })
+            : await client.chat.postMessage(baseOpts)
+      if (!response.ok || !response.ts) failSlackApi("Slack chat.postMessage failed", response.error)
+      lastTs = response.ts
+    }
+    return { ts: lastTs, channel: channelId }
+  }
+
+  async sendReaction(channelId: string, timestamp: string, emoji: string): Promise<void> {
+    const client = this.requireClient()
+    const response = await client.reactions.add({ channel: channelId, timestamp, name: emoji.replace(/^:|:$/g, "") })
+    if (!response.ok) failSlackApi("Slack reactions.add failed", response.error)
+  }
+
+  async removeReaction(channelId: string, timestamp: string, emoji: string): Promise<void> {
+    const client = this.requireClient()
+    const response = await client.reactions.remove({ channel: channelId, timestamp, name: emoji.replace(/^:|:$/g, "") })
+    if (!response.ok) failSlackApi("Slack reactions.remove failed", response.error)
+  }
+
+  async editMessage(channelId: string, ts: string, text: string): Promise<{ ts: string; channel: string }> {
+    const client = this.requireClient()
+    const response = await client.chat.update({ channel: channelId, ts, text })
+    if (!response.ok || !response.ts) failSlackApi("Slack chat.update failed", response.error)
+    return { ts: response.ts, channel: channelId }
+  }
+
+  async deleteMessage(channelId: string, ts: string): Promise<void> {
+    const client = this.requireClient()
+    const response = await client.chat.delete({ channel: channelId, ts })
+    if (!response.ok) failSlackApi("Slack chat.delete failed", response.error)
+  }
+
+  async pinMessage(channelId: string, timestamp: string): Promise<void> {
+    const client = this.requireClient()
+    const response = await client.pins.add({ channel: channelId, timestamp })
+    if (!response.ok) failSlackApi("Slack pins.add failed", response.error)
+  }
+
+  async unpinMessage(channelId: string, timestamp: string): Promise<void> {
+    const client = this.requireClient()
+    const response = await client.pins.remove({ channel: channelId, timestamp })
+    if (!response.ok) failSlackApi("Slack pins.remove failed", response.error)
+  }
+
+  async listPins(channelId: string): Promise<SlackMessage[]> {
+    const client = this.requireClient()
+    const response = await client.pins.list({ channel: channelId })
+    if (!response.ok) failSlackApi("Slack pins.list failed", response.error)
+    const items = (response.items ?? []) as Array<{ message?: Record<string, unknown> }>
+    return items.filter((item) => Boolean(item.message)).map((item) => mapRawMessage(item.message!))
+  }
+
+  async readHistory(
+    channelId: string,
+    options?: { limit?: number; oldest?: string; latest?: string; threadTs?: string },
+  ): Promise<SlackMessage[]> {
+    const client = this.requireClient()
+    if (options?.threadTs) {
+      const response = await client.conversations.replies({
+        channel: channelId,
+        ts: options.threadTs,
+        ...(options.limit ? { limit: options.limit } : {}),
+        ...(options.oldest ? { oldest: options.oldest } : {}),
+        ...(options.latest ? { latest: options.latest } : {}),
+      })
+      if (!response.ok) failSlackApi("Slack conversations.replies failed", response.error)
+      return ((response.messages ?? []) as Array<Record<string, unknown>>).map(mapRawMessage)
+    }
+    const response = await client.conversations.history({
+      channel: channelId,
+      ...(options?.limit ? { limit: options.limit } : {}),
+      ...(options?.oldest ? { oldest: options.oldest } : {}),
+      ...(options?.latest ? { latest: options.latest } : {}),
+    })
+    if (!response.ok) failSlackApi("Slack conversations.history failed", response.error)
+    return ((response.messages ?? []) as Array<Record<string, unknown>>).map(mapRawMessage)
+  }
+
+  async listChannels(types = "public_channel,private_channel"): Promise<SlackChannel[]> {
+    const client = this.requireClient()
+    const response = await client.conversations.list({ types, exclude_archived: true, limit: 200 })
+    if (!response.ok) failSlackApi("Slack conversations.list failed", response.error)
+    return ((response.channels ?? []) as Array<Record<string, unknown>>).map(mapRawChannel)
+  }
+
+  async getChannel(channelId: string): Promise<SlackChannel | null> {
+    const cached = this.channelCache.get(channelId)
+    if (cached) return cached
+    const client = this.requireClient()
+    const response = await client.conversations.info({ channel: channelId })
+    if (!response.ok || !response.channel) return null
+    const channel = mapRawChannel(response.channel as Record<string, unknown>)
+    this.channelCache.set(channelId, channel)
+    return channel
+  }
+
+  async getUser(userId: string): Promise<SlackUser | null> {
+    const cached = this.userCache.get(userId)
+    if (cached) return cached
+    const client = this.requireClient()
+    const response = await client.users.info({ user: userId })
+    if (!response.ok || !response.user) return null
+    const user = mapRawUser(response.user as Record<string, unknown>)
+    this.userCache.set(userId, user)
+    return user
+  }
+
+  async getEmojiList(): Promise<Record<string, string>> {
+    const client = this.requireClient()
+    const response = await client.emoji.list()
+    if (!response.ok) failSlackApi("Slack emoji.list failed", response.error)
+    return (response.emoji ?? {}) as Record<string, string>
+  }
+
+  async uploadFile(input: {
+    channelId: string
+    file: Buffer
+    filename: string
+    title?: string
+    threadTs?: string
+  }): Promise<SlackUploadReceipt> {
+    const client = this.requireClient()
+    const baseUpload = {
+      channel_id: input.channelId,
+      file: input.file,
+      filename: input.filename,
+      ...(input.title ? { title: input.title } : {}),
+    }
+    const response = input.threadTs
+      ? await client.files.uploadV2({ ...baseUpload, thread_ts: input.threadTs })
+      : await client.files.uploadV2(baseUpload)
+    const receipt = extractUploadReceipt(response)
+    if (!receipt) failSlackApi("Slack files.uploadV2 did not return a file receipt")
+    return receipt
+  }
+}

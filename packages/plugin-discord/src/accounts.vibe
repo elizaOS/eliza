@@ -1,0 +1,602 @@
+// spec/discord/index.md, "Every accepted Discord event keeps the captured account and channel"
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  createUniqueUuid,
+  normalizeConnectorAccountId,
+  selectDefaultConnectorAccountId,
+  type ConnectorAccount,
+  type ConnectorAccountManager,
+  type ConnectorAccountProvider,
+  type ConnectorOAuthCallbackRequest,
+  type ConnectorOAuthCallbackResult,
+  type ConnectorOAuthStartRequest,
+  type ConnectorOAuthStartResult,
+  type IAgentRuntime,
+  type UUID,
+} from "@elizaos/core"
+import type { Client } from "discord.js"
+import {
+  DISCORD_PROVIDER_ID,
+  DISCORD_SERVICE_NAME,
+  type DiscordAccountConfig,
+  type DiscordChannelConfig,
+} from "./types.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import fs from "node:fs"
+  import os from "node:os"
+  import path from "node:path"
+  import { ElizaError } from "@elizaos/core"
+
+  export function sha256Hex(value: string, length?: number): string {
+    const digest = createHash("sha256").update(value).digest("hex")
+    return length === undefined ? digest : digest.slice(0, length)
+  }
+
+  export function throwPolicyError(message: string, code: string, context?: Record<string, unknown>, severity: "fatal" | "ephemeral" = "fatal"): never {
+    throw new ElizaError(message, { code, ...(context ? { context } : {}), severity })
+  }
+
+  export function defaultAvatarCacheDir(stateDir?: string): string {
+    const base = stateDir && stateDir.trim().length > 0 ? stateDir : path.join(os.tmpdir(), "eliza-discord-avatars")
+    return path.join(base, "avatars")
+  }
+
+  export function joinPath(dir: string, file: string): string {
+    return path.join(dir, file)
+  }
+
+  export async function downloadAndCacheAvatar(url: string, targetPath: string, fetchImpl?: typeof globalThis.fetch): Promise<string | null> {
+    if (fs.existsSync(targetPath)) return targetPath
+    const fn = fetchImpl ?? globalThis.fetch
+    if (typeof fn !== "function") return null
+    const response = await fn(url)
+    if (!response.ok) return null
+    const bytes = Buffer.from(await response.arrayBuffer())
+    if (bytes.length === 0 || bytes.length > 5 * 1024 * 1024) return null
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+    const tmp = `${targetPath}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, bytes)
+    fs.renameSync(tmp, targetPath)
+    return targetPath
+  }
+}
+import {
+  defaultAvatarCacheDir,
+  downloadAndCacheAvatar,
+  joinPath,
+  sha256Hex,
+  throwPolicyError,
+} from node
+
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID
+export const DISCORD_ACCOUNT_POLICY_CACHE_KEY = "discord/connector-account-policy/v1"
+
+export type DiscordTokenSource = "env" | "config" | "character" | "none"
+
+export interface DiscordTokenResolution {
+  readonly token: string
+  readonly source: DiscordTokenSource
+}
+
+export type DiscordMultiAccountConfig = DiscordChannelConfig
+
+export interface ResolvedDiscordAccount {
+  readonly accountId: string
+  readonly enabled: boolean
+  readonly name?: string
+  readonly token: string
+  readonly tokenSource: DiscordTokenSource
+  readonly configured: boolean
+  readonly config: DiscordAccountConfig
+}
+
+export interface DiscordDisabledAccountPolicy {
+  readonly tokenFingerprint: string
+  readonly disabledAt: number
+}
+
+export type DiscordAccountPolicy = Record<string, DiscordDisabledAccountPolicy>
+
+export interface DiscordAccountClientState {
+  readonly accountId: string
+  readonly client: Client
+  readonly ready: boolean
+  readonly botUserId?: string
+  readonly connectedAt?: number
+}
+
+export function normalizeAccountId(accountId?: string | null): string {
+  return normalizeConnectorAccountId(accountId)
+}
+
+export function normalizeDiscordToken(raw?: string | null): string {
+  if (typeof raw !== "string") return ""
+  return raw.trim().replace(/^Bot\s+/i, "").trim()
+}
+
+export function getMultiAccountConfig(runtime: Pick<IAgentRuntime, "getSetting" | "character">): DiscordMultiAccountConfig {
+  const fromCharacter = (runtime.character?.settings as Record<string, unknown> | undefined)?.discord
+  const fromSetting = runtime.getSetting("discord")
+  const candidate = fromCharacter && typeof fromCharacter === "object"
+    ? fromCharacter
+    : fromSetting && typeof fromSetting === "object"
+      ? fromSetting
+      : {}
+  return candidate as DiscordMultiAccountConfig
+}
+
+function parseBotTokensMap(raw: unknown): Record<string, string> {
+  if (typeof raw !== "string" || raw.trim().length === 0) return {}
+  const trimmed = raw.trim()
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === "string" && normalizeDiscordToken(v)) {
+          out[normalizeAccountId(k)] = normalizeDiscordToken(v)
+        }
+      }
+      return out
+    } catch {
+      return {}
+    }
+  }
+  const out: Record<string, string> = {}
+  for (const part of trimmed.split(",")) {
+    const idx = part.indexOf("=")
+    if (idx > 0) {
+      const id = normalizeAccountId(part.slice(0, idx))
+      const token = normalizeDiscordToken(part.slice(idx + 1))
+      if (token) out[id] = token
+    } else {
+      const token = normalizeDiscordToken(part)
+      if (token && !out[DEFAULT_ACCOUNT_ID]) out[DEFAULT_ACCOUNT_ID] = token
+    }
+  }
+  return out
+}
+
+export function listDiscordAccountIds(runtime: Pick<IAgentRuntime, "getSetting" | "character">): string[] {
+  const cfg = getMultiAccountConfig(runtime)
+  const ids = new Set<string>()
+  const accounts = cfg.accounts ?? {}
+  for (const key of Object.keys(accounts)) {
+    ids.add(normalizeAccountId(key))
+  }
+  const botTokens = parseBotTokensMap(runtime.getSetting("DISCORD_BOT_TOKENS"))
+  for (const key of Object.keys(botTokens)) {
+    ids.add(normalizeAccountId(key))
+  }
+  const defaultToken = normalizeDiscordToken(runtime.getSetting("DISCORD_API_TOKEN") as string | undefined)
+  if (defaultToken || cfg.token || ids.size === 0) {
+    ids.add(DEFAULT_ACCOUNT_ID)
+  }
+  return Array.from(ids).sort()
+}
+
+export function resolveDefaultDiscordAccountId(runtime: Pick<IAgentRuntime, "getSetting" | "character">): string {
+  return selectDefaultConnectorAccountId(listDiscordAccountIds(runtime))
+}
+
+export function resolveDiscordToken(
+  runtime: Pick<IAgentRuntime, "getSetting" | "character">,
+  accountId?: string | null,
+): DiscordTokenResolution {
+  const normalized = normalizeAccountId(accountId)
+  const cfg = getMultiAccountConfig(runtime)
+  const accountCfg = cfg.accounts?.[normalized]
+  if (accountCfg?.token) {
+    const token = normalizeDiscordToken(accountCfg.token)
+    if (token) return { token, source: "config" }
+  }
+  const botTokens = parseBotTokensMap(runtime.getSetting("DISCORD_BOT_TOKENS"))
+  if (botTokens[normalized]) {
+    return { token: botTokens[normalized], source: "env" }
+  }
+  if (normalized === DEFAULT_ACCOUNT_ID) {
+    if (cfg.token) {
+      const token = normalizeDiscordToken(cfg.token)
+      if (token) return { token, source: "character" }
+    }
+    const envToken = normalizeDiscordToken(runtime.getSetting("DISCORD_API_TOKEN") as string | undefined)
+    if (envToken) return { token: envToken, source: "env" }
+  }
+  return { token: "", source: "none" }
+}
+
+export function resolveDiscordAccount(
+  runtime: Pick<IAgentRuntime, "getSetting" | "character">,
+  accountId?: string | null,
+): ResolvedDiscordAccount {
+  const normalized = normalizeAccountId(accountId)
+  const cfg = getMultiAccountConfig(runtime)
+  const accountCfg = cfg.accounts?.[normalized] ?? {}
+  const merged: DiscordAccountConfig = {
+    ...cfg,
+    ...accountCfg,
+    dm: { ...cfg.dm, ...accountCfg.dm },
+    guilds: { ...cfg.guilds, ...accountCfg.guilds },
+  }
+  const tokenRes = resolveDiscordToken(runtime, normalized)
+  const enabled = cfg.enabled !== false && accountCfg.enabled !== false
+  return {
+    accountId: normalized,
+    enabled,
+    name: accountCfg.name ?? (normalized === DEFAULT_ACCOUNT_ID ? cfg.name : undefined),
+    token: tokenRes.token,
+    tokenSource: tokenRes.source,
+    configured: tokenRes.token.length > 0,
+    config: merged,
+  }
+}
+
+export function listEnabledDiscordAccounts(runtime: Pick<IAgentRuntime, "getSetting" | "character">): ResolvedDiscordAccount[] {
+  return listDiscordAccountIds(runtime)
+    .map((id) => resolveDiscordAccount(runtime, id))
+    .filter((account) => account.enabled && account.configured)
+}
+
+export function isMultiAccountEnabled(runtime: Pick<IAgentRuntime, "getSetting" | "character">): boolean {
+  return listEnabledDiscordAccounts(runtime).length > 1
+}
+
+export class DiscordAccountClientPool {
+  private readonly entries = new Map<string, DiscordAccountClientState>()
+
+  set(accountId: string, client: Client, ready = false, botUserId?: string): DiscordAccountClientState {
+    const id = normalizeAccountId(accountId)
+    const entry: DiscordAccountClientState = {
+      accountId: id,
+      client,
+      ready,
+      botUserId,
+      connectedAt: ready ? Date.now() : undefined,
+    }
+    this.entries.set(id, entry)
+    return entry
+  }
+
+  get(accountId?: string): DiscordAccountClientState | undefined {
+    if (accountId) return this.entries.get(normalizeAccountId(accountId))
+    return this.entries.get(DEFAULT_ACCOUNT_ID) ?? this.entries.values().next().value
+  }
+
+  getClient(accountId?: string): Client | null {
+    return this.get(accountId)?.client ?? null
+  }
+
+  list(): DiscordAccountClientState[] {
+    return Array.from(this.entries.values())
+  }
+
+  has(accountId: string): boolean {
+    return this.entries.has(normalizeAccountId(accountId))
+  }
+
+  remove(accountId: string): boolean {
+    return this.entries.delete(normalizeAccountId(accountId))
+  }
+
+  async destroyAll(): Promise<void> {
+    const current = Array.from(this.entries.values())
+    this.entries.clear()
+    for (const entry of current) {
+      try {
+        await entry.client.destroy()
+      } catch {
+        continue
+      }
+    }
+  }
+}
+
+export function discordTokenFingerprint(token: string | undefined): string {
+  if (!token) return ""
+  return sha256Hex(token, 32)
+}
+
+function isPolicyEntry(value: unknown): value is DiscordDisabledAccountPolicy {
+  if (!value || typeof value !== "object") return false
+  const entry = value as Record<string, unknown>
+  return typeof entry.tokenFingerprint === "string" && typeof entry.disabledAt === "number"
+}
+
+export async function readDiscordAccountPolicy(
+  runtime: Pick<IAgentRuntime, "getCache">,
+): Promise<DiscordAccountPolicy> {
+  const stored = await runtime.getCache<unknown>(DISCORD_ACCOUNT_POLICY_CACHE_KEY)
+  if (stored === undefined || stored === null) return {}
+  if (typeof stored !== "object" || Array.isArray(stored)) {
+    throwPolicyError("Stored Discord account policy is malformed", "DISCORD_ACCOUNT_POLICY_INVALID")
+  }
+  const policy: DiscordAccountPolicy = {}
+  for (const [accountId, entry] of Object.entries(stored as Record<string, unknown>)) {
+    if (!isPolicyEntry(entry)) {
+      throwPolicyError("Stored Discord account policy is malformed", "DISCORD_ACCOUNT_POLICY_INVALID", { accountId })
+    }
+    policy[normalizeAccountId(accountId)] = entry
+  }
+  return policy
+}
+
+export async function persistDiscordAccountDisabled(
+  runtime: Pick<IAgentRuntime, "getCache" | "setCache">,
+  account: Pick<ResolvedDiscordAccount, "accountId" | "token">,
+  now = Date.now(),
+): Promise<DiscordDisabledAccountPolicy> {
+  const accountId = normalizeAccountId(account.accountId)
+  const policy = await readDiscordAccountPolicy(runtime)
+  const entry: DiscordDisabledAccountPolicy = {
+    tokenFingerprint: discordTokenFingerprint(account.token),
+    disabledAt: now,
+  }
+  policy[accountId] = entry
+  const stored = await runtime.setCache(DISCORD_ACCOUNT_POLICY_CACHE_KEY, policy)
+  if (!stored) {
+    throwPolicyError("Failed to persist the Discord account policy", "DISCORD_ACCOUNT_POLICY_WRITE_FAILED", { accountId }, "ephemeral")
+  }
+  return entry
+}
+
+export function isDiscordAccountDisabledByPolicy(
+  policy: DiscordAccountPolicy,
+  account: Pick<ResolvedDiscordAccount, "accountId" | "token">,
+): boolean {
+  const entry = policy[normalizeAccountId(account.accountId)]
+  return entry !== undefined && entry.tokenFingerprint === discordTokenFingerprint(account.token)
+}
+
+function toConnectorAccount(
+  account: ResolvedDiscordAccount,
+  isDefault: boolean,
+  liveReady: boolean,
+  botHandle?: string,
+): ConnectorAccount {
+  const now = Date.now()
+  return {
+    id: `${DISCORD_PROVIDER_ID}:${account.accountId}`,
+    provider: DISCORD_PROVIDER_ID,
+    accountKey: account.accountId,
+    label: account.name ?? (account.accountId === DEFAULT_ACCOUNT_ID ? "Discord" : `Discord (${account.accountId})`),
+    role: "AGENT",
+    purpose: ["messaging", "posting", "reading"],
+    accessGate: "pairing",
+    status: liveReady ? "connected" : "pending",
+    ...(botHandle ? { displayHandle: botHandle } : {}),
+    createdAt: now,
+    updatedAt: now,
+    metadata: {
+      isDefault,
+      tokenSource: account.tokenSource,
+      configured: account.configured,
+      enabled: account.enabled,
+    },
+  }
+}
+
+export function createDiscordConnectorAccountProvider(runtime: IAgentRuntime): ConnectorAccountProvider {
+  return {
+    provider: DISCORD_PROVIDER_ID,
+    label: "Discord",
+    listAccounts: async () => {
+      const policy = await readDiscordAccountPolicy(runtime)
+      const defaultId = resolveDefaultDiscordAccountId(runtime)
+      const service = runtime.getService(DISCORD_SERVICE_NAME) as { getClient?: (id?: string) => Client | null } | null
+      return listDiscordAccountIds(runtime)
+        .map((id) => resolveDiscordAccount(runtime, id))
+        .filter((account) => account.configured && account.enabled && !isDiscordAccountDisabledByPolicy(policy, account))
+        .map((account) => {
+          const client = service?.getClient?.(account.accountId) ?? null
+          const ready = client?.isReady?.() === true
+          return toConnectorAccount(account, account.accountId === defaultId, ready, client?.user?.tag)
+        })
+    },
+    deleteAccount: async (accountId: string) => {
+      const account = resolveDiscordAccount(runtime, accountId)
+      await persistDiscordAccountDisabled(runtime, account)
+    },
+    startOAuth: async (_request: ConnectorOAuthStartRequest, _manager: ConnectorAccountManager): Promise<ConnectorOAuthStartResult> => ({
+      authUrl: "",
+      metadata: {
+        instructions: "Discord uses bot installation + /eliza-pair slash command instead of a code exchange.",
+      },
+    }),
+    completeOAuth: async (request: ConnectorOAuthCallbackRequest, _manager: ConnectorAccountManager): Promise<ConnectorOAuthCallbackResult> => ({
+      flow: { status: "completed" },
+      account: {
+        status: "connected",
+        accessGate: "pairing",
+        metadata: {
+          completedVia: "owner_pairing_slash_command",
+          state: request.flow.state,
+        },
+      },
+    }),
+  }
+}
+
+export function parseDiscordOwnerUserIds(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return Array.from(new Set(raw.map((v) => String(v).trim()).filter((v) => /^\d{15,20}$/.test(v))))
+  }
+  if (typeof raw === "string") {
+    return Array.from(new Set(raw.split(/[\s,]+/).map((v) => v.trim()).filter((v) => /^\d{15,20}$/.test(v))))
+  }
+  return []
+}
+
+export function extractDiscordOwnerUserIds(runtime: Pick<IAgentRuntime, "getSetting">): string[] {
+  return parseDiscordOwnerUserIds(
+    runtime.getSetting("DISCORD_OWNER_USER_IDS") ?? runtime.getSetting("DISCORD_OWNER_ID"),
+  )
+}
+
+export function extractDiscordTeamAdminUserIds(runtime: Pick<IAgentRuntime, "getSetting">): string[] {
+  return parseDiscordOwnerUserIds(runtime.getSetting("DISCORD_TEAM_ADMIN_USER_IDS"))
+}
+
+export function resolveElizaOwnerEntityId(runtime: Pick<IAgentRuntime, "agentId" | "getSetting">): UUID {
+  const configured = runtime.getSetting("ELIZA_OWNER_ENTITY_ID")
+  if (typeof configured === "string" && configured.trim().length > 0) return configured.trim() as UUID
+  return createUniqueUuid(runtime as IAgentRuntime, `owner:${runtime.agentId}`)
+}
+
+export function resolveDiscordRuntimeEntityId(
+  runtime: IAgentRuntime,
+  discordUserId: string,
+  accountId = DEFAULT_ACCOUNT_ID,
+): UUID {
+  const owners = extractDiscordOwnerUserIds(runtime)
+  if (owners.includes(discordUserId)) return resolveElizaOwnerEntityId(runtime)
+  return createUniqueUuid(runtime, `discord:${normalizeAccountId(accountId)}:user:${discordUserId}`)
+}
+
+export function isAliasedDiscordEntityId(runtime: IAgentRuntime, discordUserId: string): boolean {
+  return extractDiscordOwnerUserIds(runtime).includes(discordUserId)
+}
+
+export function buildDiscordWorldMetadata(guildId: string, accountId = DEFAULT_ACCOUNT_ID, name?: string): Record<string, unknown> {
+  return {
+    source: DISCORD_SERVICE_NAME,
+    accountId: normalizeAccountId(accountId),
+    guildId,
+    ...(name ? { name } : {}),
+  }
+}
+
+export function buildDiscordEntityMetadata(user: {
+  readonly id: string
+  readonly username: string
+  readonly displayName?: string
+  readonly avatarUrl?: string | null
+}, accountId = DEFAULT_ACCOUNT_ID): Record<string, unknown> {
+  return {
+    source: DISCORD_SERVICE_NAME,
+    accountId: normalizeAccountId(accountId),
+    discordUserId: user.id,
+    username: user.username,
+    ...(user.displayName ? { displayName: user.displayName } : {}),
+    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
+  }
+}
+
+export function isDiscordAvatarUrl(url: string | null | undefined): boolean {
+  if (typeof url !== "string") return false
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === "https:" && (parsed.hostname === "cdn.discordapp.com" || parsed.hostname === "media.discordapp.net")
+  } catch {
+    return false
+  }
+}
+
+export function getDiscordAvatarCacheDir(stateDir?: string): string {
+  return defaultAvatarCacheDir(stateDir)
+}
+
+export function buildDiscordAvatarCacheFileName(url: string): string {
+  const extMatch = url.split("?")[0]?.match(/\.(png|jpg|jpeg|webp|gif)$/i)
+  const ext = extMatch ? extMatch[1].toLowerCase() : "png"
+  return `${sha256Hex(url, 24)}.${ext}`
+}
+
+export function getDiscordAvatarCachePath(url: string, stateDir?: string): string {
+  return joinPath(getDiscordAvatarCacheDir(stateDir), buildDiscordAvatarCacheFileName(url))
+}
+
+export function getDiscordAvatarPublicPath(url: string): string {
+  return `/api/discord/avatars/${buildDiscordAvatarCacheFileName(url)}`
+}
+
+export async function cacheDiscordAvatarUrl(
+  url: string,
+  options?: { readonly stateDir?: string; readonly fetchImpl?: typeof globalThis.fetch },
+): Promise<string | null> {
+  if (!isDiscordAvatarUrl(url)) return null
+  return downloadAndCacheAvatar(url, getDiscordAvatarCachePath(url, options?.stateDir), options?.fetchImpl)
+}
+
+const profileCache = new Map<string, Record<string, unknown>>()
+
+export function __resetProfileCachesForTests(): void {
+  profileCache.clear()
+}
+
+export function __setProfileCacheValueForTests(key: string, value: Record<string, unknown>): void {
+  profileCache.set(key, value)
+}
+
+export function isCanonicalDiscordSource(source: string | undefined): boolean {
+  return source === "discord" || source === "discord-local"
+}
+
+export async function cacheDiscordAvatarForRuntime(
+  runtime: Pick<IAgentRuntime, "getSetting">,
+  url: string | null | undefined,
+  fetchImpl?: typeof globalThis.fetch,
+): Promise<string | null> {
+  if (!url || !isDiscordAvatarUrl(url)) return null
+  const stateDir = typeof runtime.getSetting("ELIZA_STATE_DIR") === "string" ? (runtime.getSetting("ELIZA_STATE_DIR") as string) : undefined
+  return cacheDiscordAvatarUrl(url, { stateDir, fetchImpl })
+}
+
+export interface DiscordResolvedProfile {
+  readonly id: string
+  readonly name: string
+  readonly username?: string
+  readonly avatarUrl?: string | null
+  readonly source: "discord"
+}
+
+export function resolveDiscordUserProfile(user: {
+  readonly id: string
+  readonly username: string
+  readonly globalName?: string | null
+  readonly displayName?: string | null
+  readonly avatarURL?: () => string | null
+}): DiscordResolvedProfile {
+  const name = user.displayName ?? user.globalName ?? user.username
+  return {
+    id: user.id,
+    name,
+    username: user.username,
+    avatarUrl: typeof user.avatarURL === "function" ? user.avatarURL() : null,
+    source: "discord",
+  }
+}
+
+export function resolveDiscordMessageAuthorProfile(message: {
+  readonly author: {
+    readonly id: string
+    readonly username: string
+    readonly globalName?: string | null
+    readonly displayName?: string | null
+    readonly avatarURL?: () => string | null
+  }
+  readonly member?: { readonly displayName?: string | null } | null
+}): DiscordResolvedProfile {
+  const base = resolveDiscordUserProfile(message.author)
+  return {
+    ...base,
+    name: message.member?.displayName ?? base.name,
+  }
+}
+
+export function resolveDiscordRoomProfile(channel: {
+  readonly id: string
+  readonly name?: string | null
+  readonly guildId?: string | null
+}): { readonly id: string; readonly name: string; readonly guildId?: string } {
+  return {
+    id: channel.id,
+    name: channel.name?.trim() || channel.id,
+    ...(channel.guildId ? { guildId: channel.guildId } : {}),
+  }
+}
+
+export function resolveStoredDiscordEntityProfile(entityId: string): Record<string, unknown> | undefined {
+  return profileCache.get(entityId)
+}

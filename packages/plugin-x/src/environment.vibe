@@ -1,0 +1,397 @@
+// spec/x/index.md, "Direct requests, discovered items and autonomous actions use their own policy gates"
+import { checkPairingAllowed, logger, type IAgentRuntime } from "@elizaos/core"
+import {
+  DEFAULT_X_ACCOUNT_ID,
+  TwitterErrorType,
+  failTwitter,
+  type TwitterAuthMode,
+  type TwitterClientState,
+  type TwitterConfig,
+  type TwitterDmPolicy,
+} from "./types.vibe"
+
+export const DEFAULT_TWITTER_DM_POLICY: TwitterDmPolicy = "pairing"
+
+const TWITTER_DM_POLICIES: readonly TwitterDmPolicy[] = ["open", "pairing", "allowlist", "disabled"]
+const LEGACY_ELIZA_CLOUD_ORIGINS = [
+  "https://api.eliza.app",
+  "https://api-staging.eliza.app",
+  "https://cloud.eliza.app",
+  "https://cloud-staging.eliza.app",
+] as const
+
+export interface TwitterDmAccessDecision {
+  allowed: boolean
+  replyMessage?: string
+}
+
+export interface XAccountCredentials {
+  authMode?: TwitterAuthMode
+  apiKey?: string
+  apiSecretKey?: string
+  accessToken?: string
+  accessTokenSecret?: string
+  clientId?: string
+  redirectUri?: string
+  scopes?: string
+}
+
+export interface XConnectorAccountRecord {
+  [key: string]: unknown
+  accountId: string
+  source?: "x" | "twitter"
+  credentials?: XAccountCredentials
+  settings?: Partial<Record<string, string | undefined>>
+  metadata?: Record<string, unknown>
+}
+
+export interface XConnectorAccountStore {
+  getAccount(accountId: string): Promise<XConnectorAccountRecord | null>
+}
+
+export interface RuntimeWithXConnectorAccounts {
+  getConnectorAccount?: (query: { source: "x"; accountId: string }) => Promise<XConnectorAccountRecord | null>
+  getConnectorAccountStore?: (source: "x") => XConnectorAccountStore | null
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+export function getXSetting(runtime: IAgentRuntime | null | undefined, key: string): string | undefined {
+  if (!runtime || typeof runtime.getSetting !== "function") return undefined
+  const value = runtime.getSetting(key)
+  if (value === undefined || value === null) return undefined
+  const text = String(value).trim()
+  return text.length > 0 ? text : undefined
+}
+
+function parseBoolDefault(raw: unknown, fallback: boolean): boolean {
+  if (typeof raw === "boolean") return raw
+  if (typeof raw !== "string") return fallback
+  const lower = raw.trim().toLowerCase()
+  if (lower === "true" || lower === "1" || lower === "yes" || lower === "on") return true
+  if (lower === "false" || lower === "0" || lower === "no" || lower === "off") return false
+  return fallback
+}
+
+function parseStrictPositiveInt(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  if (!/^[0-9]+$/.test(trimmed)) return undefined
+  const parsed = Number.parseInt(trimmed, 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
+export function parseTwitterCount(value: unknown, defaultValue: number): number {
+  if (value == null || (typeof value === "string" && !value.trim())) return defaultValue
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^[0-9]+$/.test(value.trim())
+        ? Number(value.trim())
+        : Number.NaN
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    failTwitter(TwitterErrorType.VALIDATION, "X count settings must be non-negative safe integers", "X_INVALID_COUNT_SETTING")
+  }
+  return parsed
+}
+
+export function parseTwitterInterval(value: string | undefined, defaultValue: number): number {
+  return parseStrictPositiveInt(value) ?? defaultValue
+}
+
+export function resolveTwitterDmPolicy(raw: unknown): TwitterDmPolicy {
+  if (raw === undefined || raw === null) return DEFAULT_TWITTER_DM_POLICY
+  const normalized = String(raw).trim().toLowerCase()
+  if (!normalized) return DEFAULT_TWITTER_DM_POLICY
+  if ((TWITTER_DM_POLICIES as readonly string[]).includes(normalized)) {
+    return normalized as TwitterDmPolicy
+  }
+  logger.warn(
+    { src: "plugin:x", policy: normalized },
+    "Unrecognized TWITTER_DM_POLICY value; failing closed to the default pairing policy",
+  )
+  return DEFAULT_TWITTER_DM_POLICY
+}
+
+export async function checkTwitterDmAccess(
+  runtime: IAgentRuntime,
+  params: {
+    policy: TwitterDmPolicy
+    senderId: string
+    username?: string
+    allowlist?: ReadonlySet<string>
+  },
+): Promise<TwitterDmAccessDecision> {
+  if (params.policy === "open") return { allowed: true }
+  if (params.policy === "disabled") return { allowed: false }
+  if (params.allowlist?.has(params.senderId)) return { allowed: true }
+  if (params.policy === "allowlist") return { allowed: false }
+  const pairing = await checkPairingAllowed(runtime, {
+    channel: "x",
+    senderId: params.senderId,
+    metadata: params.username ? { username: params.username } : undefined,
+  })
+  return {
+    allowed: pairing.allowed,
+    ...(pairing.replyMessage ? { replyMessage: pairing.replyMessage } : {}),
+  }
+}
+
+function parseTargetUsers(targetUsersStr?: string | null): string[] {
+  if (!targetUsersStr?.trim()) return []
+  return targetUsersStr
+    .split(",")
+    .map((user) => user.trim())
+    .filter(Boolean)
+}
+
+export function shouldTargetUser(username: string, targetUsersConfig: string): boolean {
+  if (!targetUsersConfig?.trim()) return true
+  const targetUsers = parseTargetUsers(targetUsersConfig)
+  if (targetUsers.includes("*")) return true
+  const normalizedUsername = username.toLowerCase().replace(/^@/, "")
+  return targetUsers.some((target) => target.toLowerCase().replace(/^@/, "") === normalizedUsername)
+}
+
+export function getTargetUsers(targetUsersConfig: string): string[] {
+  return parseTargetUsers(targetUsersConfig).filter((u) => u !== "*")
+}
+
+export function normalizeXAccountId(value: unknown): string {
+  return nonEmptyString(value) ?? DEFAULT_X_ACCOUNT_ID
+}
+
+export function resolveDefaultXAccountId(
+  runtime: IAgentRuntime | null | undefined,
+  state?: TwitterClientState,
+): string {
+  return normalizeXAccountId(
+    state?.accountId ??
+      state?.TWITTER_DEFAULT_ACCOUNT_ID ??
+      state?.TWITTER_ACCOUNT_ID ??
+      getXSetting(runtime, "TWITTER_DEFAULT_ACCOUNT_ID") ??
+      getXSetting(runtime, "TWITTER_ACCOUNT_ID") ??
+      getXSetting(runtime, "X_DEFAULT_ACCOUNT_ID") ??
+      getXSetting(runtime, "X_ACCOUNT_ID"),
+  )
+}
+
+export function resolveRequestedXAccountId(
+  runtime: IAgentRuntime | null | undefined,
+  state?: TwitterClientState,
+  requestedAccountId?: unknown,
+): string {
+  return normalizeXAccountId(requestedAccountId ?? state?.accountId ?? resolveDefaultXAccountId(runtime, state))
+}
+
+function parseAccountsJson(runtime: IAgentRuntime): Map<string, Record<string, unknown>> {
+  const raw = getXSetting(runtime, "TWITTER_ACCOUNTS") ?? getXSetting(runtime, "X_ACCOUNTS")
+  const accounts = new Map<string, Record<string, unknown>>()
+  if (!raw?.trim()) return accounts
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (!item || typeof item !== "object") continue
+        const record = item as Record<string, unknown>
+        const id = nonEmptyString(record.accountId ?? record.id)
+        if (id) accounts.set(id, record)
+      }
+      return accounts
+    }
+    if (parsed && typeof parsed === "object") {
+      for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (value && typeof value === "object") accounts.set(id, value as Record<string, unknown>)
+      }
+    }
+  } catch {
+    return accounts
+  }
+  return accounts
+}
+
+function readRawField(record: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+  if (!record) return undefined
+  const credentials =
+    record.credentials && typeof record.credentials === "object"
+      ? (record.credentials as Record<string, unknown>)
+      : {}
+  const settings =
+    record.settings && typeof record.settings === "object"
+      ? (record.settings as Record<string, unknown>)
+      : {}
+  for (const source of [record, credentials, settings]) {
+    for (const key of keys) {
+      const value = nonEmptyString(source[key])
+      if (value) return value
+    }
+  }
+  return undefined
+}
+
+function buildStateFromRecord(accountId: string, record: Record<string, unknown>): TwitterClientState {
+  const metadata =
+    record.metadata && typeof record.metadata === "object"
+      ? (record.metadata as Record<string, unknown>)
+      : {}
+  const metadataAuth = nonEmptyString(metadata.authMethod ?? metadata.oauthMethod)
+  const authMode =
+    metadataAuth === "oauth" ? "oauth" : readRawField(record, ["TWITTER_AUTH_MODE", "authMode", "mode"])
+  return {
+    accountId,
+    TWITTER_ACCOUNT_ID: accountId,
+    TWITTER_AUTH_MODE:
+      authMode === "oauth" || authMode === "env" || authMode === "broker" ? authMode : undefined,
+    TWITTER_API_KEY: readRawField(record, ["TWITTER_API_KEY", "apiKey"]),
+    TWITTER_API_SECRET_KEY: readRawField(record, ["TWITTER_API_SECRET_KEY", "apiSecretKey", "apiSecret", "consumerSecret"]),
+    TWITTER_ACCESS_TOKEN: readRawField(record, ["TWITTER_ACCESS_TOKEN", "accessToken"]),
+    TWITTER_ACCESS_TOKEN_SECRET: readRawField(record, ["TWITTER_ACCESS_TOKEN_SECRET", "accessTokenSecret", "accessSecret"]),
+    TWITTER_CLIENT_ID: readRawField(record, ["TWITTER_CLIENT_ID", "clientId"]),
+    TWITTER_REDIRECT_URI: readRawField(record, ["TWITTER_REDIRECT_URI", "redirectUri"]),
+    TWITTER_SCOPES: nonEmptyString(metadata.scope) ?? readRawField(record, ["TWITTER_SCOPES", "scopes"]),
+  }
+}
+
+export async function resolveTwitterAccountConfig(
+  runtime: IAgentRuntime,
+  options: { accountId?: unknown; state?: TwitterClientState } = {},
+): Promise<TwitterClientState> {
+  const defaultAccountId = resolveDefaultXAccountId(runtime, options.state)
+  const accountId = resolveRequestedXAccountId(runtime, options.state, options.accountId)
+  const accountRuntime = runtime as IAgentRuntime & RuntimeWithXConnectorAccounts
+  let runtimeRecord: XConnectorAccountRecord | null
+  try {
+    runtimeRecord =
+      (await accountRuntime.getConnectorAccountStore?.("x")?.getAccount(accountId)) ??
+      (await accountRuntime.getConnectorAccount?.({ source: "x", accountId })) ??
+      null
+  } catch {
+    runtimeRecord = null
+  }
+  const record = runtimeRecord ?? parseAccountsJson(runtime).get(accountId)
+  if (record) {
+    return { ...options.state, ...buildStateFromRecord(accountId, record) }
+  }
+  if (accountId === defaultAccountId) {
+    const authMode = options.state?.TWITTER_AUTH_MODE ?? getXSetting(runtime, "TWITTER_AUTH_MODE")
+    return {
+      ...options.state,
+      accountId,
+      TWITTER_ACCOUNT_ID: accountId,
+      TWITTER_AUTH_MODE:
+        authMode === "env" || authMode === "oauth" || authMode === "broker" ? authMode : undefined,
+      TWITTER_API_KEY: options.state?.TWITTER_API_KEY ?? getXSetting(runtime, "TWITTER_API_KEY"),
+      TWITTER_API_SECRET_KEY:
+        options.state?.TWITTER_API_SECRET_KEY ?? getXSetting(runtime, "TWITTER_API_SECRET_KEY"),
+      TWITTER_ACCESS_TOKEN:
+        options.state?.TWITTER_ACCESS_TOKEN ?? getXSetting(runtime, "TWITTER_ACCESS_TOKEN"),
+      TWITTER_ACCESS_TOKEN_SECRET:
+        options.state?.TWITTER_ACCESS_TOKEN_SECRET ?? getXSetting(runtime, "TWITTER_ACCESS_TOKEN_SECRET"),
+      TWITTER_CLIENT_ID: options.state?.TWITTER_CLIENT_ID ?? getXSetting(runtime, "TWITTER_CLIENT_ID"),
+      TWITTER_REDIRECT_URI: options.state?.TWITTER_REDIRECT_URI ?? getXSetting(runtime, "TWITTER_REDIRECT_URI"),
+      TWITTER_SCOPES: options.state?.TWITTER_SCOPES ?? getXSetting(runtime, "TWITTER_SCOPES"),
+    }
+  }
+  return {
+    ...options.state,
+    accountId,
+    TWITTER_ACCOUNT_ID: accountId,
+    TWITTER_AUTH_MODE: options.state?.TWITTER_AUTH_MODE,
+    TWITTER_API_KEY: options.state?.TWITTER_API_KEY ?? "",
+    TWITTER_API_SECRET_KEY: options.state?.TWITTER_API_SECRET_KEY ?? "",
+    TWITTER_ACCESS_TOKEN: options.state?.TWITTER_ACCESS_TOKEN ?? "",
+    TWITTER_ACCESS_TOKEN_SECRET: options.state?.TWITTER_ACCESS_TOKEN_SECRET ?? "",
+    TWITTER_CLIENT_ID: options.state?.TWITTER_CLIENT_ID ?? "",
+    TWITTER_REDIRECT_URI: options.state?.TWITTER_REDIRECT_URI ?? "",
+    TWITTER_SCOPES: options.state?.TWITTER_SCOPES,
+  }
+}
+
+export async function validateTwitterConfig(
+  runtime: IAgentRuntime,
+  config: Partial<TwitterConfig> = {},
+): Promise<TwitterConfig> {
+  const rawMode = (config.TWITTER_AUTH_MODE ?? getXSetting(runtime, "TWITTER_AUTH_MODE") ?? "env").trim()
+  if (rawMode !== "env" && rawMode !== "oauth" && rawMode !== "broker") {
+    failTwitter(
+      TwitterErrorType.VALIDATION,
+      `Invalid TWITTER_AUTH_MODE=${rawMode}. Expected env|oauth|broker.`,
+      "X_INVALID_AUTH_MODE",
+    )
+  }
+  const read = (key: keyof TwitterConfig, fallback = "") =>
+    config[key] ?? getXSetting(runtime, key) ?? fallback
+  return {
+    TWITTER_AUTH_MODE: rawMode,
+    TWITTER_ACCOUNT_ID: read("TWITTER_ACCOUNT_ID"),
+    TWITTER_DEFAULT_ACCOUNT_ID: read("TWITTER_DEFAULT_ACCOUNT_ID"),
+    TWITTER_ACCOUNTS: read("TWITTER_ACCOUNTS"),
+    TWITTER_API_KEY: read("TWITTER_API_KEY"),
+    TWITTER_API_SECRET_KEY: read("TWITTER_API_SECRET_KEY"),
+    TWITTER_ACCESS_TOKEN: read("TWITTER_ACCESS_TOKEN"),
+    TWITTER_ACCESS_TOKEN_SECRET: read("TWITTER_ACCESS_TOKEN_SECRET"),
+    TWITTER_CLIENT_ID: read("TWITTER_CLIENT_ID"),
+    TWITTER_REDIRECT_URI: read("TWITTER_REDIRECT_URI"),
+    TWITTER_SCOPES: read("TWITTER_SCOPES", "tweet.read tweet.write users.read dm.read dm.write offline.access"),
+    TWITTER_BROKER_URL: read("TWITTER_BROKER_URL"),
+    TWITTER_BROKER_TOKEN: read("TWITTER_BROKER_TOKEN"),
+    TWITTER_PERSONAL_DM_ROUTER_URL: read("TWITTER_PERSONAL_DM_ROUTER_URL"),
+    TWITTER_DRY_RUN: String(parseBoolDefault(read("TWITTER_DRY_RUN", "false"), false)),
+    TWITTER_TARGET_USERS: read("TWITTER_TARGET_USERS"),
+    TWITTER_ENABLE_POST: String(parseBoolDefault(read("TWITTER_ENABLE_POST", "false"), false)),
+    TWITTER_ENABLE_REPLIES: String(parseBoolDefault(read("TWITTER_ENABLE_REPLIES", "true"), true)),
+    TWITTER_ENABLE_DMS: String(parseBoolDefault(read("TWITTER_ENABLE_DMS", "true"), true)),
+    TWITTER_DM_POLICY: read("TWITTER_DM_POLICY"),
+    TWITTER_DM_POLL_INTERVAL_SECONDS: String(parseTwitterInterval(read("TWITTER_DM_POLL_INTERVAL_SECONDS"), 60)),
+    TWITTER_ENABLE_ACTIONS: String(parseBoolDefault(read("TWITTER_ENABLE_ACTIONS", "false"), false)),
+    TWITTER_POST_INTERVAL: String(parseTwitterInterval(read("TWITTER_POST_INTERVAL"), 120)),
+    TWITTER_POST_INTERVAL_MIN: String(parseTwitterInterval(read("TWITTER_POST_INTERVAL_MIN"), 90)),
+    TWITTER_POST_INTERVAL_MAX: String(parseTwitterInterval(read("TWITTER_POST_INTERVAL_MAX"), 180)),
+    TWITTER_ENGAGEMENT_INTERVAL: String(parseTwitterInterval(read("TWITTER_ENGAGEMENT_INTERVAL"), 30)),
+    TWITTER_ENGAGEMENT_INTERVAL_MIN: String(parseTwitterInterval(read("TWITTER_ENGAGEMENT_INTERVAL_MIN"), 20)),
+    TWITTER_ENGAGEMENT_INTERVAL_MAX: String(parseTwitterInterval(read("TWITTER_ENGAGEMENT_INTERVAL_MAX"), 40)),
+    TWITTER_DISCOVERY_INTERVAL_MIN: String(parseTwitterInterval(read("TWITTER_DISCOVERY_INTERVAL_MIN"), 15)),
+    TWITTER_DISCOVERY_INTERVAL_MAX: String(parseTwitterInterval(read("TWITTER_DISCOVERY_INTERVAL_MAX"), 30)),
+    TWITTER_MAX_ENGAGEMENTS_PER_RUN: String(parseTwitterCount(read("TWITTER_MAX_ENGAGEMENTS_PER_RUN"), 5)),
+    TWITTER_MAX_TWEET_LENGTH: String(parseTwitterInterval(read("TWITTER_MAX_TWEET_LENGTH"), 280)),
+    TWITTER_RETRY_LIMIT: String(parseTwitterCount(read("TWITTER_RETRY_LIMIT"), 5)),
+  }
+}
+
+function normalizedPathname(url: URL): string {
+  const pathname = url.pathname.replace(/\/+$/, "")
+  return pathname || "/"
+}
+
+export function isEndpointOwnedByCloudBase(endpoint: string, cloudBase: string): boolean {
+  let endpointUrl: URL
+  let cloudBaseUrl: URL
+  try {
+    endpointUrl = new URL(endpoint)
+    cloudBaseUrl = new URL(cloudBase)
+  } catch {
+    return false
+  }
+  if (
+    endpointUrl.username ||
+    endpointUrl.password ||
+    cloudBaseUrl.username ||
+    cloudBaseUrl.password ||
+    endpointUrl.origin !== cloudBaseUrl.origin
+  ) {
+    return false
+  }
+  const endpointPath = normalizedPathname(endpointUrl)
+  const basePath = normalizedPathname(cloudBaseUrl)
+  return basePath === "/" || endpointPath === basePath || endpointPath.startsWith(`${basePath}/`)
+}
+
+export function resolveCloudApiKeyForXEndpoint(
+  endpoint: string,
+  legacyCloudApiKey: string | undefined,
+): string | undefined {
+  const isLegacy = LEGACY_ELIZA_CLOUD_ORIGINS.some((origin) => isEndpointOwnedByCloudBase(endpoint, origin))
+  return isLegacy ? legacyCloudApiKey?.trim() || undefined : undefined
+}

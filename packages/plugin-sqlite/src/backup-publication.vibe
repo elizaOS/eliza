@@ -1,0 +1,182 @@
+// spec/sqlite/backupPublication.md, "Story: Publish a durable SQLite backup without overwriting an existing destination"
+module fsBackup {
+  import {
+    chmodSync,
+    closeSync,
+    existsSync,
+    fsyncSync,
+    linkSync,
+    mkdirSync,
+    mkdtempSync,
+    openSync,
+    rmSync,
+    writeFileSync,
+  } from "node:fs"
+  import { basename, dirname, join } from "node:path"
+  import { logger } from "@elizaos/core"
+  import {
+    abortBackup as abortBackupStep,
+    canAbortBackup,
+    canConcurrentCreate,
+    canFlushDirectory,
+    canFlushFile,
+    canPrepare,
+    canPublish,
+    canReport,
+    concurrentCreate as concurrentCreateStep,
+    flushDirectory as flushDirectoryStep,
+    flushFile as flushFileStep,
+    initial,
+    prepare as prepareStep,
+    publish as publishStep,
+    report as reportStep,
+    type BackupState,
+  } from "../gen/sqlite__backupPublication.effect.vibe"
+  import type { SqlDatabase } from "./types.vibe"
+
+  export function directoryChainToSync(directory: string, existingAncestor: string): string[] {
+    const chain: string[] = []
+    let current = directory
+    for (;;) {
+      chain.push(current)
+      if (current === existingAncestor) return chain
+      const parent = dirname(current)
+      if (parent === current) return chain
+      current = parent
+    }
+  }
+
+  export function syncDirectory(directory: string): void {
+    const fd = openSync(directory, process.platform === "win32" ? "r+" : "r")
+    try {
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+  }
+
+  export function syncFile(filePath: string): void {
+    const fd = openSync(filePath, "r+")
+    try {
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+  }
+
+  export function executeAtomicBackup(database: SqlDatabase, destination: string): void {
+    const parent = dirname(destination)
+    const firstCreated = mkdirSync(parent, { recursive: true, mode: 0o700 })
+    const existingAncestor = firstCreated ? dirname(firstCreated) : parent
+    const staging = mkdtempSync(join(parent, `.${basename(destination)}-`))
+    try {
+      chmodSync(staging, 0o700)
+      const snapshot = join(staging, "snapshot.sqlite")
+      database.prepare("VACUUM INTO ?").run(snapshot)
+      chmodSync(snapshot, 0o600)
+      syncFile(snapshot)
+      linkSync(snapshot, destination)
+      for (const dir of directoryChainToSync(parent, existingAncestor)) {
+        syncDirectory(dir)
+      }
+    } finally {
+      try {
+        rmSync(staging, { recursive: true, force: true })
+      } catch (error) {
+        logger.warn({ src: "SQLiteStorage", error: String(error) }, "[SQLiteStorage] Backup staging cleanup failed")
+      }
+    }
+  }
+
+  export class BackupPublicationSession {
+    private state: BackupState = initial
+    private stagingDir: string | null = null
+    private snapshotPath: string | null = null
+    private destinationPath: string | null = null
+    private directoriesToSync: string[] = []
+
+    constructor(private readonly rootDir: string) {}
+
+    getState(): BackupState {
+      return this.state
+    }
+
+    prepare(newDirs: number): boolean {
+      if (!canPrepare(this.state, newDirs)) return false
+      let parent = this.rootDir
+      for (let i = 0; i < newDirs; i += 1) parent = join(parent, `nested-${i}`)
+      const firstCreated = mkdirSync(parent, { recursive: true, mode: 0o700 })
+      const existingAncestor = firstCreated ? dirname(firstCreated) : parent
+      this.directoriesToSync = directoryChainToSync(parent, existingAncestor)
+      this.destinationPath = join(parent, "backup.sqlite")
+      if (this.state.destination === "DestOther" && !existsSync(this.destinationPath)) {
+        writeFileSync(this.destinationPath, "external-creator", { flag: "wx" })
+      }
+      this.stagingDir = mkdtempSync(join(parent, ".backup-stage-"))
+      this.snapshotPath = join(this.stagingDir, "snapshot.sqlite")
+      writeFileSync(this.snapshotPath, "sqlite-snapshot", { mode: 0o600 })
+      this.state = prepareStep(this.state, newDirs)
+      return true
+    }
+
+    flushFile(): boolean {
+      if (!canFlushFile(this.state) || !this.snapshotPath) return false
+      syncFile(this.snapshotPath)
+      this.state = flushFileStep(this.state)
+      return true
+    }
+
+    concurrentCreate(): boolean {
+      if (!canConcurrentCreate(this.state)) return false
+      const target = this.destinationPath ?? join(this.rootDir, "backup.sqlite")
+      mkdirSync(dirname(target), { recursive: true, mode: 0o700 })
+      if (!existsSync(target)) writeFileSync(target, "external-creator", { flag: "wx" })
+      this.state = concurrentCreateStep(this.state)
+      return true
+    }
+
+    publish(): boolean {
+      if (!canPublish(this.state) || !this.snapshotPath || !this.destinationPath) return false
+      try {
+        linkSync(this.snapshotPath, this.destinationPath)
+      } catch {
+        this.cleanupStaging()
+        this.state = publishStep(this.state)
+        return true
+      }
+      this.state = publishStep(this.state)
+      return true
+    }
+
+    flushDirectory(): boolean {
+      if (!canFlushDirectory(this.state)) return false
+      const dir = this.directoriesToSync[this.state.flushed]
+      if (dir) syncDirectory(dir)
+      this.state = flushDirectoryStep(this.state)
+      return true
+    }
+
+    report(): boolean {
+      if (!canReport(this.state)) return false
+      this.cleanupStaging()
+      this.state = reportStep(this.state)
+      return true
+    }
+
+    abortBackup(): boolean {
+      if (!canAbortBackup(this.state)) return false
+      this.cleanupStaging()
+      this.state = abortBackupStep(this.state)
+      return true
+    }
+
+    private cleanupStaging(): void {
+      if (!this.stagingDir) return
+      rmSync(this.stagingDir, { recursive: true, force: true })
+      this.stagingDir = null
+    }
+  }
+}
+
+import { BackupPublicationSession, executeAtomicBackup } from fsBackup
+export { BackupPublicationSession, executeAtomicBackup }

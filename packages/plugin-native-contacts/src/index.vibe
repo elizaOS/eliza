@@ -1,10 +1,62 @@
-// spec/nativeContacts/index.md, "Story: Read or add contacts only within my device permissions"
-export { addressBookPlugin, createAddressBookClient, createContactNames } from "@elizaos/os-bridges"
-export type { ContactId, ContactVersion, ContactCursor, ContactPhoneKind, ContactEmailKind, ContactCustomType, ContactPhoneType, ContactEmailType, AddressBookStatus, AddressBookContact, AddressBookIncompleteReason, IncompleteAddressBookContact, AddressBookRow, AddressBookPage, ContactPageAsk, ContactPhone, ContactEmail, ContactDetail, ReviewedContact, ContactDraft, ContactSaveResult, ContactRemoveResult, NameSurface, NameScreen, DisplayOnlyName, ContactName, ContactDraftProblem, ContactRequestProblem, AddressBookNativePlugin, AddressBookClientOptions, AddressBookClient, ContactNamesClient } from "@elizaos/os-bridges"
-
-import { ADDRESS_BOOK_DEFAULT_PAGE } from "@elizaos/os-bridges"
-import type { AddressBookClient, ContactPageAsk } from "@elizaos/os-bridges"
+// spec/nativeContacts/index.md, "Story: Read or add contacts only within my device permissions"; spec/nativeContacts/index.md, "A contacts read needs a read grant and a write needs a write grant"
+import type { IAgentRuntime, Memory, Plugin, Provider, ProviderResult, State } from "@elizaos/core"
+import {
+  ADDRESS_BOOK_DEFAULT_PAGE,
+  addressBookPlugin,
+  createAddressBookClient,
+  createContactNames,
+  type AddressBookClient,
+  type AddressBookNativePlugin,
+  type ContactDraft,
+  type ContactPageAsk,
+} from "@elizaos/os-bridges"
 import { mayUseContacts, validContactsPage } from "../gen/nativeContacts.effect.vibe"
+
+export { addressBookPlugin, createAddressBookClient, createContactNames }
+export type {
+  AddressBookClient,
+  AddressBookClientOptions,
+  AddressBookContact,
+  AddressBookIncompleteReason,
+  AddressBookNativePlugin,
+  AddressBookPage,
+  AddressBookRow,
+  AddressBookStatus,
+  ContactCursor,
+  ContactDetail,
+  ContactDraft,
+  ContactDraftProblem,
+  ContactEmail,
+  ContactEmailKind,
+  ContactEmailType,
+  ContactId,
+  ContactName,
+  ContactNamesClient,
+  ContactPageAsk,
+  ContactPhone,
+  ContactPhoneKind,
+  ContactPhoneType,
+  ContactRemoveResult,
+  ContactRequestProblem,
+  ContactSaveResult,
+  ContactVersion,
+  DisplayOnlyName,
+  IncompleteAddressBookContact,
+  NameScreen,
+  NameSurface,
+  ReviewedContact,
+} from "@elizaos/os-bridges"
+
+module node {
+  export function rejectUnavailable(message: string): Promise<never> {
+    return Promise.reject(new Error(message))
+  }
+
+  export function throwInvalidContactInput(message: string): never {
+    throw new Error(message)
+  }
+}
+import { rejectUnavailable, throwInvalidContactInput } from node
 
 export error NativeContactsUnavailable
 
@@ -18,3 +70,116 @@ export effect function readNativeContacts(device: AddressBookClient, ask: Contac
   }
   return page
 }
+
+export class ContactsWeb implements AddressBookNativePlugin {
+  async status(): Promise<unknown> {
+    return { available: false, readable: false, writable: false }
+  }
+
+  async requestPermissions(): Promise<unknown> {
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+
+  async list(options: { query: string; limit: number; cursor?: string }): Promise<unknown> {
+    if (!Number.isSafeInteger(options.limit) || options.limit < 1) {
+      throwInvalidContactInput("limit must be a positive safe integer")
+    }
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+
+  async create(): Promise<unknown> {
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+
+  async edit(_options: { id: string; lookup: string; revision: string }): Promise<unknown> {
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+
+  async get(_options: { id: string }): Promise<unknown> {
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+
+  async save(options: ContactDraft & { id?: string; version?: string }): Promise<unknown> {
+    if (!options.displayName || options.displayName.trim().length === 0) {
+      throwInvalidContactInput("displayName is required")
+    }
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+
+  async remove(_options: { id: string; version: string }): Promise<unknown> {
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+
+  async resolveNames(_options: { numbers: string[] }): Promise<unknown> {
+    return rejectUnavailable("Contacts are only available on Android.")
+  }
+}
+
+export interface AndroidContactEntry {
+  readonly id: string
+  readonly displayName: string
+  readonly phones: readonly string[]
+  readonly emails: readonly string[]
+  readonly starred: boolean
+}
+
+const MAX_PROVIDER_CONTACTS = 100
+
+export function createContactsProvider(clientFactory?: (runtime: IAgentRuntime) => AddressBookClient | null): Provider {
+  return {
+    name: "androidContacts",
+    description: "Read-only Android address-book contacts (id, display name, phone numbers, emails, starred) for resolving people referenced in chat.",
+    descriptionCompressed: "Android contacts: id, name, phones, emails, starred.",
+    dynamic: true,
+    contexts: ["contacts", "messaging"],
+    contextGate: { anyOf: ["contacts", "messaging"] },
+    cacheScope: "turn",
+    roleGate: { minRole: "ADMIN" },
+    cacheStable: false,
+    get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+      try {
+        const client = clientFactory ? clientFactory(runtime) : null
+        if (!client) {
+          return {
+            text: JSON.stringify({ android_contacts: { error: "Contacts bridge unavailable on this platform." } }),
+            values: { contactsAvailable: false, contactsCount: 0, contactsError: "Contacts bridge unavailable on this platform." },
+            data: { contacts: [], count: 0, error: "Contacts bridge unavailable on this platform." },
+          }
+        }
+        const page = await runPromise(readNativeContacts(client, { query: "", limit: MAX_PROVIDER_CONTACTS }))
+        const entries: AndroidContactEntry[] = page.contacts
+          .filter((row): row is Extract<typeof row, { name: string }> => !("incomplete" in row))
+          .map((contact) => ({
+            id: String(contact.id),
+            displayName: contact.name,
+            phones: [...contact.phones],
+            emails: [...contact.emails],
+            starred: Boolean(contact.starred),
+          }))
+        return {
+          text: JSON.stringify({ android_contacts: { count: entries.length, truncated: page.next !== null, items: entries } }),
+          values: { contactsAvailable: entries.length > 0, contactsCount: entries.length },
+          data: { contacts: entries, count: entries.length, truncated: page.next !== null },
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          text: JSON.stringify({ android_contacts: { error: message } }),
+          values: { contactsAvailable: false, contactsCount: 0, contactsError: message },
+          data: { contacts: [], count: 0, error: message },
+        }
+      }
+    },
+  }
+}
+
+export const contactsProvider: Provider = createContactsProvider()
+
+export const appContactsPlugin: Plugin = {
+  name: "@elizaos/plugin-native-contacts",
+  description: "Contacts overlay: read-only Android address-book context via the native contacts bridge.",
+  providers: [contactsProvider],
+}
+
+const defaultAppContactsPlugin: Plugin = appContactsPlugin
+export default defaultAppContactsPlugin

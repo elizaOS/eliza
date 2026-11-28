@@ -1,0 +1,538 @@
+// spec/assistant/agreements.md, "Agreements and handoffs enforce monotonic revisions and owner-reviewed fencing"
+import { Service, type Action, type IAgentRuntime, type Provider } from "@elizaos/core"
+import type { AgentPlugin } from "@elizaos/agent-host"
+import {
+  abortHandoff,
+  advanceHandoffCheckpoint,
+  beginHandoffExecution,
+  canAbortHandoff,
+  canAdvanceHandoffCheckpoint,
+  canBeginHandoffExecution,
+  canCompleteHandoff,
+  canConfirmAgreement,
+  canDeleteAgreement,
+  canDeriveHandoffReview,
+  canFenceAgreement,
+  canProposeAgreement,
+  canSaveHandoffChoices,
+  completeHandoff,
+  confirmAgreement,
+  deleteAgreement,
+  deriveHandoffReview,
+  fenceAgreement,
+  initial,
+  proposeAgreement,
+  saveHandoffChoices,
+  type AgreementHandoffState,
+} from "../gen/assistant__agreements.effect.vibe"
+import { readActionParameters, summarizeAssistantResult } from "./autonomy.vibe"
+
+type LocalRoute = NonNullable<AgentPlugin["routes"]>[number]
+
+export const AGREEMENT_KNOWLEDGE_SERVICE_TYPE = "lifeops-agreements"
+export const ACCOUNT_HANDOFF_SERVICE_TYPE = "lifeops-account-handoff"
+
+export interface AgreementObligation {
+  id: string
+  summary: string
+  owner: string
+  dueNote?: string
+}
+
+export interface AgreementRecord {
+  id: string
+  title: string
+  counterparty: string
+  revision: number
+  phase: AgreementHandoffState["agreementPhase"]
+  pinned: boolean
+  obligations: AgreementObligation[]
+  updatedAt: number
+}
+
+export interface AccountHandoffRecord {
+  handoffId: string
+  previousGrantId: string
+  nextGrantId: string
+  disposition: "migrate" | "retire" | "keep_readonly"
+  revision: number
+  reviewedRevision: number
+  phase: AgreementHandoffState["handoffPhase"]
+  completedCheckpoints: number
+  totalCheckpoints: number
+  updatedAt: number
+}
+
+export class AgreementHandoffController {
+  private state: AgreementHandoffState = initial
+
+  getState(): AgreementHandoffState {
+    return this.state
+  }
+
+  proposeAgreement(): boolean {
+    if (!canProposeAgreement(this.state)) return false
+    this.state = proposeAgreement(this.state)
+    return true
+  }
+
+  confirmAgreement(rev: number): boolean {
+    if (!canConfirmAgreement(this.state, rev)) return false
+    this.state = confirmAgreement(this.state, rev)
+    return true
+  }
+
+  fenceAgreement(): boolean {
+    if (!canFenceAgreement(this.state)) return false
+    this.state = fenceAgreement(this.state)
+    return true
+  }
+
+  deleteAgreement(): boolean {
+    if (!canDeleteAgreement(this.state)) return false
+    this.state = deleteAgreement(this.state)
+    return true
+  }
+
+  saveHandoffChoices(): boolean {
+    if (!canSaveHandoffChoices(this.state)) return false
+    this.state = saveHandoffChoices(this.state)
+    return true
+  }
+
+  deriveHandoffReview(rev: number): boolean {
+    if (!canDeriveHandoffReview(this.state, rev)) return false
+    this.state = deriveHandoffReview(this.state, rev)
+    return true
+  }
+
+  beginHandoffExecution(rev: number): boolean {
+    if (!canBeginHandoffExecution(this.state, rev)) return false
+    this.state = beginHandoffExecution(this.state, rev)
+    return true
+  }
+
+  advanceHandoffCheckpoint(): boolean {
+    if (!canAdvanceHandoffCheckpoint(this.state)) return false
+    this.state = advanceHandoffCheckpoint(this.state)
+    return true
+  }
+
+  completeHandoff(): boolean {
+    if (!canCompleteHandoff(this.state)) return false
+    this.state = completeHandoff(this.state)
+    return true
+  }
+
+  abortHandoff(): boolean {
+    if (!canAbortHandoff(this.state)) return false
+    this.state = abortHandoff(this.state)
+    return true
+  }
+}
+
+export class AgreementKnowledgeService extends Service {
+  static override serviceType: string = AGREEMENT_KNOWLEDGE_SERVICE_TYPE
+  override capabilityDescription =
+    "Stores household agreements with revision-fenced owner confirmation, obligations, and audit history."
+
+  private readonly records = new Map<string, { controller: AgreementHandoffController; data: AgreementRecord }>()
+  private readonly auditLog: Array<{ agreementId: string; event: string; revision: number; timestamp: number }> = []
+  private seq = 0
+
+  static override start(runtime: IAgentRuntime): Promise<AgreementKnowledgeService> {
+    return Promise.resolve(new AgreementKnowledgeService(runtime))
+  }
+
+  propose(input: {
+    id?: string
+    title: string
+    counterparty: string
+    obligations?: AgreementObligation[]
+    pinned?: boolean
+  }): AgreementRecord | null {
+    const id = input.id ?? `agr-${++this.seq}`
+    const existing = this.records.get(id)
+    const controller = existing?.controller ?? new AgreementHandoffController()
+    if (!controller.proposeAgreement()) return null
+    const st = controller.getState()
+    const record: AgreementRecord = {
+      id,
+      title: input.title.trim(),
+      counterparty: input.counterparty.trim(),
+      revision: st.agreementRevision,
+      phase: st.agreementPhase,
+      pinned: input.pinned ?? existing?.data.pinned ?? false,
+      obligations: input.obligations ?? existing?.data.obligations ?? [],
+      updatedAt: Date.now(),
+    }
+    this.records.set(id, { controller, data: record })
+    this.auditLog.push({ agreementId: id, event: "proposed", revision: record.revision, timestamp: record.updatedAt })
+    return record
+  }
+
+  confirm(id: string, revision: number): AgreementRecord | null {
+    const entry = this.records.get(id)
+    if (!entry || !entry.controller.confirmAgreement(revision)) return null
+    const st = entry.controller.getState()
+    entry.data = { ...entry.data, phase: st.agreementPhase, updatedAt: Date.now() }
+    this.auditLog.push({ agreementId: id, event: "confirmed", revision, timestamp: entry.data.updatedAt })
+    return entry.data
+  }
+
+  fence(id: string): AgreementRecord | null {
+    const entry = this.records.get(id)
+    if (!entry || !entry.controller.fenceAgreement()) return null
+    const st = entry.controller.getState()
+    entry.data = { ...entry.data, phase: st.agreementPhase, pinned: false, updatedAt: Date.now() }
+    this.auditLog.push({ agreementId: id, event: "fenced", revision: entry.data.revision, timestamp: entry.data.updatedAt })
+    return entry.data
+  }
+
+  remove(id: string): AgreementRecord | null {
+    const entry = this.records.get(id)
+    if (!entry || !entry.controller.deleteAgreement()) return null
+    const st = entry.controller.getState()
+    entry.data = { ...entry.data, phase: st.agreementPhase, pinned: false, updatedAt: Date.now() }
+    this.auditLog.push({ agreementId: id, event: "deleted", revision: entry.data.revision, timestamp: entry.data.updatedAt })
+    return entry.data
+  }
+
+  list(includeDeleted = false): AgreementRecord[] {
+    return Array.from(this.records.values(), (entry) => entry.data).filter(
+      (record) => includeDeleted || record.phase !== "Deleted",
+    )
+  }
+
+  getPinned(): AgreementRecord[] {
+    return this.list(false).filter((record) => record.pinned && record.phase === "Accepted")
+  }
+
+  getAuditLog(): ReadonlyArray<{ agreementId: string; event: string; revision: number; timestamp: number }> {
+    return [...this.auditLog]
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export class AccountHandoffReviewService extends Service {
+  static override serviceType: string = ACCOUNT_HANDOFF_SERVICE_TYPE
+  override capabilityDescription =
+    "Coordinates owner-reviewed account handoff choices, immutable review revisions, and checkpointed execution."
+
+  private readonly controller = new AgreementHandoffController()
+  private current: AccountHandoffRecord | null = null
+  private seq = 0
+
+  static override start(runtime: IAgentRuntime): Promise<AccountHandoffReviewService> {
+    return Promise.resolve(new AccountHandoffReviewService(runtime))
+  }
+
+  active(): AccountHandoffRecord | null {
+    return this.current
+  }
+
+  saveChoices(input: {
+    previousGrantId: string
+    nextGrantId: string
+    disposition: "migrate" | "retire" | "keep_readonly"
+  }): AccountHandoffRecord | null {
+    if (!this.controller.saveHandoffChoices()) return null
+    const st = this.controller.getState()
+    this.current = {
+      handoffId: this.current?.handoffId ?? `handoff-${++this.seq}`,
+      previousGrantId: input.previousGrantId,
+      nextGrantId: input.nextGrantId,
+      disposition: input.disposition,
+      revision: st.handoffRevision,
+      reviewedRevision: st.reviewedRevision,
+      phase: st.handoffPhase,
+      completedCheckpoints: st.completedCheckpoints,
+      totalCheckpoints: st.totalCheckpoints,
+      updatedAt: Date.now(),
+    }
+    return this.current
+  }
+
+  deriveReview(revision: number): AccountHandoffRecord | null {
+    if (!this.current || !this.controller.deriveHandoffReview(revision)) return null
+    const st = this.controller.getState()
+    this.current = {
+      ...this.current,
+      reviewedRevision: st.reviewedRevision,
+      phase: st.handoffPhase,
+      updatedAt: Date.now(),
+    }
+    return this.current
+  }
+
+  executeAllCheckpoints(revision: number): AccountHandoffRecord | null {
+    if (!this.current || !this.controller.beginHandoffExecution(revision)) return null
+    while (this.controller.advanceHandoffCheckpoint()) {
+      const st = this.controller.getState()
+      this.current = {
+        ...this.current,
+        completedCheckpoints: st.completedCheckpoints,
+        phase: st.handoffPhase,
+        updatedAt: Date.now(),
+      }
+    }
+    this.controller.completeHandoff()
+    const finalState = this.controller.getState()
+    this.current = {
+      ...this.current,
+      completedCheckpoints: finalState.completedCheckpoints,
+      phase: finalState.handoffPhase,
+      updatedAt: Date.now(),
+    }
+    return this.current
+  }
+
+  abort(): AccountHandoffRecord | null {
+    if (!this.current || !this.controller.abortHandoff()) return null
+    const st = this.controller.getState()
+    this.current = {
+      ...this.current,
+      completedCheckpoints: st.completedCheckpoints,
+      phase: st.handoffPhase,
+      updatedAt: Date.now(),
+    }
+    return this.current
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export const agreementKnowledgeAction: Action = {
+  name: "AGREEMENT_KNOWLEDGE",
+  similes: ["AGREEMENTS", "PROPOSE_AGREEMENT", "CONFIRM_AGREEMENT"],
+  description: "Propose, confirm by revision, fence, delete, or list household agreements.",
+  descriptionCompressed: "Manage household agreements with revision-fenced owner confirmation.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  parameters: [
+    { name: "counterparty", description: "Other party name.", schema: { type: "string" } },
+    { name: "id", description: "Agreement identifier.", schema: { type: "string" } },
+    { name: "op", description: "Agreement operation.", required: true, schema: { type: "string", enum: ["propose", "confirm", "fence", "delete", "list"] } },
+    { name: "pinned", description: "Pin accepted agreement in prompt context.", schema: { type: "boolean" } },
+    { name: "revision", description: "Expected revision for owner confirmation.", schema: { type: "integer" } },
+    { name: "title", description: "Agreement title.", schema: { type: "string" } },
+  ],
+  summarize: (result) => summarizeAssistantResult(result, "Agreement updated."),
+  validate: () => Promise.resolve(true),
+  handler: (runtime, _message, _state, options) => {
+    const params = readActionParameters(options)
+    const op = typeof params.op === "string" ? params.op : "list"
+    const svc = runtime.getService<AgreementKnowledgeService>(AGREEMENT_KNOWLEDGE_SERVICE_TYPE)
+    if (!svc) return Promise.resolve({ success: false, text: "Agreement service unavailable." })
+    if (op === "propose") {
+      const title = typeof params.title === "string" ? params.title.trim() : ""
+      const counterparty = typeof params.counterparty === "string" ? params.counterparty.trim() : ""
+      if (!title || !counterparty) return Promise.resolve({ success: false, text: "Provide title and counterparty." })
+      const proposed = svc.propose({
+        id: typeof params.id === "string" ? params.id : undefined,
+        title,
+        counterparty,
+        pinned: params.pinned === true,
+      })
+      return Promise.resolve({
+        success: proposed !== null,
+        text: proposed ? `Proposed agreement ${proposed.id} rev ${proposed.revision}.` : "Agreement cannot be proposed.",
+        data: { agreement: proposed },
+      })
+    }
+    if (op === "confirm") {
+      const id = typeof params.id === "string" ? params.id : ""
+      const rev = typeof params.revision === "number" ? params.revision : -1
+      const confirmed = svc.confirm(id, rev)
+      return Promise.resolve({
+        success: confirmed !== null,
+        text: confirmed ? `Confirmed agreement ${id} rev ${rev}.` : "Agreement confirmation rejected (stale or invalid revision).",
+        data: { agreement: confirmed },
+      })
+    }
+    if (op === "fence") {
+      const id = typeof params.id === "string" ? params.id : ""
+      const fenced = svc.fence(id)
+      return Promise.resolve({
+        success: fenced !== null,
+        text: fenced ? `Fenced agreement ${id}.` : "Agreement could not be fenced.",
+        data: { agreement: fenced },
+      })
+    }
+    if (op === "delete") {
+      const id = typeof params.id === "string" ? params.id : ""
+      const removed = svc.remove(id)
+      return Promise.resolve({
+        success: removed !== null,
+        text: removed ? `Deleted agreement ${id}.` : "Agreement not found.",
+        data: { agreement: removed },
+      })
+    }
+    const items = svc.list()
+    return Promise.resolve({
+      success: true,
+      text: items.length === 0 ? "No agreements." : items.map((a) => `${a.id}: ${a.title} [${a.phase} r${a.revision}]`).join("\n"),
+      data: { agreements: items },
+    })
+  },
+}
+
+export const agreementPinsProvider: Provider = {
+  name: "AGREEMENT_PINS",
+  description: "Pinned owner-confirmed household agreements currently in effect.",
+  descriptionCompressed: "Pinned accepted household agreements.",
+  dynamic: true,
+  cacheStable: false,
+  get: (runtime) => {
+    const svc = runtime.getService<AgreementKnowledgeService>(AGREEMENT_KNOWLEDGE_SERVICE_TYPE)
+    if (!svc) return Promise.resolve({ text: "", data: { agreements: [] } })
+    const pinned = svc.getPinned()
+    return Promise.resolve({
+      text: pinned.length === 0 ? "" : ["# Pinned agreements", ...pinned.map((a) => `- ${a.title} (${a.counterparty}, r${a.revision})`)].join("\n"),
+      data: { agreements: pinned },
+    })
+  },
+}
+
+const decodeAgreementPropose = Schema.decodeUnknownOption(
+  Schema.Struct({
+    id: Schema.optionalKey(Schema.String),
+    title: Schema.NonEmptyString,
+    counterparty: Schema.NonEmptyString,
+    pinned: Schema.optionalKey(Schema.Boolean),
+  }),
+)
+const decodeRevision = Schema.decodeUnknownOption(Schema.Struct({ revision: Schema.Int }))
+const decodeHandoffChoices = Schema.decodeUnknownOption(
+  Schema.Struct({
+    previousGrantId: Schema.NonEmptyString,
+    nextGrantId: Schema.NonEmptyString,
+    disposition: Schema.Literals(["migrate", "retire", "keep_readonly"]),
+  }),
+)
+
+export function agreementRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
+  const unavailable = { status: 503, body: { error: "agreements_unavailable" } }
+  const svcOf = () => agent()?.getService<AgreementKnowledgeService>(AGREEMENT_KNOWLEDGE_SERVICE_TYPE) ?? null
+  return [
+    {
+      method: "GET",
+      path: "/api/lifeops/agreements",
+      handler: () => {
+        const svc = svcOf()
+        return Promise.resolve(svc ? { status: 200, body: { agreements: svc.list() } } : unavailable)
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/lifeops/agreements",
+      handler: ({ body }) => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const parsed = decodeAgreementPropose(body)
+        if (Option.isNone(parsed)) return Promise.resolve({ status: 400, body: { error: "malformed" } })
+        const agreement = svc.propose(parsed.value)
+        return Promise.resolve(agreement ? { status: 200, body: { agreement } } : { status: 409, body: { error: "agreement_conflict" } })
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/lifeops/agreements/{id}/confirm",
+      handler: ({ parameters, body }) => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const parsed = decodeRevision(body)
+        if (Option.isNone(parsed)) return Promise.resolve({ status: 400, body: { error: "malformed" } })
+        const agreement = svc.confirm(parameters.get("id") ?? "", parsed.value.revision)
+        return Promise.resolve(agreement ? { status: 200, body: { agreement } } : { status: 409, body: { error: "stale_revision" } })
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/lifeops/agreements/{id}/fence",
+      handler: ({ parameters }) => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const agreement = svc.fence(parameters.get("id") ?? "")
+        return Promise.resolve(agreement ? { status: 200, body: { agreement } } : { status: 404, body: { error: "not_found" } })
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/api/lifeops/agreements/{id}",
+      handler: ({ parameters }) => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const agreement = svc.remove(parameters.get("id") ?? "")
+        return Promise.resolve(agreement ? { status: 200, body: { agreement } } : { status: 404, body: { error: "not_found" } })
+      },
+    },
+  ]
+}
+
+export function accountHandoffRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
+  const unavailable = { status: 503, body: { error: "handoff_unavailable" } }
+  const svcOf = () => agent()?.getService<AccountHandoffReviewService>(ACCOUNT_HANDOFF_SERVICE_TYPE) ?? null
+  return [
+    {
+      method: "GET",
+      path: "/api/lifeops/account-handoffs/active",
+      handler: () => {
+        const svc = svcOf()
+        return Promise.resolve(svc ? { status: 200, body: { handoff: svc.active() } } : unavailable)
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/lifeops/account-handoffs",
+      handler: ({ body }) => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const parsed = decodeHandoffChoices(body)
+        if (Option.isNone(parsed)) return Promise.resolve({ status: 400, body: { error: "malformed" } })
+        const handoff = svc.saveChoices(parsed.value)
+        return Promise.resolve(handoff ? { status: 200, body: { handoff } } : { status: 409, body: { error: "handoff_conflict" } })
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/lifeops/account-handoffs/review",
+      handler: ({ body }) => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const parsed = decodeRevision(body)
+        if (Option.isNone(parsed)) return Promise.resolve({ status: 400, body: { error: "malformed" } })
+        const handoff = svc.deriveReview(parsed.value.revision)
+        return Promise.resolve(handoff ? { status: 200, body: { handoff } } : { status: 409, body: { error: "stale_revision" } })
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/lifeops/account-handoffs/execute",
+      handler: ({ body }) => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const parsed = decodeRevision(body)
+        if (Option.isNone(parsed)) return Promise.resolve({ status: 400, body: { error: "malformed" } })
+        const handoff = svc.executeAllCheckpoints(parsed.value.revision)
+        return Promise.resolve(handoff ? { status: 200, body: { handoff } } : { status: 409, body: { error: "unreviewed_revision" } })
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/lifeops/account-handoffs/abort",
+      handler: () => {
+        const svc = svcOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const handoff = svc.abort()
+        return Promise.resolve(handoff ? { status: 200, body: { handoff } } : { status: 409, body: { error: "no_active_handoff" } })
+      },
+    },
+  ]
+}

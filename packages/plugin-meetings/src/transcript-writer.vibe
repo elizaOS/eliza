@@ -1,0 +1,402 @@
+// spec/meetings/index.md, "Transcript segments are bound to that meeting and appended once in sequence"; spec/meetings/urlAndDisclosure.md, "Transcript disclosure fails closed when a row is missing or ungranted and filters unusable segments"
+import type { TranscriptSegment } from "../gen/meetings.effect.vibe"
+import { segmentAdmitted } from "../gen/meetings__urlAndDisclosure.effect.vibe"
+import { isHallucination } from "./pipeline.vibe"
+import {
+  ZoomCloudImportError,
+  type MeetingEndReason,
+  type MeetingParticipant,
+  type MeetingPlatform,
+  type TranscriptConsentState,
+  type TranscriptRecord,
+  type ZoomCloudImportInput,
+  type ZoomCloudImportResult,
+} from "./types.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { DatabaseSync } from "node:sqlite"
+
+  export interface SqliteStatement {
+    all(...params: unknown[]): unknown[]
+    get(...params: unknown[]): unknown
+    run(...params: unknown[]): { changes: number | bigint }
+  }
+
+  export interface SqliteDatabase {
+    readonly openError: string | null
+    exec(sql: string): void
+    prepare(sql: string): SqliteStatement
+    close(): void
+  }
+
+  export interface HttpFetchResponse {
+    readonly ok: boolean
+    readonly status: number
+    json(): Promise<unknown>
+    text(): Promise<string>
+  }
+
+  export type HttpFetchLike = (
+    input: string,
+    init?: { readonly headers?: Record<string, string> },
+  ) => Promise<HttpFetchResponse>
+
+  /** @throws {never} */
+  export function defaultHttpFetch(
+    input: string,
+    init?: { readonly headers?: Record<string, string> },
+  ): Promise<HttpFetchResponse> {
+    return globalThis.fetch(input, init)
+  }
+
+  /** @throws {never} */
+  export function generateId(): string {
+    return randomUUID()
+  }
+
+  /** @throws {never} */
+  export function openMeetingsSqlite(dbPath: string): SqliteDatabase {
+    try {
+      const db = new DatabaseSync(dbPath) as unknown as Omit<SqliteDatabase, "openError">
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS meeting_transcripts (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          owner_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          platform TEXT NOT NULL,
+          meeting_url TEXT NOT NULL,
+          native_meeting_id TEXT NOT NULL,
+          consent_state TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT 'owner-private',
+          segments_json TEXT NOT NULL DEFAULT '[]',
+          participants_json TEXT NOT NULL DEFAULT '[]',
+          end_reason TEXT,
+          created_at TEXT NOT NULL,
+          finalized_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_meeting_transcripts_owner
+          ON meeting_transcripts(owner_id, created_at DESC);
+      `)
+      return {
+        openError: null,
+        exec: (sql: string) => db.exec(sql),
+        prepare: (sql: string) => db.prepare(sql),
+        close: () => db.close(),
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        openError: message,
+        exec: () => {},
+        prepare: () => ({ all: () => [], get: () => undefined, run: () => ({ changes: 0 }) }),
+        close: () => {},
+      }
+    }
+  }
+}
+import {
+  defaultHttpFetch,
+  generateId,
+  openMeetingsSqlite,
+  type HttpFetchLike,
+  type HttpFetchResponse,
+  type SqliteDatabase,
+} from node
+
+export { defaultHttpFetch, type HttpFetchLike, type HttpFetchResponse }
+
+export const TRANSCRIPTS_TABLE = "meeting_transcripts" as const
+
+interface RawTranscriptRow {
+  readonly id: string
+  readonly session_id: string
+  readonly owner_id: string
+  readonly title: string
+  readonly platform: string
+  readonly meeting_url: string
+  readonly native_meeting_id: string
+  readonly consent_state: string
+  readonly scope: string
+  readonly segments_json: string
+  readonly participants_json: string
+  readonly end_reason: string | null
+  readonly created_at: string
+  readonly finalized_at: string | null
+}
+
+function parseJsonSafe<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+function rowToTranscript(row: RawTranscriptRow): TranscriptRecord {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    ownerId: row.owner_id,
+    title: row.title,
+    platform: row.platform as MeetingPlatform,
+    meetingUrl: row.meeting_url,
+    nativeMeetingId: row.native_meeting_id,
+    consentState: row.consent_state as TranscriptConsentState,
+    scope: row.scope === "shared" ? "shared" : "owner-private",
+    segments: parseJsonSafe<TranscriptSegment[]>(row.segments_json, []),
+    participants: parseJsonSafe<MeetingParticipant[]>(row.participants_json, []),
+    endReason: (row.end_reason as MeetingEndReason | null) ?? undefined,
+    createdAt: row.created_at,
+    finalizedAt: row.finalized_at ?? undefined,
+  }
+}
+
+export class MeetingTranscriptWriter {
+  readonly db: SqliteDatabase
+
+  constructor(dbPath = ":memory:") {
+    this.db = openMeetingsSqlite(dbPath)
+  }
+
+  close(): void {
+    this.db.close()
+  }
+
+  startTranscript(args: {
+    readonly id?: string
+    readonly sessionId: string
+    readonly ownerId: string
+    readonly title: string
+    readonly platform: MeetingPlatform
+    readonly meetingUrl: string
+    readonly nativeMeetingId: string
+    readonly consentState: TranscriptConsentState
+    readonly nowIso?: string
+  }): TranscriptRecord {
+    const nowIso = args.nowIso ?? new Date().toISOString()
+    const record: TranscriptRecord = {
+      id: args.id ?? generateId(),
+      sessionId: args.sessionId,
+      ownerId: args.ownerId,
+      title: args.title,
+      platform: args.platform,
+      meetingUrl: args.meetingUrl,
+      nativeMeetingId: args.nativeMeetingId,
+      consentState: args.consentState,
+      scope: "owner-private",
+      segments: [],
+      participants: [],
+      createdAt: nowIso,
+    }
+    this.db
+      .prepare(
+        `INSERT INTO meeting_transcripts
+         (id, session_id, owner_id, title, platform, meeting_url, native_meeting_id, consent_state, scope, segments_json, participants_json, end_reason, created_at, finalized_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
+      )
+      .run(
+        record.id,
+        record.sessionId,
+        record.ownerId,
+        record.title,
+        record.platform,
+        record.meetingUrl,
+        record.nativeMeetingId,
+        record.consentState,
+        record.scope,
+        "[]",
+        "[]",
+        record.createdAt,
+      )
+    return record
+  }
+
+  appendSegment(transcriptId: string, segment: TranscriptSegment): TranscriptRecord | null {
+    const existing = this.readTranscript(transcriptId)
+    if (!existing || existing.finalizedAt) return existing
+    const expectedSeq = existing.segments.length + 1
+    const ok = segmentAdmitted(
+      isHallucination(segment.words),
+      segment.speaker.trim().length > 0,
+      segment.words.trim().length > 0,
+      segment.fromMs >= 0 && segment.toMs >= segment.fromMs,
+      segment.seq === expectedSeq,
+    )
+    if (!ok) return existing
+    const nextSegments = [...existing.segments, segment]
+    this.db
+      .prepare("UPDATE meeting_transcripts SET segments_json = ? WHERE id = ?")
+      .run(JSON.stringify(nextSegments), transcriptId)
+    return { ...existing, segments: nextSegments }
+  }
+
+  finalizeTranscript(args: {
+    readonly transcriptId: string
+    readonly segments: readonly TranscriptSegment[]
+    readonly participants: readonly MeetingParticipant[]
+    readonly endReason: MeetingEndReason
+    readonly nowIso?: string
+  }): TranscriptRecord | null {
+    const existing = this.readTranscript(args.transcriptId)
+    if (!existing) return null
+    if (existing.finalizedAt) return existing
+    const nowIso = args.nowIso ?? new Date().toISOString()
+    this.db
+      .prepare(
+        `UPDATE meeting_transcripts
+         SET segments_json = ?, participants_json = ?, end_reason = ?, finalized_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        JSON.stringify(args.segments),
+        JSON.stringify(args.participants),
+        args.endReason,
+        nowIso,
+        args.transcriptId,
+      )
+    return {
+      ...existing,
+      segments: [...args.segments],
+      participants: [...args.participants],
+      endReason: args.endReason,
+      finalizedAt: nowIso,
+    }
+  }
+
+  readTranscript(transcriptId: string): TranscriptRecord | null {
+    const row = this.db
+      .prepare("SELECT * FROM meeting_transcripts WHERE id = ?")
+      .get(transcriptId) as RawTranscriptRow | undefined
+    return row ? rowToTranscript(row) : null
+  }
+
+  listTranscripts(ownerId?: string): TranscriptRecord[] {
+    const rows = (
+      ownerId
+        ? this.db
+            .prepare("SELECT * FROM meeting_transcripts WHERE owner_id = ? ORDER BY created_at DESC")
+            .all(ownerId)
+        : this.db.prepare("SELECT * FROM meeting_transcripts ORDER BY created_at DESC").all()
+    ) as RawTranscriptRow[]
+    return rows.map(rowToTranscript)
+  }
+}
+
+function parseVttTimestampMs(raw: string): number {
+  const parts = raw.trim().split(":")
+  if (parts.length === 3) {
+    return Math.round((Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2])) * 1000)
+  }
+  if (parts.length === 2) {
+    return Math.round((Number(parts[0]) * 60 + Number(parts[1])) * 1000)
+  }
+  return 0
+}
+
+export function parseWebVtt(vtt: string): TranscriptSegment[] {
+  const lines = vtt.replace(/\r\n/g, "\n").split("\n")
+  const segments: TranscriptSegment[] = []
+  let seq = 1
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!.trim()
+    if (!line.includes("-->")) continue
+    const [startRaw, endRaw] = line.split("-->").map((part) => part.trim())
+    const textLines: string[] = []
+    let j = i + 1
+    while (j < lines.length && lines[j]!.trim().length > 0) {
+      textLines.push(lines[j]!.trim())
+      j += 1
+    }
+    const rawBody = textLines.join(" ").trim()
+    const colonIdx = rawBody.indexOf(":")
+    const speaker = colonIdx > 0 && colonIdx < 40 ? rawBody.slice(0, colonIdx).trim() : "Speaker"
+    const words = colonIdx > 0 && colonIdx < 40 ? rawBody.slice(colonIdx + 1).trim() : rawBody
+    const fromMs = parseVttTimestampMs(startRaw ?? "0")
+    const toMs = Math.max(fromMs, parseVttTimestampMs(endRaw ?? "0"))
+    if (segmentAdmitted(isHallucination(words), speaker.length > 0, words.length > 0, fromMs >= 0 && toMs >= fromMs, true)) {
+      segments.push({ seq, speaker, fromMs, toMs, words })
+      seq += 1
+    }
+    i = j
+  }
+  return segments
+}
+
+export function formatTranscriptPlainText(transcript: TranscriptRecord, maxSegments = 80): string {
+  const slice = transcript.segments.slice(0, maxSegments)
+  if (slice.length === 0) return "(no transcript segments)"
+  return slice.map((seg) => `[${seg.seq}] ${seg.speaker}: ${seg.words}`).join("\n")
+}
+
+export async function importZoomCloudMeeting(
+  input: ZoomCloudImportInput,
+  writer: MeetingTranscriptWriter,
+  fetchImpl: HttpFetchLike = defaultHttpFetch,
+): Promise<ZoomCloudImportResult> {
+  const meetingId = input.meetingId.trim()
+  const token = input.accessToken.trim()
+  if (meetingId.length === 0 || token.length === 0) {
+    throw new ZoomCloudImportError({ code: "invalid_request", message: "meetingId and accessToken are required" })
+  }
+  const baseUrl = (input.baseUrl ?? "https://api.zoom.us/v2").replace(/\/+$/, "")
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" }
+  const meetingResp = await fetchImpl(`${baseUrl}/meetings/${encodeURIComponent(meetingId)}`, { headers })
+  if (meetingResp.status === 401) {
+    throw new ZoomCloudImportError({ code: "revoked_access", message: "Zoom access token revoked", status: 401 })
+  }
+  if (meetingResp.status === 403) {
+    throw new ZoomCloudImportError({ code: "permission_denied", message: "Zoom permission denied", status: 403 })
+  }
+  if (meetingResp.status === 404) {
+    throw new ZoomCloudImportError({ code: "meeting_not_found", message: `Zoom meeting ${meetingId} not found`, status: 404 })
+  }
+  if (!meetingResp.ok) {
+    throw new ZoomCloudImportError({ code: "request_failed", message: `Zoom API returned ${meetingResp.status}`, status: meetingResp.status })
+  }
+  const meetingJson = (await meetingResp.json()) as { topic?: string; join_url?: string }
+  const warnings: string[] = []
+  let segments: TranscriptSegment[] = []
+  const recResp = await fetchImpl(`${baseUrl}/meetings/${encodeURIComponent(meetingId)}/recordings`, { headers })
+  if (recResp.ok) {
+    const recJson = (await recResp.json()) as {
+      recording_files?: Array<{ file_type?: string; download_url?: string }>
+    }
+    const vttFile = (recJson.recording_files ?? []).find(
+      (f) => f.file_type === "TRANSCRIPT" && typeof f.download_url === "string",
+    )
+    if (vttFile?.download_url) {
+      const vttResp = await fetchImpl(vttFile.download_url, { headers })
+      if (vttResp.ok) {
+        const vttText = await vttResp.text()
+        const maxBytes = input.maxBytes ?? 8 * 1024 * 1024
+        if (vttText.length > maxBytes) {
+          throw new ZoomCloudImportError({ code: "max_bytes", message: "Zoom VTT transcript exceeded maxBytes" })
+        }
+        segments = parseWebVtt(vttText)
+      } else {
+        warnings.push(`failed to download Zoom VTT transcript (${vttResp.status})`)
+      }
+    }
+  } else {
+    warnings.push(`Zoom recordings endpoint returned ${recResp.status}`)
+  }
+
+  const started = writer.startTranscript({
+    sessionId: `zoom-import:${meetingId}`,
+    ownerId: input.ownerId,
+    title: meetingJson.topic?.trim() || `Zoom Meeting ${meetingId}`,
+    platform: "zoom",
+    meetingUrl: meetingJson.join_url ?? `https://zoom.us/j/${meetingId}`,
+    nativeMeetingId: meetingId,
+    consentState: "cloud_import",
+  })
+  const finalized = writer.finalizeTranscript({
+    transcriptId: started.id,
+    segments,
+    participants: [],
+    endReason: "meeting_ended",
+  })
+  return { transcript: finalized ?? started, warnings }
+}

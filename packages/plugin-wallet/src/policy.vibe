@@ -1,0 +1,327 @@
+// spec/wallet/policy.md, "Story: Enforce spend policy, slippage limits, and a tamper-evident audit chain"; spec/wallet/index.md, "The payment must fit each budget before it spends"
+import { ElizaError } from "@elizaos/core"
+import { autonomousWalletTradeAllowed, freshWalletQuote } from "../gen/wallet.effect.vibe"
+import {
+  initial as initialPolicy,
+  machineOver,
+  slippageAllowed,
+  type PolicyState,
+} from "../gen/wallet__policy.effect.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  export function sha256Hex(value: string): string {
+    return createHash("sha256").update(value).digest("hex")
+  }
+
+  export function raise(error: Error): never {
+    throw error
+  }
+
+  /** @throws {never} */
+  export function toBigInt(value: string | number): bigint {
+    return BigInt(value)
+  }
+}
+import { raise, sha256Hex, toBigInt } from node
+
+export { raise, sha256Hex, toBigInt }
+
+export const AUDIT_GENESIS_HASH = "0".repeat(64)
+export const TRADE_CONFIRM_ACTION = "TRADE_CONFIRM"
+
+export interface AuditLogRow {
+  readonly id: bigint
+  readonly ts: number
+  readonly actor: string
+  readonly kind: string
+  readonly scope: string
+  readonly actionName: string
+  readonly paramsHash: string
+  readonly approvalId?: string
+  readonly outcome: "allowed" | "denied" | "executed" | "failed"
+  readonly failureCode?: string
+  readonly detail?: string
+  readonly prevHash: string
+  readonly rowHash: string
+}
+
+export interface AuditLogRowInput {
+  readonly id?: bigint
+  readonly ts?: number
+  readonly actor: string
+  readonly kind: string
+  readonly scope: string
+  readonly actionName: string
+  readonly paramsHash: string
+  readonly approvalId?: string
+  readonly outcome: AuditLogRow["outcome"]
+  readonly failureCode?: string
+  readonly detail?: string
+  readonly prevHash?: string
+}
+
+function computeAuditLogRowHash(row: Omit<AuditLogRow, "rowHash">): string {
+  const canonical = JSON.stringify({
+    id: row.id.toString(),
+    ts: row.ts,
+    actor: row.actor,
+    kind: row.kind,
+    scope: row.scope,
+    actionName: row.actionName,
+    paramsHash: row.paramsHash,
+    approvalId: row.approvalId,
+    outcome: row.outcome,
+    failureCode: row.failureCode,
+    detail: row.detail,
+    prevHash: row.prevHash,
+  })
+  return sha256Hex(canonical)
+}
+
+export function createAuditLogRow(input: AuditLogRowInput): AuditLogRow {
+  const base: Omit<AuditLogRow, "rowHash"> = {
+    id: input.id ?? 0n,
+    ts: input.ts ?? Date.now(),
+    actor: input.actor,
+    kind: input.kind,
+    scope: input.scope,
+    actionName: input.actionName,
+    paramsHash: input.paramsHash,
+    ...(input.approvalId === undefined ? {} : { approvalId: input.approvalId }),
+    outcome: input.outcome,
+    ...(input.failureCode === undefined ? {} : { failureCode: input.failureCode }),
+    ...(input.detail === undefined ? {} : { detail: input.detail }),
+    prevHash: input.prevHash ?? AUDIT_GENESIS_HASH,
+  }
+  return { ...base, rowHash: computeAuditLogRowHash(base) }
+}
+
+export function verifyAuditLogRow(row: AuditLogRow): boolean {
+  return row.rowHash === computeAuditLogRowHash(row)
+}
+
+export function verifyAuditLogChain(rows: readonly AuditLogRow[]): boolean {
+  let expectedPrev = AUDIT_GENESIS_HASH
+  for (const row of rows) {
+    if (row.prevHash !== expectedPrev || !verifyAuditLogRow(row)) return false
+    expectedPrev = row.rowHash
+  }
+  return true
+}
+
+export class AuditLogStore {
+  private readonly rows: AuditLogRow[] = []
+
+  append(input: Omit<AuditLogRowInput, "id" | "prevHash">): AuditLogRow {
+    const prevHash = this.rows.at(-1)?.rowHash ?? AUDIT_GENESIS_HASH
+    const row = createAuditLogRow({
+      ...input,
+      id: toBigInt(this.rows.length + 1),
+      prevHash,
+    })
+    this.rows.push(row)
+    return row
+  }
+
+  list(): readonly AuditLogRow[] {
+    return [...this.rows]
+  }
+
+  verify(): boolean {
+    return verifyAuditLogChain(this.rows)
+  }
+}
+
+export effect function createPolicySession(initial: PolicyState = initialPolicy) {
+  const ref = try Ref.make<PolicyState>(initial)
+  const machine = try machineOver(() => Ref.get(ref), (next) => Ref.set(ref, next))
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+  return {
+    state: () => Ref.get(ref),
+    recordSpend: (amount: number, slippageBps: number) =>
+      serialize(machine.send({ type: "recordSpend", amount, slippageBps })),
+    resetDailyWindow: () => serialize(machine.send({ type: "resetDailyWindow" })),
+    pausePolicy: () => serialize(machine.send({ type: "pausePolicy" })),
+    resumePolicy: () => serialize(machine.send({ type: "resumePolicy" })),
+  }
+}
+
+export interface SpendingPolicyConfig {
+  readonly dailyLimit: number
+  readonly perTxLimit: number
+  readonly maxDailyTxs?: number
+  readonly maxSlippageBps?: number
+}
+
+export interface PolicyEvaluationResult {
+  readonly allowed: boolean
+  readonly reason?: string
+  readonly state: PolicyState
+}
+
+export class SpendingPolicy {
+  private readonly session: Effect.Success<ReturnType<typeof createPolicySession>>
+  readonly audit = new AuditLogStore()
+
+  constructor(config?: SpendingPolicyConfig) {
+    const start: PolicyState = config === undefined ? initialPolicy : {
+      ...initialPolicy,
+      dailyLimit: config.dailyLimit,
+      perTxLimit: config.perTxLimit,
+      maxDailyTxs: config.maxDailyTxs ?? initialPolicy.maxDailyTxs,
+      maxSlippageBps: config.maxSlippageBps ?? initialPolicy.maxSlippageBps,
+    }
+    this.session = Effect.runSync(createPolicySession(start))
+  }
+
+  status(): PolicyState {
+    return Effect.runSync(this.session.state())
+  }
+
+  evaluateAndRecord(params: {
+    readonly actor: string
+    readonly actionName: string
+    readonly amount: number
+    readonly slippageBps?: number
+    readonly quoteObservedAt?: number
+    readonly wallTime?: number
+  }): PolicyEvaluationResult {
+    const slippageBps = params.slippageBps ?? 0
+    const before = this.status()
+    const paramsHash = sha256Hex(JSON.stringify(params))
+    if (params.quoteObservedAt !== undefined && !freshWalletQuote(params.quoteObservedAt, params.wallTime ?? Date.now())) {
+      this.audit.append({ actor: params.actor, kind: "policy", scope: "trade", actionName: params.actionName, paramsHash, outcome: "denied", failureCode: "STALE_QUOTE" })
+      return { allowed: false, reason: "Quote is older than 60 seconds.", state: before }
+    }
+    if (!slippageAllowed(slippageBps, before.maxSlippageBps)) {
+      this.audit.append({ actor: params.actor, kind: "policy", scope: "trade", actionName: params.actionName, paramsHash, outcome: "denied", failureCode: "SLIPPAGE_EXCEEDED" })
+      return { allowed: false, reason: `Slippage ${slippageBps} bps exceeds ceiling ${before.maxSlippageBps} bps.`, state: before }
+    }
+    const result = Effect.runSync(Effect.result(this.session.recordSpend(params.amount, slippageBps)))
+    if (result._tag === "Failure") {
+      this.audit.append({ actor: params.actor, kind: "policy", scope: "trade", actionName: params.actionName, paramsHash, outcome: "denied", failureCode: "SPEND_LIMIT_EXCEEDED" })
+      return { allowed: false, reason: before.paused ? "Wallet spending policy is paused." : "Operation exceeds per-tx or daily spending limits.", state: before }
+    }
+    this.audit.append({ actor: params.actor, kind: "policy", scope: "trade", actionName: params.actionName, paramsHash, outcome: "allowed" })
+    return { allowed: true, state: result.success }
+  }
+
+  pause(actor = "owner"): PolicyState {
+    const next = Effect.runSync(Effect.catch(this.session.pausePolicy(), () => this.session.state()))
+    this.audit.append({ actor, kind: "policy", scope: "control", actionName: "PAUSE_POLICY", paramsHash: AUDIT_GENESIS_HASH, outcome: "executed" })
+    return next
+  }
+
+  resume(actor = "owner"): PolicyState {
+    const next = Effect.runSync(Effect.catch(this.session.resumePolicy(), () => this.session.state()))
+    this.audit.append({ actor, kind: "policy", scope: "control", actionName: "RESUME_POLICY", paramsHash: AUDIT_GENESIS_HASH, outcome: "executed" })
+    return next
+  }
+
+  resetDaily(actor = "owner"): PolicyState {
+    const next = Effect.runSync(Effect.catch(this.session.resetDailyWindow(), () => this.session.state()))
+    this.audit.append({ actor, kind: "policy", scope: "control", actionName: "RESET_DAILY_WINDOW", paramsHash: AUDIT_GENESIS_HASH, outcome: "executed" })
+    return next
+  }
+
+  canAutoTrade(quoteObservedAt: number, wallTime = Date.now()): boolean {
+    const current = this.status()
+    return autonomousWalletTradeAllowed(current.dailyTxCount, !current.paused, quoteObservedAt, wallTime)
+  }
+}
+
+export interface UptoAuthorizationRecord {
+  readonly id: string
+  readonly service: string
+  readonly maxAmountAtomic: string
+  readonly settledAtomic: string
+  readonly status: "authorized" | "settled" | "expired"
+}
+
+export class UptoBillingPolicy {
+  private readonly records = new Map<string, UptoAuthorizationRecord>()
+
+  authorize(id: string, service: string, maxAmountAtomic: string): UptoAuthorizationRecord {
+    const record: UptoAuthorizationRecord = { id, service, maxAmountAtomic, settledAtomic: "0", status: "authorized" }
+    this.records.set(id, record)
+    return record
+  }
+
+  settle(id: string, amountAtomic: string): UptoAuthorizationRecord {
+    const existing = this.records.get(id)
+    if (existing === undefined || existing.status !== "authorized") {
+      raise(new ElizaError(`Upto authorization "${id}" is not active.`, { code: "WALLET_UPTO_INACTIVE" }))
+    }
+    if (toBigInt(amountAtomic) > toBigInt(existing.maxAmountAtomic)) {
+      raise(new ElizaError(`Settlement ${amountAtomic} exceeds authorized cap ${existing.maxAmountAtomic}.`, { code: "WALLET_UPTO_CAP_EXCEEDED" }))
+    }
+    const settled: UptoAuthorizationRecord = { ...existing, settledAtomic: amountAtomic, status: "settled" }
+    this.records.set(id, settled)
+    return settled
+  }
+
+  snapshot(): readonly UptoAuthorizationRecord[] {
+    return [...this.records.values()]
+  }
+}
+
+export interface WalletExportAuditEntry {
+  readonly ts: number
+  readonly reason: string
+  readonly actor: string
+}
+
+const exportAuditLog: WalletExportAuditEntry[] = []
+
+export function resolveWalletExportRejection(actor = "unknown"): { readonly rejected: true; readonly code: "WALLET_KEY_EXPORT_FORBIDDEN"; readonly reason: string } {
+  const reason = "Private keys are sealed on the device and can never be exported."
+  exportAuditLog.push({ ts: Date.now(), reason, actor })
+  return { rejected: true, code: "WALLET_KEY_EXPORT_FORBIDDEN", reason }
+}
+
+export function getWalletExportAuditLog(): readonly WalletExportAuditEntry[] {
+  return [...exportAuditLog]
+}
+
+export function _resetForTesting(): void {
+  exportAuditLog.length = 0
+}
+
+export function createTradeIdempotencyKey(params: {
+  readonly accountId: string
+  readonly chain: string
+  readonly inputToken: string
+  readonly outputToken: string
+  readonly amount: string
+  readonly nonce?: string
+}): string {
+  return `trade_${sha256Hex(`${params.accountId}:${params.chain}:${params.inputToken}:${params.outputToken}:${params.amount}:${params.nonce ?? ""}`).slice(0, 24)}`
+}
+
+export function tradeOrderPendingKey(agentId: string, orderId: string): string {
+  return `wallet:trade-confirm:${agentId}:${orderId}`
+}
+
+export interface TradeConfirmationDecision {
+  readonly confirmed: boolean
+  readonly orderId: string
+  readonly reason?: string
+}
+
+export function requireTradeOrderConfirmation(params: {
+  readonly orderId: string
+  readonly ownerConfirmed: boolean
+  readonly quoteObservedAt: number
+  readonly wallTime?: number
+}): TradeConfirmationDecision {
+  const now = params.wallTime ?? Date.now()
+  if (!params.ownerConfirmed) {
+    return { confirmed: false, orderId: params.orderId, reason: "Owner confirmation is required before trade execution." }
+  }
+  if (!freshWalletQuote(params.quoteObservedAt, now)) {
+    return { confirmed: false, orderId: params.orderId, reason: "Trade quote expired (> 60s old); re-quote before confirming." }
+  }
+  return { confirmed: true, orderId: params.orderId }
+}

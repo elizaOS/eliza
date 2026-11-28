@@ -87,10 +87,19 @@ public final class AgentPolicy {
   }
 
   AgentPolicy(String account, UpdateTarget hold, long epoch, long staleEpoch, EpochReservation reservation) {
+    this(account, hold, epoch, staleEpoch, 0, false, 0, 0, reservation);
+  }
+
+  AgentPolicy(String account, UpdateTarget hold, long epoch, long staleEpoch, int attempt,
+      boolean credentialHeld, long credentialVersion, long delivered, EpochReservation reservation) {
     this.account = account;
     this.hold = hold;
     this.epoch = epoch;
     this.staleEpoch = staleEpoch;
+    this.attempt = attempt;
+    this.credentialHeld = credentialHeld;
+    this.credentialVersion = credentialVersion;
+    this.delivered = delivered;
     this.reservation = reservation;
   }
 
@@ -252,8 +261,7 @@ public final class AgentPolicy {
   }
 
   private boolean refuse(Cause cause, String reason) {
-    if (phase != Phase.CHECKING || staleEpoch != 0 || cause == Cause.AGENT || cause == Cause.RUNTIME) return false;
-    if (cause == Cause.STORAGE && !reaped) return false;
+    if (phase != Phase.CHECKING || staleEpoch != 0 || cause == Cause.AGENT) return false;
     if (cause == Cause.CREDENTIAL && credentialHeld) return false;
     return fail(cause, reason);
   }
@@ -312,13 +320,25 @@ public final class AgentPolicy {
     return true;
   }
 
+  synchronized Step credentialArrived(long version, String nextAccount) {
+    effects.clear();
+    if (credentialHeld || version <= 0 || version <= credentialVersion || nextAccount == null || nextAccount.isEmpty())
+      return new Step(false, state(), List.of());
+    account = nextAccount;
+    boolean accepted = credentialArrived(version);
+    List<Effect> out = accepted ? List.copyOf(effects) : List.of();
+    effects.clear();
+    return new Step(accepted, state(), out);
+  }
+
   private boolean credentialArrived(long version) {
     if (version <= 0) return false;
     if (credentialHeld) return credentialReplaced(version);
+    if (version <= credentialVersion) return false;
     credentialHeld = true;
-    credentialVersion = Math.max(credentialVersion, version);
+    credentialVersion = version;
     if (phase == Phase.FAILED && failure == Cause.STORAGE) recovery = null;
-    if (phase == Phase.FAILED && failure == Cause.CREDENTIAL) return hold == null ? begin(attempt, 0) : stopped();
+    if (phase == Phase.FAILED && failure == Cause.CREDENTIAL) return hold == null ? begin(0, 0) : stopped();
     if (phase == Phase.STOPPING && afterExit == AfterExit.FAIL && afterExitCause == Cause.CREDENTIAL) {
       afterExit = AfterExit.START;
       afterExitCause = null;
@@ -348,23 +368,39 @@ public final class AgentPolicy {
           error = reason;
         }
       }
-      case STOPPED, FAILED -> { }
+      case FAILED -> {
+        if (failure != Cause.STORAGE) fail(Cause.CREDENTIAL, reason);
+      }
+      case STOPPED -> { }
     }
     return true;
+  }
+
+  synchronized Step accountChanged(long version, String next) {
+    effects.clear();
+    boolean accepted = credentialHeld && version > credentialVersion && accountChanged(next);
+    if (accepted) credentialVersion = version;
+    List<Effect> out = accepted ? List.copyOf(effects) : List.of();
+    effects.clear();
+    return new Step(accepted, state(), out);
   }
 
   private boolean accountChanged(String next) {
     if (next == null || next.isEmpty() || next.equals(account)) return false;
     account = next;
     switch (phase) {
-      case CHECKING -> {
-        if (credentialHeld) begin(0, 0);
-      }
+      case CHECKING -> { }
       case SPAWNED, RUNNING -> kill(AfterExit.START, null, null);
+      case STOPPING -> {
+        if (afterExit == AfterExit.RESTART) {
+          afterExit = AfterExit.START;
+          afterExitCause = null;
+        }
+      }
       case FAILED -> {
         if (failure == Cause.STORAGE) stopped();
       }
-      case STOPPED, STOPPING -> { }
+      case STOPPED -> { }
     }
     recovery = null;
     return true;

@@ -1,18 +1,74 @@
-// spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
-import { assert, describe, it } from "@effect/vitest"
+// spec/slack/index.md, "Story: Answer one Slack message through its proper installation and thread"; spec/slack/index.md, "Story: Know how much of a Slack send reached the provider"
+import { assert, describe, expect, it } from "@effect/vitest"
+import { CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE, ConnectorAccountManager, InMemoryConnectorAccountStorage, type IAgentRuntime, type UUID } from "@elizaos/core"
 import { webApi } from "@slack/bolt"
-import { decodeSlackText, slackWriteRetries } from "../src/index.vibe"
+import * as slackOracle from "../gen/slack.ts"
+import {
+  SlackAccountPolicyResolver,
+  SlackPolicyConfigurationError,
+  SlackService,
+  buildSlackMessagePermalink,
+  chunkSlackText,
+  createSlackConnectorAccountProvider,
+  decodeSlackText,
+  escapeSlackMrkdwn,
+  extractChannelIdFromMention,
+  extractUploadReceipt,
+  extractUrlFromSlackLink,
+  extractUserIdFromMention,
+  fetchSlackFileBytes,
+  formatSlackLink,
+  isMultiAccountEnabled,
+  isSlackChannelIdKey,
+  isTrustedSlackFileUrl,
+  isValidChannelId,
+  isValidMessageTs,
+  listEnabledSlackAccounts,
+  listSlackAccountIds,
+  markdownToSlackMrkdwn,
+  markdownToSlackMrkdwnChunks,
+  normalizeAccountId,
+  normalizeSlackFiles,
+  normalizeSlackPermalinkTimestamp,
+  normalizeSlackSlug,
+  parseSlackMessageLink,
+  parseSlackMessagePermalink,
+  resolveSlackAccount,
+  resolveSlackReplyToMode,
+  slackFilesToMedia,
+  slackPlugin,
+  slackWriteRetries,
+  splitSlackText,
+  stripSlackFormatting,
+  truncateText,
+  verifySlackSigningSecret,
+} from "../src/index.vibe"
+import { driver } from "./drivers/slack.ts"
 
 module node {
-  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+  import { Buffer } from "node:buffer"
+  import { createHmac } from "node:crypto"
   import { once } from "node:events"
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 
   export type FirstAnswer = "502" | "reset" | "429"
-  export interface SlackApi { readonly apiUrl: string; readonly kept: string[]; close(): void }
+  export interface SlackApi {
+    readonly apiUrl: string
+    readonly kept: string[]
+    close(): void
+  }
 
   function lose(answer: FirstAnswer, request: IncomingMessage, response: ServerResponse): void {
-    if (answer === "502") { response.writeHead(502); response.end("Bad Gateway"); return }
-    if (answer === "429") { response.writeHead(429, { "retry-after": "0" }); response.end(); return }
+    if (answer === "502") {
+      response.writeHead(502)
+      response.end("Bad Gateway")
+      return
+    }
+    if (answer === "429") {
+      response.writeHead(429, { "retry-after": "0" })
+      response.end()
+      return
+    }
     request.socket.destroy()
   }
 
@@ -21,7 +77,9 @@ module node {
     let calls = 0
     const server = createServer((request, response) => {
       let body = ""
-      request.on("data", chunk => { body += String(chunk) })
+      request.on("data", (chunk) => {
+        body += String(chunk)
+      })
       request.on("end", () => {
         const host = request.headers.host ?? ""
         if (request.url?.includes("/files.getUploadURLExternal")) {
@@ -29,13 +87,32 @@ module node {
           response.end(JSON.stringify({ ok: true, upload_url: `http://${host}/external-upload`, file_id: "F1" }))
           return
         }
-        if (request.url === "/external-upload") { response.writeHead(200); response.end("OK"); return }
+        if (request.url === "/external-upload") {
+          response.writeHead(200)
+          response.end("OK")
+          return
+        }
         calls += 1
         const first = calls === 1
-        if (!(first && firstAnswer === "429")) kept.push(request.url?.includes("/files.completeUploadExternal") ? "completed upload" : new URLSearchParams(body).get("text") ?? "")
-        if (first) { lose(firstAnswer, request, response); return }
+        if (!(first && firstAnswer === "429")) {
+          kept.push(
+            request.url?.includes("/files.completeUploadExternal")
+              ? "completed upload"
+              : (new URLSearchParams(body).get("text") ?? ""),
+          )
+        }
+        if (first) {
+          lose(firstAnswer, request, response)
+          return
+        }
         response.writeHead(200, { "content-type": "application/json" })
-        response.end(JSON.stringify(request.url?.includes("/files.completeUploadExternal") ? { ok: true, files: [{ id: "F1" }] } : { ok: true, channel: "C1", ts: "1.000001" }))
+        response.end(
+          JSON.stringify(
+            request.url?.includes("/files.completeUploadExternal")
+              ? { ok: true, files: [{ id: "F1" }] }
+              : { ok: true, channel: "C1", ts: "1.000001" },
+          ),
+        )
       })
     })
     server.listen(0, "127.0.0.1")
@@ -45,42 +122,486 @@ module node {
     return { apiUrl: `http://127.0.0.1:${port}/api/`, kept, close: () => { server.close() } }
   }
 
+  export async function startFullSlackStubServer(): Promise<{
+    apiUrl: string
+    oauthUrl: string
+    calls: string[]
+    close: () => Promise<void>
+  }> {
+    const calls: string[] = []
+    const server = createServer((req, res) => {
+      const url = req.url ?? "/"
+      req.resume()
+      req.on("end", () => {
+        const host = req.headers.host ?? ""
+        calls.push(url)
+        res.writeHead(200, { "content-type": "application/json" })
+        if (url.includes("/oauth.v2.access")) {
+          res.end(
+            JSON.stringify({
+              ok: true,
+              access_token: "xoxb-oauth-token",
+              token_type: "bot",
+              scope: "chat:write,channels:read",
+              bot_user_id: "U0BOT",
+              app_id: "A123",
+              team: { id: "T123", name: "Acme" },
+            }),
+          )
+          return
+        }
+        if (url.includes("/chat.postMessage") || url.includes("/chat.update")) {
+          res.end(JSON.stringify({ ok: true, channel: "C12345678", ts: "1700000000.000100" }))
+          return
+        }
+        if (url.includes("/chat.delete") || url.includes("/reactions.") || url.includes("/pins.add") || url.includes("/pins.remove")) {
+          res.end(JSON.stringify({ ok: true }))
+          return
+        }
+        if (url.includes("/pins.list")) {
+          res.end(JSON.stringify({ ok: true, items: [{ message: { type: "message", ts: "1700000000.000100", user: "U1", text: "Pinned &amp; ready" } }] }))
+          return
+        }
+        if (url.includes("/conversations.history") || url.includes("/conversations.replies")) {
+          res.end(JSON.stringify({ ok: true, messages: [{ type: "message", ts: "1700000000.000100", user: "U1", text: "a &lt; b" }] }))
+          return
+        }
+        if (url.includes("/conversations.list")) {
+          res.end(JSON.stringify({ ok: true, channels: [{ id: "C12345678", name: "general", is_channel: true, is_member: true }] }))
+          return
+        }
+        if (url.includes("/conversations.info")) {
+          res.end(JSON.stringify({ ok: true, channel: { id: "C12345678", name: "general", is_channel: true, is_member: true } }))
+          return
+        }
+        if (url.includes("/users.info")) {
+          res.end(JSON.stringify({ ok: true, user: { id: "U1", name: "ada", profile: { display_name: "Ada" } } }))
+          return
+        }
+        if (url.includes("/emoji.list")) {
+          res.end(JSON.stringify({ ok: true, emoji: { party: "https://example.com/party.png" } }))
+          return
+        }
+        if (url.includes("/files.getUploadURLExternal")) {
+          res.end(JSON.stringify({ ok: true, upload_url: `http://${host}/external-upload`, file_id: "F999" }))
+          return
+        }
+        if (url === "/external-upload") {
+          res.end("OK")
+          return
+        }
+        if (url.includes("/files.completeUploadExternal")) {
+          res.end(JSON.stringify({ ok: true, files: [{ id: "F999", name: "note.txt" }] }))
+          return
+        }
+        res.end(JSON.stringify({ ok: false, error: "unknown_method" }))
+      })
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address() as { port: number }
+    const base = `http://127.0.0.1:${address.port}`
+    return {
+      apiUrl: `${base}/api/`,
+      oauthUrl: `${base}/api/oauth.v2.access`,
+      calls,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+
   export const noteBytes = Buffer.from("local note")
 
+  export function signSlackBody(secret: string, timestamp: number, rawBody: string): string {
+    return `v0=${createHmac("sha256", secret).update(`v0:${timestamp}:${rawBody}`).digest("hex")}`
+  }
+
   export async function outcome(work: () => Promise<unknown>): Promise<"accepted" | "failed"> {
-    return work().then(() => "accepted" as const, () => "failed" as const)
+    return work().then(
+      () => "accepted" as const,
+      () => "failed" as const,
+    )
   }
 }
-import { noteBytes, outcome, slackApi, type FirstAnswer } from node
+import { noteBytes, outcome, signSlackBody, slackApi, startFullSlackStubServer, type FirstAnswer } from node
+
+function makeSlackRuntime(settings: Record<string, unknown> = {}, characterSlack?: Record<string, unknown>) {
+  const vault = new Map<string, string>()
+  const credentialRefs: Array<Record<string, unknown>> = []
+  const services = new Map<string, unknown>()
+  services.set("vault", {
+    set: async (key: string, value: string) => {
+      vault.set(key, value)
+    },
+  })
+  const storage = new InMemoryConnectorAccountStorage()
+  const storageWithRefs = Object.assign(storage, {
+    setConnectorAccountCredentialRef: async (ref: Record<string, unknown>) => {
+      credentialRefs.push(ref)
+    },
+  })
+  services.set(CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE, storageWithRefs)
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000002" as UUID,
+    character: { name: "Eliza", settings: characterSlack ? { slack: characterSlack } : {} },
+    getSetting: (key: string) => settings[key],
+    getService: <T>(name: string) => (services.get(name) as T | undefined) ?? null,
+  } as unknown as IAgentRuntime
+  const manager = new ConnectorAccountManager(runtime, storageWithRefs)
+  return { runtime, manager, vault, credentialRefs }
+}
 
 const typed = "R&D: is a < b && c > d? (&lt; stays)"
 const wire = "R&amp;D: is a &lt; b &amp;&amp; c &gt; d? (&amp;lt; stays)"
 
-describe("Answer one Slack message through its proper installation and thread (spec/slack/index.md, \"Story: Answer one Slack message through its proper installation and thread\")", () => {
-  it("The agent reads the text the member typed, decoded once (spec/slack/index.md, \"The agent reads the &, < and > a Slack member typed\")", () => {
-    assert.deepStrictEqual([decodeSlackText(wire), decodeSlackText("<@U0> &quot;hi&quot;"), decodeSlackText("&amp;amp;")], [typed, "<@U0> &quot;hi&quot;", "&amp;"])
+describe(`Answer one Slack message through its proper installation and thread (spec/slack/index.md, "Story: Answer one Slack message through its proper installation and thread")`, () => {
+  it(`The agent reads the text the member typed, decoded once (spec/slack/index.md, "The agent reads the &, < and > a Slack member typed")`, () => {
+    assert.deepStrictEqual(
+      [decodeSlackText(wire), decodeSlackText("<@U0> &quot;hi&quot;"), decodeSlackText("&amp;amp;")],
+      [typed, "<@U0> &quot;hi&quot;", "&amp;"],
+    )
+  })
+
+  it(`Formats mrkdwn, chunks code fences safely, parses permalinks, normalizes inbound files, and verifies Slack signatures (spec/slack/index.md, "The agent reads the &, < and > a Slack member typed")`, async () => {
+    assert.strictEqual(escapeSlackMrkdwn("a < b & <@U12345678>"), "a &lt; b &amp; <@U12345678>")
+    assert.strictEqual(markdownToSlackMrkdwn("**bold** *italic* ~~gone~~ [site](https://example.com)"), "*bold* _italic_ ~gone~ <https://example.com|site>")
+    assert.strictEqual(markdownToSlackMrkdwn("```ts\nconst x = a < b\n```"), "```\nconst x = a &lt; b\n```")
+    const chunks = markdownToSlackMrkdwnChunks("```\n" + "line\n".repeat(20) + "```", 40)
+    assert.ok(chunks.length > 1)
+    assert.ok(chunks.every((chunk) => chunk.length <= 40))
+    const plainChunks = splitSlackText("hello world ".repeat(10), 25)
+    assert.ok(plainChunks.every((chunk) => chunk.length <= 25))
+    assert.strictEqual(chunkSlackText("short", 100)[0], "short")
+
+    assert.strictEqual(extractUserIdFromMention("<@U12345678|ada>"), "U12345678")
+    assert.strictEqual(extractChannelIdFromMention("<#C12345678|general>"), "C12345678")
+    assert.strictEqual(extractUrlFromSlackLink(formatSlackLink("https://example.com", "Example")), "https://example.com")
+    assert.strictEqual(stripSlackFormatting("*hi* <@U12345678> &amp; <https://example.com|docs>"), "hi  & docs")
+    assert.strictEqual(truncateText("abcdef", 4), "abc…")
+
+    assert.strictEqual(isValidChannelId("C12345678"), true)
+    assert.strictEqual(isValidMessageTs("1700000000.123456"), true)
+    assert.strictEqual(normalizeSlackPermalinkTimestamp("1700000000123456"), "1700000000.123456")
+    const permalink = buildSlackMessagePermalink("acme", "C12345678", "1700000000.123456")
+    assert.deepStrictEqual(parseSlackMessagePermalink(permalink), {
+      workspaceDomain: "acme",
+      channelId: "C12345678",
+      messageTs: "1700000000.123456",
+    })
+    assert.deepStrictEqual(parseSlackMessageLink(permalink), {
+      channelId: "C12345678",
+      messageTs: "1700000000.123456",
+    })
+    assert.strictEqual(parseSlackMessagePermalink("https://attacker?x=.slack.com/archives/C1/p1700000000123456"), null)
+
+    const files = normalizeSlackFiles([
+      { id: "F1", name: "doc.pdf", title: "Doc", url_private_download: "https://files.slack.com/f1", size: 100 },
+      { id: "F2", name: "missing.bin" },
+    ])
+    assert.strictEqual(files?.length, 2)
+    const media = slackFilesToMedia(files, { channelId: "C1", messageTs: "1.000001" })
+    assert.strictEqual(media.length, 1)
+    assert.strictEqual(isTrustedSlackFileUrl("https://files.slack.com/f1"), true)
+    assert.strictEqual(isTrustedSlackFileUrl("https://evil.example.com/f1"), false)
+    await expect(fetchSlackFileBytes("https://evil.example.com/f1", "xoxb-1", { maxBytes: 1024 })).rejects.toThrow("Slack file URL is not on a Slack file host")
+
+    const nowSec = Math.floor(Date.now() / 1000)
+    const body = JSON.stringify({ type: "event_callback" })
+    const sig = signSlackBody("slack-secret", nowSec, body)
+    assert.strictEqual(verifySlackSigningSecret("slack-secret", String(nowSec), sig, body, nowSec), true)
+    assert.strictEqual(verifySlackSigningSecret("slack-secret", String(nowSec - 600), sig, body, nowSec), false)
+  })
+
+  it(`Resolves multi-account config, compiles workspace policies, and enforces DM/channel/reaction admission (spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity")`, async () => {
+    const env = makeSlackRuntime(
+      { SLACK_BOT_TOKEN: "xoxb-default", SLACK_APP_TOKEN: "xapp-default" },
+      {
+        accounts: {
+          default: { enabled: true, name: "Default", botToken: "xoxb-default", appToken: "xapp-default", replyToMode: "first" },
+          eng: {
+            enabled: true,
+            name: "Eng",
+            botToken: "xoxb-eng",
+            appToken: "xapp-eng",
+            groupPolicy: "allowlist",
+            requireMention: true,
+            dm: { enabled: true, policy: "allowlist", allowFrom: ["id:UALLOW"], groupEnabled: true, groupChannels: ["G12345678"] },
+            channels: { "#general": { enabled: true, users: ["ada"] } },
+            reactionNotifications: "allowlist",
+            reactionAllowlist: ["thumbsup"],
+          },
+        },
+      },
+    )
+    assert.strictEqual(normalizeAccountId(" Eng "), "eng")
+    assert.strictEqual(isMultiAccountEnabled(env.runtime), true)
+    assert.deepStrictEqual(listSlackAccountIds(env.runtime), ["default", "eng"])
+    assert.strictEqual(listEnabledSlackAccounts(env.runtime).length, 2)
+    assert.strictEqual(resolveSlackReplyToMode(resolveSlackAccount(env.runtime, "default"), "direct"), "first")
+    assert.strictEqual(normalizeSlackSlug("#General_Chat"), "general-chat")
+    assert.strictEqual(isSlackChannelIdKey("C12345678"), true)
+    assert.strictEqual(isSlackChannelIdKey("developers"), false)
+
+    const engAccount = resolveSlackAccount(env.runtime, "eng")
+    const resolver = await SlackAccountPolicyResolver.create({
+      account: engAccount,
+      workspace: { teamId: "T1", botUserId: "U0", enterpriseId: "E1" },
+      checkPairing: async () => ({ allowed: false, replyMessage: "Pair code 1234" }),
+      client: {
+        conversations: {
+          list: async () => ({ channels: [{ id: "C12345678", name: "general", is_channel: true }] }),
+          info: async () => ({ channel: { id: "C12345678", name: "general", is_channel: true } }),
+        },
+        users: {
+          list: async () => ({ members: [{ id: "UADA", name: "ada" }] }),
+        },
+      },
+    })
+
+    const mismatch = await resolver.authorize({
+      eventType: "message",
+      channelId: "C12345678",
+      userId: "UADA",
+      channelType: "channel",
+      isThread: false,
+      isMentioned: true,
+      isBotMessage: false,
+      teamId: "T_WRONG",
+    })
+    assert.strictEqual(mismatch.allowed, false)
+    assert.strictEqual(mismatch.reason, "workspace_identity_mismatch")
+
+    const noMention = await resolver.authorize({
+      eventType: "message",
+      channelId: "C12345678",
+      userId: "UADA",
+      channelType: "channel",
+      isThread: false,
+      isMentioned: false,
+      isBotMessage: false,
+      teamId: "T1",
+      enterpriseId: "E1",
+    })
+    assert.strictEqual(noMention.allowed, false)
+    assert.strictEqual(noMention.reason, "mention_required")
+
+    const mentioned = await resolver.authorize({
+      eventType: "app_mention",
+      channelId: "C12345678",
+      userId: "UADA",
+      channelType: "channel",
+      isThread: false,
+      isMentioned: true,
+      isBotMessage: false,
+      teamId: "T1",
+      enterpriseId: "E1",
+    })
+    assert.strictEqual(mentioned.allowed, true)
+
+    const dmAllowed = await resolver.authorize({
+      eventType: "message",
+      channelId: "D12345678",
+      userId: "UALLOW",
+      channelType: "im",
+      isThread: false,
+      isMentioned: false,
+      isBotMessage: false,
+      teamId: "T1",
+    })
+    assert.strictEqual(dmAllowed.allowed, true)
+
+    const reactionDenied = await resolver.authorizeReaction(
+      {
+        eventType: "reaction",
+        channelId: "C12345678",
+        userId: "UADA",
+        channelType: "channel",
+        isThread: false,
+        isMentioned: true,
+        isBotMessage: false,
+        teamId: "T1",
+      },
+      "eyes",
+    )
+    assert.strictEqual(reactionDenied.allowed, false)
+    assert.strictEqual(reactionDenied.reason, "reaction_not_allowed")
+
+    const badDmAccount = {
+      ...engAccount,
+      dm: { enabled: true, policy: "open" as const },
+    }
+    await expect(
+      SlackAccountPolicyResolver.create({
+        account: badDmAccount,
+        workspace: { teamId: "T1", botUserId: "U0" },
+        checkPairing: async () => ({ allowed: false }),
+        client: {
+          conversations: { list: async () => ({ channels: [] }), info: async () => ({}) },
+          users: { list: async () => ({ members: [] }) },
+        },
+      }),
+    ).rejects.toThrow(SlackPolicyConfigurationError)
+  })
+
+  it(`Runs Slack OAuth v2 connector provider and SlackService Web API CRUD against real local HTTP (spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread")`, async () => {
+    const stub = await startFullSlackStubServer()
+    try {
+      const env = makeSlackRuntime({
+        SLACK_CLIENT_ID: "cid-1",
+        SLACK_CLIENT_SECRET: "csec-1",
+        SLACK_REDIRECT_URI: "https://app.example.com/oauth/slack",
+        SLACK_BOT_TOKEN: "xoxb-default",
+      })
+      const provider = createSlackConnectorAccountProvider(env.runtime, { tokenUrl: stub.oauthUrl })
+      const listed = await provider.listAccounts!(env.manager)
+      assert.strictEqual(listed.length, 1)
+
+      const startRes = await provider.startOAuth!(
+        {
+          provider: "slack",
+          redirectUri: "https://app.example.com/oauth/slack",
+          flow: {
+            id: "flow-1",
+            provider: "slack",
+            state: "st-1",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+          },
+        },
+        env.manager,
+      )
+      assert.ok(startRes.authUrl.includes("client_id=cid-1"))
+
+      const completeRes = await provider.completeOAuth!(
+        {
+          provider: "slack",
+          code: "oauth-code-1",
+          query: {},
+          flow: {
+            id: "flow-1",
+            provider: "slack",
+            state: "st-1",
+            status: "pending",
+            redirectUri: "https://app.example.com/oauth/slack",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+          },
+        },
+        env.manager,
+      )
+      assert.strictEqual(completeRes.account?.status, "connected")
+      assert.strictEqual(env.vault.size, 1)
+      assert.strictEqual(env.credentialRefs.length, 1)
+
+      const client = new webApi.WebClient("xoxb-local", { slackApiUrl: stub.apiUrl, retryConfig: { retries: 0 } })
+      const service = new SlackService(env.runtime, client)
+      assert.strictEqual(service.isServiceConnected(), true)
+      const sent = await service.sendMessage("C12345678", "hello")
+      assert.strictEqual(sent.ts, "1700000000.000100")
+      await service.editMessage("C12345678", sent.ts, "edited")
+      await service.sendReaction("C12345678", sent.ts, ":thumbsup:")
+      await service.removeReaction("C12345678", sent.ts, "thumbsup")
+      await service.pinMessage("C12345678", sent.ts)
+      const pins = await service.listPins("C12345678")
+      assert.strictEqual(pins[0]?.text, "Pinned & ready")
+      await service.unpinMessage("C12345678", sent.ts)
+      const history = await service.readHistory("C12345678")
+      assert.strictEqual(history[0]?.text, "a < b")
+      const channels = await service.listChannels()
+      assert.strictEqual(channels[0]?.name, "general")
+      assert.strictEqual((await service.getChannel("C12345678"))?.name, "general")
+      assert.strictEqual((await service.getUser("U1"))?.profile.displayName, "Ada")
+      assert.ok((await service.getEmojiList()).party)
+      const uploaded = await service.uploadFile({ channelId: "C12345678", file: noteBytes, filename: "note.txt" })
+      assert.strictEqual(uploaded.id, "F999")
+      assert.deepStrictEqual(extractUploadReceipt({ files: [{ files: [{ id: "F77" }] }] }), { id: "F77" })
+      await service.deleteMessage("C12345678", sent.ts)
+      assert.strictEqual(slackPlugin.name, "@elizaos/plugin-slack")
+    } finally {
+      await stub.close()
+    }
+  })
+
+  it(`Conformance driver matches the Quint oracle across bind and claim events (spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread")`, async () => {
+    await driver.reset()
+    let expected = slackOracle.initial
+    assert.deepStrictEqual(await driver.observe("a"), expected)
+
+    const steps = [
+      {
+        by: "SlackUntrusted" as const,
+        event: { type: "bindSlack" as const, installation: slackOracle.slackSampleInstallation },
+      },
+      {
+        by: "SlackSocket" as const,
+        event: { type: "bindSlack" as const, installation: slackOracle.slackSampleInstallation },
+      },
+      {
+        by: "SlackSocket" as const,
+        event: {
+          type: "claimSlack" as const,
+          inbound: slackOracle.sampleSlackInbound,
+          policy: slackOracle.sampleSlackPolicy,
+        },
+      },
+      {
+        by: "SlackSocket" as const,
+        event: {
+          type: "claimSlack" as const,
+          inbound: slackOracle.sampleSlackInbound,
+          policy: slackOracle.sampleSlackPolicy,
+        },
+      },
+    ]
+
+    for (const item of steps) {
+      const shouldAccept = slackOracle.enabled(expected, item.event, item.by)
+      const actual = await driver.dispatch("a", item.event, item.by)
+      assert.strictEqual(actual, shouldAccept ? "accepted" : "refused")
+      if (shouldAccept) {
+        expected = slackOracle.step(expected, item.event, item.by).state
+      }
+      assert.deepStrictEqual(await driver.observe("a"), expected)
+    }
+    assert.strictEqual(expected.claims.length, 1)
   })
 })
 
-describe("Know how much of a Slack send reached the provider (spec/slack/index.md, \"Story: Know how much of a Slack send reached the provider\")", () => {
-  const writer = (apiUrl: string, waits = slackWriteRetries) => new webApi.WebClient("xoxb-local", { slackApiUrl: apiUrl, retryConfig: waits })
-  const cases: readonly [FirstAnswer, string][] = [["502", "a server error"], ["reset", "a reset connection"]]
+describe(`Know how much of a Slack send reached the provider (spec/slack/index.md, "Story: Know how much of a Slack send reached the provider")`, () => {
+  const writer = (apiUrl: string, waits = slackWriteRetries) =>
+    new webApi.WebClient("xoxb-local", { slackApiUrl: apiUrl, retryConfig: waits })
+  const cases: readonly [FirstAnswer, string][] = [
+    ["502", "a server error"],
+    ["reset", "a reset connection"],
+  ]
 
   for (const [answer, label] of cases) {
     it(`A post Slack kept is not posted again when its answer is ${label} (spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer")`, async () => {
       const api = await slackApi(answer)
       const post = await outcome(() => writer(api.apiUrl).chat.postMessage({ channel: "C1", text: "agent reply" }))
       const upload = await slackApi(answer)
-      const file = await outcome(() => writer(upload.apiUrl).files.uploadV2({ channel_id: "C1", file: noteBytes, filename: "note.txt" }))
+      const file = await outcome(() =>
+        writer(upload.apiUrl).files.uploadV2({ channel_id: "C1", file: noteBytes, filename: "note.txt" }),
+      )
       api.close()
       upload.close()
-      assert.deepStrictEqual({ post, kept: api.kept, file, completed: upload.kept }, { post: "failed", kept: ["agent reply"], file: "failed", completed: ["completed upload"] })
+      assert.deepStrictEqual(
+        { post, kept: api.kept, file, completed: upload.kept },
+        { post: "failed", kept: ["agent reply"], file: "failed", completed: ["completed upload"] },
+      )
     }, 20_000)
   }
 
-  it("A rate-limited post is sent again (spec/slack/index.md, \"A Slack post is sent again only after a rate limit, never after a lost answer\")", async () => {
+  it(`A rate-limited post is sent again (spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer")`, async () => {
     const api = await slackApi("429")
-    const post = await outcome(() => writer(api.apiUrl, { ...slackWriteRetries, minTimeout: 0, maxTimeout: 0 }).chat.postMessage({ channel: "C1", text: "agent reply" }))
+    const post = await outcome(() =>
+      writer(api.apiUrl, { ...slackWriteRetries, minTimeout: 0, maxTimeout: 0 }).chat.postMessage({
+        channel: "C1",
+        text: "agent reply",
+      }),
+    )
     api.close()
     assert.deepStrictEqual({ post, kept: api.kept }, { post: "accepted", kept: ["agent reply"] })
   }, 20_000)

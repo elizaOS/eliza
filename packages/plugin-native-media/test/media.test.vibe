@@ -1,0 +1,28 @@
+// spec/nativeMedia/index.md, "Story: Review an exact device media item before sharing or changing it"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  deviceLibraryClient,
+  evaluateMediaSelectionFence,
+  permittedPhotosClient,
+  photosClient,
+  selectedDocumentsClient,
+} from "../src/index.vibe"
+
+describe("Native media (spec/nativeMedia/index.md, \"Story: Review an exact device media item before sharing or changing it\")", () => {
+  it("Exposes bridge factories and enforces revision/user/review fences on media operations (spec/nativeMedia/index.md, \"Media bytes and mutations need the same selection fence as the review\")", () => {
+    assert.isFunction(deviceLibraryClient)
+    assert.isFunction(permittedPhotosClient)
+    assert.isFunction(photosClient)
+    assert.isFunction(selectedDocumentsClient)
+
+    const reviewed = { itemId: "photo42", userScope: "owner", volumeId: "primary", providerRevision: 3, accessEpoch: 7 }
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, reviewed, "ReadMediaBytes", true, false), true)
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, reviewed, "SaveEditCopy", true, false), true)
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, reviewed, "ReplaceOriginal", true, false), false)
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, reviewed, "ReplaceOriginal", true, true), true)
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, reviewed, "PermanentlyDeleteMedia", true, false), false)
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, { ...reviewed, providerRevision: 4 }, "ReadMediaBytes", true, true), false)
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, { ...reviewed, userScope: "other" }, "PlayMedia", true, true), false)
+    assert.strictEqual(evaluateMediaSelectionFence(reviewed, reviewed, "PlayMedia", false, true), false)
+  })
+})

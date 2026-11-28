@@ -1,34 +1,80 @@
-// spec/nativeTalkmode/index.md, "Story: Converse by voice without audio from a retired session playing or recording"
-import type { TalkModePlugin } from "./native-contract.vibe"
+// spec/nativeTalkmode/index.md, "Story: Converse by voice without audio from a retired session playing or recording"; spec/nativeTalkmode/audioPolicy.md, "Story: Keep voice capture active and TTS progressing under output mute"
+import { mayPublishTalkEvent, type TalkEvent, type TalkSession } from "../gen/nativeTalkmode.effect.vibe"
+import type { TalkModeAudioFrameEvent, TalkModePlugin } from "./native-contract.vibe"
+import {
+  createTalkAudioPolicyHandle,
+  createTalkModeAudioState,
+  getVolumeMutePolicy,
+  reduceTalkModeAudioPolicy,
+  type TalkAudioPolicyMachineHandle,
+  type TalkModeAudioPlatform,
+  type TalkModeAudioPolicyEvent,
+  type TalkModeAudioState,
+  type TalkModeCaptureIndicator,
+  type TalkModeTtsAudibility,
+  type TalkModeTtsOutputChannel,
+  type TalkModeTtsProgressPolicy,
+  type VolumeMutePolicy,
+} from "./volume-mute-policy.vibe"
+import { TalkModeWeb } from "./web.vibe"
 
 export type * from "./native-contract.vibe"
+export {
+  TalkModeWeb,
+  createTalkAudioPolicyHandle,
+  createTalkModeAudioState,
+  getVolumeMutePolicy,
+  reduceTalkModeAudioPolicy,
+  type TalkAudioPolicyMachineHandle,
+  type TalkModeAudioPlatform,
+  type TalkModeAudioPolicyEvent,
+  type TalkModeAudioState,
+  type TalkModeCaptureIndicator,
+  type TalkModeTtsAudibility,
+  type TalkModeTtsOutputChannel,
+  type TalkModeTtsProgressPolicy,
+  type VolumeMutePolicy,
+}
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { TalkModePlugin } from "./native-contract.vibe"
+  import { TalkModeWeb } from "./web.vibe"
 
-  export const native = registerPlugin<TalkModePlugin>("TalkMode")
+  export const native = registerPlugin<TalkModePlugin>("TalkMode", {
+    web: () => Promise.resolve(new TalkModeWeb()),
+  })
 }
 import { native } from capacitor
 
 export const TalkMode = native
 
-import { mayPublishTalkEvent, type TalkEvent, type TalkSession } from "../gen/nativeTalkmode.effect.vibe"
-
-export function currentTalkListener<T>(session: () => TalkSession, conversationId: string, eventKind: TalkEvent, forward: (value: T) => void): (value: T) => void {
+export function currentTalkListener<T>(
+  session: () => TalkSession,
+  conversationId: string,
+  eventKind: TalkEvent,
+  forward: (value: T) => void,
+): (value: T) => void {
   return (value) => {
     if (mayPublishTalkEvent(session(), conversationId, eventKind)) forward(value)
   }
 }
 
-import type { TalkModeAudioFrameEvent } from "./native-contract.vibe"
+schema AudioFrame {
+  pcm16: Schema.String
+  sampleRate: Schema.Int
+  channels: Schema.Int
+  samples: Schema.Int
+  rms: Schema.Number
+  timestamp: Schema.Number
+  frameIndex: Schema.Int
+}
 
-const AudioFrame = Schema.Struct({
-  pcm16: Schema.String, sampleRate: Schema.Int, channels: Schema.Literal(1),
-  samples: Schema.Int, rms: Schema.Number, timestamp: Schema.Number, frameIndex: Schema.Int,
-})
-
-export effect function observeTalkAudio(session: () => TalkSession, forward: (value: TalkModeAudioFrameEvent) => void, port: TalkModePlugin = TalkMode) {
+export effect function observeTalkAudio(
+  session: () => TalkSession,
+  forward: (value: TalkModeAudioFrameEvent) => void,
+  port: TalkModePlugin = TalkMode,
+) {
   const id = session().conversationId
   let retired = false
   try acquireRelease(tryPromise(() => port.addListener("audioFrame", (raw) => {
@@ -36,10 +82,19 @@ export effect function observeTalkAudio(session: () => TalkSession, forward: (va
     const parsed = Schema.decodeUnknownOption(AudioFrame)(raw)
     if (Option.isNone(parsed)) return
     const frame = parsed.value
-    if (frame.pcm16 === "" || frame.samples <= 0 || frame.sampleRate <= 0 ||
-        frame.frameIndex < 0 || !Number.isFinite(frame.timestamp) || frame.timestamp < 0 ||
-        !Number.isFinite(frame.rms) || frame.rms < 0 || frame.rms > 1) return
-    forward(frame)
+    if (
+      frame.pcm16 === "" ||
+      frame.channels !== 1 ||
+      frame.samples <= 0 ||
+      frame.sampleRate <= 0 ||
+      frame.frameIndex < 0 ||
+      !Number.isFinite(frame.timestamp) ||
+      frame.timestamp < 0 ||
+      !Number.isFinite(frame.rms) ||
+      frame.rms < 0 ||
+      frame.rms > 1
+    ) return
+    forward({ ...frame, channels: 1 })
   })), (listener) => effect {
     retired = true
     tryPromise(() => listener.remove()) catch () => undefined

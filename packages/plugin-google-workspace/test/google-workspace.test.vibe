@@ -1,0 +1,508 @@
+// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"; spec/googleWorkspace/oauth.md, "Story: Connect, refresh, and disconnect a Google Workspace account without leaving stale grants active"
+import { assert, describe, it } from "@effect/vitest"
+import { FetchHttpClient } from "effect/http"
+import {
+  DefaultGoogleCredentialResolver,
+  GOOGLE_CAPABILITIES,
+  GOOGLE_OAUTH_SCOPES,
+  GoogleCalendarMutationError,
+  GoogleCalendarSyncTokenExpiredError,
+  GoogleChatService,
+  GoogleGmailAdapter,
+  GoogleGmailHistoryExpiredError,
+  GoogleTaskCodeResolver,
+  GoogleWorkspaceService,
+  WorkspaceCredentials,
+  assessGoogleOAuthCallbackConfig,
+  buildGoogleMeetCanonicalArtifact,
+  cleanupExpiredGmailContent,
+  confirmedMailRecipient,
+  createGoogleConnectorAccountProvider,
+  createOAuthSession,
+  decodeGmailPartData,
+  extractGmailMimeBody,
+  gmailAttachmentParts,
+  gmailBriefSourceId,
+  gmailThreadSourceLink,
+  googlePlugin,
+  isPortlessLoopbackRedirectUrl,
+  loadGmailContentManifest,
+  mergeCredentialObject,
+  publishGmailContent,
+  queryWorkspace,
+  readConferenceLink,
+  readGmailContentPage,
+  readGmailTextRange,
+  scopesForGoogleCapabilities,
+  splitMessageForGoogleChat,
+  stableGoogleConnectorAccountId,
+  type OauthCredentialFields,
+} from "../src/index.vibe"
+
+module host {
+  import { Buffer } from "node:buffer"
+  import { generateKeyPairSync } from "node:crypto"
+  import { once } from "node:events"
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+
+  export function toBase64Url(input: string | readonly number[]): string {
+    return (typeof input === "string" ? Buffer.from(input, "utf8") : Buffer.from(input)).toString("base64url")
+  }
+
+  export function bytesToUtf8(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("utf8")
+  }
+
+  export function generateRsaPrivateKeyPem(): string {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 })
+    return privateKey.export({ type: "pkcs8", format: "pem" }).toString()
+  }
+
+  export interface MockGoogleApiState {
+    readonly requests: { readonly method: string; readonly path: string; readonly auth?: string; readonly ifMatch?: string; readonly body?: string }[]
+    readonly events: Map<string, { id: string; etag: string; summary: string; start: { dateTime: string }; end: { dateTime: string }; extendedProperties?: { private?: Record<string, string> }; attendees?: { email: string; self?: boolean; responseStatus?: string }[] }>
+    readonly chatMessages: { readonly space: string; readonly text: string }[]
+    readonly revokedTokens: string[]
+  }
+
+  export async function startMockGoogleServer(allScopes: string) {
+    const state: MockGoogleApiState = {
+      requests: [],
+      events: new Map([
+        ["evt-1", {
+          id: "evt-1",
+          etag: "\"etag-1\"",
+          summary: "Standup",
+          start: { dateTime: "2026-11-28T10:00:00Z" },
+          end: { dateTime: "2026-11-28T10:30:00Z" },
+          attendees: [{ email: "owner@example.com", self: true, responseStatus: "needsAction" }],
+        }],
+      ]),
+      chatMessages: [],
+      revokedTokens: [],
+    }
+    const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+      const chunks: Uint8Array[] = []
+      for await (const chunk of req) chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
+      const rawBody = Buffer.concat(chunks).toString("utf8")
+      const fullUrl = new URL(req.url ?? "/", "http://127.0.0.1")
+      const path = fullUrl.pathname
+      state.requests.push({
+        method: req.method ?? "GET",
+        path,
+        auth: req.headers.authorization,
+        ifMatch: typeof req.headers["if-match"] === "string" ? req.headers["if-match"] : undefined,
+        body: rawBody.length > 0 ? rawBody : undefined,
+      })
+      const send = (status: number, body: unknown) => {
+        res.writeHead(status, { "content-type": "application/json" })
+        res.end(status === 204 ? "" : JSON.stringify(body))
+      }
+
+      if (path === "/token" && req.method === "POST") {
+        const form = new URLSearchParams(rawBody)
+        if (form.get("grant_type") === "urn:ietf:params:oauth:grant-type:jwt-bearer") {
+          return send(200, { access_token: "chat-sa-token", expires_in: 3600 })
+        }
+        return send(200, {
+          access_token: "oauth-access-token",
+          refresh_token: "oauth-refresh-token",
+          expires_in: 3600,
+          scope: allScopes,
+        })
+      }
+      if (path === "/revoke" && req.method === "POST") {
+        const form = new URLSearchParams(rawBody)
+        const tok = form.get("token")
+        if (tok) state.revokedTokens.push(tok)
+        return send(200, {})
+      }
+      if (path === "/v1/userinfo") {
+        return send(200, { sub: "sub-owner-42", email: "owner@example.com", email_verified: true, name: "Owner" })
+      }
+      if (path === "/gmail/v1/users/me/profile") return send(200, { historyId: "9001" })
+      if (path === "/gmail/v1/users/me/history") {
+        if (fullUrl.searchParams.get("startHistoryId") === "expired") return send(404, { error: "expired" })
+        return send(200, { historyId: "9002", history: [{ id: "9002", messagesAdded: [{ message: { id: "msg-1", threadId: "thr-1" } }] }] })
+      }
+      if (path === "/gmail/v1/users/me/messages" && req.method === "GET") {
+        return send(200, { messages: [{ id: "msg-1", threadId: "thr-1" }], resultSizeEstimate: 1 })
+      }
+      if (path === "/gmail/v1/users/me/messages/msg-1") {
+        const attachmentBytes = Buffer.from("hello-attachment", "utf8")
+        return send(200, {
+          id: "msg-1",
+          threadId: "thr-1",
+          historyId: "9002",
+          internalDate: String(Date.parse("2026-11-27T12:00:00Z")),
+          snippet: "Hello snippet",
+          labelIds: ["INBOX", "UNREAD"],
+          payload: {
+            mimeType: "multipart/mixed",
+            headers: [
+              { name: "From", value: "Alice <alice@example.com>" },
+              { name: "To", value: "owner@example.com" },
+              { name: "Subject", value: "Quarterly Report" },
+              { name: "Date", value: "Fri, 27 Nov 2026 12:00:00 +0000" },
+              { name: "List-Unsubscribe", value: "<mailto:unsub@example.com>" },
+            ],
+            parts: [
+              { partId: "0", mimeType: "text/plain", body: { data: Buffer.from("Line one\nLine two", "utf8").toString("base64url") } },
+              { partId: "1", mimeType: "application/pdf", filename: "report.pdf", body: { attachmentId: "att-1", size: attachmentBytes.length } },
+            ],
+          },
+        })
+      }
+      if (path === "/gmail/v1/users/me/messages/msg-1/attachments/att-1") {
+        const bytes = Buffer.from("hello-attachment", "utf8")
+        return send(200, { size: bytes.length, data: bytes.toString("base64url") })
+      }
+      if (path === "/gmail/v1/users/me/messages/send" && req.method === "POST") {
+        return send(200, { id: "sent-1", threadId: "thr-1", labelIds: ["SENT"] })
+      }
+      if (path === "/gmail/v1/users/me/drafts" && req.method === "POST") {
+        return send(200, { id: "draft-1", message: { id: "dmsg-1", threadId: "thr-1" } })
+      }
+      if (path === "/gmail/v1/users/me/messages/msg-1/modify" || path === "/gmail/v1/users/me/messages/msg-1/trash" || path === "/gmail/v1/users/me/threads/thr-1/trash") {
+        return send(200, { id: "msg-1" })
+      }
+      if (path === "/gmail/v1/users/me/settings/filters" && req.method === "POST") {
+        return send(200, { id: "filter-1" })
+      }
+      if (path === "/calendar/v3/users/me/calendarList") {
+        if (fullUrl.searchParams.get("syncToken") === "expired") return send(410, { error: "gone" })
+        return send(200, { items: [{ id: "primary", summary: "Primary", primary: true, timeZone: "UTC" }] })
+      }
+      if (path === "/calendar/v3/calendars/primary/events" && req.method === "GET") {
+        if (fullUrl.searchParams.get("syncToken") === "expired") return send(410, { error: "gone" })
+        const keyFilter = fullUrl.searchParams.get("privateExtendedProperty")
+        const items = [...state.events.values()].filter((ev) => {
+          if (!keyFilter) return true
+          return ev.extendedProperties?.private?.elizaIdempotencyKey === keyFilter.replace("elizaIdempotencyKey=", "")
+        })
+        return send(200, { items })
+      }
+      if (path === "/calendar/v3/calendars/primary/events" && req.method === "POST") {
+        const body = JSON.parse(rawBody) as { summary: string; start: { dateTime: string }; end: { dateTime: string }; extendedProperties?: { private?: Record<string, string> } }
+        const created = { id: `evt-${state.events.size + 1}`, etag: "\"etag-new\"", summary: body.summary, start: body.start, end: body.end, extendedProperties: body.extendedProperties }
+        state.events.set(created.id, created)
+        return send(200, created)
+      }
+      if (path === "/calendar/v3/calendars/primary/events/evt-1" && req.method === "GET") {
+        return send(200, state.events.get("evt-1"))
+      }
+      if (path === "/calendar/v3/calendars/primary/events/evt-1" && req.method === "PATCH") {
+        if (req.headers["if-match"] && req.headers["if-match"] !== "\"etag-1\"") return send(412, { error: "etag mismatch" })
+        const current = state.events.get("evt-1")!
+        const patch = JSON.parse(rawBody) as { summary?: string; attendees?: { email: string; self?: boolean; responseStatus?: string }[] }
+        const next = { ...current, summary: patch.summary ?? current.summary, attendees: patch.attendees ?? current.attendees, etag: "\"etag-2\"" }
+        state.events.set("evt-1", next)
+        return send(200, next)
+      }
+      if (path === "/calendar/v3/calendars/primary/events/evt-1" && req.method === "DELETE") {
+        state.events.delete("evt-1")
+        return send(204, {})
+      }
+      if (path === "/calendar/v3/calendars/primary/events/watch") return send(200, { id: "chan-1", resourceId: "res-1" })
+      if (path === "/calendar/v3/channels/stop") return send(204, {})
+      if (path === "/calendar/v3/freeBusy") return send(200, { timeMin: "2026-11-28T00:00:00Z", timeMax: "2026-11-29T00:00:00Z", calendars: { primary: { busy: [{ start: "2026-11-28T10:00:00Z", end: "2026-11-28T10:30:00Z" }] } } })
+      if (path === "/drive/v3/files" && req.method === "GET") return send(200, { files: [{ id: "file-1", name: "Budget.xlsx", mimeType: "application/vnd.google-apps.spreadsheet", size: "128" }] })
+      if (path === "/drive/v3/files" && req.method === "POST") return send(200, { id: "file-2", name: "Notes.txt", mimeType: "text/plain" })
+      if (path === "/drive/v3/files/file-1") return send(200, { id: "file-1", name: "Budget.xlsx", mimeType: "application/vnd.google-apps.spreadsheet", size: "128" })
+      if (path === "/v1/documents/doc-1") return send(200, { documentId: "doc-1", title: "Spec", body: { content: [{ paragraph: { elements: [{ textRun: { content: "Doc body" } }] } }] } })
+      if (path === "/v1/documents/doc-1:batchUpdate") return send(200, {})
+      if (path.startsWith("/v4/spreadsheets/sheet-1/values/")) {
+        if (req.method === "PUT") return send(200, { spreadsheetId: "sheet-1", updatedRange: "A1:B1", updatedRows: 1, updatedColumns: 2, updatedCells: 2 })
+        return send(200, { range: "A1:B1", values: [["Q4", "100"]] })
+      }
+      if (path === "/v1/people/me/connections") return send(200, { connections: [{ resourceName: "people/c1", names: [{ displayName: "Alice" }], emailAddresses: [{ value: "alice@example.com" }] }], totalItems: 1 })
+      if (path === "/v1/people:searchContacts") return send(200, { results: [{ person: { resourceName: "people/c1", names: [{ displayName: "Alice" }], emailAddresses: [{ value: "alice@example.com" }] } }] })
+      if (path === "/v1/otherContacts:search") return send(200, { results: [{ person: { resourceName: "people/o1", names: [{ displayName: "Bob" }], emailAddresses: [{ value: "bob@example.com" }] } }] })
+      if (path === "/v1/people/c1") return send(200, { resourceName: "people/c1", names: [{ displayName: "Alice" }], emailAddresses: [{ value: "alice@example.com" }] })
+      if (path === "/v2/spaces" && req.method === "POST") return send(200, { name: "spaces/meet-1", meetingUri: "https://meet.google.com/abc-defg-hij", meetingCode: "abc-defg-hij" })
+      if (path === "/v2/spaces/meet-1") return send(200, { name: "spaces/meet-1", meetingUri: "https://meet.google.com/abc-defg-hij", meetingCode: "abc-defg-hij", activeConference: { conferenceRecord: "conferenceRecords/cr-1" } })
+      if (path === "/v2/spaces/meet-1:endActiveConference") return send(200, {})
+      if (path === "/v2/conferenceRecords/cr-1") return send(200, { name: "conferenceRecords/cr-1", space: "spaces/meet-1", startTime: "2026-11-28T10:00:00Z" })
+      if (path === "/v2/conferenceRecords/cr-1/participants") return send(200, { participants: [{ name: "conferenceRecords/cr-1/participants/p1", signedinUser: { displayName: "Owner", user: "owner@example.com" } }] })
+      if (path === "/v2/conferenceRecords/cr-1/participants/p1/participantSessions") return send(200, { participantSessions: [{ name: "conferenceRecords/cr-1/participants/p1/participantSessions/s1", startTime: "2026-11-28T10:00:00Z" }] })
+      if (path === "/v2/conferenceRecords/cr-1/transcripts") return send(200, { transcripts: [{ name: "conferenceRecords/cr-1/transcripts/t1", state: "FILE_GENERATED" }] })
+      if (path === "/v2/conferenceRecords/cr-1/transcripts/t1/entries") return send(200, { transcriptEntries: [{ name: "e1", participant: "Owner", text: "Action item: ship the release today." }] })
+      if (path === "/v2/conferenceRecords/cr-1/recordings") return send(200, { recordings: [{ name: "conferenceRecords/cr-1/recordings/r1", state: "FILE_GENERATED", driveDestination: { exportUri: "https://drive.google.com/file/d/r1" } }] })
+      if (path === "/v2/conferenceRecords/cr-1/recordings/r1") return send(200, { driveDestination: { exportUri: "https://drive.google.com/file/d/r1" } })
+      if (path === "/v1/spaces/team-space/messages" && req.method === "POST") {
+        const payload = JSON.parse(rawBody) as { text: string }
+        state.chatMessages.push({ space: "spaces/team-space", text: payload.text })
+        return send(200, { name: `spaces/team-space/messages/m${state.chatMessages.length}`, thread: { name: "spaces/team-space/threads/t1" } })
+      }
+      if (path === "/v1/spaces" && req.method === "GET") {
+        return send(200, { spaces: [{ name: "spaces/team-space", displayName: "Team", type: "SPACE" }] })
+      }
+      return send(404, { error: "not_found", path })
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address()
+    if (address === null || typeof address === "string") throw new Error("Failed to bind mock Google API server")
+    const origin = `http://127.0.0.1:${address.port}`
+    const baseUrls = {
+      gmail: origin,
+      calendar: origin,
+      drive: origin,
+      docs: origin,
+      sheets: origin,
+      meet: origin,
+      people: origin,
+      chat: origin,
+      oauth: origin,
+      userInfo: origin,
+    }
+    const close = () => new Promise<void>((resolve) => server.close(() => resolve()))
+    return { origin, baseUrls, state, close }
+  }
+}
+import { bytesToUtf8, generateRsaPrivateKeyPem, startMockGoogleServer, toBase64Url } from host
+
+async function expectReject(work: () => Promise<unknown>, match?: new (...args: never[]) => Error): Promise<void> {
+  let caught: unknown
+  try {
+    await work()
+  } catch (error) {
+    caught = error
+  }
+  assert.ok(caught !== undefined)
+  if (match !== undefined) assert.ok(caught instanceof match)
+}
+
+describe("Google Workspace parity journeys", () => {
+  it(`Use only the Google account and permissions I connected: OAuth flow, epoch fencing, credential merge, and scope checks (spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/oauth.md, "Story: Connect, refresh, and disconnect a Google Workspace account without leaving stale grants active")`, async () => {
+    const allScopes = scopesForGoogleCapabilities(GOOGLE_CAPABILITIES).join(" ")
+    const mock = await startMockGoogleServer(allScopes)
+    try {
+      const assessment = assessGoogleOAuthCallbackConfig({ redirectUri: "http://127.0.0.1/api/connectors/google/oauth/callback" })
+      assert.strictEqual(isPortlessLoopbackRedirectUrl(assessment.redirectUri), true)
+      assert.strictEqual(assessment.valid, false)
+
+      const merged: OauthCredentialFields = {}
+      mergeCredentialObject(merged, { tokens: { accessToken: "tok-1", refreshToken: "ref-1", scopes: [GOOGLE_OAUTH_SCOPES.gmail.read], expiresAt: 2_000_000_000 } })
+      assert.strictEqual(merged.access_token, "tok-1")
+      assert.strictEqual(merged.refresh_token, "ref-1")
+      assert.strictEqual(merged.expiry_date, 2_000_000_000_000)
+
+      const cyclic: Record<string, unknown> = {}
+      cyclic.tokens = cyclic
+      assert.throws(() => mergeCredentialObject({}, cyclic))
+
+      const store = new Map<string, OauthCredentialFields>([
+        ["work", { access_token: "expired-tok", refresh_token: "ref-1", expiry_date: 1_700_000_000_000, scope: GOOGLE_OAUTH_SCOPES.gmail.read }],
+      ])
+      const resolver = new DefaultGoogleCredentialResolver({
+        reader: { read: (id) => store.get(id), write: (id, c) => { store.set(id, c) } },
+        now: () => 1_700_000_500_000,
+        refreshToken: async () => ({ access_token: "fresh-tok", expiry_date: 1_900_000_000_000 }),
+      })
+      const auth = await resolver.resolve({ accountId: "work", requiredCapabilities: ["gmail.read"], seenEpoch: 1 })
+      assert.strictEqual(auth.accessToken, "fresh-tok")
+      await expectReject(() => resolver.resolve({ accountId: "work", requiredCapabilities: ["drive.write"], seenEpoch: 1 }))
+      resolver.invalidate("work")
+      await expectReject(() => resolver.resolve({ accountId: "work", requiredCapabilities: ["gmail.read"], seenEpoch: 1 }))
+
+      const provider = createGoogleConnectorAccountProvider(undefined, {
+        clientId: "cid-1",
+        clientSecret: "csec-1",
+        baseUrls: mock.baseUrls,
+      })
+      const started = await provider.startOAuth!({
+        provider: "google",
+        flow: { id: "f1", provider: "google", state: "st-1", status: "pending", createdAt: 1, updatedAt: 1 },
+        redirectUri: "http://127.0.0.1:3000/api/connectors/google/oauth/callback",
+      }, {} as never)
+      assert.ok(started.authUrl.includes("code_challenge_method=S256"))
+      const completed = await provider.completeOAuth!({
+        provider: "google",
+        flow: { id: "f1", provider: "google", state: "st-1", status: "pending", redirectUri: started.redirectUri, codeVerifier: started.codeVerifier, createdAt: 1, updatedAt: 1 },
+        code: "code-123",
+        query: { code: "code-123", state: "st-1" },
+      }, {} as never)
+      const accountId = completed.account !== undefined && "id" in completed.account ? completed.account.id : ""
+      assert.strictEqual(accountId, stableGoogleConnectorAccountId("sub-owner-42"))
+      await provider.deleteAccount!(accountId, {} as never)
+      assert.deepStrictEqual(mock.state.revokedTokens, ["oauth-refresh-token"])
+
+      const session = Effect.runSync(createOAuthSession())
+      await Effect.runPromise(session.startOAuth(7))
+      const conn = await Effect.runPromise(session.completeOAuth(7, true, 3))
+      assert.strictEqual(await Effect.runPromise(session.authorizes(conn.activeEpoch, 1)), true)
+      await Effect.runPromise(session.disconnect())
+      assert.strictEqual(await Effect.runPromise(session.authorizes(conn.activeEpoch, 1)), false)
+    } finally {
+      await mock.close()
+    }
+  })
+
+  it(`Send Gmail to the confirmed recipient and exercise Gmail, Calendar, Drive, People, Meet, and Chat end-to-end over loopback HTTP (spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"; spec/googleWorkspace/index.md, "Google Chat service-account messages use their configured installation and space")`, async () => {
+    const allScopes = scopesForGoogleCapabilities(GOOGLE_CAPABILITIES).join(" ")
+    const mock = await startMockGoogleServer(allScopes)
+    try {
+      const conflict = confirmedMailRecipient("ConfirmedContact", "alice@example.com", ["bob@example.com"])
+      assert.strictEqual(conflict.tag, "AddressConflict")
+      const chosen = confirmedMailRecipient("ConfirmedContact", "alice@example.com", ["alice@example.com"])
+      assert.deepStrictEqual(chosen, { tag: "ChosenAddress", email: "alice@example.com" })
+
+      const resolver = new DefaultGoogleCredentialResolver({
+        reader: { read: () => ({ access_token: "live-tok", scope: allScopes }) },
+      })
+      const service = new GoogleWorkspaceService(undefined, { credentialResolver: resolver, baseUrls: mock.baseUrls })
+
+      const historyId = await service.getGmailHistoryId({ accountId: "work" })
+      assert.strictEqual(historyId, "9001")
+      const historyPage = await service.listGmailHistoryPage({ accountId: "work", startHistoryId: "9001" })
+      assert.strictEqual(historyPage.changes.length, 1)
+      await expectReject(() => service.listGmailHistoryPage({ accountId: "work", startHistoryId: "expired" }), GoogleGmailHistoryExpiredError)
+
+      const detail = await service.getGmailMessageDetail({ accountId: "work", messageId: "msg-1" })
+      assert.strictEqual(detail?.bodyText, "Line one\nLine two")
+      assert.strictEqual(detail?.attachments.length, 1)
+      const attachment = await service.getGmailAttachment({ accountId: "work", messageId: "msg-1", partId: "1", maxBytes: 1024 })
+      assert.strictEqual(bytesToUtf8(attachment.data), "hello-attachment")
+      assert.strictEqual(gmailBriefSourceId("work", "msg-1"), "gmail:work:msg-1")
+      assert.ok(gmailThreadSourceLink("thr-1").includes("thr-1"))
+      assert.strictEqual(readGmailTextRange("a\nb\nc", "line", 1, 1).text, "b\n")
+      assert.strictEqual(decodeGmailPartData(toBase64Url([0x80]), "windows-1252"), "€")
+      assert.strictEqual(extractGmailMimeBody({ mimeType: "text/html", body: { data: toBase64Url("<p>Hi &amp; bye</p>") } }).bodyText, "Hi & bye")
+      assert.strictEqual(gmailAttachmentParts(undefined).length, 0)
+
+      const manifest = publishGmailContent({ ownerId: "o1", accountId: "work", messageId: "msg-1", bodyText: "cached body", now: 1000 })
+      assert.strictEqual(loadGmailContentManifest(manifest.reference, { ownerId: "o1", accountId: "work" }, 2000)?.revision, manifest.revision)
+      assert.strictEqual(readGmailContentPage(manifest.reference, { ownerId: "o1", accountId: "work" }, 0, 1, 2000)?.text, "cached body")
+      assert.throws(() => loadGmailContentManifest(manifest.reference, { ownerId: "other", accountId: "work" }, 2000))
+      assert.ok(cleanupExpiredGmailContent(manifest.expiresAt + 1) >= 1)
+
+      await expectReject(() => service.sendEmail({
+        accountId: "work",
+        to: ["eve@example.com"],
+        confirmedContactEmail: "alice@example.com",
+        subject: "Blocked",
+        bodyText: "Should not send",
+      }))
+      const sent = await service.sendEmail({
+        accountId: "work",
+        to: ["alice@example.com"],
+        confirmedContactEmail: "alice@example.com",
+        subject: "Allowed",
+        bodyText: "Hello Alice",
+      })
+      assert.strictEqual(sent.id, "sent-1")
+      const draft = await service.createGmailDraft({ accountId: "work", to: ["alice@example.com"], subject: "Draft", bodyText: "Body" })
+      assert.strictEqual(draft.id, "draft-1")
+      const bulk = await service.modifyGmailMessages({ accountId: "work", messageIds: ["msg-1"], operation: "markRead" })
+      assert.deepStrictEqual(bulk.succeededIds, ["msg-1"])
+      const unresponded = await service.listGmailUnrespondedThreads({ accountId: "work", selfEmail: "owner@example.com" })
+      assert.strictEqual(unresponded.length, 1)
+      const subs = await service.getGmailSubscriptionHeaders({ accountId: "work" })
+      assert.strictEqual(subs[0]?.listUnsubscribe, "<mailto:unsub@example.com>")
+      const filter = await service.createGmailFilterForSender({ accountId: "work", fromAddress: "news@example.com", trash: true })
+      assert.strictEqual(filter.id, "filter-1")
+      const adapter = new GoogleGmailAdapter(service.gmail, "work")
+      assert.strictEqual((await adapter.listTriage(5)).length, 1)
+
+      const calendars = await service.listCalendars({ accountId: "work" })
+      assert.strictEqual(calendars[0]?.primary, true)
+      await expectReject(() => service.listEventPage({ accountId: "work", syncToken: "expired" }), GoogleCalendarSyncTokenExpiredError)
+      const createdEv = await service.createEvent({
+        accountId: "work",
+        summary: "Sync",
+        start: "2026-11-28T14:00:00Z",
+        end: "2026-11-28T15:00:00Z",
+        idempotencyKey: "idem-1",
+      })
+      const replayedEv = await service.createEvent({
+        accountId: "work",
+        summary: "Sync",
+        start: "2026-11-28T14:00:00Z",
+        end: "2026-11-28T15:00:00Z",
+        idempotencyKey: "idem-1",
+      })
+      assert.strictEqual(replayedEv.id, createdEv.id)
+      await expectReject(() => service.updateEvent({ accountId: "work", eventId: "evt-1", expectedEtag: "\"stale\"", summary: "Bad" }), GoogleCalendarMutationError)
+      const responded = await service.respondToEvent({ accountId: "work", eventId: "evt-1", responseStatus: "accepted" })
+      assert.strictEqual(responded.attendees[0]?.responseStatus, "accepted")
+      const fb = await service.queryFreeBusy({ accountId: "work", timeMin: "2026-11-28T00:00:00Z", timeMax: "2026-11-29T00:00:00Z", calendarIds: ["primary"] })
+      assert.strictEqual(fb.calendars[0]?.busy.length, 1)
+      const watch = await service.watchEvents({ accountId: "work", channelId: "chan-1", address: "https://example.com/hook" })
+      assert.strictEqual(watch.resourceId, "res-1")
+      await service.stopCalendarChannel({ accountId: "work", channelId: "chan-1", resourceId: "res-1" })
+      await service.deleteEvent({ accountId: "work", eventId: "evt-1" })
+      assert.strictEqual(readConferenceLink({ hangoutLink: "https://meet.google.com/aaa-bbbb-ccc" }), "https://meet.google.com/aaa-bbbb-ccc")
+
+      const files = await service.searchFiles({ accountId: "work", query: "name contains 'Budget'" })
+      assert.strictEqual(files[0]?.id, "file-1")
+      const doc = await service.getDocContent({ accountId: "work", documentId: "doc-1" })
+      assert.strictEqual(doc.bodyText, "Doc body")
+      await service.appendToDoc({ accountId: "work", documentId: "doc-1", text: "\nMore" })
+      const sheet = await service.getSheetContent({ accountId: "work", spreadsheetId: "sheet-1" })
+      assert.deepStrictEqual(sheet.values, [["Q4", "100"]])
+      const sheetUpd = await service.updateSheetCells({ accountId: "work", spreadsheetId: "sheet-1", range: "A1:B1", values: [["Q4", 200]] })
+      assert.strictEqual(sheetUpd.updatedCells, 2)
+
+      const contacts = await service.searchContacts({ accountId: "work", query: "Alice" })
+      assert.strictEqual(contacts.length, 2)
+      assert.strictEqual((await service.getContact({ accountId: "work", resourceName: "people/c1" })).displayName, "Alice")
+
+      const meet = await service.createMeeting({ accountId: "work", accessType: "OPEN" })
+      assert.strictEqual(meet.meetingCode, "abc-defg-hij")
+      const report = await service.generateReport({ accountId: "work", conferenceRecordName: "conferenceRecords/cr-1" })
+      assert.strictEqual(report.actionItems.length, 1)
+      const canonical = buildGoogleMeetCanonicalArtifact({
+        conferenceRecord: await service.getConferenceRecord({ accountId: "work", conferenceRecordName: "conferenceRecords/cr-1" }),
+        participants: await service.listMeetingParticipants({ accountId: "work", conferenceRecordName: "conferenceRecords/cr-1" }),
+        sessions: await service.listMeetingParticipantSessions({ accountId: "work", participantName: "conferenceRecords/cr-1/participants/p1" }),
+        transcriptEntries: await service.getMeetingTranscript({ accountId: "work", transcriptName: "conferenceRecords/cr-1/transcripts/t1" }),
+        recordings: await service.listMeetingRecordings({ accountId: "work", conferenceRecordName: "conferenceRecords/cr-1" }),
+      })
+      assert.strictEqual(canonical.capture.streams.length, 2)
+      assert.strictEqual(new GoogleTaskCodeResolver().resolve("Please check ELZ-42", { accountId: "work" }).parsed?.raw, "ELZ-42")
+
+      const pem = generateRsaPrivateKeyPem()
+      const chat = new GoogleChatService(undefined, {
+        baseUrls: { chat: mock.origin, oauth: mock.origin },
+        config: {
+          accounts: {
+            default: {
+              accountId: "default",
+              serviceAccountEmail: "bot@test.iam.gserviceaccount.com",
+              privateKey: pem,
+              appId: "chat-app-1",
+              spaces: [{ spaceId: "spaces/team-space", enabled: true }],
+            },
+          },
+        },
+      })
+      assert.strictEqual(chat.verifyAndAcceptEvent({ type: "MESSAGE", appId: "chat-app-1", eventId: "ev-1", verified: true, space: { name: "spaces/team-space" } }), true)
+      assert.strictEqual(chat.verifyAndAcceptEvent({ type: "MESSAGE", appId: "chat-app-1", eventId: "ev-1", verified: false, space: { name: "spaces/team-space" } }), false)
+      assert.strictEqual(chat.verifyAndAcceptEvent({ type: "MESSAGE", appId: "chat-app-1", eventId: "ev-1", verified: true, space: { name: "spaces/other-space" } }), false)
+      const chatSent = await chat.sendMessage({ spaceName: "team-space", text: "A".repeat(4500) })
+      assert.strictEqual(chatSent.chunksSent, 2)
+      assert.strictEqual(splitMessageForGoogleChat("hello").length, 1)
+      assert.strictEqual((await chat.listSpaces()).length, 1)
+      await chat.stop()
+
+      const refused = await Effect.runPromise(
+        Effect.result(
+          queryWorkspace({ ownerId: "other", accountId: "work", seenEpoch: 1 }, { kind: "gmail", query: "in:inbox" }).pipe(
+            Effect.provideService(WorkspaceCredentials, {
+              account: () => Effect.succeed({
+                account: { accountOwner: "owner", accountId: "work", credentialEpoch: 1, scopes: ["GmailRead"], connected: true },
+                token: Redacted.make("tok"),
+              }),
+            }),
+            Effect.provide(FetchHttpClient.layer),
+          ),
+        ),
+      )
+      assert.strictEqual(refused._tag, "Failure")
+      assert.strictEqual(googlePlugin.name, "google")
+    } finally {
+      await mock.close()
+    }
+  })
+})

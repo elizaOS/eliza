@@ -1,14 +1,203 @@
-// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Manual English captions outrank automatic English captions and audio"
+// spec/video/index.md, "Story: Read metadata and captions from a video"; spec/video/index.md, "Media and caption sources have separate byte limits"; spec/video/index.md, "Manual English captions outrank automatic English captions and audio"; spec/video/index.md, "Story: Transcribe a video and reuse only completed work"; spec/video/index.md, "A stable source and format own the metadata download or conversion result"
 import { assert, describe, it } from "@effect/vitest"
-import { pinVideoCaption } from "../src/index.vibe"
+import type { Media } from "@elizaos/core"
+import {
+  BinaryResolver,
+  CAPTION_PARSE_ERROR,
+  VideoService,
+  extractYoutubeVideoId,
+  ffmpegStaticExecutableName,
+  formatInstallErrorReason,
+  isSupportedVideoUrl,
+  normalizeCaptionNewlines,
+  parseCaptionJson,
+  parseSrtOrVtt,
+  parseYtDlpFormats,
+  parseYtDlpUploadDate,
+  pinVideoCaption,
+  resolveFfmpegStaticCandidatePath,
+  resolveNodeInstallRunner,
+  videoPlugin,
+  ytDlpArgsFromFlags,
+  ytDlpAssetName,
+} from "../src/index.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import fs from "node:fs"
+  import http from "node:http"
+  import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import path from "node:path"
+  import type { IAgentRuntime } from "@elizaos/core"
+  import type { VideoService } from "../src/index.vibe"
+
+  export interface MockReleaseFixture {
+    readonly dir: string
+    readonly releaseUrl: string
+    readonly setBadSha: (bad: boolean) => void
+    readonly releaseHits: () => number
+    readonly close: () => Promise<void>
+  }
+
+  export async function startMockReleaseFixture(assetName: string): Promise<MockReleaseFixture> {
+    const dir = await mkdtemp(path.join(tmpdir(), "eliza-video-bin-"))
+    const payload = Buffer.from("#!/bin/sh\necho '{\"title\":\"Updated\"}'\n")
+    const goodSha = createHash("sha256").update(payload).digest("hex")
+    let badSha = false
+    let hits = 0
+    const server = http.createServer((req, res) => {
+      const baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+      if (req.url === "/release") {
+        hits += 1
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({
+          tag_name: "2026.01.01",
+          assets: [
+            { name: assetName, browser_download_url: `${baseUrl}/bin`, size: payload.length },
+            { name: "SHA2-256SUMS", browser_download_url: `${baseUrl}/sums`, size: 100 },
+          ],
+        }))
+        return
+      }
+      if (req.url === "/sums") {
+        res.writeHead(200, { "content-type": "text/plain" })
+        res.end(`${badSha ? "0".repeat(64) : goodSha}  ${assetName}\n`)
+        return
+      }
+      if (req.url === "/bin") {
+        res.writeHead(200, { "content-type": "application/octet-stream" })
+        res.end(payload)
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    const port = (server.address() as { port: number }).port
+    return {
+      dir,
+      releaseUrl: `http://127.0.0.1:${port}/release`,
+      setBadSha: (bad) => {
+        badSha = bad
+      },
+      releaseHits: () => hits,
+      close: async () => {
+        server.close()
+        await rm(dir, { recursive: true, force: true })
+      },
+    }
+  }
+
+  export interface FakeBinariesWorkspace {
+    readonly workDir: string
+    readonly binsDir: string
+    readonly cacheDir: string
+    readonly fakeYtDlp: string
+    readonly fakeFfmpeg: string
+    readonly outWebm: string
+    readonly cleanup: () => Promise<void>
+  }
+
+  export async function createFakeBinariesWorkspace(): Promise<FakeBinariesWorkspace> {
+    const workDir = await mkdtemp(path.join(tmpdir(), "eliza-video-e2e-"))
+    const fakeYtDlp = path.join(workDir, "fake-yt-dlp")
+    const fakeFfmpeg = path.join(workDir, "fake-ffmpeg")
+    const cacheDir = path.join(workDir, "cache")
+    const binsDir = path.join(workDir, "bins")
+    await writeFile(fakeYtDlp, `#!/bin/sh
+OUT=""
+DUMP=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dump-json|--dump-single-json) DUMP=1; shift ;;
+    -o) OUT="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ "$DUMP" = "1" ]; then
+  echo '{"id":"vid1","title":"Demo Video","description":"Desc","channel":"Chan","duration":42,"upload_date":"20260315","categories":["Music"],"formats":[{"format_id":"18","url":"https://cdn.example/18.mp4","ext":"mp4","quality":"360p"}]}'
+elif [ -n "$OUT" ]; then
+  printf 'fake-video-bytes' > "$OUT"
+fi
+`)
+    await writeFile(fakeFfmpeg, `#!/bin/sh
+LAST=""
+for ARG in "$@"; do LAST="$ARG"; done
+printf 'ffmpeg-output' > "$LAST"
+`)
+    await chmod(fakeYtDlp, 0o755)
+    await chmod(fakeFfmpeg, 0o755)
+    return {
+      workDir,
+      binsDir,
+      cacheDir,
+      fakeYtDlp,
+      fakeFfmpeg,
+      outWebm: path.join(cacheDir, "out.webm"),
+      cleanup: () => rm(workDir, { recursive: true, force: true }),
+    }
+  }
+
+  export function fileExists(filePath: string): boolean {
+    return fs.existsSync(filePath)
+  }
+
+  export function readUtf8(filePath: string): string {
+    return fs.readFileSync(filePath, "utf8")
+  }
+
+  export async function captureRejection(fn: () => Promise<unknown>): Promise<string | null> {
+    try {
+      await fn()
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  export function makeMockRuntime(service: VideoService): IAgentRuntime {
+    const cache = new Map<string, unknown>()
+    return {
+      getCache: async <T,>(key: string) => cache.get(key) as T | undefined,
+      setCache: async (key: string, value: unknown) => {
+        cache.set(key, value)
+        return true
+      },
+      getService: () => service,
+    } as unknown as IAgentRuntime
+  }
+
+  export function makeRetryRunner(): { readonly factory: () => () => Promise<unknown>; readonly attempts: () => number } {
+    let count = 0
+    return {
+      factory: () => async () => {
+        count += 1
+        if (count === 1) throw new Error("Unable to extract video data")
+        return { title: "Recovered" }
+      },
+      attempts: () => count,
+    }
+  }
+}
+
+import {
+  captureRejection,
+  createFakeBinariesWorkspace,
+  fileExists,
+  makeMockRuntime,
+  makeRetryRunner,
+  readUtf8,
+  startMockReleaseFixture,
+} from node
 
 const timedText = (language: string, ext: string) => ({ ext, url: `https://www.youtube.com/api/timedtext?lang=${language}&fmt=${ext}` })
 const asrUrl = "https://www.youtube.com/api/timedtext?kind=asr&lang=en&fmt=json3"
 const englishAsr = { en: [{ ext: "json3", url: asrUrl }] }
 const video = (subtitles: Record<string, readonly { ext: string; url: string }[]>, automatic: Record<string, readonly { ext: string; url: string }[]> = {}) => ({ id: "abc", title: "Regional manual subs", subtitles, automatic_captions: automatic })
 
-describe("Read metadata and captions from a video (spec/video/index.md, \"Story: Read metadata and captions from a video\")", () => {
-  it("An uploader's en-US or en-GB track is read as manual English, en first, then each listed track until one is usable (spec/video/index.md, \"Manual English captions outrank automatic English captions and audio\")", () => {
+describe(`Read metadata and captions from a video (spec/video/index.md, "Story: Read metadata and captions from a video")`, () => {
+  it(`An uploader's en-US or en-GB track is read as manual English, en first, then each listed track until one is usable (spec/video/index.md, "Manual English captions outrank automatic English captions and audio")`, () => {
     const pinned = [
       pinVideoCaption(video({ "en-GB": [timedText("en-GB", "srt")] }, englishAsr)),
       pinVideoCaption(video({ "en-US": [timedText("en-US", "srt")] })),
@@ -25,5 +214,112 @@ describe("Read metadata and captions from a video (spec/video/index.md, \"Story:
       { sourceUrl: asrUrl, formatKind: "JsonCaptions" },
       { sourceUrl: "", formatKind: "ExtractAudio" },
     ])
+  })
+
+  it(`Parses SRT, WebVTT, json3 captions, compact dates, and validates yt-dlp format entries (spec/video/index.md, "Manual English captions outrank automatic English captions and audio")`, () => {
+    const vtt = "WEBVTT\n\nNOTE ignore this\n\n00:00:01.000 --> 00:00:02.000\nHello\nworld\n\n00:00:02.500 --> 00:00:04.000\nNext cue"
+    assert.strictEqual(parseSrtOrVtt(vtt), "Hello world Next cue")
+    const json3 = JSON.stringify({ events: [{ segs: [{ utf8: "First" }, { utf8: " line\r\n" }] }, { segs: [{ utf8: "Second" }] }] })
+    assert.strictEqual(parseCaptionJson(json3), "First line Second")
+    assert.strictEqual(parseCaptionJson("not-json"), CAPTION_PARSE_ERROR)
+    assert.strictEqual(normalizeCaptionNewlines("a\r\nb\rc\nd"), "a b c d")
+    assert.strictEqual(parseYtDlpUploadDate("20240229")?.toISOString(), "2024-02-29T00:00:00.000Z")
+    assert.strictEqual(parseYtDlpUploadDate("20240230"), undefined)
+    assert.strictEqual(parseYtDlpUploadDate("20230229"), undefined)
+    assert.strictEqual(extractYoutubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ")
+    assert.strictEqual(isSupportedVideoUrl("https://youtu.be/dQw4w9WgXcQ"), true)
+    assert.strictEqual(isSupportedVideoUrl("https://vimeo.com/12345"), true)
+    assert.strictEqual(isSupportedVideoUrl("https://example.com/v.mp4"), false)
+    const formats = parseYtDlpFormats([{ format_id: "18", url: "https://cdn.example/18.mp4", ext: "mp4", quality: 360, filesize: 1024, fps: 30, tbr: 500 }])
+    assert.deepStrictEqual(formats, [{
+      formatId: "18", url: "https://cdn.example/18.mp4", extension: "mp4", quality: "360",
+      fileSize: 1024, videoCodec: undefined, audioCodec: undefined, resolution: undefined, fps: 30, bitrate: 500,
+    }])
+    assert.throws(() => parseYtDlpFormats("invalid"), /non-array/)
+    assert.throws(() => parseYtDlpFormats([{ format_id: 99 }]), /invalid format field/)
+    assert.strictEqual(ffmpegStaticExecutableName("win32"), "ffmpeg.exe")
+    assert.strictEqual(resolveFfmpegStaticCandidatePath({ packageRoot: "/pkg", platform: "linux" }), "/pkg/ffmpeg")
+    assert.strictEqual(resolveNodeInstallRunner({ env: { ELIZA_NODE_BIN: "/custom/node" }, execPath: "/bin/bun" }), "/custom/node")
+    assert.include(formatInstallErrorReason(new Error("boom")), "ffmpeg-static install failed: boom")
+    assert.deepStrictEqual(ytDlpArgsFromFlags("https://youtu.be/abc", { dumpJson: true, skipDownload: true }), ["--dump-json", "--skip-download", "--", "https://youtu.be/abc"])
+  })
+})
+
+describe(`Transcribe a video and reuse only completed work (spec/video/index.md, "Story: Transcribe a video and reuse only completed work")`, () => {
+  it(`Resolves managed yt-dlp binaries with SHA256 verification, rejects hash mismatches, and retries extractor failures once (spec/video/index.md, "Media and caption sources have separate byte limits")`, async () => {
+    const fixture = await startMockReleaseFixture(ytDlpAssetName())
+    try {
+      let nowMs = 1_000_000
+      const resolver = new BinaryResolver({
+        binariesDir: fixture.dir,
+        releaseUrl: fixture.releaseUrl,
+        now: () => nowMs,
+        envOverridePath: null,
+        preferSystemPath: false,
+      })
+      fixture.setBadSha(true)
+      const mismatchErr = await captureRejection(() => resolver.downloadYtDlp())
+      assert.isNotNull(mismatchErr)
+      assert.match(mismatchErr ?? "", /SHA256 mismatch/)
+      fixture.setBadSha(false)
+      const meta = await resolver.downloadYtDlp()
+      assert.strictEqual(meta.version, "2026.01.01")
+      assert.strictEqual(fileExists(resolver.cachedYtDlpPath), true)
+      const retry = makeRetryRunner()
+      const retryResolver = new BinaryResolver({
+        binariesDir: fixture.dir,
+        releaseUrl: fixture.releaseUrl,
+        now: () => {
+          nowMs += 4_000_000
+          return nowMs
+        },
+        envOverridePath: null,
+        preferSystemPath: false,
+        runnerFactory: retry.factory,
+      })
+      const recovered = await retryResolver.runYtDlp("https://youtu.be/abc", { dumpJson: true })
+      assert.deepStrictEqual(recovered, { title: "Recovered" })
+      assert.strictEqual(retry.attempts(), 2)
+      assert.isAtLeast(fixture.releaseHits(), 2)
+    } finally {
+      await fixture.close()
+    }
+  })
+
+  it(`Runs VideoService metadata, formats, download, audio extraction, thumbnail, conversion, caching and dispose end-to-end (spec/video/index.md, "A stable source and format own the metadata download or conversion result")`, async () => {
+    const workspace = await createFakeBinariesWorkspace()
+    try {
+      const resolver = new BinaryResolver({
+        binariesDir: workspace.binsDir,
+        envOverridePath: workspace.fakeYtDlp,
+        ffmpegEnvOverridePath: workspace.fakeFfmpeg,
+        disableAutoUpdate: true,
+      })
+      const service = new VideoService(undefined, { dataDir: workspace.cacheDir, binaries: resolver })
+      const runtime = makeMockRuntime(service)
+      await service.initialize(runtime)
+      const info = await service.getVideoInfo("https://www.youtube.com/watch?v=vid1")
+      assert.strictEqual(info.title, "Demo Video")
+      assert.strictEqual(info.uploadDate?.toISOString(), "2026-03-15T00:00:00.000Z")
+      assert.strictEqual(info.formats?.length, 1)
+      const formats = await service.getAvailableFormats("https://www.youtube.com/watch?v=vid1")
+      assert.strictEqual(formats[0]?.formatId, "18")
+      const downloaded = await service.downloadVideo("https://www.youtube.com/watch?v=vid1")
+      assert.strictEqual(readUtf8(downloaded), "fake-video-bytes")
+      const audio = await service.extractAudio(downloaded)
+      assert.strictEqual(readUtf8(audio), "ffmpeg-output")
+      const thumb = await service.getThumbnail(downloaded, 2)
+      assert.strictEqual(readUtf8(thumb), "ffmpeg-output")
+      const converted = await service.convertVideo(downloaded, workspace.outWebm, { startTime: 1, endTime: 5, resolution: "640x360", videoCodec: "libvpx" })
+      assert.strictEqual(readUtf8(converted), "ffmpeg-output")
+      const processed: Media = await service.processVideo("https://www.youtube.com/watch?v=vid1", runtime)
+      assert.strictEqual(processed.title, "Demo Video")
+      assert.strictEqual(processed.text, "No lyrics available.")
+      const cachedHit = await service.processVideo("https://www.youtube.com/watch?v=vid1", runtime)
+      assert.deepStrictEqual(cachedHit, processed)
+      await videoPlugin.dispose?.(runtime)
+    } finally {
+      await workspace.cleanup()
+    }
   })
 })

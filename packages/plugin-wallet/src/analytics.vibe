@@ -1,0 +1,592 @@
+// spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"; spec/wallet/index.md, "Inventory and venue observations retain their chain and account scope"
+import { Service, type IAgentRuntime, type Plugin, type Provider, type ProviderResult } from "@elizaos/core"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { walletObservationMatches } from "../gen/wallet.effect.vibe"
+
+export const TOKEN_INFO_SERVICE_TYPE = "token_info"
+export const BIRDEYE_SERVICE_TYPE = "birdeye"
+export const DEXSCREENER_SERVICE_TYPE = "dexscreener"
+export const NEWS_DATA_SERVICE_TYPE = "news_data"
+export const KAMINO_SERVICE_TYPE = "kamino"
+export const STEER_SERVICE_TYPE = "steer"
+
+export const WALLET_BALANCE_DELTA_CHANNEL = "wallet.balance_delta"
+export const WALLET_BALANCE_DELTA_GROUP_KEY = "wallet-balance-watcher"
+export const WALLET_BALANCE_DELTA_TASK_IDEMPOTENCY_KEY = "wallet-balance-delta-watcher"
+export const WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY = "wallet:balance_delta:baseline"
+export const WALLET_BALANCE_DELTA_INTERVAL_MINUTES = 5
+export const DEFAULT_MIN_DELTA_USD = 25
+export const DEFAULT_THRESHOLD_PCT = 5
+
+export interface AnalyticsHttpOptions {
+  readonly baseUrl?: string
+  readonly apiKey?: string
+  readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+}
+
+export interface TokenPriceSnapshot {
+  readonly chain: string
+  readonly address: string
+  readonly symbol: string
+  readonly name?: string
+  readonly priceUsd: number
+  readonly change24hPct?: number
+  readonly liquidityUsd?: number
+  readonly volume24hUsd?: number
+  readonly marketCapUsd?: number
+  readonly source: "birdeye" | "dexscreener" | "combined"
+  readonly observedAt: number
+}
+
+export interface TrendingTokenEntry {
+  readonly chain: string
+  readonly address: string
+  readonly symbol: string
+  readonly name: string
+  readonly priceUsd: number
+  readonly volume24hUsd: number
+  readonly rank: number
+}
+
+export interface DexPairSummary {
+  readonly chainId: string
+  readonly dexId: string
+  readonly pairAddress: string
+  readonly baseSymbol: string
+  readonly quoteSymbol: string
+  readonly baseAddress: string
+  readonly priceUsd: number
+  readonly liquidityUsd: number
+  readonly volume24hUsd: number
+  readonly priceChange24hPct?: number
+}
+
+export interface DefiNewsArticle {
+  readonly title: string
+  readonly link: string
+  readonly publishedAt: string
+  readonly source: string
+  readonly summary?: string
+}
+
+export interface DefiMarketSnapshot {
+  readonly totalMarketCapUsd: number
+  readonly btcDominancePct: number
+  readonly ethDominancePct: number
+  readonly totalVolume24hUsd: number
+  readonly articles: readonly DefiNewsArticle[]
+  readonly observedAt: number
+}
+
+export interface PoolInfoSummary {
+  readonly protocol: "kamino" | "steer"
+  readonly poolId: string
+  readonly chain: string
+  readonly tokenA: string
+  readonly tokenB: string
+  readonly tvlUsd: number
+  readonly aprPct: number
+  readonly feeTierBps?: number
+}
+
+export interface WalletBalanceLeg {
+  readonly chain: string
+  readonly assetId: string
+  readonly symbol: string
+  readonly balanceUsd: number
+  readonly priced: boolean
+}
+
+export interface WalletBalanceBaseline {
+  readonly identityKey: string
+  readonly totalUsd: number
+  readonly legs: readonly WalletBalanceLeg[]
+  readonly observedAt: number
+}
+
+export interface WalletBalanceDeltaThresholds {
+  readonly minDeltaUsd: number
+  readonly thresholdPct: number
+}
+
+export type WalletBalanceSampleSource = "rpc" | "birdeye" | "combined"
+
+export interface WalletBalanceDeltaResult {
+  readonly identitySwitched: boolean
+  readonly coverageFlipped: boolean
+  readonly previousUsd: number
+  readonly currentUsd: number
+  readonly deltaUsd: number
+  readonly deltaPct: number
+  readonly significant: boolean
+}
+
+effect function fetchJsonValue(
+  url: string,
+  headers: Readonly<Record<string, string>>,
+  query: Readonly<Record<string, string | number | undefined>>,
+): unknown!!HttpClient.HttpClient {
+  const urlParams: Record<string, string> = {}
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined) urlParams[k] = String(v)
+  }
+  let req = HttpClientRequest.get(url).pipe(
+    HttpClientRequest.setUrlParams(urlParams),
+    HttpClientRequest.acceptJson,
+  )
+  for (const [k, v] of Object.entries(headers)) req = HttpClientRequest.setHeader(req, k, v)
+  const response = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => undefined
+  if (response === undefined || response.status < 200 || response.status >= 300) return undefined
+  const text = response.text catch effect () => ""
+  if (text.trim().length === 0) return undefined
+  return Effect.try(() => JSON.parse(text) as unknown) catch () => undefined
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+function num(value: unknown): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function str(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback
+}
+
+export class BirdeyeService extends Service {
+  static override serviceType = BIRDEYE_SERVICE_TYPE
+  override capabilityDescription = "Birdeye multi-chain token pricing, market overview, trending tokens, and wallet portfolio"
+  private readonly baseUrl: string
+  private readonly apiKey: string
+  private readonly httpLayer: Layer.Layer<HttpClient.HttpClient>
+
+  constructor(runtime?: IAgentRuntime, options: AnalyticsHttpOptions = {}) {
+    super(runtime)
+    this.baseUrl = (options.baseUrl ?? "https://public-api.birdeye.so").replace(/\/+$/, "")
+    const settingKey = runtime?.getSetting("BIRDEYE_API_KEY")
+    this.apiKey = options.apiKey ?? (typeof settingKey === "string" ? settingKey : "")
+    this.httpLayer = options.httpLayer ?? FetchHttpClient.layer
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new BirdeyeService(runtime)
+  }
+
+  override async stop(): Promise<void> {}
+
+  private headers(chain: string): Record<string, string> {
+    return {
+      ...(this.apiKey.length > 0 ? { "X-API-KEY": this.apiKey } : {}),
+      "x-chain": chain,
+    }
+  }
+
+  async getTokenOverview(address: string, chain = "solana"): Promise<TokenPriceSnapshot | null> {
+    const raw = await runPromise(
+      Effect.provide(fetchJsonValue(`${this.baseUrl}/defi/token_overview`, this.headers(chain), { address }), this.httpLayer),
+    )
+    const data = asRecord(asRecord(raw)?.data)
+    if (data === undefined) return null
+    return {
+      chain,
+      address,
+      symbol: str(data.symbol, address.slice(0, 8)),
+      name: str(data.name) || undefined,
+      priceUsd: num(data.price),
+      change24hPct: num(data.priceChange24hPercent),
+      liquidityUsd: num(data.liquidity),
+      volume24hUsd: num(data.v24hUSD),
+      marketCapUsd: num(data.mc),
+      source: "birdeye",
+      observedAt: Date.now(),
+    }
+  }
+
+  async getTrendingTokens(chain = "solana", limit = 10): Promise<TrendingTokenEntry[]> {
+    const raw = await runPromise(
+      Effect.provide(
+        fetchJsonValue(`${this.baseUrl}/defi/token_trending`, this.headers(chain), { sort_by: "rank", sort_type: "asc", limit: Math.min(20, Math.max(1, limit)) }),
+        this.httpLayer,
+      ),
+    )
+    const tokens = asRecord(asRecord(raw)?.data)?.tokens
+    if (!Array.isArray(tokens)) return []
+    return tokens.slice(0, limit).flatMap((entry, idx): TrendingTokenEntry[] => {
+      const rec = asRecord(entry)
+      if (rec === undefined) return []
+      return [{
+        chain,
+        address: str(rec.address),
+        symbol: str(rec.symbol),
+        name: str(rec.name, str(rec.symbol)),
+        priceUsd: num(rec.price),
+        volume24hUsd: num(rec.volume24hUSD),
+        rank: num(rec.rank) || idx + 1,
+      }]
+    })
+  }
+
+  async getWalletPortfolio(walletAddress: string, chain = "solana"): Promise<{ readonly totalUsd: number; readonly items: readonly WalletBalanceLeg[] }> {
+    const raw = await runPromise(
+      Effect.provide(fetchJsonValue(`${this.baseUrl}/v1/wallet/token_list`, this.headers(chain), { wallet: walletAddress }), this.httpLayer),
+    )
+    const data = asRecord(asRecord(raw)?.data)
+    const rawItems = Array.isArray(data?.items) ? data.items : []
+    const items: WalletBalanceLeg[] = rawItems.flatMap((entry): WalletBalanceLeg[] => {
+      const rec = asRecord(entry)
+      if (rec === undefined) return []
+      const assetId = str(rec.address, str(rec.symbol, "native"))
+      if (!walletObservationMatches(
+        { ownerAccount: walletAddress, chains: [chain], readKind: "ReadBalances" },
+        { sourceAccount: walletAddress, onChain: chain, observedKind: "ReadBalances", assetId },
+      )) return []
+      const usd = num(rec.valueUsd)
+      return [{ chain, assetId, symbol: str(rec.symbol, assetId.slice(0, 6)), balanceUsd: usd, priced: usd > 0 }]
+    })
+    return { totalUsd: num(data?.totalUsd) || sumWalletBalancesUsd(items), items }
+  }
+}
+
+abstract class HttpAnalyticsService extends Service {
+  protected readonly baseUrl: string
+  protected readonly httpLayer: Layer.Layer<HttpClient.HttpClient>
+
+  constructor(defaultBaseUrl: string, runtime?: IAgentRuntime, options: AnalyticsHttpOptions = {}) {
+    super(runtime)
+    this.baseUrl = (options.baseUrl ?? defaultBaseUrl).replace(/\/+$/, "")
+    this.httpLayer = options.httpLayer ?? FetchHttpClient.layer
+  }
+
+  override async stop(): Promise<void> {}
+
+  protected fetchJson(path: string, headers: Readonly<Record<string, string>> = {}, query: Readonly<Record<string, string | number | undefined>> = {}): Promise<unknown> {
+    return runPromise(Effect.provide(fetchJsonValue(`${this.baseUrl}${path}`, headers, query), this.httpLayer))
+  }
+}
+
+export class DexScreenerService extends HttpAnalyticsService {
+  static override serviceType = DEXSCREENER_SERVICE_TYPE
+  override capabilityDescription = "DexScreener DEX pair search and liquidity/volume analytics"
+
+  constructor(runtime?: IAgentRuntime, options: AnalyticsHttpOptions = {}) {
+    super("https://api.dexscreener.com", runtime, options)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new DexScreenerService(runtime)
+  }
+
+  private mapPairs(rawPairs: unknown): DexPairSummary[] {
+    if (!Array.isArray(rawPairs)) return []
+    return rawPairs.slice(0, 20).flatMap((item): DexPairSummary[] => {
+      const rec = asRecord(item)
+      if (rec === undefined) return []
+      const base = asRecord(rec.baseToken)
+      const quote = asRecord(rec.quoteToken)
+      const liq = asRecord(rec.liquidity)
+      const vol = asRecord(rec.volume)
+      const chg = asRecord(rec.priceChange)
+      return [{
+        chainId: str(rec.chainId),
+        dexId: str(rec.dexId),
+        pairAddress: str(rec.pairAddress),
+        baseSymbol: str(base?.symbol),
+        quoteSymbol: str(quote?.symbol),
+        baseAddress: str(base?.address),
+        priceUsd: num(rec.priceUsd),
+        liquidityUsd: num(liq?.usd),
+        volume24hUsd: num(vol?.h24),
+        priceChange24hPct: chg?.h24 === undefined ? undefined : num(chg.h24),
+      }]
+    })
+  }
+
+  async searchPairs(query: string): Promise<DexPairSummary[]> {
+    const raw = await runPromise(
+      Effect.provide(fetchJsonValue(`${this.baseUrl}/latest/dex/search`, {}, { q: query }), this.httpLayer),
+    )
+    return this.mapPairs(asRecord(raw)?.pairs)
+  }
+
+  async getTokenPairs(tokenAddress: string): Promise<DexPairSummary[]> {
+    const raw = await runPromise(
+      Effect.provide(fetchJsonValue(`${this.baseUrl}/latest/dex/tokens/${encodeURIComponent(tokenAddress)}`, {}, {}), this.httpLayer),
+    )
+    return this.mapPairs(asRecord(raw)?.pairs)
+  }
+}
+
+export class TokenInfoService extends Service {
+  static override serviceType = TOKEN_INFO_SERVICE_TYPE
+  override capabilityDescription = "Unified multi-chain token price, metadata, and DEX liquidity resolver"
+  readonly birdeye: BirdeyeService
+  readonly dexscreener: DexScreenerService
+
+  constructor(runtime?: IAgentRuntime, options: { readonly birdeye?: BirdeyeService; readonly dexscreener?: DexScreenerService } = {}) {
+    super(runtime)
+    this.birdeye = options.birdeye ?? new BirdeyeService(runtime)
+    this.dexscreener = options.dexscreener ?? new DexScreenerService(runtime)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new TokenInfoService(runtime)
+  }
+
+  override async stop(): Promise<void> {}
+
+  async resolveTokenInfo(queryOrAddress: string, chain = "solana"): Promise<TokenPriceSnapshot | null> {
+    const fromBirdeye = await this.birdeye.getTokenOverview(queryOrAddress, chain)
+    if (fromBirdeye !== null) return fromBirdeye
+    const pairs = await this.dexscreener.searchPairs(queryOrAddress)
+    const best = pairs.sort((a, b) => b.liquidityUsd - a.liquidityUsd)[0]
+    if (best === undefined) return null
+    return {
+      chain: best.chainId || chain,
+      address: best.baseAddress || queryOrAddress,
+      symbol: best.baseSymbol,
+      priceUsd: best.priceUsd,
+      change24hPct: best.priceChange24hPct,
+      liquidityUsd: best.liquidityUsd,
+      volume24hUsd: best.volume24hUsd,
+      source: "dexscreener",
+      observedAt: Date.now(),
+    }
+  }
+}
+
+export class NewsDataService extends HttpAnalyticsService {
+  static override serviceType = NEWS_DATA_SERVICE_TYPE
+  override capabilityDescription = "DeFi market stats and crypto news feed provider"
+
+  constructor(runtime?: IAgentRuntime, options: AnalyticsHttpOptions = {}) {
+    super("https://api.coingecko.com/api/v3", runtime, options)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new NewsDataService(runtime)
+  }
+
+  async getMarketSnapshot(): Promise<DefiMarketSnapshot> {
+    const raw = await this.fetchJson("/global")
+    const data = asRecord(asRecord(raw)?.data)
+    const mcMap = asRecord(data?.total_market_cap)
+    const domMap = asRecord(data?.market_cap_percentage)
+    const volMap = asRecord(data?.total_volume)
+    const rawArticles = Array.isArray(asRecord(raw)?.articles) ? asRecord(raw)!.articles as unknown[] : []
+    const articles: DefiNewsArticle[] = rawArticles.slice(0, 10).flatMap((entry): DefiNewsArticle[] => {
+      const rec = asRecord(entry)
+      if (rec === undefined) return []
+      return [{
+        title: str(rec.title),
+        link: str(rec.link),
+        publishedAt: str(rec.publishedAt, new Date().toISOString()),
+        source: str(rec.source, "defi-news"),
+        summary: str(rec.summary) || undefined,
+      }]
+    })
+    return {
+      totalMarketCapUsd: num(mcMap?.usd),
+      btcDominancePct: num(domMap?.btc),
+      ethDominancePct: num(domMap?.eth),
+      totalVolume24hUsd: num(volMap?.usd),
+      articles,
+      observedAt: Date.now(),
+    }
+  }
+}
+
+function mapPoolEntries(
+  list: readonly unknown[],
+  protocol: "kamino" | "steer",
+  defaultChain: string,
+  defaultTokenA: string,
+  limit: number,
+): PoolInfoSummary[] {
+  return list.slice(0, limit).flatMap((item): PoolInfoSummary[] => {
+    const rec = asRecord(item)
+    if (rec === undefined) return []
+    return [{
+      protocol,
+      poolId: str(rec.address, str(rec.poolId)),
+      chain: str(rec.chain, defaultChain),
+      tokenA: str(rec.tokenA, defaultTokenA),
+      tokenB: str(rec.tokenB, "USDC"),
+      tvlUsd: num(rec.tvlUsd),
+      aprPct: num(rec.aprPct),
+      ...(rec.feeTierBps === undefined ? {} : { feeTierBps: num(rec.feeTierBps) }),
+    }]
+  })
+}
+
+export class KaminoService extends HttpAnalyticsService {
+  static override serviceType = KAMINO_SERVICE_TYPE
+  override capabilityDescription = "Kamino Finance Solana liquidity pools and lending yield analytics"
+
+  constructor(runtime?: IAgentRuntime, options: AnalyticsHttpOptions = {}) {
+    super("https://api.kamino.finance", runtime, options)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new KaminoService(runtime)
+  }
+
+  async listPools(limit = 10): Promise<PoolInfoSummary[]> {
+    const raw = await this.fetchJson("/strategies", {}, { limit })
+    const list = Array.isArray(raw) ? raw : Array.isArray(asRecord(raw)?.pools) ? asRecord(raw)!.pools as unknown[] : []
+    return mapPoolEntries(list, "kamino", "solana", "SOL", limit)
+  }
+}
+
+export class SteerLiquidityService extends HttpAnalyticsService {
+  static override serviceType = STEER_SERVICE_TYPE
+  override capabilityDescription = "Steer Protocol concentrated liquidity vault analytics"
+
+  constructor(runtime?: IAgentRuntime, options: AnalyticsHttpOptions = {}) {
+    super("https://api.steer.finance", runtime, options)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new SteerLiquidityService(runtime)
+  }
+
+  async listVaults(chain = "base", limit = 10): Promise<PoolInfoSummary[]> {
+    const raw = await this.fetchJson("/vaults", {}, { chain, limit })
+    const list = Array.isArray(raw) ? raw : Array.isArray(asRecord(raw)?.vaults) ? asRecord(raw)!.vaults as unknown[] : []
+    return mapPoolEntries(list, "steer", chain, "WETH", limit)
+  }
+}
+
+export function createDynamicWalletProvider(spec: {
+  readonly name: string
+  readonly description: string
+  readonly descriptionCompressed: string
+  readonly get: Provider["get"]
+}): Provider {
+  return {
+    name: spec.name,
+    description: spec.description,
+    descriptionCompressed: spec.descriptionCompressed,
+    dynamic: true,
+    cacheStable: false,
+    cacheScope: "turn",
+    contexts: ["wallet", "finance", "crypto"],
+    get: spec.get,
+  }
+}
+
+export const defiNewsProvider: Provider = createDynamicWalletProvider({
+  name: "DEFI_NEWS",
+  description: "Current global DeFi market metrics and latest crypto news headlines",
+  descriptionCompressed: "DeFi market stats & news",
+  get: async (runtime): Promise<ProviderResult> => {
+    const svc = runtime.getService<NewsDataService>(NEWS_DATA_SERVICE_TYPE) ?? new NewsDataService(runtime)
+    const snap = await svc.getMarketSnapshot()
+    const lines = [
+      `Global market cap: $${Math.round(snap.totalMarketCapUsd).toLocaleString()} (BTC ${snap.btcDominancePct.toFixed(1)}%, ETH ${snap.ethDominancePct.toFixed(1)}%).`,
+      ...snap.articles.slice(0, 5).map((a) => `- ${a.title} (${a.source})`),
+    ]
+    return { text: lines.join("\n"), values: { totalMarketCapUsd: snap.totalMarketCapUsd }, data: { snapshot: snap } }
+  },
+})
+
+export const birdeyeMarketProvider: Provider = createDynamicWalletProvider({
+  name: "BIRDEYE_CRYPTOCURRENCY_MARKET_DATA",
+  description: "Birdeye trending tokens and market overview",
+  descriptionCompressed: "Birdeye market data",
+  get: async (runtime): Promise<ProviderResult> => {
+    const svc = runtime.getService<BirdeyeService>(BIRDEYE_SERVICE_TYPE) ?? new BirdeyeService(runtime)
+    const trending = await svc.getTrendingTokens("solana", 5)
+    if (trending.length === 0) return { text: "", values: {}, data: { trending: [] } }
+    return {
+      text: ["Trending tokens:", ...trending.map((t) => `- #${t.rank} ${t.symbol}: $${t.priceUsd.toFixed(4)} (24h vol $${Math.round(t.volume24hUsd)})`)].join("\n"),
+      values: { trendingCount: trending.length },
+      data: { trending },
+    }
+  },
+})
+
+export const kaminoPlugin: Plugin = {
+  name: "kamino",
+  description: "Kamino Finance pool and liquidity analytics",
+  services: [KaminoService],
+  actions: [],
+  providers: [],
+}
+
+export const steerPlugin: Plugin = {
+  name: "steer",
+  description: "Steer Protocol concentrated liquidity vault analytics",
+  services: [SteerLiquidityService],
+  actions: [],
+  providers: [],
+}
+
+export const lpinfoPlugin: Plugin = {
+  name: "lpinfo",
+  description: "Composite liquidity pool analytics (Kamino + Steer)",
+  services: [KaminoService, SteerLiquidityService],
+  actions: [],
+  providers: [],
+}
+
+export const defiNewsPlugin: Plugin = {
+  name: "defi-news",
+  description: "DeFi market stats and crypto news provider",
+  services: [NewsDataService],
+  providers: [defiNewsProvider],
+  actions: [],
+}
+
+export function sumWalletBalancesUsd(legs: readonly WalletBalanceLeg[]): number {
+  return legs.reduce((acc, leg) => acc + (leg.priced && Number.isFinite(leg.balanceUsd) ? leg.balanceUsd : 0), 0)
+}
+
+export function walletIdentityKey(accounts: { readonly evm?: string; readonly solana?: string }): string {
+  return `${(accounts.evm ?? "").trim().toLowerCase()}|${(accounts.solana ?? "").trim()}`
+}
+
+export function walletIdentitySwitched(previous: WalletBalanceBaseline | undefined, currentIdentityKey: string): boolean {
+  return previous !== undefined && previous.identityKey !== currentIdentityKey
+}
+
+export function pricedCoverageFlips(previous: readonly WalletBalanceLeg[], current: readonly WalletBalanceLeg[]): boolean {
+  const prevPriced = new Set(previous.filter((l) => l.priced).map((l) => `${l.chain}:${l.assetId}`))
+  const currPriced = new Set(current.filter((l) => l.priced).map((l) => `${l.chain}:${l.assetId}`))
+  if (prevPriced.size !== currPriced.size) return true
+  for (const key of prevPriced) if (!currPriced.has(key)) return true
+  return false
+}
+
+export function resolveThresholds(overrides?: Partial<WalletBalanceDeltaThresholds>): WalletBalanceDeltaThresholds {
+  return {
+    minDeltaUsd: overrides?.minDeltaUsd !== undefined && overrides.minDeltaUsd >= 0 ? overrides.minDeltaUsd : DEFAULT_MIN_DELTA_USD,
+    thresholdPct: overrides?.thresholdPct !== undefined && overrides.thresholdPct >= 0 ? overrides.thresholdPct : DEFAULT_THRESHOLD_PCT,
+  }
+}
+
+export function evaluateWalletBalanceDelta(
+  previous: WalletBalanceBaseline | undefined,
+  current: WalletBalanceBaseline,
+  thresholds: WalletBalanceDeltaThresholds = resolveThresholds(),
+): WalletBalanceDeltaResult {
+  const switched = walletIdentitySwitched(previous, current.identityKey)
+  if (previous === undefined || switched) {
+    return { identitySwitched: switched, coverageFlipped: false, previousUsd: 0, currentUsd: current.totalUsd, deltaUsd: 0, deltaPct: 0, significant: false }
+  }
+  const coverageFlipped = pricedCoverageFlips(previous.legs, current.legs)
+  const deltaUsd = current.totalUsd - previous.totalUsd
+  const deltaPct = previous.totalUsd > 0 ? (Math.abs(deltaUsd) / previous.totalUsd) * 100 : (Math.abs(deltaUsd) > 0 ? 100 : 0)
+  const significant = !coverageFlipped && Math.abs(deltaUsd) >= thresholds.minDeltaUsd && deltaPct >= thresholds.thresholdPct
+  return { identitySwitched: false, coverageFlipped, previousUsd: previous.totalUsd, currentUsd: current.totalUsd, deltaUsd, deltaPct, significant }
+}
+
+export function buildWalletBalanceDeltaTaskInput(agentId: string, intervalMinutes = WALLET_BALANCE_DELTA_INTERVAL_MINUTES) {
+  return {
+    name: WALLET_BALANCE_DELTA_CHANNEL,
+    groupKey: WALLET_BALANCE_DELTA_GROUP_KEY,
+    idempotencyKey: `${WALLET_BALANCE_DELTA_TASK_IDEMPOTENCY_KEY}:${agentId}`,
+    intervalMs: Math.max(1, intervalMinutes) * 60_000,
+  }
+}

@@ -1,0 +1,158 @@
+// spec/slack/index.md, "Story: Know how much of a Slack send reached the provider"
+import { logger, type Media } from "@elizaos/core"
+import type { SlackFile } from "./types.vibe"
+
+const SLACK_FILE_HOSTS = new Set(["files.slack.com", "files.slack-gov.com"])
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { SlackPluginError as BaseSlackError } from "./types.vibe"
+
+  export function failSlackFile(message: string, code: string): never {
+    throw new BaseSlackError(message, code)
+  }
+
+  export async function readLimitedBytes(response: globalThis.Response, maxBytes: number): Promise<Buffer> {
+    if (!response.body) return Buffer.alloc(0)
+    const reader = response.body.getReader()
+    const chunks: Buffer[] = []
+    let total = 0
+    try {
+      for (;;) {
+        const read = await reader.read()
+        if (read.done) break
+        total += read.value.byteLength
+        if (total > maxBytes) {
+          throw new BaseSlackError(`Slack file exceeds maxBytes (${maxBytes})`, "SLACK_FILE_TOO_LARGE")
+        }
+        chunks.push(Buffer.from(read.value))
+      }
+      return Buffer.concat(chunks, total)
+    } finally {
+      await reader.cancel().catch(() => undefined)
+      reader.releaseLock()
+    }
+  }
+  export async function fetchWithTimeout(
+    url: string,
+    botToken: string,
+    fetchImpl?: typeof globalThis.fetch,
+  ): Promise<globalThis.Response> {
+    const fetchFn = fetchImpl ?? globalThis.fetch
+    return fetchFn(url, {
+      headers: { Authorization: `Bearer ${botToken}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(30_000),
+    })
+  }
+}
+import { failSlackFile, fetchWithTimeout, readLimitedBytes } from node
+
+export interface SlackFileBytes {
+  buffer: Buffer
+  contentType: string | undefined
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+export function normalizeSlackFile(raw: unknown): SlackFile | null {
+  if (!raw || typeof raw !== "object") return null
+  const file = raw as Record<string, unknown>
+  const id = optionalString(file.id)
+  if (!id) return null
+  const name = optionalString(file.name) ?? ""
+  const size = typeof file.size === "number" && Number.isFinite(file.size) ? file.size : 0
+  return {
+    id,
+    name,
+    title: optionalString(file.title) ?? name,
+    mimetype: optionalString(file.mimetype) ?? "",
+    filetype: optionalString(file.filetype) ?? "",
+    size,
+    urlPrivate: optionalString(file.url_private) ?? optionalString(file.urlPrivate) ?? "",
+    urlPrivateDownload:
+      optionalString(file.url_private_download) ?? optionalString(file.urlPrivateDownload),
+    permalink: optionalString(file.permalink) ?? "",
+    thumb64: optionalString(file.thumb_64) ?? optionalString(file.thumb64),
+    thumb80: optionalString(file.thumb_80) ?? optionalString(file.thumb80),
+    thumb360: optionalString(file.thumb_360) ?? optionalString(file.thumb360),
+  }
+}
+
+export function normalizeSlackFiles(raw: unknown): SlackFile[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const files: SlackFile[] = []
+  for (const entry of raw) {
+    const file = normalizeSlackFile(entry)
+    if (file) files.push(file)
+  }
+  return files
+}
+
+export function slackFilesToMedia(
+  files: readonly SlackFile[] | undefined,
+  context: { channelId: string; messageTs: string },
+): Media[] {
+  const media: Media[] = []
+  for (const file of files ?? []) {
+    const url = file.urlPrivateDownload || file.urlPrivate
+    if (!url) {
+      logger.warn(
+        {
+          src: "plugin:slack:inbound-files",
+          fileId: file.id,
+          channelId: context.channelId,
+          messageTs: context.messageTs,
+        },
+        "[SlackService] Inbound file has no url_private or url_private_download; attachment omitted",
+      )
+      continue
+    }
+    media.push({
+      id: file.id,
+      url,
+      title: file.title || file.name,
+      source: "slack",
+      description: file.name,
+    })
+  }
+  return media
+}
+
+export function isTrustedSlackFileUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === "https:" && SLACK_FILE_HOSTS.has(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
+export async function fetchSlackFileBytes(
+  url: string,
+  botToken: string,
+  options: {
+    maxBytes: number
+    expectedMimeType?: string
+    fetchImpl?: typeof globalThis.fetch
+  },
+): Promise<SlackFileBytes> {
+  if (!isTrustedSlackFileUrl(url)) {
+    failSlackFile("Slack file URL is not on a Slack file host", "SLACK_FILE_HOST_UNTRUSTED")
+  }
+  const response = await fetchWithTimeout(url, botToken, options.fetchImpl)
+  if (!response.ok) {
+    failSlackFile(`Slack file download failed with HTTP ${response.status}`, "SLACK_FILE_DOWNLOAD_FAILED")
+  }
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || undefined
+  if (contentType === "text/html" && options.expectedMimeType !== "text/html") {
+    failSlackFile(
+      "Slack returned an HTML page instead of file bytes; the bot token needs the files:read scope",
+      "SLACK_FILE_DOWNLOAD_UNAUTHORIZED",
+    )
+  }
+  const buffer = await readLimitedBytes(response, options.maxBytes)
+  return { buffer, contentType }
+}

@@ -1,0 +1,428 @@
+// spec/form/index.md, "Story: Complete a form across several turns"; spec/form/index.md, "Each captured answer belongs to one field in the participant's current form"; spec/form/index.md, "Only a complete, current form can be submitted, and its result is frozen"; spec/form/index.md, "The participant can shelve and resume an unexpired form, cancel it, or let it expire"
+import { assert, beforeEach, describe, expect, it } from "@effect/vitest"
+import type { Component, IAgentRuntime, Memory, State, UUID } from "@elizaos/core"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { initial as initialFormMachine, step as stepFormMachine } from "../gen/form.effect.vibe"
+import { driver as formDriver } from "./drivers/form.ts"
+import {
+  assertFormControlGraph,
+  buildFormExtractorPromptSection,
+  buildFormExtractorSchema,
+  buildTemplateValues,
+  C,
+  calculateTTL,
+  clearTypeHandlers,
+  coerceExtractionsAgainstControls,
+  detectCorrection,
+  editForm,
+  expireFormSession,
+  extractSingleField,
+  Form,
+  formAction,
+  FormConfirmationRequiredError,
+  formContextProvider,
+  formEvaluator,
+  formatCalendarDate,
+  formatEffort,
+  formatTimeRemaining,
+  formatValue,
+  formPlugin,
+  FormService,
+  getBuiltinType,
+  matchesMimeType,
+  MAX_CONTROL_PATTERN_LENGTH,
+  normalizeRestoreResponse,
+  parseBoolean,
+  parseCalendarDate,
+  parseFormExtractorOutput,
+  parseValue,
+  readForm,
+  registerTypeHandler,
+  renderTemplate,
+  resolveControlTemplates,
+  startFormSession,
+  testControlPattern,
+  toComponentData,
+  validateField,
+  type FormControl,
+} from "../src/index.vibe"
+
+const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID
+const ENTITY_ID = "00000000-0000-0000-0000-000000000002" as UUID
+const ROOM_A = "00000000-0000-0000-0000-000000000010" as UUID
+const ROOM_B = "00000000-0000-0000-0000-000000000020" as UUID
+const WORLD_ID = "00000000-0000-0000-0000-000000000099" as UUID
+
+function makeMemoryRuntime(options?: {
+  modelResponse?: string
+  events?: Array<{ name: string; payload: unknown }>
+  hooks?: Map<string, (runtime: IAgentRuntime, opts: Record<string, unknown>) => Promise<void>>
+}) {
+  const components = new Map<UUID, Component>()
+  const services = new Map<string, unknown>()
+  const events = options?.events ?? []
+  const hooks = options?.hooks ?? new Map()
+
+  const runtime = {
+    agentId: AGENT_ID,
+    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+    getRoom: async (roomId: UUID) => ({ id: roomId, worldId: WORLD_ID }),
+    getService: (name: string) => services.get(name) ?? null,
+    getComponent: async (entityId: UUID, type: string) => {
+      for (const component of components.values()) {
+        if (component.entityId === entityId && component.type === type) return component
+      }
+      return null
+    },
+    getComponents: async (entityId: UUID) => [...components.values()].filter((c) => c.entityId === entityId),
+    createComponent: async (component: Component) => {
+      components.set(component.id, structuredClone(component))
+      return true
+    },
+    updateComponent: async (component: Component) => {
+      components.set(component.id, structuredClone(component))
+    },
+    deleteComponent: async (id: UUID) => {
+      components.delete(id)
+    },
+    queryEntities: async () => [{ id: ENTITY_ID, components: [...components.values()] }],
+    getTaskWorker: (name: string) => {
+      const fn = hooks.get(name)
+      return fn ? { name, execute: fn } : undefined
+    },
+    emitEvent: async (name: string, payload: unknown) => {
+      events.push({ name, payload })
+    },
+    useModel: async () => options?.modelResponse ?? "{}",
+  } as unknown as IAgentRuntime
+
+  return {
+    runtime,
+    components,
+    events,
+    registerService(service: FormService) {
+      services.set(FormService.serviceType, service)
+    },
+  }
+}
+
+describe('Complete a form across several turns (spec/form/index.md, "Story: Complete a form across several turns")', () => {
+  beforeEach(() => {
+    clearTypeHandlers()
+  })
+
+  it(`Validates fields, dates, safe regex patterns, and control graphs (spec/form/index.md, "Each captured answer belongs to one field in the participant's current form")`, () => {
+    assert.strictEqual(parseCalendarDate("2026-03-01"), "2026-03-01")
+    assert.strictEqual(parseCalendarDate("March 1st, 2026"), "2026-03-01")
+    assert.strictEqual(parseCalendarDate("March 1nd, 2026"), undefined)
+    assert.strictEqual(parseCalendarDate("2026-02-30"), undefined)
+    assert.ok(formatCalendarDate("2026-03-01"))
+
+    assert.deepStrictEqual(parseBoolean(" yes "), { known: true, value: true })
+    assert.deepStrictEqual(parseBoolean("off"), { known: true, value: false })
+    assert.deepStrictEqual(parseBoolean("maybe"), { known: false })
+
+    const honest = testControlPattern("^[A-Z]{3}-\\d{4}$", "ABC-1234")
+    assert.strictEqual(honest.ok, true)
+    const hostilePatterns = ["^(a+)+$", "^(a|aa)+$", "^a+a+$", "^(a+)\\1$", "^(?=a+)a+$"]
+    for (const pattern of hostilePatterns) {
+      const checked = testControlPattern(pattern, `${"a".repeat(120)}!`)
+      assert.strictEqual(checked.ok, false)
+    }
+    assert.strictEqual(testControlPattern("a".repeat(MAX_CONTROL_PATTERN_LENGTH + 1), "a").ok, false)
+
+    const numControl: FormControl = { key: "age", label: "Age", type: "number", min: 13, max: 120 }
+    assert.strictEqual(parseValue("$50", numControl), 50)
+    assert.strictEqual(parseValue("50abc", numControl), "50abc")
+    assert.strictEqual(validateField("50abc", numControl).valid, false)
+    assert.strictEqual(validateField("1,234", { key: "price", label: "Price", type: "number" }).valid, true)
+
+    assert.strictEqual(matchesMimeType("image/png", "IMAGE/*"), true)
+    assert.strictEqual(matchesMimeType("application/pdf", "image/*"), false)
+
+    const builtinText = getBuiltinType("text")
+    assert.ok(builtinText?.validate)
+    assert.strictEqual(builtinText.validate("ok", { key: "x", label: "X", type: "text", pattern: "^(a+)+$" }).valid, false)
+
+    registerTypeHandler("sku", {
+      validate: (value) => ({ valid: /^SKU-\d+$/.test(String(value)), error: "Bad SKU" }),
+      format: (value) => String(value).toUpperCase(),
+    })
+    assert.strictEqual(validateField("SKU-42", { key: "sku", label: "SKU", type: "sku" }).valid, true)
+    assert.strictEqual(formatValue("sku-42", { key: "sku", label: "SKU", type: "sku" }), "SKU-42")
+
+    const cyclic: FormControl = { key: "root", label: "Root", type: "text" }
+    cyclic.fields = [cyclic]
+    expect(() => assertFormControlGraph(cyclic)).toThrow(/cycle/)
+
+    const cyclicObj: Record<string, unknown> = { ok: 1 }
+    cyclicObj.self = cyclicObj
+    expect(() => toComponentData(cyclicObj)).toThrow(/bounded JSON/)
+  })
+
+  it('Enforces full FormService lifecycle: update, undo, dependsOn pruning, sensitive masking, stash/restore, submit freeze, composite & external controls (spec/form/index.md, "Only a complete, current form can be submitted, and its result is frozen")', async () => {
+    const hookCalls: string[] = []
+    const hooks = new Map<string, (runtime: IAgentRuntime, opts: Record<string, unknown>) => Promise<void>>([
+      ["on_start", async () => { hookCalls.push("start") }],
+      ["on_ready", async () => { hookCalls.push("ready") }],
+      ["on_submit", async () => { hookCalls.push("submit") }],
+      ["on_cancel", async () => { hookCalls.push("cancel") }],
+    ])
+    const env = makeMemoryRuntime({ hooks })
+    const service = await FormService.start(env.runtime)
+    env.registerService(service)
+
+    service.registerControlType({
+      id: "payment",
+      getSubControls: () => [
+        C.number("amount").required().build(),
+        C.text("currency").required().build(),
+      ],
+      activate: async (ctx) => ({
+        instructions: `Send ${ctx.subValues.amount} ${ctx.subValues.currency}`,
+        reference: "pay-ref-1",
+        address: "0xabc",
+      }),
+      deactivate: async () => undefined,
+    })
+
+    const intakeForm = Form.create("intake")
+      .name("Intake Form")
+      .control(C.text("name").required().dbbind("full_name"))
+      .control(C.email("email").required())
+      .control(C.text("secret_pin").sensitive().ask("Enter PIN for {{name}}"))
+      .control(C.text("country").optional())
+      .control(C.text("us_state").optional().dependsOn("country", "equals", "US"))
+      .control(C.field("payment").type("payment").optional())
+      .onStart("on_start")
+      .onReady("on_ready")
+      .onSubmit("on_submit")
+      .onCancel("on_cancel")
+      .build()
+    service.registerForm(intakeForm)
+
+    const session = await service.startSession("intake", ENTITY_ID, ROOM_A)
+    assert.deepStrictEqual(hookCalls, ["start"])
+
+    await service.updateField(session.id, ENTITY_ID, "name", "Ada", 0.5, "extraction")
+    await service.updateField(session.id, ENTITY_ID, "email", "ada@example.com", 0.95, "extraction")
+    await service.updateField(session.id, ENTITY_ID, "secret_pin", "999999", 0.99, "manual")
+    await service.updateField(session.id, ENTITY_ID, "country", "US", 0.95, "extraction")
+    await service.updateField(session.id, ENTITY_ID, "us_state", "CA", 0.95, "extraction")
+
+    let active = await service.getActiveSession(ENTITY_ID, ROOM_A)
+    assert.ok(active)
+    assert.strictEqual(active.fields.name.status, "uncertain")
+    assert.strictEqual(active.fields.us_state.value, "CA")
+
+    const templateValues = buildTemplateValues(active, intakeForm.controls)
+    assert.strictEqual(templateValues.secret_pin, "****")
+    assert.strictEqual(renderTemplate("PIN={{secret_pin}} for {{name}}", templateValues), "PIN=**** for Ada")
+    assert.strictEqual(resolveControlTemplates(intakeForm.controls[2], templateValues).askPrompt, "Enter PIN for Ada")
+
+    await service.updateField(session.id, ENTITY_ID, "country", "UK", 0.95, "correction")
+    active = await service.getActiveSession(ENTITY_ID, ROOM_A)
+    assert.strictEqual(active?.fields.us_state.status, "empty")
+
+    const undone = await service.undoLastChange(session.id, ENTITY_ID)
+    assert.strictEqual(undone?.field, "country")
+    assert.strictEqual(undone?.restoredValue, "US")
+
+    await service.updateSubField(session.id, ENTITY_ID, "payment", "amount", 25, 0.95)
+    await service.updateSubField(session.id, ENTITY_ID, "payment", "currency", "USDC", 0.95)
+    active = await service.getActiveSession(ENTITY_ID, ROOM_A)
+    assert.ok(active)
+    assert.strictEqual(service.areSubFieldsFilled(active, "payment"), true)
+    const activation = await service.activateExternalField(session.id, ENTITY_ID, "payment")
+    assert.strictEqual(activation.reference, "pay-ref-1")
+    await service.confirmExternalField(session.id, ENTITY_ID, "payment", "tx-hash-1", { txId: "tx-hash-1" })
+
+    await expect(service.submit(session.id, ENTITY_ID)).rejects.toThrow(/Not all required fields/)
+
+    await service.confirmField(session.id, ENTITY_ID, "name", true)
+    active = await service.getActiveSession(ENTITY_ID, ROOM_A)
+    assert.strictEqual(active?.status, "ready")
+
+    await service.stash(session.id, ENTITY_ID)
+    assert.strictEqual(await service.getActiveSession(ENTITY_ID, ROOM_A), null)
+    const stashed = await service.getStashedSessions(ENTITY_ID)
+    assert.strictEqual(stashed.length, 1)
+
+    const restoreMessage = {
+      id: "00000000-0000-0000-0000-000000000101" as UUID,
+      entityId: ENTITY_ID,
+      roomId: ROOM_B,
+      agentId: AGENT_ID,
+      content: { text: "resume my form" },
+    } as Memory
+    assert.strictEqual(await formAction.validate(env.runtime, restoreMessage), true)
+    let callbackText = ""
+    const restoreResult = await formAction.handler(env.runtime, restoreMessage, undefined, undefined, async (resp) => {
+      callbackText = resp.text ?? ""
+      return []
+    })
+    assert.strictEqual(restoreResult.success, true)
+    assert.ok(callbackText.includes("Intake Form"))
+    assert.strictEqual(formAction.toolSchemaStrict, true)
+    assert.ok(formAction.summarize?.(restoreResult, {})?.includes("intake"))
+    assert.strictEqual(normalizeRestoreResponse("hi\uD800world"), "hi\uFFFDworld")
+
+    const providerResult = await formContextProvider.get(env.runtime, restoreMessage, {} as State)
+    assert.ok(providerResult.text?.includes("Intake Form"))
+    assert.ok(!providerResult.text?.includes("999999"))
+
+    const submission = await service.submit(session.id, ENTITY_ID)
+    assert.strictEqual(submission.values.name, "Ada")
+    assert.strictEqual(submission.mappedValues?.full_name, "Ada")
+    const autofill = await service.getAutofill(ENTITY_ID, "intake")
+    assert.strictEqual(autofill?.name, "Ada")
+    assert.strictEqual(autofill?.secret_pin, undefined)
+
+    await expect(service.updateField(session.id, ENTITY_ID, "name", "Changed", 0.99, "correction")).rejects.toThrow()
+
+    const second = await service.startSession("intake", ENTITY_ID, ROOM_B)
+    const applied = await service.applyAutofill(second)
+    assert.ok(applied.includes("name"))
+    assert.ok(!applied.includes("secret_pin"))
+    assert.strictEqual(await service.skipField(second.id, ENTITY_ID, "country"), true)
+    assert.strictEqual(await service.skipField(second.id, ENTITY_ID, "name"), false)
+
+    second.effort.timeSpentMs = 10 * 60 * 1000
+    await service.saveSession(second)
+    assert.strictEqual(await service.cancel(second.id, ENTITY_ID, false), false)
+    assert.strictEqual(await service.cancel(second.id, ENTITY_ID, false), true)
+    assert.ok(hookCalls.includes("submit") && hookCalls.includes("cancel"))
+    assert.ok(calculateTTL(second, intakeForm) > Date.now())
+    assert.strictEqual(formatEffort(second), "10 minutes")
+    assert.ok(formatTimeRemaining(second).includes("day"))
+
+    const optUncertain = await service.startSession("intake", ENTITY_ID, ROOM_A)
+    await service.updateField(optUncertain.id, ENTITY_ID, "name", "Ada", 0.95, "extraction")
+    await service.updateField(optUncertain.id, ENTITY_ID, "email", "ada@example.com", 0.95, "extraction")
+    await service.updateField(optUncertain.id, ENTITY_ID, "country", "US", 0.4, "extraction")
+    await expect(service.submit(optUncertain.id, ENTITY_ID)).rejects.toThrow(FormConfirmationRequiredError)
+  })
+
+  it(`Runs formEvaluator, extraction helpers, and formPlugin wiring (spec/form/index.md, "Each captured answer belongs to one field in the participant's current form")`, async () => {
+    const modelResponse = JSON.stringify({ found: true, value: "ada@example.com", confidence: 0.95, reasoning: "explicit" })
+    const env = makeMemoryRuntime({ modelResponse })
+    const service = await FormService.start(env.runtime)
+    env.registerService(service)
+    const form = Form.create("contact").control(C.email("email").required()).build()
+    service.registerForm(form)
+    const session = await service.startSession("contact", ENTITY_ID, ROOM_A)
+
+    const schema = buildFormExtractorSchema()
+    assert.strictEqual(schema.type, "object")
+    const prompt = buildFormExtractorPromptSection({ text: "my email is ada@example.com", form, controls: form.controls })
+    assert.ok(prompt.includes("ada@example.com"))
+
+    const parsed = parseFormExtractorOutput({
+      formIntent: "fill_form",
+      formExtractions: [
+        { field: "email", value: "ada@example.com", confidence: 0.95 },
+        { field: "email", value: "ada@example.com", confidence: 0.95 },
+        { field: "__proto__", value: "bad", confidence: 1 },
+      ],
+    })
+    assert.strictEqual(parsed?.extractions.length, 1)
+    const coerced = coerceExtractionsAgainstControls(parsed?.extractions ?? [], form.controls)
+    assert.strictEqual(coerced[0]?.value, "ada@example.com")
+
+    const message = {
+      id: "00000000-0000-0000-0000-000000000201" as UUID,
+      entityId: ENTITY_ID,
+      roomId: ROOM_A,
+      agentId: AGENT_ID,
+      content: { text: "email is ada@example.com" },
+    } as Memory
+    assert.strictEqual(await formEvaluator.shouldRun({ runtime: env.runtime, message, options: {} }), true)
+    const prepared = await formEvaluator.prepare?.({ runtime: env.runtime, message, state: {} as State, options: {} })
+    assert.ok(prepared)
+    const evalParsed = formEvaluator.parse?.({
+      formIntent: "fill_form",
+      formExtractions: [{ field: "email", value: "ada@example.com", confidence: 0.95 }],
+    })
+    assert.ok(evalParsed)
+    for (const processor of formEvaluator.processors ?? []) {
+      await processor.process({
+        runtime: env.runtime,
+        message,
+        state: {} as State,
+        options: {},
+        prepared,
+        output: evalParsed,
+        evaluatorName: formEvaluator.name,
+      })
+    }
+    const updated = await service.getActiveSession(ENTITY_ID, ROOM_A)
+    assert.strictEqual(updated?.fields.email.value, "ada@example.com")
+    assert.strictEqual(updated?.status, "ready")
+
+    const single = await extractSingleField(env.runtime, "ada@example.com", form.controls[0])
+    assert.strictEqual(single?.value, "ada@example.com")
+
+    const corrEnv = makeMemoryRuntime({
+      modelResponse: JSON.stringify({
+        has_correction: true,
+        corrections: [{ field: "email", old_value: "ada@example.com", new_value: "grace@example.com", confidence: 0.9 }],
+      }),
+    })
+    const corrections = await detectCorrection(corrEnv.runtime, "actually grace@example.com", { email: "ada@example.com" }, form.controls)
+    assert.strictEqual(corrections[0]?.value, "grace@example.com")
+
+    assert.strictEqual(formPlugin.autoEnable?.shouldEnable?.({}, { features: { form: true } }), true)
+    assert.strictEqual(formPlugin.autoEnable?.shouldEnable?.({}, { features: { form: { enabled: false } } }), false)
+    assert.strictEqual(session.formId, "contact")
+  })
+
+  it.effect('Steps the formal FormSession state machine via KeyValueStore (spec/form/index.md, "The participant can shelve and resume an unexpired form, cancel it, or let it expire")', () =>
+    Effect.gen(function* () {
+      const ref = { ownerId: "person", sessionId: "s-1" }
+      const started = yield* startFormSession(ref, { formId: "intake", fields: ["name", "email"], required: ["name"], deadline: 100 })
+      assert.strictEqual(started.formPhase, "WorkingForm")
+      const recorded = yield* editForm(ref, started.revision, {
+        type: "recordAnswer",
+        question: "name",
+        answerText: "Ada",
+        confirmed: false,
+        visible: ["name"],
+        required: ["name"],
+      }, 10)
+      const confirmed = yield* editForm(ref, recorded.revision, { type: "confirmAnswer", question: "name" }, 20)
+      const stashed = yield* editForm(ref, confirmed.revision, { type: "stashForm" }, 30)
+      assert.strictEqual(stashed.formPhase, "StashedForm")
+      const resumed = yield* editForm(ref, stashed.revision, { type: "resumeForm" }, 40)
+      const submitted = yield* editForm(ref, resumed.revision, { type: "submitForm" }, 50)
+      assert.strictEqual(submitted.formPhase, "SubmittedForm")
+      const current = yield* readForm(ref)
+      assert.strictEqual(current.answers.length, 1)
+
+      const ref2 = { ownerId: "person", sessionId: "s-2" }
+      yield* startFormSession(ref2, { formId: "intake", fields: ["name"], required: ["name"], deadline: 100 })
+      const expired = yield* expireFormSession(ref2, 100)
+      assert.strictEqual(expired.formPhase, "ExpiredForm")
+    }).pipe(Effect.provide(KeyValueStore.layerMemory)),
+  )
+
+  it('Conformance driver matches the Quint oracle across keys (spec/form/index.md, "Only a complete, current form can be submitted, and its result is frozen")', async () => {
+    await formDriver.reset()
+    let expected = initialFormMachine
+    const events = [
+      { type: "startForm" as const, ownerId: "person", formId: "intake", visible: ["name", "email"], required: ["name"], deadline: 20 },
+      { type: "recordAnswer" as const, ownerId: "person", version: 1, at: 10, question: "name", answerText: "Ada", confirmed: false, visible: ["name"], required: ["name"] },
+      { type: "confirmAnswer" as const, ownerId: "person", version: 2, at: 10, question: "name" },
+      { type: "stashForm" as const, ownerId: "person", version: 3, at: 10 },
+      { type: "resumeForm" as const, ownerId: "person", version: 4, at: 10 },
+      { type: "submitForm" as const, ownerId: "person", version: 5, at: 10 },
+    ]
+    for (const event of events) {
+      const verdict = await formDriver.dispatch("a", event)
+      assert.strictEqual(verdict, "accepted")
+      expected = stepFormMachine(expected, event)
+      assert.deepStrictEqual(await formDriver.observe("a"), expected)
+    }
+    assert.strictEqual(await formDriver.dispatch("a", { type: "cancelForm", ownerId: "person", version: 6, at: 10 }), "refused")
+    assert.deepStrictEqual(await formDriver.observe("b"), initialFormMachine)
+  })
+})

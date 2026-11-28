@@ -1,5 +1,9 @@
-// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"; spec/todos/store.md, "Story: Reject invalid batch writes and keep list queries bounded"
+import type { Plugin } from "@elizaos/core"
 import { findOwnerTodo, listOwnerTodos, type TodoListFilter, type TodoViewRow } from "../gen/todos.effect.vibe"
+import { todoAction } from "./action.vibe"
+import { currentTodosProvider } from "./provider.vibe"
+import { TodosService } from "./service.vibe"
 
 export error TodoStoreUnavailable { reason: string }
 export error MultipleTodoRows { ownerId: string; todoId: number }
@@ -22,3 +26,22 @@ export effect function findTodo(ownerId: string, todoId: number) {
   if (rows.length > 1) throw new MultipleTodoRows({ ownerId, todoId })
   return rows[0]
 }
+
+export const todosRuntimePlugin: Plugin = {
+  name: "@elizaos/plugin-todos",
+  description: "User-scoped persistent todos with CRUD, idempotent mutation ledger, and planner context.",
+  actions: [todoAction],
+  providers: [currentTodosProvider],
+  services: [TodosService],
+}
+
+export const todosPlugin: Plugin = todosRuntimePlugin
+export default todosPlugin
+
+export * from "./action.vibe"
+export * from "./edge.vibe"
+export * from "./match.vibe"
+export * from "./provider.vibe"
+export * from "./service.vibe"
+export * from "./store.vibe"
+export * from "./types.vibe"

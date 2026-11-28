@@ -1,0 +1,69 @@
+// spec/os/android/system.md, "A location fix needs a grant at the time of the read, and a cached fix is never older than asked"; spec/os/android/networkPolicy.md, "Story: Download a large file only on a link I do not pay for"; spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"
+import { assert, it } from "@effect/vitest"
+import {
+  ElizaSecureStoreWeb,
+  NetworkPolicyWeb,
+  accessOf,
+  installNetworkPolicyGlobal,
+  locationAsk,
+  locationClient,
+  networkPolicyClient,
+  type LocationPermissionStatus,
+  type LocationPlugin,
+  type LocationResult,
+} from "../../src/index.vibe"
+
+it.effect(`Enforce location grants, cached fix age bounds, NetworkPolicyWeb/path hints, and ElizaSecureStoreWeb fallback (spec/os/android/system.md, "A location fix needs a grant at the time of the read, and a cached fix is never older than asked"; spec/os/android/networkPolicy.md, "Story: Download a large file only on a link I do not pay for"; spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit")`, effect () => {
+  let permission: LocationPermissionStatus = { location: "granted", accuracy: "precise" }
+  let positionReply: LocationResult = {
+    coords: { latitude: 37.7749, longitude: -122.4194, accuracy: 5, timestamp: Date.now() },
+    cached: false,
+  }
+  let clearedWatch = ""
+  const fakeLocation: LocationPlugin = {
+    checkPermissions: async () => permission,
+    requestPermissions: async () => permission,
+    getCurrentPosition: async () => positionReply,
+    watchPosition: async () => ({ watchId: "watch-1" }),
+    clearWatch: async ({ watchId }) => {
+      clearedWatch = watchId
+    },
+    addListener: async () => ({ remove: async () => undefined }),
+    removeAllListeners: async () => undefined,
+  }
+
+  const client = locationClient(fakeLocation)
+  const fresh = try tryPromise(() => client.getCurrentPosition({ accuracy: "high", maxAge: 5_000 }))
+  positionReply = { coords: { latitude: 37.7749, longitude: -122.4194, accuracy: 5, timestamp: Date.now() - 60_000 }, cached: true }
+  const staleCached = try tryPromise(() => client.getCurrentPosition({ accuracy: "high", maxAge: 5_000 }))
+  permission = { location: "denied", accuracy: "none" }
+  const denied = try tryPromise(() => client.getCurrentPosition())
+  const watch = try tryPromise(() => client.watchPosition())
+  try tryPromise(() => client.clearWatch({ watchId: watch.watchId }))
+
+  const netWeb = new NetworkPolicyWeb()
+  const netClient = networkPolicyClient(netWeb)
+  const metered = try tryPromise(() => netClient.getMeteredHint())
+  const hints = try tryPromise(() => netClient.getPathHints())
+  installNetworkPolicyGlobal(netClient)
+
+  const secWeb = new ElizaSecureStoreWeb()
+  const secStatus = try tryPromise(() => secWeb.status())
+  const secGet = try tryPromise(() => secWeb.get())
+  const secCas = try tryPromise(() => secWeb.compareAndExchange())
+
+  try Effect.try(() => {
+    assert.strictEqual(accessOf({ location: "granted", accuracy: "precise" }), "PreciseAccess")
+    assert.strictEqual(accessOf({ location: "denied", accuracy: "none" }), "NoAccess")
+    assert.strictEqual(locationAsk({ maxAge: 1_000 }).maxAgeMs, 1_000)
+    assert.strictEqual(fresh.kind, "fix")
+    assert.strictEqual(staleCached.kind, "unavailable")
+    assert.strictEqual(denied.kind, "permission-denied")
+    assert.strictEqual(clearedWatch, "watch-1")
+    assert.strictEqual(metered.source, "android-os")
+    assert.strictEqual(hints.source, "nw-path-monitor")
+    assert.isFalse(secStatus.available)
+    assert.deepStrictEqual(secGet, { ok: false, error: "unavailable" })
+    assert.deepStrictEqual(secCas, { ok: false, error: "unavailable" })
+  })
+})

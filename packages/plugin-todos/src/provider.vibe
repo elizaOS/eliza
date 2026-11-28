@@ -1,0 +1,52 @@
+// spec/todos/index.md, "A list includes only items belonging to the requesting owner and the selected status"
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core"
+import { isTodoStore } from "./store.vibe"
+import { TODOS_CONTEXTS, TODOS_SERVICE_TYPE, type RuntimeTodoStore, type Todo } from "./types.vibe"
+
+const MAX_PROVIDER_TODOS = 40
+
+function checkboxFor(status: Todo["status"]): string {
+  if (status === "completed") return "[x]"
+  if (status === "in_progress") return "[→]"
+  if (status === "cancelled") return "[-]"
+  return "[ ]"
+}
+
+export interface CurrentTodosProviderOptions {
+  readonly resolveStore?: (runtime: IAgentRuntime) => RuntimeTodoStore | null
+  readonly roleGate?: Provider["roleGate"]
+}
+
+function runtimeTodoStore(runtime: IAgentRuntime): RuntimeTodoStore | null {
+  const service = runtime.getService(TODOS_SERVICE_TYPE)
+  return isTodoStore(service) ? service : null
+}
+
+export function createCurrentTodosProvider(options: CurrentTodosProviderOptions = {}): Provider {
+  const resolveStore = options.resolveStore ?? runtimeTodoStore
+  return {
+    name: "CURRENT_TODOS",
+    description: "The user's current pending and in-progress todos.",
+    position: -5,
+    contexts: [...TODOS_CONTEXTS],
+    contextGate: { anyOf: [...TODOS_CONTEXTS] },
+    roleGate: options.roleGate ?? { minRole: "USER" },
+    get: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> => {
+      const entityId = message.entityId
+      if (!entityId) return { text: "", data: { todos: [] } }
+      const service = resolveStore(runtime)
+      if (!service) throw new Error("Todo storage is unavailable for CURRENT_TODOS")
+      const todos = await service.list({
+        entityId: String(entityId),
+        agentId: String(runtime.agentId),
+        includeCompleted: false,
+        limit: MAX_PROVIDER_TODOS,
+      })
+      if (todos.length === 0) return { text: "", data: { todos: [] } }
+      const lines = ["# Current todos", "", ...todos.map((t) => `- ${checkboxFor(t.status)} ${t.content}`)]
+      return { text: lines.join("\n"), data: { todos } }
+    },
+  }
+}
+
+export const currentTodosProvider = createCurrentTodosProvider()

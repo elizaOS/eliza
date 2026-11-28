@@ -6,6 +6,10 @@ owner. The cloud owns account standing, funding, model execution, and
 usage settlement. The client owns transport readiness and the presentation
 of account and funding outcomes.
 
+- [API keys](./apiKeys.md) — chat-minted API key policy, reserved prefixes, single-reveal custody, and account cache invalidation
+- [Inference](./inference.md) — chat-brain slot arbitration, warming retries, uniform wire tool strictness, credit severity, and RESEARCH retirement
+- [Delegation and relay](./delegation.md) — owner-consented managed Google delegation and managed gateway relay lifecycle
+
 ## Story: See which configured Cloud models can answer my request
 
 > As the owner, I want the plugin to identify a retired model setting

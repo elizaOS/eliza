@@ -1,0 +1,215 @@
+// spec/blocker/index.md, "Story: Block distractions for a chosen interval"
+export const BLOCKER_LOG_PREFIX = "[Blocker]"
+export const WEBSITE_BLOCKER_SERVICE_TYPE = "website_blocker"
+export const SELFCONTROL_BLOCKER_SERVICE_TYPE = "selfcontrol_blocker"
+export const APP_BLOCKER_SERVICE_TYPE = "app-blocker"
+
+export const BLOCK_TARGETS = ["app", "website"] as const
+export type BlockTarget = (typeof BLOCK_TARGETS)[number]
+
+export const BLOCK_SUBACTIONS = [
+  "block",
+  "unblock",
+  "status",
+  "request_permission",
+  "release",
+  "list_active",
+] as const
+export type BlockSubaction = (typeof BLOCK_SUBACTIONS)[number]
+
+export const BLOCKER_CONTEXTS = ["focus", "automation"] as const
+export type BlockerContext = (typeof BLOCKER_CONTEXTS)[number]
+
+export interface BlockSession {
+  readonly id: string
+  readonly agentId: string
+  readonly entityId: string
+  readonly target: BlockTarget
+  readonly startedAt: Date
+  readonly endsAt: Date | null
+  readonly endedAt?: Date | null
+  readonly rules: readonly string[]
+  readonly status: "active" | "ended" | "released"
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface BlockRule {
+  readonly id: string
+  readonly agentId: string
+  readonly entityId: string
+  readonly target: BlockTarget
+  readonly pattern: string
+  readonly notes: string | null
+  readonly metadata?: Readonly<Record<string, unknown>>
+  readonly createdAt: Date
+  readonly updatedAt?: Date
+}
+
+export interface AllowListEntry {
+  readonly id: string
+  readonly agentId: string
+  readonly entityId: string
+  readonly target: BlockTarget
+  readonly pattern: string
+  readonly reason: string | null
+  readonly createdAt: Date
+}
+
+export interface BlockerSchemaTableDescriptor {
+  readonly schema: "app_blocker"
+  readonly name: "block_rules" | "active_sessions" | "allow_list"
+  readonly columns: readonly string[]
+  readonly indexes: readonly string[]
+}
+
+export const BLOCKER_SCHEMA_NAME = "app_blocker" as const
+
+export const BLOCKER_SCHEMA_TABLES: readonly BlockerSchemaTableDescriptor[] = [
+  {
+    schema: "app_blocker",
+    name: "block_rules",
+    columns: ["id", "agent_id", "entity_id", "target", "pattern", "notes", "metadata", "created_at", "updated_at"],
+    indexes: ["idx_block_rules_entity_target", "idx_block_rules_agent_entity"],
+  },
+  {
+    schema: "app_blocker",
+    name: "active_sessions",
+    columns: ["id", "agent_id", "entity_id", "target", "status", "rules", "metadata", "started_at", "ends_at", "ended_at"],
+    indexes: ["idx_active_sessions_entity_status", "idx_active_sessions_agent_entity"],
+  },
+  {
+    schema: "app_blocker",
+    name: "allow_list",
+    columns: ["id", "agent_id", "entity_id", "target", "pattern", "reason", "created_at"],
+    indexes: ["idx_allow_list_entity_target", "idx_allow_list_agent_entity"],
+  },
+] as const
+
+export class InMemoryBlockerStore {
+  readonly #rules = new Map<string, BlockRule>()
+  readonly #sessions = new Map<string, BlockSession>()
+  readonly #allowList = new Map<string, AllowListEntry>()
+  #sequence = 0
+
+  #nextId(prefix: string): string {
+    this.#sequence += 1
+    return `${prefix}-${this.#sequence}`
+  }
+
+  addRule(input: {
+    readonly agentId: string
+    readonly entityId: string
+    readonly target: BlockTarget
+    readonly pattern: string
+    readonly notes?: string | null
+    readonly metadata?: Readonly<Record<string, unknown>>
+  }): BlockRule {
+    const now = new Date()
+    const rule: BlockRule = {
+      id: this.#nextId("rule"),
+      agentId: input.agentId,
+      entityId: input.entityId,
+      target: input.target,
+      pattern: input.pattern.trim(),
+      notes: input.notes ?? null,
+      metadata: input.metadata ?? {},
+      createdAt: now,
+      updatedAt: now,
+    }
+    this.#rules.set(rule.id, rule)
+    return rule
+  }
+
+  listRules(filter: { readonly entityId?: string; readonly target?: BlockTarget } = {}): readonly BlockRule[] {
+    return [...this.#rules.values()].filter(
+      (rule) =>
+        (filter.entityId === undefined || rule.entityId === filter.entityId) &&
+        (filter.target === undefined || rule.target === filter.target),
+    )
+  }
+
+  removeRule(id: string): boolean {
+    return this.#rules.delete(id)
+  }
+
+  startSession(input: {
+    readonly agentId: string
+    readonly entityId: string
+    readonly target: BlockTarget
+    readonly rules: readonly string[]
+    readonly endsAt?: Date | null
+    readonly metadata?: Readonly<Record<string, unknown>>
+  }): BlockSession {
+    const session: BlockSession = {
+      id: this.#nextId("session"),
+      agentId: input.agentId,
+      entityId: input.entityId,
+      target: input.target,
+      startedAt: new Date(),
+      endsAt: input.endsAt ?? null,
+      endedAt: null,
+      rules: [...input.rules],
+      status: "active",
+      metadata: input.metadata ?? {},
+    }
+    this.#sessions.set(session.id, session)
+    return session
+  }
+
+  endSession(id: string, status: "ended" | "released" = "ended"): BlockSession | null {
+    const existing = this.#sessions.get(id)
+    if (existing === undefined) return null
+    const updated: BlockSession = {
+      ...existing,
+      status,
+      endedAt: new Date(),
+    }
+    this.#sessions.set(id, updated)
+    return updated
+  }
+
+  listSessions(filter: {
+    readonly entityId?: string
+    readonly target?: BlockTarget
+    readonly status?: BlockSession["status"]
+  } = {}): readonly BlockSession[] {
+    return [...this.#sessions.values()].filter(
+      (session) =>
+        (filter.entityId === undefined || session.entityId === filter.entityId) &&
+        (filter.target === undefined || session.target === filter.target) &&
+        (filter.status === undefined || session.status === filter.status),
+    )
+  }
+
+  addAllowListEntry(input: {
+    readonly agentId: string
+    readonly entityId: string
+    readonly target: BlockTarget
+    readonly pattern: string
+    readonly reason?: string | null
+  }): AllowListEntry {
+    const entry: AllowListEntry = {
+      id: this.#nextId("allow"),
+      agentId: input.agentId,
+      entityId: input.entityId,
+      target: input.target,
+      pattern: input.pattern.trim(),
+      reason: input.reason ?? null,
+      createdAt: new Date(),
+    }
+    this.#allowList.set(entry.id, entry)
+    return entry
+  }
+
+  listAllowList(filter: { readonly entityId?: string; readonly target?: BlockTarget } = {}): readonly AllowListEntry[] {
+    return [...this.#allowList.values()].filter(
+      (entry) =>
+        (filter.entityId === undefined || entry.entityId === filter.entityId) &&
+        (filter.target === undefined || entry.target === filter.target),
+    )
+  }
+
+  removeAllowListEntry(id: string): boolean {
+    return this.#allowList.delete(id)
+  }
+}

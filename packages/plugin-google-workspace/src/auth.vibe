@@ -1,0 +1,532 @@
+// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"; spec/googleWorkspace/oauth.md, "Story: Connect, refresh, and disconnect a Google Workspace account without leaving stale grants active"
+import { ElizaError } from "@elizaos/core"
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import { selectRecipient, workspaceAllowed, type GoogleScope, type MailboxClaim } from "../gen/googleWorkspace.effect.vibe"
+import { connectionAuthorizes, initial as initialConnection, machineOver, type WorkspaceConnection } from "../gen/googleWorkspace__oauth.effect.vibe"
+import { raise, readEnv } from "./boundary.vibe"
+import { scopesForGoogleCapabilities, specScopesForCapabilities, specScopesFromOAuthScopes, type GoogleCapability } from "./scopes.vibe"
+import {
+  DEFAULT_GOOGLE_API_BASE_URLS,
+  GoogleWorkspaceFailure,
+  WorkspaceAccessRefused,
+  WorkspaceCredentials,
+  type GoogleAccountRef,
+  type GoogleApiBaseUrls,
+  type GoogleAuthClient,
+  type GoogleAuthResolutionRequest,
+  type GoogleCredentialResolver,
+  type GoogleOAuthProviderConfig,
+  type GoogleOAuthProviderMetadata,
+  type WorkspacePrincipal,
+  type WorkspaceQuery,
+} from "./types.vibe"
+
+export const GOOGLE_OAUTH_PROVIDER_METADATA: GoogleOAuthProviderMetadata = {
+  provider: "google",
+  displayName: "Google Workspace",
+  authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenEndpoint: "https://oauth2.googleapis.com/token",
+  revocationEndpoint: "https://oauth2.googleapis.com/revoke",
+  userInfoEndpoint: "https://openidconnect.googleapis.com/v1/userinfo",
+  pkceRequired: true,
+}
+
+export function getGoogleOAuthProviderMetadata(): GoogleOAuthProviderMetadata {
+  return GOOGLE_OAUTH_PROVIDER_METADATA
+}
+
+export function getGoogleOAuthProviderConfig(
+  capabilities: readonly GoogleCapability[],
+  overrides: { readonly clientId?: string; readonly clientSecret?: string; readonly redirectUri?: string } = {},
+): GoogleOAuthProviderConfig {
+  return {
+    provider: "google",
+    clientId: overrides.clientId ?? readEnv("GOOGLE_CLIENT_ID") ?? "",
+    clientSecret: overrides.clientSecret ?? readEnv("GOOGLE_CLIENT_SECRET") ?? "",
+    redirectUri: overrides.redirectUri ?? resolveGoogleConnectorOAuthCallbackUrl({}),
+    scopes: scopesForGoogleCapabilities(capabilities),
+    capabilities: [...capabilities],
+    authorizationEndpoint: GOOGLE_OAUTH_PROVIDER_METADATA.authorizationEndpoint,
+    tokenEndpoint: GOOGLE_OAUTH_PROVIDER_METADATA.tokenEndpoint,
+  }
+}
+
+export class MissingGoogleCredentialResolver extends ElizaError {
+  constructor(accountId: string) {
+    super(`No Google credential resolver configured for account "${accountId}".`, {
+      code: "GOOGLE_CREDENTIAL_RESOLVER_MISSING",
+      context: { accountId },
+    })
+  }
+}
+
+export const GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH = "/api/connectors/google/oauth/callback"
+
+export type GoogleOAuthCallbackConfigIssueCode =
+  | "CALLBACK_URL_INVALID"
+  | "CALLBACK_URL_NOT_HTTPS"
+  | "CALLBACK_URL_PORTLESS_LOOPBACK"
+  | "CALLBACK_PATH_MISMATCH"
+
+export interface GoogleOAuthCallbackConfigIssue {
+  readonly code: GoogleOAuthCallbackConfigIssueCode
+  readonly message: string
+}
+
+export interface GoogleOAuthCallbackConfigAssessment {
+  readonly valid: boolean
+  readonly redirectUri: string
+  readonly issues: readonly GoogleOAuthCallbackConfigIssue[]
+}
+
+export interface GoogleOAuthCallbackConfigOptions {
+  readonly redirectUri?: string
+  readonly servedOrigin?: string
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"])
+
+export function isPortlessLoopbackRedirectUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return LOOPBACK_HOSTS.has(parsed.hostname.toLowerCase()) && parsed.port === ""
+  } catch {
+    return false
+  }
+}
+
+export function resolveGoogleConnectorOAuthCallbackUrl(options: GoogleOAuthCallbackConfigOptions): string {
+  const explicit = options.redirectUri?.trim() || options.env?.GOOGLE_REDIRECT_URI?.trim() || readEnv("GOOGLE_REDIRECT_URI")?.trim()
+  if (explicit) return explicit
+  const origin = options.servedOrigin?.trim() || options.env?.ELIZA_PUBLIC_URL?.trim() || "http://127.0.0.1:3000"
+  return `${origin.replace(/\/+$/, "")}${GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH}`
+}
+
+export function assessGoogleOAuthCallbackConfig(options: GoogleOAuthCallbackConfigOptions): GoogleOAuthCallbackConfigAssessment {
+  const redirectUri = resolveGoogleConnectorOAuthCallbackUrl(options)
+  const issues: GoogleOAuthCallbackConfigIssue[] = []
+  let parsed: URL | undefined
+  try {
+    parsed = new URL(redirectUri)
+  } catch {
+    issues.push({ code: "CALLBACK_URL_INVALID", message: "Google OAuth redirect URI is not a valid URL." })
+  }
+  if (parsed !== undefined) {
+    const isLoopback = LOOPBACK_HOSTS.has(parsed.hostname.toLowerCase())
+    if (parsed.protocol !== "https:" && !isLoopback) {
+      issues.push({ code: "CALLBACK_URL_NOT_HTTPS", message: "Non-loopback Google OAuth redirect URIs must use HTTPS." })
+    }
+    if (isLoopback && parsed.port === "") {
+      issues.push({ code: "CALLBACK_URL_PORTLESS_LOOPBACK", message: "Loopback Google OAuth redirect URIs should specify an explicit port." })
+    }
+    if (!parsed.pathname.endsWith(GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH)) {
+      issues.push({ code: "CALLBACK_PATH_MISMATCH", message: `Redirect path does not end with ${GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH}.` })
+    }
+  }
+  return { valid: issues.length === 0, redirectUri, issues }
+}
+
+export const MAX_OAUTH_CREDENTIAL_DEPTH = 4
+export const MAX_OAUTH_CREDENTIAL_NODES = 64
+export const GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED = "GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED"
+
+export interface OauthCredentialFields {
+  access_token?: string
+  refresh_token?: string
+  id_token?: string
+  token_type?: string
+  scope?: string
+  expiry_date?: number
+}
+
+function failUnbounded(context: Record<string, unknown>, cause?: unknown): never {
+  return raise(new ElizaError("Google OAuth credential payload is malformed or exceeds bounds.", {
+    code: GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED,
+    context,
+    cause,
+  }))
+}
+
+function safeDataValue(record: object, key: string): unknown {
+  let descriptor: PropertyDescriptor | undefined
+  try {
+    descriptor = Object.getOwnPropertyDescriptor(record, key)
+  } catch (cause) {
+    failUnbounded({ operation: "getOwnPropertyDescriptor", key }, cause)
+  }
+  if (descriptor === undefined) return undefined
+  if (!("value" in descriptor)) failUnbounded({ accessor: key })
+  return descriptor.value
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function parseExpiry(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 0 && value < 10_000_000_000 ? value * 1000 : value
+  }
+  if (value instanceof Date) return value.getTime()
+  if (typeof value === "string" && value.trim().length > 0) {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return parseExpiry(numeric)
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? undefined : parsed
+  }
+  return undefined
+}
+
+function mergeInner(
+  target: OauthCredentialFields,
+  value: unknown,
+  depth: number,
+  state: { visits: number; readonly visiting: WeakSet<object> },
+): void {
+  if (depth > MAX_OAUTH_CREDENTIAL_DEPTH) failUnbounded({ depth, max: MAX_OAUTH_CREDENTIAL_DEPTH })
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return
+  state.visits += 1
+  if (state.visits > MAX_OAUTH_CREDENTIAL_NODES) failUnbounded({ visits: state.visits, max: MAX_OAUTH_CREDENTIAL_NODES })
+  if (state.visiting.has(value)) failUnbounded({ cycle: true })
+  state.visiting.add(value)
+  try {
+    const nested = safeDataValue(value, "tokens") ?? safeDataValue(value, "oauthTokens")
+    if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
+      mergeInner(target, nested, depth + 1, state)
+    }
+    const accessToken = nonEmptyString(safeDataValue(value, "access_token") ?? safeDataValue(value, "accessToken"))
+    const refreshToken = nonEmptyString(safeDataValue(value, "refresh_token") ?? safeDataValue(value, "refreshToken"))
+    const idToken = nonEmptyString(safeDataValue(value, "id_token") ?? safeDataValue(value, "idToken"))
+    const tokenType = nonEmptyString(safeDataValue(value, "token_type") ?? safeDataValue(value, "tokenType"))
+    const scopeText = nonEmptyString(safeDataValue(value, "scope"))
+    const scopesRaw = safeDataValue(value, "scopes")
+    const expiryRaw = safeDataValue(value, "expiry_date") ?? safeDataValue(value, "expiryDate") ?? safeDataValue(value, "expires_at") ?? safeDataValue(value, "expiresAt")
+    if (accessToken !== undefined) target.access_token = accessToken
+    if (refreshToken !== undefined) target.refresh_token = refreshToken
+    if (idToken !== undefined) target.id_token = idToken
+    if (tokenType !== undefined) target.token_type = tokenType
+    if (Array.isArray(scopesRaw)) {
+      state.visits += scopesRaw.length
+      if (state.visits > MAX_OAUTH_CREDENTIAL_NODES) failUnbounded({ visits: state.visits, max: MAX_OAUTH_CREDENTIAL_NODES })
+      target.scope = scopesRaw.filter((item): item is string => typeof item === "string").join(" ")
+    } else if (scopeText !== undefined) {
+      target.scope = scopeText
+    }
+    const expiry = parseExpiry(expiryRaw)
+    if (expiry !== undefined) target.expiry_date = expiry
+  } finally {
+    state.visiting.delete(value)
+  }
+}
+
+export function mergeCredentialObject(credentials: OauthCredentialFields, value: unknown): void {
+  const staged: OauthCredentialFields = {}
+  mergeInner(staged, value, 0, { visits: 0, visiting: new WeakSet<object>() })
+  Object.assign(credentials, staged)
+}
+
+export const CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES = ["connector_credential_store", "credential_store"] as const
+export const CONNECTOR_VAULT_SERVICE_TYPES = ["connector_vault", "secrets_vault"] as const
+export const CORE_SECRETS_SERVICE_TYPE = "secrets"
+
+export interface ConnectorCredentialRefMetadata {
+  readonly ref: string
+  readonly provider: string
+  readonly accountId: string
+  readonly key: string
+}
+
+export interface ConnectorCredentialRefRecordLike {
+  readonly ref: string
+  readonly key: string
+}
+
+export interface ConnectorCredentialPersistResult {
+  readonly persisted: boolean
+  readonly refs: readonly ConnectorCredentialRefMetadata[]
+}
+
+export function buildConnectorCredentialVaultRef(provider: string, accountId: string, key: string): string {
+  return `vault://connectors/${encodeURIComponent(provider)}/${encodeURIComponent(accountId)}/${encodeURIComponent(key)}`
+}
+
+export function credentialRefRecordsFromMetadata(metadata: Readonly<Record<string, unknown>> | undefined): ConnectorCredentialRefRecordLike[] {
+  const raw = metadata?.credentialRefs
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry): ConnectorCredentialRefRecordLike[] => {
+    if (typeof entry !== "object" || entry === null) return []
+    const record = entry as Record<string, unknown>
+    return typeof record.ref === "string" && typeof record.key === "string" ? [{ ref: record.ref, key: record.key }] : []
+  })
+}
+
+export function persistConnectorCredentialRefs(
+  provider: string,
+  accountId: string,
+  keys: readonly string[],
+): ConnectorCredentialPersistResult {
+  const refs = keys.map((key) => ({
+    ref: buildConnectorCredentialVaultRef(provider, accountId, key),
+    provider,
+    accountId,
+    key,
+  }))
+  return { persisted: refs.length > 0, refs }
+}
+
+export interface GoogleCredentialSecretReader {
+  read(accountId: string): Promise<OauthCredentialFields | undefined> | OauthCredentialFields | undefined
+  write?(accountId: string, credentials: OauthCredentialFields): Promise<void> | void
+  delete?(accountId: string): Promise<void> | void
+}
+
+export interface DefaultGoogleCredentialResolverOptions {
+  readonly reader: GoogleCredentialSecretReader
+  readonly clientId?: string
+  readonly clientSecret?: string
+  readonly tokenEndpoint?: string
+  readonly now?: () => number
+  readonly refreshToken?: (refreshToken: string) => Promise<OauthCredentialFields>
+}
+
+export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver {
+  private readonly cache = new Map<string, GoogleAuthClient>()
+  private readonly epochs = new Map<string, number>()
+  private readonly options: DefaultGoogleCredentialResolverOptions
+
+  constructor(options: DefaultGoogleCredentialResolverOptions) {
+    this.options = options
+  }
+
+  invalidate(accountId: string): void {
+    this.cache.delete(accountId)
+    this.epochs.set(accountId, (this.epochs.get(accountId) ?? 1) + 1)
+  }
+
+  async resolve(request: GoogleAuthResolutionRequest): Promise<GoogleAuthClient> {
+    const now = this.options.now ? this.options.now() : Date.now()
+    const cached = this.cache.get(request.accountId)
+    const currentEpoch = this.epochs.get(request.accountId) ?? 1
+    if (request.seenEpoch !== undefined && request.seenEpoch !== currentEpoch) {
+      throw new ElizaError(`Stale Google credential epoch for account "${request.accountId}".`, {
+        code: "GOOGLE_CREDENTIAL_EPOCH_STALE",
+        context: { accountId: request.accountId, seenEpoch: request.seenEpoch, currentEpoch },
+      })
+    }
+    if (cached !== undefined && (cached.expiryDate === undefined || cached.expiryDate > now + 60_000)) {
+      this.assertScopes(cached, request)
+      return cached
+    }
+    const raw = await this.options.reader.read(request.accountId)
+    if (raw === undefined) {
+      throw new ElizaError(`No Google credentials stored for account "${request.accountId}".`, {
+        code: "GOOGLE_CREDENTIALS_NOT_FOUND",
+        context: { accountId: request.accountId },
+      })
+    }
+    const merged: OauthCredentialFields = {}
+    mergeCredentialObject(merged, raw)
+    const expired = merged.expiry_date !== undefined && merged.expiry_date <= now + 60_000
+    if (expired && merged.refresh_token !== undefined && this.options.refreshToken !== undefined) {
+      const refreshed = await this.options.refreshToken(merged.refresh_token)
+      mergeCredentialObject(merged, refreshed)
+      if (this.options.reader.write !== undefined) await this.options.reader.write(request.accountId, merged)
+    }
+    if (merged.access_token === undefined || merged.access_token.length === 0) {
+      throw new ElizaError(`Google account "${request.accountId}" has no valid access token.`, {
+        code: "GOOGLE_ACCESS_TOKEN_MISSING",
+        context: { accountId: request.accountId },
+      })
+    }
+    const scopes = merged.scope ? merged.scope.split(/\s+/).filter((s) => s.length > 0) : []
+    const client: GoogleAuthClient = {
+      accessToken: merged.access_token,
+      ...(merged.refresh_token === undefined ? {} : { refreshToken: merged.refresh_token }),
+      ...(merged.expiry_date === undefined ? {} : { expiryDate: merged.expiry_date }),
+      scopes,
+      accountId: request.accountId,
+      epoch: currentEpoch,
+    }
+    this.assertScopes(client, request)
+    this.cache.set(request.accountId, client)
+    return client
+  }
+
+  private assertScopes(client: GoogleAuthClient, request: GoogleAuthResolutionRequest): void {
+    const requiredSpec = request.requiredCapabilities ? specScopesForCapabilities(request.requiredCapabilities) : []
+    const grantedSpec = specScopesFromOAuthScopes(client.scopes)
+    const grantedSet = new Set<GoogleScope>(grantedSpec)
+    for (const needed of requiredSpec) {
+      if (!grantedSet.has(needed)) {
+        raise(new ElizaError(`Google account "${client.accountId}" is missing required scope "${needed}".`, {
+          code: "GOOGLE_SCOPE_MISSING",
+          context: { accountId: client.accountId, missingScope: needed },
+        }))
+      }
+    }
+    if (request.requiredScopes !== undefined && request.requiredScopes.length > 0) {
+      const grantedRaw = new Set(client.scopes)
+      for (const needed of request.requiredScopes) {
+        if (!grantedRaw.has(needed)) {
+          raise(new ElizaError(`Google account "${client.accountId}" is missing required OAuth scope.`, {
+            code: "GOOGLE_SCOPE_MISSING",
+            context: { accountId: client.accountId, missingScope: needed },
+          }))
+        }
+      }
+    }
+  }
+}
+
+export effect function createOAuthSession() {
+  const ref = try Ref.make<WorkspaceConnection>(initialConnection)
+  const machine = try machineOver(() => Ref.get(ref), (next) => Ref.set(ref, next))
+  const serialize = (try Semaphore.make(1)).withPermits(1)
+  return {
+    state: () => Ref.get(ref),
+    startOAuth: (stateNonce: number) => serialize(machine.send({ type: "startOAuth", stateNonce })),
+    completeOAuth: (stateNonce: number, hasRefresh: boolean, scopes: number) =>
+      serialize(machine.send({ type: "completeOAuth", stateNonce, hasRefresh, scopes })),
+    cancelOAuth: () => serialize(machine.send({ type: "cancelOAuth" })),
+    expireAccess: () => serialize(machine.send({ type: "expireAccess" })),
+    refreshAccess: (succeeded: boolean) => serialize(machine.send({ type: "refreshAccess", succeeded })),
+    disconnect: () => serialize(machine.send({ type: "disconnect" })),
+    authorizes: (seenEpoch: number, requiredMask: number) =>
+      map(Ref.get(ref), (current) => connectionAuthorizes(current, seenEpoch, requiredMask)),
+  }
+}
+
+export interface GoogleHttpOptions {
+  readonly method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
+  readonly url: string
+  readonly query?: Readonly<Record<string, string | number | boolean | undefined>>
+  readonly headers?: Readonly<Record<string, string>>
+  readonly body?: unknown
+  readonly rawBody?: string
+  readonly source: string
+}
+
+export class GoogleApiClientFactory {
+  readonly resolver: GoogleCredentialResolver
+  readonly baseUrls: GoogleApiBaseUrls
+  private readonly httpLayer: Layer.Layer<HttpClient.HttpClient>
+
+  constructor(
+    resolver: GoogleCredentialResolver,
+    options: { readonly baseUrls?: Partial<GoogleApiBaseUrls>; readonly httpLayer?: Layer.Layer<HttpClient.HttpClient> } = {},
+  ) {
+    this.resolver = resolver
+    this.baseUrls = { ...DEFAULT_GOOGLE_API_BASE_URLS, ...options.baseUrls }
+    this.httpLayer = options.httpLayer ?? FetchHttpClient.layer
+  }
+
+  async authFor(ref: GoogleAccountRef, capabilities: readonly GoogleCapability[]): Promise<GoogleAuthClient> {
+    return this.resolver.resolve({
+      accountId: ref.accountId,
+      requiredCapabilities: capabilities,
+      ...(ref.ownerId === undefined ? {} : { ownerId: ref.ownerId }),
+      ...(ref.seenEpoch === undefined ? {} : { seenEpoch: ref.seenEpoch }),
+    })
+  }
+
+  async requestJson<T>(
+    ref: GoogleAccountRef,
+    capabilities: readonly GoogleCapability[],
+    options: GoogleHttpOptions,
+  ): Promise<T> {
+    const auth = await this.authFor(ref, capabilities)
+    return this.requestWithToken<T>(auth.accessToken, options)
+  }
+
+  async requestWithToken<T>(accessToken: string, options: GoogleHttpOptions): Promise<T> {
+    const method = options.method ?? "GET"
+    const urlParams: Record<string, string> = {}
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (value !== undefined) urlParams[key] = String(value)
+    }
+    const work = effect {
+      let req = HttpClientRequest.make(method)(options.url).pipe(
+        HttpClientRequest.setUrlParams(urlParams),
+        HttpClientRequest.bearerToken(accessToken),
+        HttpClientRequest.acceptJson,
+      )
+      for (const [key, value] of Object.entries(options.headers ?? {})) {
+        req = HttpClientRequest.setHeader(req, key, value)
+      }
+      if (options.rawBody !== undefined) {
+        req = HttpClientRequest.bodyText(req, options.rawBody)
+      } else if (options.body !== undefined) {
+        req = HttpClientRequest.bodyJsonUnsafe(req, options.body)
+      }
+      const response: HttpClientResponse.HttpClientResponse = Effect.provideService(
+        HttpClient.execute(req),
+        FetchHttpClient.RequestInit,
+        { redirect: "error" },
+      ) catch effect () => {
+        throw new GoogleWorkspaceFailure({ source: options.source, status: 0 })
+      }
+      if (response.status === 204) return undefined as T
+      const text = response.text catch effect () => {
+        throw new GoogleWorkspaceFailure({ source: options.source, status: response.status })
+      }
+      if (response.status < 200 || response.status >= 300) {
+        throw new ElizaError(`Google ${options.source} request failed with HTTP ${response.status}: ${text.slice(0, 240)}`, {
+          code: `GOOGLE_${options.source.toUpperCase()}_HTTP_${response.status}`,
+          context: { source: options.source, status: response.status },
+        })
+      }
+      if (text.trim().length === 0) return undefined as T
+      return try Effect.try({
+        try: () => JSON.parse(text) as T,
+        catch: () => new GoogleWorkspaceFailure({ source: options.source, status: response.status }),
+      })
+    }
+    return runPromise(Effect.provide(work, this.httpLayer))
+  }
+}
+
+export effect function queryWorkspace(principal: WorkspacePrincipal, query: WorkspaceQuery) {
+  const target = workspaceQuery(query)
+  const credentials = try WorkspaceCredentials
+  const credential = try credentials.account(principal.ownerId, principal.accountId)
+  if (credential === undefined || !workspaceAllowed(credential.account, {
+    callerId: principal.ownerId,
+    requestedAccount: principal.accountId,
+    seenEpoch: principal.seenEpoch,
+    permissions: [target.scope],
+  })) throw new WorkspaceAccessRefused({ accountId: principal.accountId })
+  const request = HttpClientRequest.get(target.url, { urlParams: target.parameters }).pipe(
+    HttpClientRequest.bearerToken(Redacted.value(credential.token)),
+    HttpClientRequest.acceptJson,
+  )
+  const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+    throw new GoogleWorkspaceFailure({ source: query.kind, status: 0 })
+  }
+  if (response.status < 200 || response.status >= 300) throw new GoogleWorkspaceFailure({ source: query.kind, status: response.status })
+  const data = response.json catch effect () => { throw new GoogleWorkspaceFailure({ source: query.kind, status: response.status }) }
+  const current = try credentials.account(principal.ownerId, principal.accountId)
+  if (current === undefined || !workspaceAllowed(current.account, {
+    callerId: principal.ownerId,
+    requestedAccount: principal.accountId,
+    seenEpoch: principal.seenEpoch,
+    permissions: [target.scope],
+  })) throw new WorkspaceAccessRefused({ accountId: principal.accountId })
+  return data
+}
+
+export function confirmedMailRecipient(claim: MailboxClaim, contactAddress: string, exactAddresses: readonly string[]) {
+  return selectRecipient(claim, contactAddress, [...new Set(exactAddresses)])
+}
+
+function workspaceQuery(query: WorkspaceQuery): { readonly scope: GoogleScope; readonly url: string; readonly parameters: Record<string, string> } {
+  switch (query.kind) {
+    case "gmail": return { scope: "GmailRead", url: "https://gmail.googleapis.com/gmail/v1/users/me/messages", parameters: { q: query.query } }
+    case "calendar": return { scope: "CalendarRead", url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(query.calendarId)}/events`, parameters: query.updatedMin ? { updatedMin: query.updatedMin } : {} }
+    case "drive": return { scope: "DriveRead", url: "https://www.googleapis.com/drive/v3/files", parameters: { q: query.query } }
+    case "meet": return { scope: "MeetRead", url: `https://meet.googleapis.com/v2/spaces/${encodeURIComponent(query.meetingCode)}`, parameters: {} }
+    case "contacts": return { scope: "ContactsRead", url: "https://people.googleapis.com/v1/people:searchContacts", parameters: { query: query.query, readMask: "names,emailAddresses,phoneNumbers" } }
+  }
+}

@@ -1,3 +1,53 @@
-// spec/nativeNotifications/index.md, "Story: View and act on permitted notifications while the screen is current"
-export { noticesClient, notificationsPlugin, resolveNoticeTap, workflowApprovalNoticeIdentity } from "@elizaos/os-bridges"
-export type { NoticeOwnerIdentity, WorkflowNoticeRoute, NoticeTapNotice, PendingNoticeTap, NoticeTapBinding, NoticeTapResolution, SuspendedApprovalNotice, ApprovalNoticeIdentity, WorkflowApprovalNoticeReads, ApprovalNoticeDecision, NoticeFenceOperations, NoticeFenceUpdater, WorkflowNoticeStatus, NoticeOwnerFenceReply, DeliveryChannel, DeliveryStatus, MirrorApp, MirrorStatus, MirrorChoice, MirrorPolicyChange, MirrorHistoryRow, NoticeSourceKind, NoticeRow, NoticeRowRef, NotificationsNativePlugin, NoticesClientOptions, NoticesClient } from "@elizaos/os-bridges"
+// spec/nativeNotifications/index.md, "Story: View and act on permitted notifications while the screen is current"; spec/nativeNotifications/index.md, "The mirror withholds rows when collection or the current owner's display is unavailable"
+import {
+  mayExposeNoticePreview,
+  mirrorListOutcome,
+  type MirrorListResult,
+  type NativeNoticeFence,
+  type NoticeRowAccess,
+} from "../gen/nativeNotifications.effect.vibe"
+
+export {
+  noticesClient,
+  notificationsPlugin,
+  resolveNoticeTap,
+  workflowApprovalNoticeIdentity,
+} from "@elizaos/os-bridges"
+export type {
+  ApprovalNoticeDecision,
+  ApprovalNoticeIdentity,
+  DeliveryChannel,
+  DeliveryStatus,
+  MirrorApp,
+  MirrorChoice,
+  MirrorHistoryRow,
+  MirrorPolicyChange,
+  MirrorStatus,
+  NoticeFenceOperations,
+  NoticeFenceUpdater,
+  NoticeOwnerFenceReply,
+  NoticeOwnerIdentity,
+  NoticeRow,
+  NoticeRowRef,
+  NoticeSourceKind,
+  NoticeTapBinding,
+  NoticeTapNotice,
+  NoticeTapResolution,
+  NoticesClient,
+  NoticesClientOptions,
+  NotificationsNativePlugin,
+  PendingNoticeTap,
+  SuspendedApprovalNotice,
+  WorkflowApprovalNoticeReads,
+  WorkflowNoticeRoute,
+  WorkflowNoticeStatus,
+} from "@elizaos/os-bridges"
+export type { MirrorListResult, NativeNoticeFence, NoticeRowAccess }
+
+export function evaluateNoticeMirrorList(fence: NativeNoticeFence, selectedRows: number): MirrorListResult {
+  return mirrorListOutcome(fence, selectedRows)
+}
+
+export function evaluateNoticePreviewAccess(access: NoticeRowAccess, previewsEnabled: boolean): boolean {
+  return mayExposeNoticePreview(access, previewsEnabled)
+}

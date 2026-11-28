@@ -1,5 +1,18 @@
-// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"
-import { findIdentity, graphFor, mayMergeEntities, redirectMergedEdge, type GraphEdge, type GraphEntity, type GraphIdentity } from "../gen/relationships.effect.vibe"
+// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"; spec/relationships/identity.md, "Story: Resolve identity observations and confirmed recipients without guessing"
+import type { Plugin } from "@elizaos/core"
+import {
+  findIdentity,
+  graphFor,
+  mayMergeEntities,
+  redirectMergedEdge,
+  type GraphEdge,
+  type GraphEntity,
+  type GraphIdentity,
+} from "../gen/relationships.effect.vibe"
+import { entityAction } from "./action.vibe"
+import { LegacyRelationshipsSchemaAuditService } from "./audit.vibe"
+import { entityGraphProvider } from "./provider.vibe"
+import { KnowledgeGraphService } from "./store.vibe"
 
 export error RelationshipStoreFailure { reason: string }
 export error InvalidEntityMerge { tenant: string; targetId: string }
@@ -13,7 +26,13 @@ export interface GraphSnapshot {
 
 export service GraphStore {
   snapshot(tenant: string): GraphSnapshot!RelationshipStoreFailure
-  merge(tenant: string, seenRevision: number, targetId: string, sourceIds: readonly string[], edges: readonly GraphEdge[]): boolean!RelationshipStoreFailure
+  merge(
+    tenant: string,
+    seenRevision: number,
+    targetId: string,
+    sourceIds: readonly string[],
+    edges: readonly GraphEdge[],
+  ): boolean!RelationshipStoreFailure
 }
 
 export effect function resolveIdentity(tenant: string, source: string, identity: string) {
@@ -39,3 +58,32 @@ export effect function mergeEntities(tenant: string, targetId: string, sourceIds
     .map((edge) => redirectMergedEdge(edge, tenant, targetId, sources))
   return try store.merge(tenant, graph.revision, targetId, sources, affected)
 }
+
+export function createSqliteGraphStoreLayer(service: KnowledgeGraphService) {
+  return Layer.succeed(GraphStore, {
+    snapshot: (tenant: string) => Effect.succeed(service.snapshotForSpec(tenant)),
+    merge: (tenant: string, seenRevision: number, targetId: string, sourceIds: readonly string[]) =>
+      Effect.sync(() => {
+        if (service.entities.getRevision(tenant) !== seenRevision) return false
+        const merged = service.mergeEntitiesTransactional(tenant, targetId, sourceIds)
+        return merged.ok
+      }),
+  })
+}
+
+export const relationshipsPlugin: Plugin = {
+  name: "@elizaos/plugin-relationships",
+  description: "Personal knowledge graph of entities, identities, relationships, recipient confirmation, and legacy audit",
+  actions: [entityAction],
+  providers: [entityGraphProvider],
+  services: [KnowledgeGraphService, LegacyRelationshipsSchemaAuditService],
+}
+
+export default relationshipsPlugin
+
+export * from "./types.vibe"
+export * from "./identity-merge.vibe"
+export * from "./store.vibe"
+export * from "./audit.vibe"
+export * from "./action.vibe"
+export * from "./provider.vibe"

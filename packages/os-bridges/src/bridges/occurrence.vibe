@@ -1,0 +1,221 @@
+// spec/os/android/reminderAlarms.md, "Story: Finish or put off a reminder without losing track of it"; spec/os/android/reminderAlarms.md, "A snoozed reminder returns ten minutes after the tap"; spec/os/android/reminderAlarms.md, "Done moves a repeating reminder to its first repeat whose alert is still ahead, and counts the dates it skipped"; spec/os/android/reminderAlarms.md, "A reminder keeps its newest 32 finished occurrences"
+import type { AndroidReminderRecurrence } from "./definitions/reminders.ts"
+
+export type ReminderRecurrence = AndroidReminderRecurrence
+
+export const REMINDER_SNOOZE_MS = 600_000
+export const REMINDER_HISTORY_LIMIT = 32
+
+const DAY = 86_400_000
+const MINUTE = 60_000
+const MAX_REPEAT_STEPS = 40_000
+
+module errors {
+  export function raise(message: string): never {
+    throw new Error(message)
+  }
+}
+import { raise } from errors
+
+function civil(date: string, time: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+    return raise("Invalid reminder date or time.")
+  }
+  const value = Date.parse(`${date}T${time}:00Z`)
+  if (!Number.isFinite(value) || new Date(value).toISOString().slice(0, 16) !== `${date}T${time}`) {
+    return raise("Invalid reminder date or time.")
+  }
+  return value
+}
+
+function zoneClock(zone: string): (instant: number) => number {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: zone,
+    calendar: "iso8601",
+    numberingSystem: "latn",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  })
+  return (instant) => {
+    const parts = Object.fromEntries(formatter.formatToParts(instant).map((part) => [part.type, part.value]))
+    return Date.parse(
+      `${String(parts.year).padStart(4, "0")}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`,
+    )
+  }
+}
+
+function resolveWall(wall: number, local: (instant: number) => number, allowGap: boolean): number {
+  const offsets = new Set<number>()
+  for (let hours = -48; hours <= 48; hours += 6) {
+    const probe = wall + hours * 3_600_000
+    offsets.add(local(probe) - probe)
+  }
+  const candidates = [...offsets].map((offset) => wall - offset).toSorted((a, b) => a - b)
+  const exact = candidates.find((instant) => local(instant) === wall)
+  if (exact !== undefined) return exact
+  if (!allowGap) return raise("This local time does not exist.")
+  const start = candidates[0] ?? wall
+  const end = candidates[candidates.length - 1] ?? wall
+  for (let instant = start; instant <= end; instant += MINUTE) {
+    if (local(instant) >= wall) return instant
+  }
+  return raise("Unable to resolve reminder time.")
+}
+
+function validateRule(rule: ReminderRecurrence): { readonly wall: number; readonly local: (instant: number) => number } {
+  if (
+    !rule
+    || !["daily", "weekdays", "weekly"].includes(rule.rule)
+    || !Number.isInteger(rule.leadMinutes)
+    || rule.leadMinutes < 0
+    || rule.leadMinutes > 10080
+  ) {
+    return raise("Invalid reminder repeat rule.")
+  }
+  const clockAttempt = Effect.runSync(Effect.result(Effect.try(() => zoneClock(rule.zone))))
+  if (clockAttempt._tag !== "Success") return raise("Invalid reminder repeat rule.")
+  return { wall: civil(rule.date, rule.time), local: clockAttempt.success }
+}
+
+function isWeekend(day: number): boolean {
+  const dow = new Date(day).getUTCDay()
+  return dow === 0 || dow === 6
+}
+
+export function initialReminderDue(rule: ReminderRecurrence, at: number): number {
+  const { wall, local } = validateRule(rule)
+  if (rule.rule === "weekdays" && isWeekend(wall)) {
+    return raise("Choose a weekday for the first occurrence.")
+  }
+  const dueAt = resolveWall(wall, local, false)
+  if (dueAt - rule.leadMinutes * MINUTE !== at) {
+    return raise("Repeat time does not match reminder time.")
+  }
+  return dueAt
+}
+
+export interface ReminderNextOccurrence {
+  readonly dueAt: number
+  readonly at: number
+  readonly date: string
+  readonly skippedDates: number
+}
+
+export function nextReminderOccurrence(rule: ReminderRecurrence, now: number): ReminderNextOccurrence {
+  const { wall, local } = validateRule(rule)
+  if (!Number.isSafeInteger(now)) return raise("Invalid reminder clock.")
+  let day = wall
+  let skippedDates = 0
+  for (let count = 0; count < MAX_REPEAT_STEPS; count++) {
+    day += (rule.rule === "weekly" ? 7 : 1) * DAY
+    if (rule.rule === "weekdays") {
+      while (isWeekend(day)) day += DAY
+    }
+    const dueAt = resolveWall(day, local, true)
+    const at = dueAt - rule.leadMinutes * MINUTE
+    if (at > now) {
+      return {
+        dueAt,
+        at,
+        date: new Date(day).toISOString().slice(0, 10),
+        skippedDates,
+      }
+    }
+    skippedDates += 1
+  }
+  return raise("Reminder schedule is too old. Review its date.")
+}
+
+export interface ReminderOccurrenceHistoryEntry {
+  readonly occurrenceId: string
+  readonly dueAt: number
+  readonly completedAt: number
+  readonly skippedDates: number
+}
+
+export interface ReminderOccurrenceRow {
+  status: string
+  at: number
+  dueAt?: number
+  alertMinutes?: number | null
+  recurrence?: ReminderRecurrence
+  occurrenceId?: string
+  history?: ReminderOccurrenceHistoryEntry[]
+  completedAt?: number
+  snoozedAt?: number
+  postedAt?: number
+  legacyAlarm?: boolean
+  undated?: boolean
+}
+
+export interface ReminderDecisionHost {
+  readonly now: number
+  readonly alertStatus: "scheduled" | "permission-denied"
+  nextOccurrenceId(): string
+}
+
+export type ReminderDecisionStatus = "completed" | "pending" | "scheduled" | "permission-denied"
+
+function assertDecidable(row: ReminderOccurrenceRow, host: ReminderDecisionHost): void {
+  if (!Number.isSafeInteger(host.now)) raise("Invalid reminder clock.")
+  if (row.undated) raise("Change undated to-dos from the to-do list.")
+  if (row.status === "completed" || row.status === "cancelled") {
+    raise("Reminder is no longer active.")
+  }
+}
+
+export function completeReminderOccurrence(row: ReminderOccurrenceRow, host: ReminderDecisionHost): ReminderDecisionStatus {
+  assertDecidable(row, host)
+  const next = row.recurrence !== undefined ? nextReminderOccurrence(row.recurrence, host.now) : undefined
+  const occurrenceId = row.occurrenceId
+  if (typeof occurrenceId !== "string" || occurrenceId === "") {
+    return raise("Select the current reminder occurrence.")
+  }
+  row.history = [
+    ...(row.history ?? []),
+    {
+      occurrenceId,
+      dueAt: row.dueAt ?? row.at,
+      completedAt: host.now,
+      skippedDates: next?.skippedDates ?? 0,
+    },
+  ].slice(-REMINDER_HISTORY_LIMIT)
+  delete row.legacyAlarm
+  if (next !== undefined && row.recurrence !== undefined) {
+    delete row.snoozedAt
+    delete row.postedAt
+    row.recurrence = { ...row.recurrence, date: next.date }
+    row.dueAt = next.dueAt
+    row.at = next.at
+    row.occurrenceId = host.nextOccurrenceId()
+    delete row.completedAt
+    row.status = row.alertMinutes === null ? "pending" : host.alertStatus
+  } else {
+    row.status = "completed"
+    row.completedAt = host.now
+  }
+  return row.status as ReminderDecisionStatus
+}
+
+export function snoozeReminderOccurrence(
+  row: ReminderOccurrenceRow,
+  host: ReminderDecisionHost,
+): Exclude<ReminderDecisionStatus, "completed" | "pending"> | "unchanged" {
+  assertDecidable(row, host)
+  if (row.alertMinutes === null) {
+    return raise("No-alert reminders cannot be snoozed. Edit the alert first.")
+  }
+  if (row.status === "scheduled" && row.snoozedAt !== undefined) {
+    return "unchanged"
+  }
+  row.at = host.now + REMINDER_SNOOZE_MS
+  row.snoozedAt = host.now
+  delete row.legacyAlarm
+  row.status = host.alertStatus
+  return host.alertStatus
+}

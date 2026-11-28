@@ -1,0 +1,176 @@
+// spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+export type Bbox = readonly [number, number, number, number]
+export type GroundingSource = "ax" | "ocr" | "vlm"
+
+export interface OcrBoxLike {
+  readonly text: string
+  readonly bbox: Bbox
+  readonly confidence?: number
+}
+
+export interface AxNodeLike {
+  readonly role: string
+  readonly title?: string
+  readonly label?: string
+  readonly bbox: Bbox
+}
+
+export interface VlmElementLike {
+  readonly label: string
+  readonly role?: string
+  readonly bbox: Bbox
+  readonly confidence?: number
+}
+
+export interface GetScreenElement {
+  readonly id: number
+  readonly role: string
+  readonly label: string
+  readonly bbox: [number, number, number, number]
+  readonly center: [number, number]
+  readonly source: GroundingSource
+  readonly confidence: number
+}
+
+export interface MergeScreenInput {
+  readonly axNodes?: readonly AxNodeLike[]
+  readonly ocrBoxes?: readonly OcrBoxLike[]
+  readonly vlmElements?: readonly VlmElementLike[]
+}
+
+export interface MergeScreenOptions {
+  readonly iouThreshold?: number
+  readonly maxElements?: number
+}
+
+export interface GetScreenResult {
+  readonly width: number
+  readonly height: number
+  readonly displayId: number
+  readonly ocrText: string
+  readonly elements: readonly GetScreenElement[]
+  readonly summary: string
+  readonly imageDataUrl?: string
+}
+
+export interface BuildGetScreenOptions {
+  readonly width: number
+  readonly height: number
+  readonly displayId?: number
+  readonly axNodes?: readonly AxNodeLike[]
+  readonly ocrBoxes?: readonly OcrBoxLike[]
+  readonly vlmElements?: readonly VlmElementLike[]
+  readonly includeImage?: boolean
+  readonly imageDataUrl?: string
+  readonly maxElements?: number
+}
+
+export function bboxIou(a: Bbox, b: Bbox): number {
+  const ix = Math.max(a[0], b[0])
+  const iy = Math.max(a[1], b[1])
+  const ix2 = Math.min(a[0] + a[2], b[0] + b[2])
+  const iy2 = Math.min(a[1] + a[3], b[1] + b[3])
+  const inter = Math.max(0, ix2 - ix) * Math.max(0, iy2 - iy)
+  if (inter <= 0) return 0
+  const areaA = Math.max(0, a[2]) * Math.max(0, a[3])
+  const areaB = Math.max(0, b[2]) * Math.max(0, b[3])
+  const union = areaA + areaB - inter
+  return union > 0 ? inter / union : 0
+}
+
+function validBbox(b: Bbox): boolean {
+  return Number.isFinite(b[0]) && Number.isFinite(b[1]) && Number.isFinite(b[2]) && Number.isFinite(b[3]) && b[2] > 0 && b[3] > 0
+}
+
+function centerOf(b: Bbox): [number, number] {
+  return [Math.round(b[0] + b[2] / 2), Math.round(b[1] + b[3] / 2)]
+}
+
+const SOURCE_PRIORITY: Record<GroundingSource, number> = { ax: 3, ocr: 2, vlm: 1 }
+
+export function mergeScreenElements(input: MergeScreenInput, options: MergeScreenOptions = {}): GetScreenElement[] {
+  const iouThreshold = options.iouThreshold ?? 0.55
+  const maxElements = options.maxElements ?? 120
+  type Candidate = { role: string; label: string; bbox: [number, number, number, number]; source: GroundingSource; confidence: number }
+  const raw: Candidate[] = []
+  for (const node of input.axNodes ?? []) {
+    if (!validBbox(node.bbox)) continue
+    const label = (node.label ?? node.title ?? "").trim()
+    if (!label && !node.role) continue
+    raw.push({ role: node.role || "control", label, bbox: [node.bbox[0], node.bbox[1], node.bbox[2], node.bbox[3]], source: "ax", confidence: 1 })
+  }
+  for (const box of input.ocrBoxes ?? []) {
+    if (!validBbox(box.bbox)) continue
+    const label = box.text.trim()
+    if (!label) continue
+    raw.push({
+      role: "text",
+      label,
+      bbox: [box.bbox[0], box.bbox[1], box.bbox[2], box.bbox[3]],
+      source: "ocr",
+      confidence: box.confidence ?? 0.85,
+    })
+  }
+  for (const elem of input.vlmElements ?? []) {
+    if (!validBbox(elem.bbox)) continue
+    const label = elem.label.trim()
+    if (!label) continue
+    raw.push({
+      role: elem.role ?? "element",
+      label,
+      bbox: [elem.bbox[0], elem.bbox[1], elem.bbox[2], elem.bbox[3]],
+      source: "vlm",
+      confidence: elem.confidence ?? 0.7,
+    })
+  }
+  raw.sort((a, b) => SOURCE_PRIORITY[b.source] - SOURCE_PRIORITY[a.source] || b.confidence - a.confidence)
+  const kept: Candidate[] = []
+  for (const candidate of raw) {
+    const duplicate = kept.some((existing) => bboxIou(existing.bbox, candidate.bbox) >= iouThreshold)
+    if (!duplicate) kept.push(candidate)
+  }
+  kept.sort((a, b) => (Math.abs(a.bbox[1] - b.bbox[1]) <= 12 ? a.bbox[0] - b.bbox[0] : a.bbox[1] - b.bbox[1]))
+  return kept.slice(0, maxElements).map((item, idx) => ({
+    id: idx + 1,
+    role: item.role,
+    label: item.label,
+    bbox: item.bbox,
+    center: centerOf(item.bbox),
+    source: item.source,
+    confidence: item.confidence,
+  }))
+}
+
+export function summarizeGetScreen(result: Pick<GetScreenResult, "width" | "height" | "elements" | "ocrText">, maxChars = 1600): string {
+  const header = `Screen ${result.width}x${result.height} (${result.elements.length} grounded elements)`
+  const lines = [header]
+  for (const el of result.elements.slice(0, 40)) {
+    const line = `[${el.id}] ${el.role}: "${el.label}" @ (${el.center[0]},${el.center[1]})`
+    if (lines.join("\n").length + line.length + 1 > maxChars) break
+    lines.push(line)
+  }
+  if (result.elements.length === 0 && result.ocrText.trim() !== "") {
+    lines.push(result.ocrText.trim().slice(0, Math.max(0, maxChars - header.length - 1)))
+  }
+  return lines.join("\n")
+}
+
+export function buildGetScreen(options: BuildGetScreenOptions): GetScreenResult {
+  const elements = mergeScreenElements(
+    { axNodes: options.axNodes, ocrBoxes: options.ocrBoxes, vlmElements: options.vlmElements },
+    { maxElements: options.maxElements },
+  )
+  const ocrText = (options.ocrBoxes ?? [])
+    .map((b) => b.text.trim())
+    .filter((t) => t.length > 0)
+    .join(" ")
+  const base: Omit<GetScreenResult, "summary"> = {
+    width: options.width,
+    height: options.height,
+    displayId: options.displayId ?? 0,
+    ocrText,
+    elements,
+    ...(options.includeImage && options.imageDataUrl ? { imageDataUrl: options.imageDataUrl } : {}),
+  }
+  return { ...base, summary: summarizeGetScreen(base) }
+}

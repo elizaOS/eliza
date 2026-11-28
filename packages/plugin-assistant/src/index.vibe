@@ -1,6 +1,31 @@
 // spec/assistant/reminders.md, "Story: Create the reminder I asked for, and only that"; spec/assistant/goals.md, "Story: Keep my goals and check in on them when I asked"; spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/routines.md, "Story: Keep my habits on their cadence"; spec/assistant/routines.md, "Story: Keep my habits from the conversation"; spec/assistant/checkin.md, "Story: Summarize my day only from a real answer"; spec/assistant/timezone.md, "Story: Run my day on my own clock"; spec/assistant/travel.md, "Story: Keep my trip to the day I said I am back"; spec/assistant/reminderEscalation.md, "Story: Nudge me again about a reminder I did not answer, never in my quiet hours"; spec/assistant/reminders.md, "Story: Propose a reminder or alarm on my phone only as I asked"; spec/assistant/checkin.md, "Story: Check in on me at the times I chose"; spec/assistant/checkin.md, "Story: Brief me on my morning, evening or week when I ask"
 import { Service, type EvaluatorRunResult, type IAgentRuntime, type Provider, type RegisteredEvaluator } from "@elizaos/core"
 import { type AgentPlugin, registerDeviceProposalFamily } from "@elizaos/agent-host"
+import {
+  AdvancedMemoryService,
+  ExperienceService,
+  factsProvider,
+  linkExtractionEvaluator,
+  longTermMemoryProvider,
+  memoryAction,
+  postTurnMemoryEvaluator,
+  securityEvaluator,
+} from "./advanced-memory.vibe"
+import {
+  AccountHandoffReviewService,
+  AgreementKnowledgeService,
+  accountHandoffRoutes,
+  agreementKnowledgeAction,
+  agreementPinsProvider,
+  agreementRoutes,
+} from "./agreements-handoff.vibe"
+import {
+  AutonomyService,
+  GlobalPauseService,
+  autonomyAction,
+  autonomyProvider,
+  autonomyRoutes,
+} from "./autonomy.vibe"
 import { briefAction } from "./brief.vibe"
 import { checkinKind, checkinRoutes, deliverCheckin, followOwnerClock } from "./checkin.vibe"
 import { reminderProposalFamily } from "./device-proposals.vibe"
@@ -10,11 +35,101 @@ import { runEvaluators, type EvaluatorRun } from "./evaluators/runner.vibe"
 import { deliverFollowupTick, followupTickCron, followupTickKind } from "./followups.vibe"
 import { deliverGoalCheckin, goalCheckinKind, ownerGoalsAction, ownerGoalsProvider } from "./goals.vibe"
 import { Facts, Scheduler, onAgent, isAgentScheduledTasks, scheduledTasksServiceType, type AssistantPorts, type DeliveryAnswer, type TaskRow } from "./host.vibe"
+import {
+  ActivityTrackerService,
+  FamilyCoordinationService,
+  FirstRunService,
+  FoodDomainService,
+  assistantUtilityAction,
+  familyWorkflowsAction,
+  firstRunProvider,
+  foodPlanningAction,
+  lifeopsExtraRoutes,
+} from "./lifeops-domains.vibe"
 import { deliverReminder, ownerRemindersAction, ownerRemindersProvider, reminderKind, remindersContext } from "./reminders.vibe"
 import { deliverRoutine, deliverRoutineNudge, ownerRoutinesAction, ownerRoutinesProvider, routineKind, routineNudgeKind, routineRoutes } from "./routines.vibe"
 import { ownerCalendarZone, ownerClockAt, stateOwnerZone } from "./timezone.vibe"
 import { currentTodosProvider, todosAction } from "./todos.vibe"
 import { ownerTravelEvaluator } from "./travel.vibe"
+
+export {
+  AUTONOMY_SERVICE_TYPE,
+  AutonomyController,
+  AutonomyService,
+  GLOBAL_PAUSE_SERVICE_TYPE,
+  GlobalPauseService,
+  autonomyAction,
+  autonomyProvider,
+  autonomyRoutes,
+  readActionParameters,
+  summarizeAssistantResult,
+  type AutonomyConfig,
+  type AutonomyStatus,
+  type GlobalPauseStatus,
+} from "./autonomy.vibe"
+export {
+  ADVANCED_MEMORY_SERVICE_TYPE,
+  AdvancedMemoryService,
+  EXPERIENCE_SERVICE_TYPE,
+  ExperienceService,
+  MemoryFirstRunController,
+  buildFactKeywordsForStorage,
+  factClaimsEquivalent,
+  factLexicalSimilarity,
+  factPolarityDiffers,
+  factsProvider,
+  linkExtractionEvaluator,
+  longTermMemoryProvider,
+  memoryAction,
+  postTurnMemoryEvaluator,
+  securityEvaluator,
+  type ConsolidatedSummaryEntry,
+  type ExperienceEntry,
+  type LongTermMemoryEntry,
+  type LongTermMemoryKind,
+} from "./advanced-memory.vibe"
+export {
+  ACCOUNT_HANDOFF_SERVICE_TYPE,
+  AGREEMENT_KNOWLEDGE_SERVICE_TYPE,
+  AccountHandoffReviewService,
+  AgreementHandoffController,
+  AgreementKnowledgeService,
+  accountHandoffRoutes,
+  agreementKnowledgeAction,
+  agreementPinsProvider,
+  agreementRoutes,
+  type AccountHandoffRecord,
+  type AgreementObligation,
+  type AgreementRecord,
+} from "./agreements-handoff.vibe"
+export {
+  ACTIVITY_PROFILE_SERVICE_TYPE,
+  ActivityTrackerService,
+  DEFAULT_PACKS,
+  FAMILY_COORDINATION_SERVICE_TYPE,
+  FIRST_RUN_SERVICE_TYPE,
+  FOOD_DOMAIN_SERVICE_TYPE,
+  FamilyCoordinationService,
+  FirstRunService,
+  FoodDomainService,
+  assistantUtilityAction,
+  classifyEmail,
+  estimateTravelTime,
+  evaluateSafeArithmetic,
+  familyWorkflowsAction,
+  firstRunProvider,
+  foodPlanningAction,
+  getDefaultPack,
+  lifeopsExtraRoutes,
+  lintDefaultPacks,
+  listDefaultPacks,
+  type EmailCategory,
+  type EmailClassificationResult,
+  type FamilyRequestItem,
+  type MealPlanItem,
+  type StarterPackDescriptor,
+  type TravelTimeEstimate,
+} from "./lifeops-domains.vibe"
 
 export { proven, turnResults, type Attempt, type Proven, type TurnResult } from "./replies.vibe"
 export { runtimeLayer, onAgent, type AssistantPorts } from "./host.vibe"
@@ -169,11 +284,61 @@ export const personalAssistantPlugin = {
     runtime.contexts.tryRegister(remindersContext)
     await runPromise(registerDeviceProposalFamily(runtime, reminderProposalFamily))
   },
-  actions: [ownerRemindersAction, ownerGoalsAction, todosAction, ownerRoutinesAction, briefAction],
-  providers: [ownerRemindersProvider, ownerGoalsProvider, currentTodosProvider, ownerRoutinesProvider, ownerClockProvider],
-  evaluators: [ownerTimezoneEvaluator, ownerTravelEvaluator],
-  services: [PersonalAssistantService, PersonalAssistantEvaluators],
-  routes: [...routineRoutes(() => running), ...dossierRoutes(() => running), ...checkinRoutes(() => running)],
+  actions: [
+    ownerRemindersAction,
+    ownerGoalsAction,
+    todosAction,
+    ownerRoutinesAction,
+    briefAction,
+    autonomyAction,
+    memoryAction,
+    agreementKnowledgeAction,
+    foodPlanningAction,
+    familyWorkflowsAction,
+    assistantUtilityAction,
+  ],
+  providers: [
+    ownerRemindersProvider,
+    ownerGoalsProvider,
+    currentTodosProvider,
+    ownerRoutinesProvider,
+    ownerClockProvider,
+    autonomyProvider,
+    longTermMemoryProvider,
+    factsProvider,
+    agreementPinsProvider,
+    firstRunProvider,
+  ],
+  evaluators: [
+    ownerTimezoneEvaluator,
+    ownerTravelEvaluator,
+    postTurnMemoryEvaluator,
+    securityEvaluator,
+    linkExtractionEvaluator,
+  ],
+  services: [
+    PersonalAssistantService,
+    PersonalAssistantEvaluators,
+    GlobalPauseService,
+    AutonomyService,
+    AdvancedMemoryService,
+    ExperienceService,
+    AgreementKnowledgeService,
+    AccountHandoffReviewService,
+    FirstRunService,
+    ActivityTrackerService,
+    FoodDomainService,
+    FamilyCoordinationService,
+  ],
+  routes: [
+    ...routineRoutes(() => running),
+    ...dossierRoutes(() => running),
+    ...checkinRoutes(() => running),
+    ...autonomyRoutes(() => running),
+    ...agreementRoutes(() => running),
+    ...accountHandoffRoutes(() => running),
+    ...lifeopsExtraRoutes(() => running),
+  ],
 } satisfies AgentPlugin
 
 export default personalAssistantPlugin

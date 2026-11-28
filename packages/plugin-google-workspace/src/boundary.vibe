@@ -1,0 +1,14 @@
+// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"
+module platform {
+  /** @throws {never} */
+  export function readEnv(name: string): string | undefined {
+    return process.env[name]
+  }
+
+  export function raise(error: Error): never {
+    throw error
+  }
+}
+import { raise, readEnv } from platform
+
+export { raise, readEnv }

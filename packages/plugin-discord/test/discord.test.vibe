@@ -1,6 +1,59 @@
-// spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated"
+// spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated"; spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/index.md, "A structural server operation matches the account, guild, requester, and granted operation"; spec/discord/coordination.md, "Story: Coordinate Discord group replies and durable turn lifecycles"
 import { assert, describe, it } from "@effect/vitest"
-import { postDiscordPart } from "../src/index.vibe"
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core"
+import type { ChatInputCommandInteraction, Message } from "discord.js"
+import {
+  BUILT_IN_GUILD_TEMPLATES,
+  DISCORD_LOCAL_SERVICE_NAME,
+  DISCORD_SERVICE_NAME,
+  DiscordLocalService,
+  DiscordOwnerPairingServiceImpl,
+  DiscordService,
+  DiscordTriageAdapter,
+  DiscordUserAccountScraperImpl,
+  DiscordVoiceTargetAudioSink,
+  DiscordVoiceTargetRegistry,
+  DmChannelRegistry,
+  _resetRateLimitStateForTesting,
+  applyDiscordStalenessGuard,
+  authorizeGuildManagementMutation,
+  buildCommandArgCustomId,
+  buildDiscordReplyPayload,
+  canPreemptDiscordAudioLane,
+  chunkDiscordText,
+  claimDiscordTurn,
+  createChannelDebouncer,
+  createDiscordConnectorAccountProvider,
+  createDiscordTargetSource,
+  createDraftStreamController,
+  createInMemorySpeakerLeaseStore,
+  createStatusReactionController,
+  createTurnDrainRegistry,
+  discordDataRoutes,
+  discordPcmToPipelineFrame,
+  discordPlugin,
+  discordSetupRoutes,
+  formatInboundEnvelope,
+  generateInviteUrl,
+  handleElizaPairCommand,
+  isDiscordAccountDisabledByPolicy,
+  isDiscordGroupAllowedByPolicy,
+  listEnabledDiscordAccounts,
+  makeCoalescedDiscordMessage,
+  markDiscordTurnDispatched,
+  markDiscordTurnReplied,
+  parseCommandArgCustomId,
+  parseMessageLink,
+  persistDiscordAccountDisabled,
+  postDiscordPart,
+  probeDiscordCapturedPage,
+  readDiscordAccountPolicy,
+  resolveDiscordCommandAuthorized,
+  resolveDiscordManageServerDestination,
+  resolveDiscordShouldRequireMention,
+  resolveGuildManagementGates,
+  validateGuildTemplate,
+} from "../src/index.vibe"
 
 module node {
   import { createServer } from "node:http"
@@ -51,8 +104,48 @@ module node {
       close() { void client.destroy(); server.close() },
     }
   }
+
+  export function captureThrow(fn: () => unknown): unknown {
+    try {
+      fn()
+      return undefined
+    } catch (error) {
+      return error
+    }
+  }
 }
-import { discordApi, type LostAnswer } from node
+import { captureThrow, discordApi, type LostAnswer } from node
+
+function makeRuntime(settings: Record<string, unknown> = {}, services: Record<string, unknown> = {}): {
+  readonly runtime: IAgentRuntime
+  readonly memories: Map<string, Memory>
+} {
+  const cache = new Map<string, unknown>()
+  const memories = new Map<string, Memory>()
+  const runtime = {
+    agentId: "00000000-0000-4000-8000-000000000001" as UUID,
+    character: { name: "Eliza", settings: {} },
+    getSetting: (key: string) => settings[key] ?? null,
+    getService: (name: string) => services[name] ?? null,
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => { cache.set(key, value); return true },
+    emitEvent: async () => undefined,
+    createMemory: async (memory: Memory) => {
+      const id = (memory.id ?? `mem-${memories.size + 1}`) as UUID
+      memories.set(id, { ...memory, id })
+      return id
+    },
+    updateMemory: async (patch: { id: UUID; content?: Memory["content"]; metadata?: Memory["metadata"] }) => {
+      const existing = memories.get(patch.id)
+      if (!existing) return false
+      memories.set(patch.id, { ...existing, ...(patch.content ? { content: patch.content } : {}), ...(patch.metadata ? { metadata: patch.metadata } : {}) })
+      return true
+    },
+    getMemoryById: async (id: UUID) => memories.get(id) ?? null,
+    getMemories: async (params: { roomId?: UUID }) => Array.from(memories.values()).filter((m) => !params.roomId || m.roomId === params.roomId),
+  }
+  return { runtime: runtime as unknown as IAgentRuntime, memories }
+}
 
 describe("Keep Discord replies useful as the conversation moves on (spec/discord/index.md, \"Story: Keep Discord replies useful as the conversation moves on\")", () => {
   const cases: readonly [LostAnswer, string][] = [["502", "a server error"], ["timeout", "a timeout"]]
@@ -65,4 +158,224 @@ describe("Keep Discord replies useful as the conversation moves on (spec/discord
       try Effect.try(() => assert.deepStrictEqual({ creates: api.creates, kept: api.kept.length, id, nonceLength: typeof only?.nonce === "string" ? only.nonce.length : 0 }, { creates: 2, kept: 1, id: "1000", nonceLength: 24 }))
     }, 20_000)
   }
+
+  it("Routes multi-account policies, chunking, coalescing, debouncer, staleness, setup/data routes, pairing, guild management, coordination, and voice end-to-end (spec/discord/coordination.md, \"Story: Coordinate Discord group replies and durable turn lifecycles\")", async () => {
+    assert.strictEqual(discordPlugin.routes.length, 6)
+    assert.strictEqual(discordPlugin.services?.length, 4)
+
+    const { runtime, memories } = makeRuntime({
+      DISCORD_API_TOKEN: "Bot primary-token",
+      DISCORD_BOT_TOKENS: "ops=secondary-token",
+      DISCORD_GUILD_MANAGEMENT_ENABLED: "true",
+      DISCORD_GUILD_MANAGE_MODERATION: "false",
+    })
+    const enabledAccounts = listEnabledDiscordAccounts(runtime)
+    assert.strictEqual(enabledAccounts.length, 2)
+    await persistDiscordAccountDisabled(runtime, enabledAccounts[0])
+    const policy = await readDiscordAccountPolicy(runtime)
+    assert.strictEqual(isDiscordAccountDisabledByPolicy(policy, enabledAccounts[0]), true)
+    const provider = createDiscordConnectorAccountProvider(runtime)
+    const listed = (await provider.listAccounts?.(undefined as never)) ?? []
+    assert.strictEqual(listed.length, 1)
+    assert.strictEqual(listed[0]?.accountKey, "ops")
+
+    assert.strictEqual(isDiscordGroupAllowedByPolicy({ groupPolicy: "allowlist", guildAllowlisted: true, channelAllowlistConfigured: true, channelAllowed: true }), true)
+    assert.strictEqual(isDiscordGroupAllowedByPolicy({ groupPolicy: "disabled", guildAllowlisted: true, channelAllowlistConfigured: false, channelAllowed: true }), false)
+    assert.strictEqual(resolveDiscordShouldRequireMention({ isGuildMessage: true, isThread: true, botAutoThread: true, guildInfo: { requireMention: true } }), false)
+    assert.strictEqual(resolveDiscordCommandAuthorized({ isDirectMessage: true, dmPolicy: "disabled", sender: { id: "123456789012345678" } }), false)
+    assert.strictEqual(applyDiscordStalenessGuard({ enabled: true, behavior: "skip", threshold: 2 }, 1, 5).suppress, true)
+    assert.strictEqual(applyDiscordStalenessGuard({ enabled: true, behavior: "ignore", threshold: 0 }, 1, 99).decision, "DiscordSendFresh")
+
+    const fenced = chunkDiscordText("```ts\nconst a = 1\nconst b = 2\nconst c = 3\n```", { maxChars: 24, maxLines: 2 })
+    assert.isAbove(fenced.length, 1)
+    assert.strictEqual(fenced[0]?.endsWith("```"), true)
+    const coalesced = makeCoalescedDiscordMessage([
+      { id: "m1", channelId: "111", content: "first", authorName: "alice", attachmentIds: ["a1"] },
+      { id: "m2", channelId: "111", content: "second", authorName: "alice", attachmentIds: ["a2", "a3"] },
+    ])
+    assert.deepStrictEqual(coalesced?.metadata?.coalesced?.originalMessageIds, ["m1", "m2"])
+    assert.deepStrictEqual(coalesced?.metadata?.coalesced?.originalAttachmentIds, ["a1", "a2", "a3"])
+    assert.deepStrictEqual(parseMessageLink("https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678"), {
+      guildId: "123456789012345678",
+      channelId: "223456789012345678",
+      messageId: "323456789012345678",
+    })
+    assert.include(formatInboundEnvelope({ text: "hello", chatType: "channel", senderLabel: "alice", channelLabel: "#general" }).text, "alice in #general")
+    assert.strictEqual(buildDiscordReplyPayload(undefined, [{ label: "Confirm", customId: "ok" }]).components.length, 1)
+
+    const flushed: string[][] = []
+    const debouncer = createChannelDebouncer((msgs) => { flushed.push(msgs.map((m) => m.id)) }, { debounceMs: 500, botUserId: "999", bufferUnaddressed: true })
+    debouncer.enqueue({ id: "u1", content: "look at this log", channel: { id: "c1" }, mentions: {} } as unknown as Message)
+    debouncer.enqueue({ id: "u2", content: "<@999> ^^", channel: { id: "c1" }, mentions: {} } as unknown as Message)
+    assert.deepStrictEqual(flushed, [["u1", "u2"]])
+    debouncer.destroy()
+
+    const draftEdits: string[] = []
+    const draft = createDraftStreamController({ minEditIntervalMs: 0, onUpdate: async (t) => { draftEdits.push(t) } })
+    await draft.push("partial")
+    await draft.finalize("final")
+    assert.deepStrictEqual(draftEdits, ["partial", "final"])
+    const reactions: string[] = []
+    const statusCtrl = createStatusReactionController({ addReaction: async (e) => { reactions.push(`+${e}`) }, removeReaction: async (e) => { reactions.push(`-${e}`) } })
+    await statusCtrl.setPhase("👀")
+    await statusCtrl.clear()
+    assert.deepStrictEqual(reactions, ["+👀", "-👀"])
+    const drain = createTurnDrainRegistry()
+    drain.trackTurn("m-done", Promise.resolve())
+    assert.strictEqual((await drain.drain(100)).drained, true)
+
+    const roomId = "00000000-0000-4000-8000-000000000010" as UUID
+    const entityId = "00000000-0000-4000-8000-000000000011" as UUID
+    const worldId = "00000000-0000-4000-8000-000000000012" as UUID
+    const claim1 = await claimDiscordTurn(runtime, { entityId, roomId, worldId, platformMessageId: "msg-1" })
+    assert.strictEqual(claim1.shouldDispatch, true)
+    const dispatched = await markDiscordTurnDispatched(runtime, claim1.record)
+    await markDiscordTurnReplied(runtime, dispatched, "reply-1")
+    const claim2 = await claimDiscordTurn(runtime, { entityId, roomId, worldId, platformMessageId: "msg-1" })
+    assert.strictEqual(claim2.shouldDispatch, false)
+    memories.set("00000000-0000-4000-8000-000000000099" as UUID, {
+      id: "00000000-0000-4000-8000-000000000099" as UUID,
+      entityId,
+      roomId,
+      worldId,
+      agentId: runtime.agentId,
+      content: { text: "already sent", inReplyTo: "msg-crash" },
+      metadata: { platformMessageId: "discord-reply-99" },
+    })
+    const recovered = await claimDiscordTurn(runtime, { entityId, roomId, worldId, platformMessageId: "msg-crash" })
+    assert.strictEqual(recovered.shouldDispatch, false)
+    assert.strictEqual(recovered.reconciled, true)
+
+    const leases = createInMemorySpeakerLeaseStore()
+    const humanLease = leases.claim({ channelId: "c1", edgeEpoch: "e1", lane: "human", holderToken: "a1", inboundMessageId: "m1", botBudget: 1, leaseMs: 1000, now: 100 })
+    assert.strictEqual(humanLease.kind, "claimed")
+    const botLease1 = leases.claim({ channelId: "c1", edgeEpoch: "e1", lane: "bot", holderToken: "a2", inboundMessageId: "b1", botBudget: 1, leaseMs: 1000, now: 100 })
+    assert.strictEqual(botLease1.kind, "claimed")
+    leases.release("c1", "e1", "a2")
+    const botLease2 = leases.claim({ channelId: "c1", edgeEpoch: "e1", lane: "bot", holderToken: "a2", inboundMessageId: "b2", botBudget: 1, leaseMs: 1000, now: 100 })
+    assert.strictEqual(botLease2.kind, "budget_exhausted")
+
+    const gates = resolveGuildManagementGates(runtime)
+    const dest = resolveDiscordManageServerDestination(runtime, { serverId: "123456789012345678" }, "default")
+    assert.strictEqual(dest.serverId, "123456789012345678")
+    const receipt = authorizeGuildManagementMutation({
+      request: { accountId: "default", guildId: "123456789012345678", requesterId: "owner-1", operation: "create_channel" },
+      grant: { accountId: "default", guildId: "123456789012345678", requesterId: "owner-1", operation: "create_channel" },
+      gates,
+      providerAllows: true,
+    })
+    assert.strictEqual(receipt.ok, true)
+    const crossGuildErr = captureThrow(() => authorizeGuildManagementMutation({
+      request: { accountId: "default", guildId: "123456789012345678", requesterId: "owner-1", operation: "create_channel" },
+      grant: { accountId: "default", guildId: "999999999999999999", requesterId: "owner-1", operation: "create_channel" },
+      gates,
+      providerAllows: true,
+    }))
+    assert.strictEqual((crossGuildErr as { code?: string })?.code, "GUILD_MANAGEMENT_UNAUTHORIZED")
+    assert.strictEqual(validateGuildTemplate(BUILT_IN_GUILD_TEMPLATES.community).valid, true)
+    assert.strictEqual(validateGuildTemplate({ ...BUILT_IN_GUILD_TEMPLATES.community, roles: [{ key: "bad", name: "Admin", permissions: ["Administrator"] }] }).valid, false)
+
+    const customId = buildCommandArgCustomId("deploy", "env", "prod/us")
+    assert.deepStrictEqual(parseCommandArgCustomId(customId), { command: "deploy", argName: "env", value: "prod/us" })
+    assert.include(generateInviteUrl("123456789012345678", "basic"), "client_id=123456789012345678")
+
+    _resetRateLimitStateForTesting()
+    const pairReplies: string[] = []
+    const makePairInteraction = (code: string) => ({
+      user: { id: "123456789012345678", username: "owner", discriminator: "0" },
+      options: { getString: () => code },
+      reply: async (opts: { content: string }) => { pairReplies.push(opts.content) },
+    } as unknown as ChatInputCommandInteraction)
+    const pairRuntime = makeRuntime({}, {
+      OWNER_BIND_VERIFY: {
+        verifyOwnerBindFromConnector: async ({ code }: { code: string }) => ({ success: code === "123456" }),
+      },
+    }).runtime
+    await handleElizaPairCommand(makePairInteraction("123456"), pairRuntime)
+    for (let i = 0; i < 5; i += 1) await handleElizaPairCommand(makePairInteraction("000000"), pairRuntime)
+    assert.include(pairReplies[0], "Paired with Eliza")
+    assert.include(pairReplies[5], "Too many pairing attempts")
+    const pairSvc = await DiscordOwnerPairingServiceImpl.start(pairRuntime)
+    assert.strictEqual((await pairSvc.sendOwnerLoginDmLink({ externalId: "bad", link: "https://example.com" })).sent, false)
+    await pairSvc.stop()
+
+    const localSvc = new DiscordLocalService(runtime, {
+      authorize: async () => ({ user: { id: "123456789012345678", username: "alice" }, scopes: ["rpc", "identify"] }),
+      disconnect: async () => undefined,
+      listGuilds: async () => [{ id: "123456789012345678", name: "HQ" }],
+      listChannels: async (guildId) => [{ id: "223456789012345678", name: "general", guildId }],
+    })
+    const discordSvc = new DiscordService(runtime)
+    discordSvc.registerConnectorRoom({
+      target: { source: "discord", channelId: "223456789012345678", serverId: "123456789012345678" },
+      label: "general",
+      metadata: { serverName: "HQ" },
+    })
+    discordSvc.recordChannelMemory("223456789012345678", {
+      id: "00000000-0000-4000-8000-000000000055" as UUID,
+      entityId,
+      roomId,
+      worldId,
+      agentId: runtime.agentId,
+      createdAt: Date.now(),
+      content: { text: "hello from discord", source: "discord" },
+      metadata: { discordMessageId: "323456789012345678", discordChannelId: "223456789012345678", fromName: "alice" },
+    })
+    discordSvc.setSendHandlerForAccount("default", async () => ({
+      kind: "delivered",
+      receipt: { providerMessageIds: ["423456789012345678"], acceptedAt: Date.now(), persistence: { status: "not_attempted", reason: "ok" } },
+      memories: [],
+    }))
+    const routeRuntime = makeRuntime({}, {
+      [DISCORD_LOCAL_SERVICE_NAME]: localSvc,
+      [DISCORD_SERVICE_NAME]: discordSvc,
+    }).runtime
+    const callRoute = async (routes: typeof discordSetupRoutes, path: string, req: { url?: string; body?: unknown } = {}) => {
+      const route = routes.find((r) => r.path === path)
+      let status = 0
+      let payload: unknown
+      await route?.handler(req, { status: (code) => ({ json: (b) => { status = code; payload = b } }) }, routeRuntime)
+      return { status, payload }
+    }
+    assert.strictEqual((await callRoute(discordSetupRoutes, "/api/setup/discord/start")).status, 200)
+    assert.strictEqual((await callRoute(discordSetupRoutes, "/api/setup/discord/status")).status, 200)
+    assert.strictEqual((await callRoute(discordDataRoutes, "/api/discord/guilds")).status, 200)
+    assert.strictEqual((await callRoute(discordDataRoutes, "/api/discord/channels", { url: "/api/discord/channels?guildId=123456789012345678" })).status, 200)
+    assert.strictEqual((await callRoute(discordDataRoutes, "/api/discord/channels", { url: "/api/discord/channels?guildId=not-a-snowflake" })).status, 400)
+    assert.strictEqual((await callRoute(discordDataRoutes, "/api/discord/subscriptions", { body: { channelIds: ["223456789012345678"] } })).status, 200)
+    assert.strictEqual((await callRoute(discordSetupRoutes, "/api/setup/discord/cancel")).status, 200)
+
+    const triage = new DiscordTriageAdapter()
+    const refs = await triage.listMessages(routeRuntime)
+    assert.strictEqual(refs.length, 1)
+    const draftRes = triage.createDraft({ messageId: refs[0]?.id, text: "ack" })
+    assert.isNotNull(draftRes)
+    assert.strictEqual((await triage.sendDraft(routeRuntime, draftRes?.draftId ?? "")).sent, true)
+    const targetSrc = createDiscordTargetSource(routeRuntime)
+    assert.isAbove((await targetSrc.formatFacts()).length, 0)
+
+    assert.strictEqual(canPreemptDiscordAudioLane("music", "tts"), false)
+    assert.strictEqual(canPreemptDiscordAudioLane("tts", "music"), true)
+    const voiceRegistry = new DiscordVoiceTargetRegistry()
+    const played: string[] = []
+    voiceRegistry.register({ guildId: "g1", channelId: "v1", play: async (_pcm, opts) => { played.push(opts?.lane ?? "") }, stop: async () => undefined })
+    const sink = new DiscordVoiceTargetAudioSink(voiceRegistry, "g1", "v1")
+    const ttsHandle = await sink.play(new Uint8Array([0, 0, 1, 0]), { lane: "tts" })
+    assert.isNotNull(ttsHandle)
+    assert.isNull(await sink.play(new Uint8Array([0, 0]), { lane: "music" }))
+    await ttsHandle?.stop()
+    assert.deepStrictEqual(played, ["tts"])
+    assert.isAbove(discordPcmToPipelineFrame(new Int16Array([0, 16384, -16384, 0, 0, 0]), 2, 48_000).length, 0)
+
+    const dmReg = new DmChannelRegistry(2)
+    dmReg.record("c1", "u1")
+    dmReg.record("c2", "u2")
+    dmReg.record("c3", "u3")
+    assert.isUndefined(dmReg.get("c1"))
+    assert.strictEqual(probeDiscordCapturedPage("tab-1", { url: "https://discord.com/channels/@me", dmLinks: [{ href: "/channels/@me/223456789012345678", text: "Alice" }] }).state, "authenticated")
+    const scraper = await DiscordUserAccountScraperImpl.start(routeRuntime)
+    assert.strictEqual(scraper.partitionFor("ops"), "persist:discord-ops")
+    await scraper.stop()
+    await discordSvc.stop()
+  })
 })

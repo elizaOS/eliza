@@ -1,0 +1,374 @@
+// spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
+module recordHelpers {
+  import {
+    compareMemoryIds,
+    ElizaError,
+    normalizePairingPageOptions,
+    type Content,
+    type Log,
+    type Memory,
+    type MemoryMetadata,
+    type Metadata,
+    type PairingPageInfo,
+    type ParticipantUserState,
+    type PatchOp,
+    type Relationship,
+    type Task,
+    type UUID,
+  } from "@elizaos/core"
+  import type { IStorage } from "./types.vibe"
+
+  export interface StoredParticipant {
+    id: string
+    entityId: string
+    roomId: string
+    userState?: ParticipantUserState
+    metadata?: Record<string, unknown>
+  }
+
+  export interface StoredMemory {
+    id?: string
+    tableName?: string
+    entityId: string
+    agentId?: string
+    createdAt?: number
+    content: Content
+    embedding?: number[]
+    roomId: string
+    worldId?: string
+    unique?: boolean
+    similarity?: number
+    metadata?: MemoryMetadata
+  }
+
+  export interface StoredRelationship {
+    id: string
+    sourceEntityId: string
+    targetEntityId: string
+    agentId?: string
+    tags?: string[]
+    metadata?: Metadata
+    createdAt?: string
+  }
+
+  export interface StoredCacheEntry<T = unknown> {
+    value: T
+    expiresAt?: number
+  }
+
+  const PATCH_PATH_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*$/
+  const BLOCKED_PATCH_KEYS = new Set(["__proto__", "prototype", "constructor"])
+  const MAX_PATCH_PATH_LENGTH = 256
+  const MAX_PATCH_PATH_SEGMENTS = 16
+  const MAX_PATCH_ARRAY_INDEX = 100_000
+
+  function invalidPatchPath(context: Record<string, unknown>, cause?: unknown): ElizaError {
+    return new ElizaError("Component patch path is invalid", {
+      code: "COMPONENT_PATCH_PATH_INVALID",
+      context,
+      cause,
+      severity: "fatal",
+    })
+  }
+
+  function patchPathSegments(path: string): string[] {
+    if (typeof path !== "string" || path.length === 0 || path.length > MAX_PATCH_PATH_LENGTH) {
+      throw invalidPatchPath({ pathLength: typeof path === "string" ? path.length : null })
+    }
+    const parts = path.split(".")
+    if (
+      parts.length > MAX_PATCH_PATH_SEGMENTS ||
+      !PATCH_PATH_PATTERN.test(path) ||
+      parts.some((part) => BLOCKED_PATCH_KEYS.has(part) || (/^\d+$/.test(part) && Number(part) > MAX_PATCH_ARRAY_INDEX))
+    ) {
+      throw invalidPatchPath({ pathLength: path.length, segmentCount: parts.length })
+    }
+    return parts
+  }
+
+  function definePatchValue(target: Record<string, unknown>, key: string, value: unknown): void {
+    try {
+      Object.defineProperty(target, key, { configurable: true, enumerable: true, value, writable: true })
+    } catch (cause) {
+      throw invalidPatchPath({ key, reason: "write" }, cause)
+    }
+  }
+
+  function ownPatchValue(target: Record<string, unknown>, key: string): { found: boolean; value?: unknown } {
+    let descriptor: PropertyDescriptor | undefined
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(target, key)
+    } catch (cause) {
+      throw invalidPatchPath({ key, reason: "descriptor" }, cause)
+    }
+    if (!descriptor) return { found: false }
+    if (!("value" in descriptor)) throw invalidPatchPath({ key, reason: "accessor" })
+    return { found: true, value: descriptor.value }
+  }
+
+  function assertPatchContainer(value: unknown, key: string): asserts value is Record<string, unknown> {
+    if (typeof value !== "object" || value === null) throw invalidPatchPath({ key, reason: "container" })
+    try {
+      const prototype = Object.getPrototypeOf(value)
+      const safePrototype = Array.isArray(value) ? Array.prototype : Object.prototype
+      if (prototype !== safePrototype && prototype !== null) throw invalidPatchPath({ key, reason: "nested-prototype" })
+    } catch (cause) {
+      if (cause instanceof ElizaError) throw cause
+      throw invalidPatchPath({ key, reason: "prototype" }, cause)
+    }
+  }
+
+  export function clonePatchRoot(value: unknown): Record<string, unknown> {
+    if (value == null) return Object.create(null) as Record<string, unknown>
+    assertPatchContainer(value, "data")
+    if (Array.isArray(value)) throw invalidPatchPath({ key: "data", reason: "root-array" })
+    let descriptors: Record<string, PropertyDescriptor>
+    try {
+      descriptors = Object.getOwnPropertyDescriptors(value)
+    } catch (cause) {
+      throw invalidPatchPath({ key: "data", reason: "descriptors" }, cause)
+    }
+    const clone = Object.create(null) as Record<string, unknown>
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (BLOCKED_PATCH_KEYS.has(key) || !("value" in descriptor)) {
+        throw invalidPatchPath({ key, reason: "root-property" })
+      }
+      definePatchValue(clone, key, descriptor.value)
+    }
+    return clone
+  }
+
+  function appendPatchValue(target: unknown[], key: string, value: unknown): void {
+    const length = ownPatchValue(target as unknown as Record<string, unknown>, "length").value
+    if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0 || length > MAX_PATCH_ARRAY_INDEX) {
+      throw invalidPatchPath({ key, reason: "array-length" })
+    }
+    definePatchValue(target as unknown as Record<string, unknown>, String(length), value)
+  }
+
+  export function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
+    if (!op.path) return
+    const parts = patchPathSegments(op.path)
+    const last = parts.pop()
+    if (last === undefined) return
+    let parent: Record<string, unknown> = target
+    for (const segment of parts) {
+      if (Array.isArray(parent) && !/^\d+$/.test(segment)) throw invalidPatchPath({ key: segment, reason: "array-key" })
+      const next = ownPatchValue(parent, segment)
+      if (!next.found || next.value === null || typeof next.value !== "object") {
+        const created = Object.create(null) as Record<string, unknown>
+        definePatchValue(parent, segment, created)
+        parent = created
+      } else {
+        assertPatchContainer(next.value, segment)
+        parent = next.value
+      }
+    }
+    if (Array.isArray(parent) && !/^\d+$/.test(last)) throw invalidPatchPath({ key: last, reason: "array-key" })
+    const existing = ownPatchValue(parent, last)
+    if (op.op === "set") {
+      definePatchValue(parent, last, op.value)
+    } else if (op.op === "remove") {
+      if (existing.found) {
+        try {
+          delete parent[last]
+        } catch (cause) {
+          throw invalidPatchPath({ key: last, reason: "delete" }, cause)
+        }
+      }
+    } else if (op.op === "push") {
+      if (Array.isArray(existing.value)) {
+        assertPatchContainer(existing.value, last)
+        appendPatchValue(existing.value, last, op.value)
+      } else {
+        definePatchValue(parent, last, [op.value])
+      }
+    } else if (op.op === "increment") {
+      const delta = typeof op.value === "number" ? op.value : 1
+      definePatchValue(parent, last, typeof existing.value === "number" ? existing.value + delta : delta)
+    }
+  }
+
+  export function persistableMemory<T extends Partial<Memory>>(memory: T): T {
+    const stringKeyedCopy = <V extends object>(value: V): V => {
+      const copied = { ...value }
+      for (const symbol of Object.getOwnPropertySymbols(copied)) Reflect.deleteProperty(copied, symbol)
+      return copied
+    }
+    const stored = stringKeyedCopy(memory)
+    if (stored.content !== undefined) stored.content = stringKeyedCopy(stored.content)
+    return stored
+  }
+
+  export function toMemory(stored: StoredMemory): Memory {
+    return {
+      id: stored.id as UUID | undefined,
+      entityId: stored.entityId as UUID,
+      agentId: stored.agentId as UUID | undefined,
+      createdAt: stored.createdAt,
+      content: stored.content,
+      embedding: stored.embedding,
+      roomId: stored.roomId as UUID,
+      worldId: stored.worldId as UUID | undefined,
+      unique: stored.unique,
+      similarity: stored.similarity,
+      metadata: stored.metadata,
+    }
+  }
+
+  export function storedMemoryTableName(memory: StoredMemory): string | undefined {
+    return memory.tableName ?? memory.metadata?.type
+  }
+
+  export function isMessageContentSegmentOf(memory: StoredMemory, messageIds: ReadonlySet<string>): boolean {
+    const metadata = memory.metadata as Record<string, unknown> | undefined
+    return (
+      storedMemoryTableName(memory) === "message_content_segments" &&
+      metadata?.type === "message-content-segment" &&
+      typeof metadata.messageId === "string" &&
+      messageIds.has(metadata.messageId)
+    )
+  }
+
+  export function withStorageTail<T>(
+    tails: WeakMap<IStorage, Promise<void>>,
+    storage: IStorage,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const run = (tails.get(storage) ?? Promise.resolve()).then(operation, operation)
+    tails.set(
+      storage,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    )
+    return run
+  }
+
+  export function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): Relationship {
+    return {
+      id: r.id as UUID,
+      sourceEntityId: r.sourceEntityId as UUID,
+      targetEntityId: r.targetEntityId as UUID,
+      agentId: (r.agentId as UUID) ?? fallbackAgentId,
+      tags: r.tags ?? [],
+      metadata: r.metadata ?? {},
+      createdAt: r.createdAt,
+    }
+  }
+
+  export function levenshtein(a: string, b: string): number {
+    if (a === b) return 0
+    if (a.length === 0) return b.length
+    if (b.length === 0) return a.length
+    const prev: number[] = Array.from({ length: b.length + 1 }, (_, j) => j)
+    const curr: number[] = new Array<number>(b.length + 1).fill(0)
+    for (let i = 1; i <= a.length; i += 1) {
+      curr[0] = i
+      for (let j = 1; j <= b.length; j += 1) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1
+        curr[j] = Math.min((curr[j - 1] ?? 0) + 1, (prev[j] ?? 0) + 1, (prev[j - 1] ?? 0) + cost)
+      }
+      for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j] ?? 0
+    }
+    return curr[b.length] ?? 0
+  }
+
+  export function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): number {
+    const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0
+    const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0
+    if (ta !== tb) return tb - ta
+    return compareMemoryIds(typeof b.id === "string" ? b.id : "", typeof a.id === "string" ? a.id : "")
+  }
+
+  export function compareLogsNewestFirst(a: Pick<Log, "id" | "createdAt">, b: Pick<Log, "id" | "createdAt">): number {
+    const bTime = Number.isFinite(new Date(b.createdAt).getTime()) ? new Date(b.createdAt).getTime() : 0
+    const aTime = Number.isFinite(new Date(a.createdAt).getTime()) ? new Date(a.createdAt).getTime() : 0
+    if (bTime !== aTime) return bTime - aTime
+    return compareMemoryIds(String(b.id ?? ""), String(a.id ?? ""))
+  }
+
+  export function compareRelationshipsForList(left: StoredRelationship, right: StoredRelationship): number {
+    const leftTime = Date.parse(left.createdAt ?? "")
+    const rightTime = Date.parse(right.createdAt ?? "")
+    const delta = (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0)
+    if (delta !== 0) return delta
+    return compareMemoryIds(left.id, right.id)
+  }
+
+  export function storedTaskCreatedAt(task: Task): number {
+    if (typeof task.createdAt === "number" && Number.isFinite(task.createdAt)) return task.createdAt
+    if (typeof task.createdAt === "bigint") {
+      const asNumber = Number(task.createdAt)
+      if (Number.isSafeInteger(asNumber)) return asNumber
+    }
+    return Date.now()
+  }
+
+  export function paginatePairingRows<T extends { id: UUID; createdAt: string | Date }>(
+    rows: T[],
+    query: { limit?: number; offset?: number; order?: "oldest" | "newest" },
+  ): { items: T[]; pageInfo?: PairingPageInfo } {
+    const isPaged = query.limit !== undefined || query.offset !== undefined
+    if (!isPaged && query.order === undefined) return { items: rows }
+    const direction = query.order === "newest" ? -1 : 1
+    rows.sort((a, b) => {
+      const aTime = Number.isFinite(new Date(a.createdAt).getTime()) ? new Date(a.createdAt).getTime() : 0
+      const bTime = Number.isFinite(new Date(b.createdAt).getTime()) ? new Date(b.createdAt).getTime() : 0
+      if (aTime !== bTime) return (aTime - bTime) * direction
+      const order = compareMemoryIds(String(a.id), String(b.id))
+      return direction === 1 ? order : -order
+    })
+    if (!isPaged) return { items: rows }
+    const { limit, offset } = normalizePairingPageOptions(query)
+    const page = rows.slice(offset, offset + limit + 1)
+    const hasMore = page.length > limit
+    return {
+      items: page.slice(0, limit),
+      pageInfo: { limit, offset, hasMore, nextOffset: hasMore ? offset + limit : null },
+    }
+  }
+}
+
+import {
+  applyPatchOp,
+  clonePatchRoot,
+  compareLogsNewestFirst,
+  compareRelationshipsForList,
+  compareStoredMemoriesNewestFirst,
+  isMessageContentSegmentOf,
+  levenshtein,
+  paginatePairingRows,
+  persistableMemory,
+  relationshipFromStored,
+  storedMemoryTableName,
+  storedTaskCreatedAt,
+  toMemory,
+  withStorageTail,
+  type StoredCacheEntry,
+  type StoredMemory,
+  type StoredParticipant,
+  type StoredRelationship,
+} from recordHelpers
+
+export {
+  applyPatchOp,
+  clonePatchRoot,
+  compareLogsNewestFirst,
+  compareRelationshipsForList,
+  compareStoredMemoriesNewestFirst,
+  isMessageContentSegmentOf,
+  levenshtein,
+  paginatePairingRows,
+  persistableMemory,
+  relationshipFromStored,
+  storedMemoryTableName,
+  storedTaskCreatedAt,
+  toMemory,
+  withStorageTail,
+  type StoredCacheEntry,
+  type StoredMemory,
+  type StoredParticipant,
+  type StoredRelationship,
+}

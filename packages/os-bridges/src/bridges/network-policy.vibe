@@ -2,7 +2,7 @@
 import type { HostFacts, PluginPresence } from "../../gen/os__android__bridge.ts"
 import { meteredHint, type CostRead } from "../../gen/os__android__networkPolicy.effect.vibe"
 import { nativeReply } from "./bridge.vibe"
-import type { MeteredHint, NetworkPolicyPlugin } from "./definitions/network-policy.ts"
+import type { MeteredHint, NetworkPolicyPlugin, PathHints } from "./definitions/network-policy.ts"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
@@ -12,15 +12,31 @@ module capacitor {
   export function networkPolicyPlugin(name = "ElizaNetworkPolicy"): NetworkPolicyPlugin {
     return registerPlugin<NetworkPolicyPlugin>(name)
   }
+
+  /** @throws {never} */
+  export function readNavigatorSaveData(): boolean | null {
+    try {
+      const nav = (globalThis as { readonly navigator?: { readonly connection?: { readonly saveData?: unknown } } }).navigator
+      const saveData = nav?.connection?.saveData
+      return typeof saveData === "boolean" ? saveData : null
+    } catch {
+      return null
+    }
+  }
+
+  /** @throws {never} */
+  export function assignNetworkPolicyGlobal(plugin: NetworkPolicyPlugin): void {
+    (globalThis as { ElizaNetworkPolicy?: NetworkPolicyPlugin }).ElizaNetworkPolicy = plugin
+  }
 }
-import { networkPolicyPlugin } from capacitor
+import { assignNetworkPolicyGlobal, networkPolicyPlugin, readNavigatorSaveData } from capacitor
 export { networkPolicyPlugin }
 
 const ANSWERED: HostFacts = { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }
-
 const NOT_REGISTERED = new Set(["UNIMPLEMENTED", "DISABLED"])
 
 schema Metered { metered: boolean | null; source: "android-os" }
+schema PathHint { isExpensive: boolean | null; isConstrained: boolean | null; source: "nw-path-monitor" }
 
 effect function hint(name: string, plugin: NetworkPolicyPlugin) {
   const read = try result(nativeReply(name, "getMeteredHint", Metered, () => plugin.getMeteredHint()))
@@ -37,8 +53,38 @@ effect function hint(name: string, plugin: NetworkPolicyPlugin) {
   return answer
 }
 
-export function networkPolicyClient(plugin: NetworkPolicyPlugin = networkPolicyPlugin(), name = "ElizaNetworkPolicy"): NetworkPolicyPlugin {
+effect function pathHints(name: string, plugin: NetworkPolicyPlugin): PathHints!! {
+  if (plugin.getPathHints === undefined) {
+    return { isExpensive: null, isConstrained: null, source: "nw-path-monitor" }
+  }
+  const read = try result(nativeReply(name, "getPathHints", PathHint, () => plugin.getPathHints!()))
+  if (Result.isSuccess(read)) return read.success
+  return { isExpensive: null, isConstrained: null, source: "nw-path-monitor" }
+}
+
+export class NetworkPolicyWeb implements NetworkPolicyPlugin {
+  async getMeteredHint(): Promise<MeteredHint> {
+    const saveData = readNavigatorSaveData()
+    return { metered: saveData === true ? true : null, source: "android-os" }
+  }
+
+  async getPathHints(): Promise<PathHints> {
+    const saveData = readNavigatorSaveData()
+    return {
+      isExpensive: saveData === true ? true : null,
+      isConstrained: saveData === true ? true : null,
+      source: "nw-path-monitor",
+    }
+  }
+}
+
+export function networkPolicyClient(plugin: NetworkPolicyPlugin = networkPolicyPlugin(), name = "ElizaNetworkPolicy"): Required<NetworkPolicyPlugin> {
   return {
     getMeteredHint: () => runPromise(hint(name, plugin)),
+    getPathHints: () => runPromise(pathHints(name, plugin)),
   }
+}
+
+export function installNetworkPolicyGlobal(plugin: NetworkPolicyPlugin = networkPolicyClient()): void {
+  assignNetworkPolicyGlobal(plugin)
 }

@@ -1,0 +1,1018 @@
+// spec/github/index.md, "Pull request listing requires an explicit repository or author, and me uses the selected account's login"; spec/github/index.md, "Each GitHub mutation requires the fields appropriate to its operation"; spec/github/index.md, "Only the owner may approve the exact preview while the captured account is current"; spec/github/index.md, "A GitHub completion applies only to the dispatched request and uses the provider's receipt"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import {
+  logger,
+  requireConfirmation,
+  stableStringify,
+  toWellFormedUnicode,
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core"
+import {
+  Machine,
+  effectiveGitHubAuthor,
+  githubMissingNames,
+  initial,
+  machine,
+  machineOver,
+  validGitHubRead,
+  validGitHubRequest,
+  type Event as GitHubEvent,
+  type GitHubCaller,
+  type GitHubEffect,
+  type GitHubMutation,
+  type GitHubOperation,
+  type GitHubRequest,
+} from "../gen/github.effect.vibe"
+import { resolveGitHubAccountSelection, type GitHubAccountSelection } from "./accounts.vibe"
+import { errorMessage, formatRateLimitMessage, inspectRateLimit, wrapSenderMachineHandle, type SenderMachineHandle } from "./rate-limit.vibe"
+import type { GitHubService } from "./service.vibe"
+import {
+  GITHUB_SERVICE_TYPE,
+  GitHubActions,
+  type GitHubActionResult,
+  type GitHubIdentity,
+  type GitHubIssueOp,
+  type GitHubNotificationSummary,
+  type GitHubOctokitClient,
+  type GitHubPrOp,
+} from "./types.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import { ElizaError } from "@elizaos/core"
+  export function gitHubCredentialFingerprint(value: string): string {
+    return createHash("sha256").update(value).digest("hex")
+  }
+  export function throwPrListIncomplete(message: string): never {
+    throw new ElizaError(message, { code: "GITHUB_PR_LIST_INCOMPLETE" })
+  }
+}
+import { gitHubCredentialFingerprint, throwPrListIncomplete } from node
+
+export error GitHubUnavailable { stage: string; status: number }
+
+export interface TriagedNotification {
+  readonly id: string
+  readonly reason: string
+  readonly repo: string
+  readonly title: string
+  readonly subjectType: string
+  readonly url: string | null
+  readonly updatedAt: string
+  readonly score: number
+}
+
+export interface PRSummary {
+  readonly repo: string
+  readonly number: number
+  readonly title: string
+  readonly author: string | null
+  readonly state: string
+  readonly url: string
+}
+
+export type GitHubIssueOpResult =
+  | { readonly op: "create"; readonly number: number; readonly url: string; readonly notApplied?: { readonly labels: string[]; readonly assignees: string[] } }
+  | { readonly op: "assign"; readonly number: number; readonly assignees: string[] }
+  | { readonly op: "close"; readonly number: number; readonly title: string }
+  | { readonly op: "reopen"; readonly number: number; readonly title: string }
+  | { readonly op: "comment"; readonly number: number; readonly commentId: number; readonly url: string }
+  | { readonly op: "label"; readonly number: number; readonly labels: string[] }
+  | { readonly requiresConfirmation: true; readonly preview: string; readonly awaitingUserInput: true }
+  | { readonly cancelled: true }
+
+export type GitHubPrOpResult =
+  | { readonly op: "list"; readonly prs: PRSummary[] }
+  | { readonly op: "review"; readonly id: number }
+  | { readonly requiresConfirmation: true; readonly preview: string; readonly awaitingUserInput: true }
+  | { readonly cancelled: true }
+
+const PROMPT_LIST_LIMIT = 25
+const NOTIFICATION_PAGE_SIZE = 50
+const GITHUB_OWNER_PATTERN = /^(?=.{1,39}$)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/
+const GITHUB_REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/
+const RAW_DOT_SEGMENT_PATTERN = /^(?:\.|%2e){1,2}$/i
+
+const REASON_SCORES: Readonly<Record<string, number>> = {
+  security_advisory: 100,
+  review_requested: 80,
+  team_mention: 70,
+  author: 60,
+  mention: 55,
+  assign: 50,
+  invitation: 40,
+  comment: 30,
+  ci_activity: 25,
+  state_change: 20,
+  manual: 15,
+  subscribed: 10,
+}
+
+const SUBJECT_TYPE_SCORES: Readonly<Record<string, number>> = {
+  PullRequest: 20,
+  Issue: 15,
+  Release: 10,
+  Discussion: 8,
+  Commit: 5,
+}
+
+const GITHUB_ACTIONS = [
+  "pr_list",
+  "pr_review",
+  "issue_create",
+  "issue_assign",
+  "issue_close",
+  "issue_reopen",
+  "issue_comment",
+  "issue_label",
+  "notification_triage",
+] as const
+
+type GitHubActionName = (typeof GITHUB_ACTIONS)[number]
+type PRState = "open" | "closed" | "all"
+type ReviewAction = "approve" | "request-changes" | "comment"
+
+const SUPPORTED_ISSUE_OPS: ReadonlySet<GitHubIssueOp> = new Set(["create", "assign", "close", "reopen", "comment", "label"])
+const SUPPORTED_PR_OPS: ReadonlySet<GitHubPrOp> = new Set(["list", "review"])
+
+const ISSUE_OP_BY_ACTION: Readonly<Partial<Record<GitHubActionName, GitHubIssueOp>>> = {
+  issue_create: "create",
+  issue_assign: "assign",
+  issue_close: "close",
+  issue_reopen: "reopen",
+  issue_comment: "comment",
+  issue_label: "label",
+}
+
+const EVENT_BY_REVIEW_ACTION: Readonly<Record<ReviewAction, "APPROVE" | "REQUEST_CHANGES" | "COMMENT">> = {
+  approve: "APPROVE",
+  "request-changes": "REQUEST_CHANGES",
+  comment: "COMMENT",
+}
+
+function readParametersRecord(options: unknown): Record<string, unknown> {
+  if (!options || typeof options !== "object") return {}
+  const record = options as Record<string, unknown>
+  const params = record.parameters
+  return params && typeof params === "object" && !Array.isArray(params)
+    ? { ...(params as Record<string, unknown>) }
+    : { ...record }
+}
+
+function requireString(options: Record<string, unknown> | undefined, key: string): string | null {
+  const v = options?.[key]
+  return typeof v === "string" && v.length > 0 ? v : null
+}
+
+function requireNumber(options: Record<string, unknown> | undefined, key: string): number | null {
+  const v = options?.[key]
+  if (typeof v === "number" && Number.isInteger(v)) return v
+  if (typeof v === "string" && /^\d+$/.test(v)) return Number(v)
+  return null
+}
+
+function requireStringArray(options: Record<string, unknown> | undefined, key: string): string[] | null {
+  const v = options?.[key]
+  if (!Array.isArray(v)) return null
+  const result: string[] = []
+  for (const item of v) {
+    if (typeof item !== "string" || item.length === 0) return null
+    result.push(item)
+  }
+  return result
+}
+
+function optionalStringArray(options: Record<string, unknown> | undefined, key: string): string[] | undefined {
+  return options?.[key] === undefined ? undefined : (requireStringArray(options, key) ?? undefined)
+}
+
+function hasRawControlOrBackslash(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.charCodeAt(0)
+    if (ch === "\\" || code <= 0x1f || code === 0x7f) return true
+  }
+  return false
+}
+
+export function splitRepo(repo: string): { readonly owner: string; readonly name: string } | null {
+  if (hasRawControlOrBackslash(repo)) return null
+  const cleaned = repo.trim()
+  if (!cleaned) return null
+  const isHttpUrl = /^https?:\/\//i.test(cleaned)
+  const isBareGitHubUrl = /^github\.com\//i.test(cleaned)
+  const hasScheme = /^[A-Za-z][A-Za-z\d+.-]*:/.test(cleaned)
+  let repoPath = cleaned
+  if (isHttpUrl || isBareGitHubUrl) {
+    const rawUrl = isBareGitHubUrl ? `https://${cleaned}` : cleaned
+    const rawParts = /^https?:\/\/([^/?#]+)(\/[^?#]*)?(?:[?#][\s\S]*)?$/i.exec(rawUrl)
+    const authority = rawParts?.[1]
+    const rawPath = rawParts?.[2] ?? ""
+    if (!authority || authority.includes("@") || rawPath.split("/").some((segment) => RAW_DOT_SEGMENT_PATTERN.test(segment))) return null
+    const parsed = URL.parse(rawUrl)
+    if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.hostname !== "github.com" || parsed.username !== "" || parsed.password !== "" || parsed.port !== "") return null
+    repoPath = parsed.pathname.endsWith("/") ? parsed.pathname.slice(0, -1) : parsed.pathname
+    if (!repoPath.startsWith("/")) return null
+    repoPath = repoPath.slice(1)
+  } else if (hasScheme) {
+    return null
+  }
+  const parts = repoPath.split("/")
+  if (parts.length !== 2) return null
+  const owner = parts[0]
+  let name = parts[1]
+  if (name.endsWith(".git")) name = name.slice(0, -4)
+  if (!GITHUB_OWNER_PATTERN.test(owner) || !GITHUB_REPO_PATTERN.test(name) || name === "." || name === "..") return null
+  return { owner, name }
+}
+
+function describeSelection(selection: GitHubAccountSelection): string {
+  return selection.accountId ? `${selection.role} (${selection.accountId})` : selection.role
+}
+
+function needsClientError(selection: GitHubAccountSelection): string {
+  const accountSuffix = selection.accountId ? ` accountId "${selection.accountId}"` : ` ${selection.role} account`
+  return `GitHub${accountSuffix} token not configured (connect GitHub in Settings → Coding Agents, or set GITHUB_ACCOUNTS or ${selection.role === "user" ? "GITHUB_USER_PAT" : "GITHUB_AGENT_PAT"})`
+}
+
+interface ResolvedClient {
+  readonly client: GitHubOctokitClient
+  readonly identity: GitHubIdentity
+  readonly accountId?: string
+}
+
+async function buildResolvedClient(
+  runtime: IAgentRuntime,
+  selection: GitHubIdentity | GitHubAccountSelection,
+  opts: { readonly refresh?: "always" | "on-miss" } = {},
+): Promise<ResolvedClient | { readonly error: string }> {
+  const service = runtime.getService<GitHubService>(GITHUB_SERVICE_TYPE)
+  if (!service) return { error: "GitHub service not available" }
+  const resolvedSelection = typeof selection === "string" ? { role: selection } : selection
+  if (opts.refresh !== "on-miss" || !service.getOctokit(resolvedSelection)) {
+    await service.refreshAccounts?.()
+  }
+  const client = service.getOctokit(resolvedSelection)
+  if (!client) return { error: needsClientError(resolvedSelection) }
+  return { client, identity: resolvedSelection.role, accountId: resolvedSelection.accountId }
+}
+
+async function confirmPreviewedRequest(args: {
+  readonly runtime: IAgentRuntime
+  readonly message: Memory
+  readonly actionName: string
+  readonly pendingKey: string
+  readonly prompt: string
+  readonly callback: HandlerCallback | undefined
+  readonly request: unknown
+}): Promise<"pending" | "confirmed" | "cancelled"> {
+  const previewed = stableStringify(args.request)
+  const ask = () =>
+    requireConfirmation({
+      runtime: args.runtime,
+      message: args.message,
+      actionName: args.actionName,
+      pendingKey: args.pendingKey,
+      prompt: args.prompt,
+      callback: args.callback,
+      metadata: { previewed },
+    })
+  const decision = await ask()
+  if (decision.status !== "confirmed" || decision.metadata?.previewed === previewed) return decision.status
+  return (await ask()).status
+}
+
+function describeIssueOp(op: GitHubIssueOp): string {
+  return op === "comment" ? "comment on" : op
+}
+
+export function buildPreview(
+  op: GitHubIssueOp,
+  repo: string,
+  identity: string,
+  options: Record<string, unknown> | undefined,
+): string {
+  const number = requireNumber(options, "number")
+  const title = requireString(options, "title")
+  const body = requireString(options, "body")
+  const assignees = optionalStringArray(options, "assignees")
+  const labels = optionalStringArray(options, "labels")
+  const head = `About to ${describeIssueOp(op)} ${repo}`
+  const target = number ? `#${number}` : ""
+  const detail =
+    op === "create"
+      ? ` issue: "${title ?? "(no title)"}"${body ? ` body: "${toWellFormedUnicode(body)}"` : ""}${labels ? ` [labels: ${labels.join(", ")}]` : ""}${assignees ? ` [assignees: ${assignees.join(", ")}]` : ""}`
+      : op === "assign"
+        ? ` with [${assignees?.join(", ") ?? ""}]`
+        : op === "label"
+          ? ` with [${labels?.join(", ") ?? ""}]`
+          : op === "comment"
+            ? (body ? ` body: "${toWellFormedUnicode(body)}"` : "")
+            : ""
+  return `${head}${target}${detail} as ${identity}.`
+}
+
+export function buildReviewPreview(
+  action: ReviewAction,
+  repo: string,
+  number: number,
+  body: string | null | undefined,
+  identity: string,
+): string {
+  return `About to ${action.replace("-", " ")} PR ${repo}#${number}${body ? ` with body: "${toWellFormedUnicode(body)}"` : ""} as ${identity}.`
+}
+
+function missingNames(
+  requested: readonly string[] | undefined,
+  applied: readonly (string | { readonly name?: string | null; readonly login?: string | null } | null)[],
+): string[] {
+  const present = applied
+    .map((item) => (typeof item === "string" ? item : (item?.login ?? item?.name)))
+    .filter((name): name is string => typeof name === "string")
+    .map((name) => name.toLowerCase())
+  const requestedList = [...(requested ?? [])]
+  const missingLower = new Set(githubMissingNames(requestedList.map((n) => n.toLowerCase()), present))
+  return requestedList.filter((name) => missingLower.has(name.toLowerCase()))
+}
+
+type IssueRequest =
+  | { readonly op: "create"; readonly title: string; readonly body: string | null; readonly labels: string[] | undefined; readonly assignees: string[] | undefined }
+  | { readonly op: "assign"; readonly number: number; readonly assignees: string[] }
+  | { readonly op: "close" | "reopen"; readonly number: number }
+  | { readonly op: "comment"; readonly number: number; readonly body: string }
+  | { readonly op: "label"; readonly number: number; readonly labels: string[] }
+
+function parseIssueRequest(op: GitHubIssueOp, options: Record<string, unknown> | undefined): IssueRequest | { readonly error: string } {
+  const number = requireNumber(options, "number")
+  switch (op) {
+    case "create": {
+      const title = requireString(options, "title")
+      if (!title) return { error: "GITHUB_ISSUE_OP create requires title" }
+      return { op, title, body: requireString(options, "body"), labels: optionalStringArray(options, "labels"), assignees: optionalStringArray(options, "assignees") }
+    }
+    case "assign": {
+      const assignees = requireStringArray(options, "assignees")
+      if (!number || !assignees || assignees.length === 0) return { error: "GITHUB_ISSUE_OP assign requires number (integer) and assignees (non-empty string[])" }
+      return { op, number, assignees }
+    }
+    case "close":
+    case "reopen":
+      return number ? { op, number } : { error: `GITHUB_ISSUE_OP ${op} requires number (integer)` }
+    case "comment": {
+      const body = requireString(options, "body")
+      return number && body ? { op, number, body } : { error: "GITHUB_ISSUE_OP comment requires number (integer) and body" }
+    }
+    case "label": {
+      const labels = requireStringArray(options, "labels")
+      return number && labels && labels.length > 0 ? { op, number, labels } : { error: "GITHUB_ISSUE_OP label requires number (integer) and labels (non-empty string[])" }
+    }
+  }
+}
+
+async function runIssueRequest(
+  resolved: ResolvedClient,
+  parts: { readonly owner: string; readonly name: string },
+  repo: string,
+  request: IssueRequest,
+  callback: HandlerCallback | undefined,
+): Promise<GitHubActionResult<GitHubIssueOpResult>> {
+  switch (request.op) {
+    case "create": {
+      const resp = await resolved.client.issues.create({
+        owner: parts.owner,
+        repo: parts.name,
+        title: request.title,
+        body: request.body ?? undefined,
+        labels: request.labels,
+        assignees: request.assignees,
+      })
+      const labels = missingNames(request.labels, resp.data.labels ?? [])
+      const assignees = missingNames(request.assignees, resp.data.assignees ?? [])
+      const notApplied = labels.length > 0 || assignees.length > 0 ? { labels, assignees } : undefined
+      const skipped = notApplied
+        ? ` GitHub did not apply ${[labels.length > 0 ? `labels [${labels.join(", ")}]` : "", assignees.length > 0 ? `assignees [${assignees.join(", ")}]` : ""].filter(Boolean).join(" or ")}; this account may lack push access.`
+        : ""
+      const text = `Created issue ${repo}#${resp.data.number}: ${resp.data.html_url}${skipped}`
+      await callback?.({ text })
+      return { success: true, text, data: { op: "create", number: resp.data.number, url: resp.data.html_url, ...(notApplied ? { notApplied } : {}) } }
+    }
+    case "assign": {
+      const resp = await resolved.client.issues.addAssignees({ owner: parts.owner, repo: parts.name, issue_number: request.number, assignees: request.assignees })
+      const actual = (resp.data.assignees ?? []).map((a) => a?.login).filter((x): x is string => typeof x === "string")
+      const notAssigned = missingNames(request.assignees, actual)
+      if (notAssigned.length > 0) {
+        const error = `GitHub did not assign [${notAssigned.join(", ")}] to ${repo}#${request.number}; this account may lack push access, or they cannot be assigned. Current assignees: [${actual.join(", ")}]`
+        await callback?.({ text: error })
+        return { success: false, error, text: error }
+      }
+      const text = `Assigned [${actual.join(", ")}] to ${repo}#${request.number}`
+      await callback?.({ text })
+      return { success: true, text, data: { op: "assign", number: request.number, assignees: actual } }
+    }
+    case "close":
+    case "reopen": {
+      const resp = await resolved.client.issues.update({ owner: parts.owner, repo: parts.name, issue_number: request.number, state: request.op === "close" ? "closed" : "open" })
+      const text = `${request.op === "close" ? "Closed" : "Reopened"} ${repo}#${request.number}: ${resp.data.title}`
+      await callback?.({ text })
+      return { success: true, text, data: { op: request.op, number: request.number, title: resp.data.title } }
+    }
+    case "comment": {
+      const resp = await resolved.client.issues.createComment({ owner: parts.owner, repo: parts.name, issue_number: request.number, body: request.body })
+      const text = `Commented on ${repo}#${request.number}: ${resp.data.html_url}`
+      await callback?.({ text })
+      return { success: true, text, data: { op: "comment", number: request.number, commentId: resp.data.id, url: resp.data.html_url } }
+    }
+    case "label": {
+      const resp = await resolved.client.issues.addLabels({ owner: parts.owner, repo: parts.name, issue_number: request.number, labels: request.labels })
+      const applied = (resp.data ?? []).map((l) => (typeof l === "string" ? l : (l?.name ?? null))).filter((x): x is string => typeof x === "string")
+      const text = `Applied labels [${applied.join(", ")}] to ${repo}#${request.number}`
+      await callback?.({ text })
+      return { success: true, text, data: { op: "label", number: request.number, labels: applied } }
+    }
+  }
+}
+
+export function scoreNotification(params: {
+  readonly reason: string
+  readonly subjectType: string
+  readonly repoPushedAtMs: number | null
+  readonly nowMs: number
+}): number {
+  const base = REASON_SCORES[params.reason] ?? 10
+  const subject = SUBJECT_TYPE_SCORES[params.subjectType] ?? 0
+  let freshness = 0
+  if (params.repoPushedAtMs !== null) {
+    const ageHours = (params.nowMs - params.repoPushedAtMs) / (1000 * 60 * 60)
+    if (ageHours < 1) freshness = 20
+    else if (ageHours < 6) freshness = 15
+    else if (ageHours < 24) freshness = 10
+    else if (ageHours < 24 * 7) freshness = 5
+  }
+  return base + subject + freshness
+}
+
+export function compareTriagedNotifications(a: TriagedNotification, b: TriagedNotification): number {
+  const aScore = typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0
+  const bScore = typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0
+  return bScore - aScore || a.id.localeCompare(b.id)
+}
+
+export async function fetchAllUnreadNotifications(
+  activity: GitHubOctokitClient["activity"],
+): Promise<{ readonly notifications: GitHubNotificationSummary[]; readonly totalUnreadIsLowerBound: boolean }> {
+  const notifications: GitHubNotificationSummary[] = []
+  const seenIds = new Set<string>()
+  for (let page = 1; ; page += 1) {
+    const response = await activity.listNotificationsForAuthenticatedUser({ all: false, per_page: NOTIFICATION_PAGE_SIZE, page })
+    for (const notification of response.data) {
+      if (seenIds.has(notification.id)) continue
+      seenIds.add(notification.id)
+      notifications.push(notification)
+    }
+    if (response.data.length < NOTIFICATION_PAGE_SIZE) return { notifications, totalUnreadIsLowerBound: false }
+  }
+}
+
+export function formatTriageSummary(triagedCount: number, totalUnread: number, totalUnreadIsLowerBound: boolean): string {
+  return totalUnreadIsLowerBound
+    ? `Triaged ${triagedCount} of at least ${totalUnread} unread notification(s)`
+    : `Triaged ${triagedCount} unread notification(s)`
+}
+
+function notificationSubjectUrl(notification: GitHubNotificationSummary): string | null {
+  const apiUrl = notification.subject?.url
+  if (typeof apiUrl !== "string") return null
+  const subjectType = notification.subject?.type
+  if (subjectType !== "Issue" && subjectType !== "PullRequest") return apiUrl
+  const repository = notification.repository?.full_name
+  if (typeof repository !== "string") return apiUrl
+  const parsed = URL.parse(apiUrl)
+  if (!parsed || parsed.origin !== "https://api.github.com") return apiUrl
+  const match = /^\/repos\/([^/]+)\/([^/]+)\/(?:issues|pulls)\/(\d+)(?:\/|$)/.exec(parsed.pathname)
+  if (!match || `${match[1]}/${match[2]}`.toLowerCase() !== repository.toLowerCase()) return apiUrl
+  return `https://github.com/${match[1]}/${match[2]}/${subjectType === "PullRequest" ? "pull" : "issues"}/${match[3]}`
+}
+
+function summarizeGitHubResult(result: ActionResult | undefined): string {
+  if (!result) return "GitHub operation completed."
+  if (result.text) return result.text.length > 240 ? `${result.text.slice(0, 237)}...` : result.text
+  if (!result.success) return typeof result.error === "string" ? result.error : "GitHub operation failed."
+  return "GitHub operation completed."
+}
+
+async function failWithCallback(callback: HandlerCallback | undefined, err: string): Promise<ActionResult> {
+  await callback?.({ text: err })
+  return { success: false, error: err, text: err }
+}
+
+const GITHUB_ACTION_COMMON: Pick<Action, "contexts" | "contextGate" | "roleGate" | "toolSchemaStrict" | "cacheStable" | "summarize"> = {
+  contexts: ["code", "tasks", "connectors", "automation"],
+  contextGate: { anyOf: ["code", "tasks", "connectors", "automation"] },
+  roleGate: { minRole: "USER" },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  summarize: (result: ActionResult | undefined) => summarizeGitHubResult(result),
+}
+
+export const issueOpAction: Action = {
+  ...GITHUB_ACTION_COMMON,
+  name: GitHubActions.GITHUB_ISSUE_OP,
+  similes: ["CREATE_ISSUE", "OPEN_ISSUE", "FILE_ISSUE", "GITHUB_CREATE_ISSUE", "ASSIGN_ISSUE", "CLOSE_ISSUE", "REOPEN_ISSUE", "COMMENT_ISSUE", "LABEL_ISSUE", "MANAGE_ISSUES"],
+  description: "Single router for GitHub issue ops: create, assign, close, reopen, comment, label. Each op asks the user to reply yes before it runs.",
+  descriptionCompressed: "GitHub issue ops: create|assign|close|reopen|comment|label (confirm)",
+  parameters: [
+    { name: "accountId", description: "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.", required: false, schema: { type: "string" } },
+    { name: "as", description: "Identity to use: agent or user.", required: false, schema: { type: "string", enum: ["agent", "user"], default: "agent" } },
+    { name: "assignees", description: "GitHub usernames to assign.", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "body", description: "Issue body or comment body.", required: false, schema: { type: "string" } },
+    { name: "labels", description: "Labels to apply on create or label.", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "number", description: "Issue number for existing-issue operations.", required: false, schema: { type: "number" } },
+    { name: "repo", description: "Repository in owner/name form.", required: true, schema: { type: "string" } },
+    { name: "subaction", description: "Issue operation: create, assign, close, reopen, comment, or label.", required: true, schema: { type: "string", enum: [...SUPPORTED_ISSUE_OPS] } },
+    { name: "title", description: "Issue title for create.", required: false, schema: { type: "string" } },
+  ],
+  validate: async (runtime) => !("error" in (await buildResolvedClient(runtime, "agent", { refresh: "on-miss" }))),
+  handler: async (runtime, message, _state, options, callback): Promise<ActionResult> => {
+    const params = readParametersRecord(options)
+    const rawOp = params.op ?? params.subaction
+    const op = typeof rawOp === "string" && SUPPORTED_ISSUE_OPS.has(rawOp.trim().toLowerCase() as GitHubIssueOp) ? (rawOp.trim().toLowerCase() as GitHubIssueOp) : null
+    if (!op) return failWithCallback(callback, "GITHUB_ISSUE_OP requires op (create|assign|close|reopen|comment|label)")
+    const selection = resolveGitHubAccountSelection(params, "agent")
+    const repo = requireString(params, "repo")
+    if (!repo) return failWithCallback(callback, "GITHUB_ISSUE_OP requires repo (owner/name)")
+    const parts = splitRepo(repo)
+    if (!parts) return failWithCallback(callback, `Invalid repo "${repo}" — expected "owner/name"`)
+    const request = parseIssueRequest(op, params)
+    if ("error" in request) return failWithCallback(callback, request.error)
+    const resolved = await buildResolvedClient(runtime, selection)
+    if ("error" in resolved) return failWithCallback(callback, resolved.error)
+    const preview = buildPreview(op, repo, describeSelection(selection), params)
+    const prompt = `${preview} Reply yes to confirm or no to cancel.`
+    const decision = await confirmPreviewedRequest({
+      runtime,
+      message,
+      actionName: "GITHUB_ISSUE_OP",
+      pendingKey: `${op}:${repo}`,
+      prompt,
+      callback,
+      request: { repo, request, selection },
+    })
+    if (decision === "pending") {
+      return { success: false, text: prompt, data: { requiresConfirmation: true, preview, awaitingUserInput: true } }
+    }
+    if (decision === "cancelled") return failWithCallback(callback, "GitHub issue operation cancelled.")
+    try {
+      return await runIssueRequest(resolved, parts, repo, request, callback)
+    } catch (err) {
+      const rl = inspectRateLimit(err)
+      const msg = rl.isRateLimited ? formatRateLimitMessage(rl) : `GITHUB_ISSUE_OP ${op} failed: ${errorMessage(err)}`
+      logger.warn({ message: msg }, "[GitHub:GITHUB_ISSUE_OP]")
+      return failWithCallback(callback, msg)
+    }
+  },
+}
+
+async function runPrList(
+  runtime: IAgentRuntime,
+  options: Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const selection = resolveGitHubAccountSelection(options, "agent")
+  const resolved = await buildResolvedClient(runtime, selection)
+  if ("error" in resolved) {
+    await callback?.({ text: resolved.error })
+    return { success: false, error: resolved.error, text: resolved.error }
+  }
+  const rawState = typeof options?.state === "string" ? options.state.trim().toLowerCase() : "open"
+  const state: PRState = rawState === "closed" || rawState === "all" ? rawState : "open"
+  const author = requireString(options, "author")
+  const repo = requireString(options, "repo")
+  if (!repo && !author) {
+    const err = "PR list requires repo (owner/name) or author (a GitHub login, or @me for the token's own account)"
+    await callback?.({ text: err })
+    return { success: false, error: err, text: err }
+  }
+  const parts = repo ? splitRepo(repo) : null
+  if (repo && !parts) {
+    const err = `Invalid repo "${repo}" — expected "owner/name"`
+    await callback?.({ text: err })
+    return { success: false, error: err, text: err }
+  }
+  const prs: PRSummary[] = []
+  if (repo && parts && !author) {
+    for (let page = 1; ; page += 1) {
+      const resp = await resolved.client.pulls.list({ owner: parts.owner, repo: parts.name, state, per_page: 100, page, sort: "created", direction: "asc" })
+      for (const pr of resp.data) {
+        prs.push({ repo, number: pr.number, title: pr.title, author: pr.user?.login ?? null, state: pr.state, url: pr.html_url })
+      }
+      if (resp.data.length < 100) break
+    }
+  } else {
+    const q = ["is:pr", state === "all" ? "" : `is:${state}`, parts ? `repo:${parts.owner}/${parts.name}` : "", author ? `author:${author}` : ""].filter(Boolean).join(" ")
+    for (let page = 1; ; page += 1) {
+      const resp = await resolved.client.search.issuesAndPullRequests({ q, per_page: 100, page, sort: "created", order: "asc" })
+      if (resp.data.incomplete_results || (resp.data.total_count ?? 0) > 1000) {
+        throwPrListIncomplete("GitHub search cannot return a complete PR list; narrow the search and retry")
+      }
+      for (const item of resp.data.items) {
+        const match = /\/repos\/([^/]+\/[^/]+)(?:\/|$)/.exec(item.repository_url)
+        prs.push({ repo: match?.[1] ?? item.repository_url, number: item.number, title: item.title, author: item.user?.login ?? null, state: item.state, url: item.html_url })
+      }
+      if (resp.data.items.length < 100 || prs.length === resp.data.total_count) {
+        if (resp.data.total_count !== undefined && prs.length !== resp.data.total_count) {
+          throwPrListIncomplete("GitHub search changed while reading pages; retry for a complete PR list")
+        }
+        break
+      }
+      if (page === 10) throwPrListIncomplete("GitHub search reached its result limit; narrow the search and retry")
+    }
+  }
+  const text = `Found ${prs.length} pull request(s)`
+  await callback?.({ text })
+  return {
+    success: true,
+    text,
+    data: { op: "list", prs },
+    promptData: { op: "list", total: prs.length, truncated: prs.length > PROMPT_LIST_LIMIT, prs: prs.slice(0, PROMPT_LIST_LIMIT) },
+    promptDataMode: "replace-data",
+  }
+}
+
+async function runPrReview(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const selection = resolveGitHubAccountSelection(options, "user")
+  const repo = requireString(options, "repo")
+  const number = requireNumber(options, "number")
+  const rawAction = typeof options?.review_action === "string" ? options.review_action.trim().toLowerCase().replace(/_/g, "-") : null
+  const action: ReviewAction | null = rawAction === "approve" || rawAction === "request-changes" || rawAction === "comment" ? rawAction : null
+  const body = requireString(options, "body")
+  if (!repo || !number || !action) {
+    const err = "GITHUB_PR_OP review requires repo (owner/name), number (integer), and review_action (approve|request-changes|comment)"
+    await callback?.({ text: err })
+    return { success: false, error: err, text: err }
+  }
+  const parts = splitRepo(repo)
+  if (!parts) {
+    const err = `Invalid repo "${repo}" — expected "owner/name"`
+    await callback?.({ text: err })
+    return { success: false, error: err, text: err }
+  }
+  if (action !== "approve" && !body) {
+    const err = action === "request-changes" ? "request-changes review requires a body explaining the changes" : "comment review requires a body"
+    await callback?.({ text: err })
+    return { success: false, error: err, text: err }
+  }
+  const resolved = await buildResolvedClient(runtime, selection)
+  if ("error" in resolved) {
+    await callback?.({ text: resolved.error })
+    return { success: false, error: resolved.error, text: resolved.error }
+  }
+  const preview = buildReviewPreview(action, repo, number, body, describeSelection(selection))
+  const prompt = `${preview} Reply yes to confirm or no to cancel.`
+  const decision = await confirmPreviewedRequest({
+    runtime,
+    message,
+    actionName: GitHubActions.GITHUB_PR_OP,
+    pendingKey: `review:${repo}:${number}:${action}`,
+    prompt,
+    callback,
+    request: { repo, number, action, body, selection },
+  })
+  if (decision === "pending") {
+    return { success: true, text: prompt, data: { requiresConfirmation: true, preview, awaitingUserInput: true } }
+  }
+  if (decision === "cancelled") {
+    const text = "GitHub PR review cancelled."
+    await callback?.({ text })
+    return { success: true, text, data: { cancelled: true } }
+  }
+  const resp = await resolved.client.pulls.createReview({
+    owner: parts.owner,
+    repo: parts.name,
+    pull_number: number,
+    event: EVENT_BY_REVIEW_ACTION[action],
+    body: body ?? undefined,
+  })
+  const text = `Submitted ${action} review on ${repo}#${number}`
+  await callback?.({ text })
+  return { success: true, text, data: { op: "review", id: resp.data.id } }
+}
+
+export const prOpAction: Action = {
+  ...GITHUB_ACTION_COMMON,
+  name: GitHubActions.GITHUB_PR_OP,
+  similes: ["LIST_PRS", "LIST_PULL_REQUESTS", "SHOW_PRS", "GITHUB_LIST_PRS", "REVIEW_PR", "APPROVE_PR", "REQUEST_CHANGES", "COMMENT_ON_PR"],
+  description: "Single router for GitHub PR ops: list and review. Review asks the user to reply yes before it is submitted.",
+  descriptionCompressed: "GitHub PR ops: list|review (confirm)",
+  parameters: [
+    { name: "accountId", description: "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.", required: false, schema: { type: "string" } },
+    { name: "as", description: "Identity to use: agent or user. When omitted, list runs as agent and review runs as user.", required: false, schema: { type: "string", enum: ["agent", "user"] } },
+    { name: "author", description: "PR author login filter for list; @me means the token's own account. list requires repo or author.", required: false, schema: { type: "string" } },
+    { name: "body", description: "Review body. Required for review_action comment and request-changes; optional for approve.", required: false, schema: { type: "string" } },
+    { name: "number", description: "Pull request number for review.", required: false, schema: { type: "number" } },
+    { name: "repo", description: "Repository in owner/name form. list requires repo or author.", required: false, schema: { type: "string" } },
+    { name: "review_action", description: "Review action: approve, request-changes, or comment.", required: false, schema: { type: "string", enum: ["approve", "request-changes", "comment"] } },
+    { name: "state", description: "PR state for list.", required: false, schema: { type: "string", enum: ["open", "closed", "all"], default: "open" } },
+    { name: "subaction", description: "PR operation: list or review.", required: true, schema: { type: "string", enum: [...SUPPORTED_PR_OPS] } },
+  ],
+  validate: async (runtime) => !("error" in (await buildResolvedClient(runtime, "agent", { refresh: "on-miss" }))),
+  handler: async (runtime, message, _state, options, callback): Promise<ActionResult> => {
+    const params = readParametersRecord(options)
+    const rawOp = params.op ?? params.subaction
+    const op = typeof rawOp === "string" && SUPPORTED_PR_OPS.has(rawOp.trim().toLowerCase() as GitHubPrOp) ? (rawOp.trim().toLowerCase() as GitHubPrOp) : null
+    if (!op) return failWithCallback(callback, "GITHUB_PR_OP requires op (list|review)")
+    try {
+      return op === "list" ? await runPrList(runtime, params, callback) : await runPrReview(runtime, message, params, callback)
+    } catch (err) {
+      const rl = inspectRateLimit(err)
+      const msg = rl.isRateLimited ? formatRateLimitMessage(rl) : `GITHUB_PR_OP ${op} failed: ${errorMessage(err)}`
+      logger.warn({ message: msg }, "[GitHub:GITHUB_PR_OP]")
+      return failWithCallback(callback, msg)
+    }
+  },
+}
+
+export const notificationTriageAction: Action = {
+  ...GITHUB_ACTION_COMMON,
+  name: GitHubActions.GITHUB_NOTIFICATION_TRIAGE,
+  similes: ["TRIAGE_GITHUB_NOTIFICATIONS", "GITHUB_INBOX"],
+  description: "Returns unread GitHub notifications sorted by a priority score derived from reason, subject type, and repo freshness.",
+  descriptionCompressed: "unread GitHub notifications sorted by reason|subject|repo freshness",
+  parameters: [
+    { name: "accountId", description: "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.", required: false, schema: { type: "string" } },
+    { name: "as", description: "Identity to use when reading notifications: user or agent.", required: false, schema: { type: "string", enum: ["user", "agent"], default: "user" } },
+  ],
+  validate: async (runtime) => !("error" in (await buildResolvedClient(runtime, "user", { refresh: "on-miss" }))),
+  handler: async (runtime, _message, _state, options, callback): Promise<ActionResult> => {
+    const params = readParametersRecord(options)
+    const selection = resolveGitHubAccountSelection(params, "user")
+    const resolved = await buildResolvedClient(runtime, selection)
+    if ("error" in resolved) return failWithCallback(callback, resolved.error)
+    try {
+      const { notifications, totalUnreadIsLowerBound } = await fetchAllUnreadNotifications(resolved.client.activity)
+      const nowMs = Date.now()
+      const triaged: TriagedNotification[] = notifications.map((n) => {
+        const repoPushedAt = n.repository?.pushed_at ?? null
+        const repoPushedAtMs = typeof repoPushedAt === "string" ? Date.parse(repoPushedAt) : null
+        const reason = typeof n.reason === "string" ? n.reason : "unknown"
+        const subjectType = typeof n.subject?.type === "string" ? n.subject.type : "Unknown"
+        return {
+          id: n.id,
+          reason,
+          repo: n.repository?.full_name ?? "unknown",
+          title: n.subject?.title ?? "(untitled)",
+          subjectType,
+          url: notificationSubjectUrl(n),
+          updatedAt: n.updated_at,
+          score: scoreNotification({ reason, subjectType, repoPushedAtMs: repoPushedAtMs !== null && Number.isFinite(repoPushedAtMs) ? repoPushedAtMs : null, nowMs }),
+        }
+      })
+      triaged.sort(compareTriagedNotifications)
+      const text = formatTriageSummary(triaged.length, triaged.length, totalUnreadIsLowerBound)
+      await callback?.({ text })
+      return {
+        success: true,
+        text,
+        data: { notifications: triaged, notificationLimit: null, totalUnread: triaged.length, totalUnreadIsLowerBound },
+        promptData: { totalUnread: triaged.length, truncated: triaged.length > PROMPT_LIST_LIMIT, notifications: triaged.slice(0, PROMPT_LIST_LIMIT) },
+        promptDataMode: "replace-data",
+      }
+    } catch (err) {
+      const rl = inspectRateLimit(err)
+      const msg = rl.isRateLimited ? formatRateLimitMessage(rl) : `GITHUB_NOTIFICATION_TRIAGE failed: ${errorMessage(err)}`
+      logger.warn({ message: msg }, "[GitHub:GITHUB_NOTIFICATION_TRIAGE]")
+      return failWithCallback(callback, msg)
+    }
+  },
+}
+
+const EffectParameters = Schema.Struct({
+  action: Schema.Literals(["pr_list", "pr_review", "issue_create", "issue_assign", "issue_close", "issue_reopen", "issue_comment", "issue_label", "notification_triage"]),
+  repo: Schema.optionalKey(Schema.String),
+  number: Schema.optionalKey(Schema.Int),
+  state: Schema.optionalKey(Schema.Literals(["open", "closed", "all"])),
+  author: Schema.optionalKey(Schema.String),
+  review_action: Schema.optionalKey(Schema.Literals(["approve", "comment", "request-changes"])),
+  title: Schema.optionalKey(Schema.String),
+  body: Schema.optionalKey(Schema.String),
+  labels: Schema.optionalKey(Schema.Array(Schema.String)),
+  assignees: Schema.optionalKey(Schema.Array(Schema.String)),
+  as: Schema.optionalKey(Schema.Literals(["user", "agent"])),
+  accountId: Schema.optionalKey(Schema.String),
+})
+schema UserSchema { login: Schema.String }
+const PullRequestSchema = Schema.Struct({ number: Schema.Int, title: Schema.String, html_url: Schema.String, state: Schema.String, user: Schema.optionalKey(Schema.NullOr(UserSchema)) })
+const SearchPullRequestsSchema = Schema.Struct({ items: Schema.Array(Schema.Struct({ number: Schema.Int, title: Schema.String, html_url: Schema.String, state: Schema.String, user: Schema.optionalKey(Schema.NullOr(UserSchema)), repository_url: Schema.String })) })
+schema NotificationSubjectSchema { title: Schema.String; type: Schema.String }
+schema NotificationRepoSchema { full_name: Schema.String }
+schema NotificationSchema { id: Schema.String; reason: Schema.String; subject: NotificationSubjectSchema; repository: NotificationRepoSchema; updated_at: Schema.String }
+const MutationReceiptSchema = Schema.Struct({ id: Schema.Int, number: Schema.optionalKey(Schema.Int), html_url: Schema.optionalKey(Schema.String), assignees: Schema.optionalKey(Schema.Array(UserSchema)), labels: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String }))) })
+
+function readEffectParameters(options: unknown): unknown {
+  const raw = typeof options === "object" && options !== null && "parameters" in options ? (options as { parameters: unknown }).parameters : options
+  if (typeof raw !== "object" || raw === null) return raw
+  const named: Record<string, unknown> = { ...(raw as Record<string, unknown>) }
+  for (const key of ["action", "state", "review_action"]) {
+    const value = named[key]
+    if (typeof value === "string") named[key] = key === "review_action" ? value.trim().toLowerCase().replaceAll("_", "-") : value.trim().toLowerCase()
+  }
+  return named
+}
+
+function mutationOf(options: typeof EffectParameters.Type): GitHubMutation | undefined {
+  const issue = options.number ?? 0
+  const body = options.body?.trim() ?? ""
+  switch (options.action) {
+    case "issue_create": return { tag: "CreateIssue", title: options.title?.trim() ?? "", body, labels: [...(options.labels ?? [])], assignees: [...(options.assignees ?? [])] }
+    case "issue_assign": return { tag: "AssignIssue", issue, assignees: [...(options.assignees ?? [])] }
+    case "issue_close": return { tag: "CloseIssue", issue }
+    case "issue_reopen": return { tag: "ReopenIssue", issue }
+    case "issue_comment": return { tag: "CommentIssue", issue, body }
+    case "issue_label": return { tag: "LabelIssue", issue, labels: [...(options.labels ?? [])] }
+    case "pr_review": return options.review_action === undefined ? undefined : { tag: "ReviewPr", pullRequest: issue, reviewKind: options.review_action === "approve" ? "ApproveReview" : options.review_action === "request-changes" ? "RequestChanges" : "ReviewComment", reviewBody: body }
+    case "notification_triage":
+    case "pr_list": return undefined
+  }
+}
+
+export effect function githubRequest(token: Redacted.Redacted<string>, method: "GET" | "POST" | "PATCH", apiPath: string, body?: object): unknown!GitHubUnavailable!HttpClient.HttpClient {
+  const request = HttpClientRequest.make(method)(`https://api.github.com${apiPath}`).pipe(
+    HttpClientRequest.setHeaders({ Authorization: `Bearer ${Redacted.value(token)}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "elizaos-github" }),
+  )
+  const response = timeout(Effect.provideService(HttpClient.execute(body === undefined ? request : request.pipe(HttpClientRequest.bodyText(JSON.stringify(body), "application/json"))), FetchHttpClient.RequestInit, { redirect: "error" }), "30 seconds") catch effect () => { throw new GitHubUnavailable({ stage: "request", status: 0 }) }
+  if (response.status < 200 || response.status >= 300) throw new GitHubUnavailable({ stage: "http", status: response.status })
+  return response.json catch effect () => { throw new GitHubUnavailable({ stage: "response", status: response.status }) }
+}
+
+function requestFor(proposal: GitHubRequest): { readonly path: string; readonly method: "POST" | "PATCH"; readonly body: Record<string, unknown> } {
+  const repo = `/repos/${proposal.repoOwner}/${proposal.repoName}`
+  const op = proposal.mutation
+  switch (op.tag) {
+    case "CreateIssue": return { path: `${repo}/issues`, method: "POST", body: { title: op.title, body: op.body, labels: op.labels, assignees: op.assignees } }
+    case "AssignIssue": return { path: `${repo}/issues/${op.issue}/assignees`, method: "POST", body: { assignees: op.assignees } }
+    case "CloseIssue": return { path: `${repo}/issues/${op.issue}`, method: "PATCH", body: { state: "closed" } }
+    case "ReopenIssue": return { path: `${repo}/issues/${op.issue}`, method: "PATCH", body: { state: "open" } }
+    case "CommentIssue": return { path: `${repo}/issues/${op.issue}/comments`, method: "POST", body: { body: op.body } }
+    case "LabelIssue": return { path: `${repo}/issues/${op.issue}/labels`, method: "POST", body: { labels: op.labels } }
+    case "ReviewPr": return { path: `${repo}/pulls/${op.pullRequest}/reviews`, method: "POST", body: { event: op.reviewKind === "ApproveReview" ? "APPROVE" : op.reviewKind === "RequestChanges" ? "REQUEST_CHANGES" : "COMMENT", body: op.reviewBody } }
+  }
+}
+
+const failedResult = (text: string): ActionResult => ({ success: false, text })
+
+export effect function githubActionRun(runtime: IAgentRuntime, message: Memory, raw: unknown, callback: HandlerCallback | undefined) {
+  const options = Schema.decodeUnknownEffect(EffectParameters)(readEffectParameters(raw)) catch () => undefined
+  if (options === undefined) return failedResult("Provide a valid GitHub operation and its arguments.")
+  const account = options.as ?? (options.action === "notification_triage" ? "user" : "agent")
+  if (options.accountId !== undefined && options.accountId !== account) return failedResult("The selected GitHub account is unavailable.")
+  const tokenSetting = account === "user" ? "GITHUB_USER_PAT" : "GITHUB_AGENT_PAT"
+  const rawToken = runtime.getSetting(tokenSetting)
+  if (typeof rawToken !== "string" || rawToken.trim() === "") return failedResult("Connect the selected GitHub account first.")
+  const token = Redacted.make(rawToken)
+  const repo = options.repo === undefined ? null : splitRepo(options.repo)
+  const op = mutationOf(options)
+  if (options.action === "notification_triage") {
+    const notices = try Schema.decodeUnknownEffect(Schema.Array(NotificationSchema))(try githubRequest(token, "GET", "/notifications?per_page=50"))
+    const text = notices.length === 0 ? "No new GitHub notifications." : notices.map((item) => `- ${item.repository.full_name}: ${item.subject.title} (${item.reason})`).join("\n")
+    return { success: true, text, data: { notifications: notices }, promptData: { total: notices.length, notifications: notices.slice(0, PROMPT_LIST_LIMIT) }, promptDataMode: "replace-data" } satisfies ActionResult
+  }
+  if (options.action === "pr_list") {
+    if (options.repo !== undefined && repo === null) return failedResult("Name a GitHub repository as owner/name.")
+    const me = try Schema.decodeUnknownEffect(UserSchema)(try githubRequest(token, "GET", "/user"))
+    const author = effectiveGitHubAuthor(options.author?.trim() ?? "", me.login)
+    if (author !== "" && !/^[A-Za-z0-9-]{1,39}$/.test(author)) return failedResult("Name a GitHub login without query modifiers.")
+    const state = options.state ?? "open"
+    if (!validGitHubRead({ tag: "ListPrs", repoOwner: repo?.owner ?? "", repoName: repo?.name ?? "", author, prState: state === "open" ? "OpenPrs" : state === "closed" ? "ClosedPrs" : "AllPrs" }, me.login)) return failedResult("Name a GitHub repository or author to list pull requests.")
+    const pulls: (typeof PullRequestSchema.Type)[] = []
+    for (let page = 1; page <= 10; page += 1) {
+      const entries = author !== ""
+        ? (try Schema.decodeUnknownEffect(SearchPullRequestsSchema)(try githubRequest(token, "GET", `/search/issues?${new URLSearchParams({ q: ["is:pr", state === "all" ? "" : `is:${state}`, repo === null ? "" : `repo:${repo.owner}/${repo.name}`, `author:${author}`].filter((part) => part !== "").join(" "), per_page: "100", page: String(page) })}`))).items
+        : repo === null ? [] : try Schema.decodeUnknownEffect(Schema.Array(PullRequestSchema))(try githubRequest(token, "GET", `/repos/${repo.owner}/${repo.name}/pulls?state=${state}&per_page=100&page=${page}`))
+      pulls.push(...entries)
+      if (entries.length < 100) break
+    }
+    return {
+      success: true,
+      text: pulls.length === 0 ? "No matching pull requests." : pulls.map((pr) => `- #${pr.number} ${pr.title} (${pr.state}) ${pr.html_url}`).join("\n"),
+      data: { prs: pulls },
+      promptData: { total: pulls.length, prs: pulls.slice(0, PROMPT_LIST_LIMIT) },
+      promptDataMode: "replace-data",
+    } satisfies ActionResult
+  }
+  if (repo === null || op === undefined || message.id === undefined) return failedResult("The GitHub operation needs an exact repository and a bound request.")
+  const proposal: GitHubRequest = { requestId: message.id, accountId: account, credentialEpoch: 1, repoOwner: repo.owner, repoName: repo.name, mutation: op }
+  if (!validGitHubRequest(proposal)) return failedResult("The GitHub operation is missing required fields.")
+  const credential = try Effect.try(() => gitHubCredentialFingerprint(rawToken))
+  const signature = stableStringify({ account, credential, repo, op })
+  const prompt = `${account} account · ${repo.owner}/${repo.name}\n${JSON.stringify(op)}\nReply yes to confirm or no to cancel.`
+  const ask = () => requireConfirmation({ runtime, message, actionName: "GITHUB", pendingKey: account, prompt, ...(callback === undefined ? {} : { callback }), metadata: { signature } })
+  let decision = try tryPromise(ask)
+  if (decision.status === "confirmed" && decision.metadata?.signature !== signature) decision = try tryPromise(ask)
+  if (decision.status !== "confirmed" || decision.metadata?.signature !== signature) {
+    return { success: decision.status !== "cancelled", text: decision.status === "cancelled" ? "GitHub operation cancelled." : prompt, data: { status: decision.status } } satisfies ActionResult
+  }
+  if (runtime.getSetting(tokenSetting) !== rawToken) return failedResult("The GitHub account changed during confirmation.")
+  const state = try Ref.make(initial)
+  const journal = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  try journal.send({ type: "previewGitHub", proposal }, "GitHubAdapter")
+  try journal.send({ type: "decideGitHub", proposal, approve: true, activeEpoch: 1 }, "GitHubOwner")
+  const key = `github/mutation/${account}/${proposal.requestId}`
+  if (try tryPromise(() => runtime.getCache(key))) return failedResult("This GitHub request has already been reserved.")
+  if (!(try tryPromise(() => runtime.setCache(key, "dispatching")))) return failedResult("The GitHub request could not be saved before dispatch.")
+  try journal.send({ type: "reserveGitHub", activeEpoch: 1 }, "GitHubAdapter")
+  if (runtime.getSetting(tokenSetting) !== rawToken) return failedResult("The GitHub account changed before dispatch.")
+  try journal.send({ type: "dispatchGitHub", activeEpoch: 1 }, "GitHubAdapter")
+  const request = requestFor(proposal)
+  const observed = try githubRequest(token, request.method, request.path, request.body)
+  if (op.tag === "LabelIssue") {
+    const labels = try Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: Schema.Int, name: Schema.String })))(observed)
+    const first = labels[0]
+    if (first === undefined) return failedResult("GitHub returned no expected label receipt.")
+    try journal.send({ type: "observeGitHub", proposal, observation: { tag: "GitHubSuccess", providerReceipt: String(first.id) } }, "GitHubAdapter")
+    return { success: true, text: `Updated labels on #${op.issue}.`, data: { labels: labels.map((label) => label.name) } } satisfies ActionResult
+  }
+  const receipt = try Schema.decodeUnknownEffect(MutationReceiptSchema)(observed)
+  if (receipt.id <= 0) return failedResult("GitHub did not return a mutation receipt.")
+  try journal.send({ type: "observeGitHub", proposal, observation: { tag: "GitHubSuccess", providerReceipt: String(receipt.id) } }, "GitHubAdapter")
+  const assigned = receipt.assignees?.map((user) => user.login) ?? []
+  const link = receipt.html_url === undefined ? "" : ` ${receipt.html_url}`
+  if (op.tag === "AssignIssue") {
+    const missingLogins = githubMissingNames(op.assignees.map((login) => login.toLowerCase()), assigned.map((login) => login.toLowerCase()))
+    const assignees = op.assignees.filter((login) => missingLogins.includes(login.toLowerCase()))
+    if (assignees.length > 0) {
+      return { success: false, text: `GitHub did not assign ${assignees.join(", ")} to #${op.issue}.${link}`, data: { receiptId: receipt.id, notApplied: { assignees } } } satisfies ActionResult
+    }
+  }
+  const missing = op.tag === "CreateIssue" ? { labels: githubMissingNames(op.labels, receipt.labels?.map((label) => label.name) ?? []), assignees: githubMissingNames(op.assignees, assigned) } : undefined
+  return { success: true, text: `GitHub confirmed the operation${receipt.number === undefined ? "" : ` for #${receipt.number}`}.${link}`, data: { receiptId: receipt.id, ...(missing === undefined ? {} : { notApplied: missing }) } } satisfies ActionResult
+}
+
+function readUmbrellaAction(options: unknown): GitHubActionName | undefined {
+  const params = readParametersRecord(options)
+  const raw = params.action ?? params.subaction ?? params.op ?? params.operation ?? params.verb
+  if (typeof raw !== "string") return undefined
+  const normalized = raw.trim().toLowerCase().replace(/[-\s]+/g, "_")
+  return (GITHUB_ACTIONS as readonly string[]).includes(normalized) ? (normalized as GitHubActionName) : undefined
+}
+
+export const githubAction: Action = {
+  ...GITHUB_ACTION_COMMON,
+  name: "GITHUB",
+  similes: ["GITHUB_PR_OP", "GITHUB_ISSUE_OP", "GITHUB_NOTIFICATION_TRIAGE", "GITHUB_PULL_REQUEST", "GITHUB_ISSUE", "GITHUB_NOTIFICATIONS"],
+  description: "GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage. Issue operations and pr_review ask the user to reply yes before they run.",
+  descriptionCompressed: "GitHub pr_list|pr_review|issue_create|assign|close|reopen|comment|label|triage",
+  parameters: [
+    { name: "accountId", description: "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.", required: false, schema: { type: "string" } },
+    { name: "action", description: "GitHub operation to run.", required: true, schema: { type: "string", enum: [...GITHUB_ACTIONS] } },
+    { name: "as", description: "Identity to use: agent or user. When omitted, issue operations and pr_list run as agent; pr_review and notification_triage run as user.", required: false, schema: { type: "string", enum: ["agent", "user"] } },
+    { name: "assignees", description: "GitHub usernames to assign.", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "author", description: "PR author login filter for pr_list; @me means the token's own account. pr_list requires repo or author.", required: false, schema: { type: "string" } },
+    { name: "body", description: "Issue body, issue comment body, or PR review body. Required for issue_comment and for pr_review with review_action comment or request-changes.", required: false, schema: { type: "string" } },
+    { name: "labels", description: "Labels to apply on issue create or issue_label.", required: false, schema: { type: "array", items: { type: "string" } } },
+    { name: "number", description: "Pull request or issue number.", required: false, schema: { type: "number" } },
+    { name: "repo", description: "Repository in owner/name form. pr_list requires repo or author.", required: false, schema: { type: "string" } },
+    { name: "review_action", description: "For action=pr_review: approve, request-changes, or comment.", required: false, schema: { type: "string", enum: ["approve", "request-changes", "comment"] } },
+    { name: "state", description: "PR state for pr_list: open, closed, or all.", required: false, schema: { type: "string", enum: ["open", "closed", "all"], default: "open" } },
+    { name: "title", description: "Issue title for action=issue_create.", required: false, schema: { type: "string" } },
+  ],
+  validate: async (runtime, message, state) =>
+    Boolean(runtime.getSetting("GITHUB_USER_PAT") || runtime.getSetting("GITHUB_AGENT_PAT")) ||
+    (await prOpAction.validate(runtime, message, state)) ||
+    (await issueOpAction.validate(runtime, message, state)) ||
+    (await notificationTriageAction.validate(runtime, message, state)),
+  handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
+    const action = readUmbrellaAction(options)
+    if (!action) {
+      return { success: false, text: "GITHUB requires action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.", data: { error: "MISSING_ACTION" } }
+    }
+    const service = runtime.getService<GitHubService>(GITHUB_SERVICE_TYPE)
+    if (!service) {
+      return runPromise(Effect.catch(Effect.provide(githubActionRun(runtime, message, options, callback), FetchHttpClient.layer), () => succeed(failedResult("The GitHub request failed or its outcome could not be confirmed."))))
+    }
+    const params = readParametersRecord(options)
+    if (action === "notification_triage") return (await notificationTriageAction.handler(runtime, message, state, params as HandlerOptions, callback)) as ActionResult
+    if (action === "pr_list" || action === "pr_review") return (await prOpAction.handler(runtime, message, state, { ...params, op: action === "pr_list" ? "list" : "review" } as HandlerOptions, callback)) as ActionResult
+    const issueOp = ISSUE_OP_BY_ACTION[action]
+    if (issueOp) return (await issueOpAction.handler(runtime, message, state, { ...params, op: issueOp } as HandlerOptions, callback)) as ActionResult
+    return { success: false, text: `Unsupported GITHUB action: ${action}`, data: { error: "UNSUPPORTED_ACTION", action } }
+  },
+}
+
+export type GitHubOperationMachineHandle = SenderMachineHandle<GitHubOperation, GitHubEvent, GitHubCaller, GitHubEffect>
+
+export function createGitHubOperationHandle(): GitHubOperationMachineHandle {
+  return wrapSenderMachineHandle(runSync(effect {
+    provide machine() {
+      const m = try Machine
+      return m
+    }
+  }))
+}

@@ -1,0 +1,842 @@
+// spec/discord/index.md, "Story: Route Discord messages and commands through the account that received them"
+import {
+  SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
+  Service,
+  buildSetupError,
+  inspectSendHandlerResult,
+  logger,
+  toWellFormedUnicode,
+  type Content,
+  type DispatchSensitiveRequest,
+  type IAgentRuntime,
+  type Memory,
+  type MessageConnectorQueryContext,
+  type MessageConnectorTarget,
+  type SendHandlerOutcome,
+  type SensitiveRequestDeliveryAdapter,
+  type SensitiveRequestDispatchRegistry,
+  type SetupState,
+  type SetupStatusResponse,
+  type TargetInfo,
+} from "@elizaos/core"
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "./accounts.vibe"
+import {
+  DISCORD_LOCAL_SERVICE_NAME,
+  DISCORD_PROVIDER_ID,
+  DISCORD_SERVICE_NAME,
+  DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+  isValidSnowflake,
+  snowflakeBefore,
+} from "./types.vibe"
+
+export const DISCORD_APP_URL = "https://discord.com/channels/@me"
+export const DISCORD_FACT_CACHE_TTL_MS = 60_000
+export const IPC_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
+
+export interface DiscordMessageRef {
+  readonly id: string
+  readonly source: "discord"
+  readonly externalId: string
+  readonly channelId: string
+  readonly accountId?: string
+  readonly fromId: string
+  readonly fromName?: string
+  readonly text: string
+  readonly timestampMs: number
+  readonly isRead: boolean
+  readonly attachmentCount: number
+}
+
+export interface DiscordDraftRequest {
+  readonly messageId?: string
+  readonly channelId?: string
+  readonly accountId?: string
+  readonly text: string
+}
+
+interface DiscordTriageCapableService {
+  readonly fetchConnectorMessages: (
+    context: MessageConnectorQueryContext,
+    params: { readonly target?: TargetInfo; readonly channelId?: string; readonly limit?: number; readonly before?: string; readonly after?: string },
+  ) => Promise<Memory[]>
+  readonly listConnectorRooms: (context: MessageConnectorQueryContext) => Promise<MessageConnectorTarget[]>
+  readonly handleSendMessage: (runtime: IAgentRuntime, target: TargetInfo, content: Content) => Promise<Memory | SendHandlerOutcome | undefined>
+  readonly getClient: () => { readonly isReady: () => boolean } | null
+}
+
+function getDiscordTriageService(runtime: IAgentRuntime): DiscordTriageCapableService | null {
+  const svc = runtime.getService(DISCORD_SERVICE_NAME) as Record<string, unknown> | null
+  if (
+    svc &&
+    typeof svc.fetchConnectorMessages === "function" &&
+    typeof svc.listConnectorRooms === "function" &&
+    typeof svc.handleSendMessage === "function" &&
+    typeof svc.getClient === "function"
+  ) {
+    return svc as unknown as DiscordTriageCapableService
+  }
+  return null
+}
+
+function metaString(meta: Readonly<Record<string, unknown>>, key: string): string | undefined {
+  const value = meta[key]
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+export function mapDiscordMemoryToRef(memory: Memory): DiscordMessageRef | null {
+  const meta = (memory.metadata ?? {}) as Record<string, unknown>
+  const externalId = metaString(meta, "discordMessageId") ?? metaString(meta, "platformMessageId")
+  const channelId = metaString(meta, "discordChannelId") ?? metaString(meta, "channelId")
+  if (!externalId || !channelId) return null
+  const text = toWellFormedUnicode(memory.content?.text?.trim() ?? "")
+  const fromId = metaString(meta, "fromId") ?? String(memory.entityId)
+  const attachments = memory.content?.attachments
+  return {
+    id: `discord:${externalId}`,
+    source: "discord",
+    externalId,
+    channelId,
+    accountId: metaString(meta, "accountId"),
+    fromId,
+    fromName: metaString(meta, "fromName"),
+    text,
+    timestampMs: memory.createdAt ?? Date.now(),
+    isRead: false,
+    attachmentCount: Array.isArray(attachments) ? attachments.length : 0,
+  }
+}
+
+const MESSAGE_CACHE_CAP = 2000
+
+export class DiscordTriageAdapter {
+  readonly source = "discord" as const
+  private readonly cache = new Map<string, DiscordMessageRef>()
+  private readonly drafts = new Map<string, { readonly channelId: string; readonly accountId?: string; readonly text: string }>()
+  private draftSeq = 0
+
+  async listMessages(
+    runtime: IAgentRuntime,
+    options: { readonly channelId?: string; readonly sinceMs?: number; readonly limit?: number } = {},
+  ): Promise<DiscordMessageRef[]> {
+    const service = getDiscordTriageService(runtime)
+    if (!service) return []
+    const context: MessageConnectorQueryContext = { runtime, source: "discord" }
+    const rooms: readonly MessageConnectorTarget[] = options.channelId
+      ? [{ target: { source: "discord", channelId: options.channelId } }]
+      : await service.listConnectorRooms(context)
+    const after = options.sinceMs !== undefined ? snowflakeBefore(options.sinceMs) : undefined
+    const refs: DiscordMessageRef[] = []
+    for (const room of rooms) {
+      const channelId = room.target.channelId
+      if (!channelId) continue
+      const memories = await service.fetchConnectorMessages(context, {
+        channelId,
+        limit: options.limit ?? 25,
+        ...(after ? { after } : {}),
+      })
+      for (const mem of memories) {
+        const ref = mapDiscordMemoryToRef(mem)
+        if (!ref) continue
+        this.remember(ref)
+        refs.push(ref)
+      }
+    }
+    return refs
+  }
+
+  getCachedMessage(id: string): DiscordMessageRef | undefined {
+    return this.cache.get(id)
+  }
+
+  createDraft(request: DiscordDraftRequest): { readonly draftId: string; readonly channelId: string; readonly preview: string } | null {
+    const cached = request.messageId ? this.cache.get(request.messageId) : undefined
+    const channelId = request.channelId ?? cached?.channelId
+    if (!channelId) return null
+    this.draftSeq += 1
+    const draftId = `discord-draft-${this.draftSeq}`
+    this.drafts.set(draftId, { channelId, accountId: request.accountId ?? cached?.accountId, text: request.text })
+    return { draftId, channelId, preview: request.text.slice(0, 200) }
+  }
+
+  async sendDraft(runtime: IAgentRuntime, draftId: string): Promise<{ readonly sent: boolean; readonly error?: string }> {
+    const draft = this.drafts.get(draftId)
+    if (!draft) return { sent: false, error: "Draft not found" }
+    const service = getDiscordTriageService(runtime)
+    if (!service) return { sent: false, error: "Discord service unavailable" }
+    const outcome = await service.handleSendMessage(
+      runtime,
+      { source: "discord", channelId: draft.channelId, ...(draft.accountId ? { accountId: draft.accountId } : {}) },
+      { text: draft.text, source: "discord" },
+    )
+    this.drafts.delete(draftId)
+    if (!outcome) return { sent: false, error: "Discord send did not confirm delivery" }
+    if (typeof outcome === "object" && "kind" in outcome) {
+      const inspected = inspectSendHandlerResult(outcome as SendHandlerOutcome)
+      return inspected.kind === "delivered" ? { sent: true } : { sent: false, error: inspected.kind }
+    }
+    return { sent: true }
+  }
+
+  private remember(ref: DiscordMessageRef): void {
+    this.cache.delete(ref.id)
+    this.cache.set(ref.id, ref)
+    while (this.cache.size > MESSAGE_CACHE_CAP) {
+      const oldest = this.cache.keys().next().value
+      if (oldest === undefined) break
+      this.cache.delete(oldest)
+    }
+  }
+}
+
+let registeredTriageAdapter: DiscordTriageAdapter | null = null
+
+export function registerDiscordTriageAdapter(): DiscordTriageAdapter {
+  if (!registeredTriageAdapter) registeredTriageAdapter = new DiscordTriageAdapter()
+  return registeredTriageAdapter
+}
+
+export function createDiscordDmSensitiveRequestAdapter(runtime: IAgentRuntime): SensitiveRequestDeliveryAdapter {
+  return {
+    target: "discord_dm" as SensitiveRequestDeliveryAdapter["target"],
+    send: async (request: DispatchSensitiveRequest) => {
+      const service = getDiscordTriageService(runtime)
+      if (!service) {
+        return { delivered: false, error: "Discord service unavailable" }
+      }
+      const targetChannel = (request as unknown as { readonly channelId?: string }).channelId
+      if (!targetChannel) {
+        return { delivered: false, error: "Missing Discord DM channelId for sensitive request" }
+      }
+      const text = typeof (request as unknown as { readonly prompt?: string }).prompt === "string"
+        ? (request as unknown as { readonly prompt: string }).prompt
+        : "Action requires confirmation."
+      const res = await service.handleSendMessage(runtime, { source: "discord", channelId: targetChannel }, { text, source: "discord" })
+      if (!res) return { delivered: false, error: "Discord DM send returned no confirmation" }
+      if (typeof res === "object" && "kind" in res) {
+        const inspected = inspectSendHandlerResult(res as SendHandlerOutcome)
+        return inspected.kind === "delivered" ? { delivered: true } : { delivered: false, error: inspected.kind }
+      }
+      return { delivered: true }
+    },
+  } as unknown as SensitiveRequestDeliveryAdapter
+}
+
+export function registerDiscordDmSensitiveRequestAdapter(runtime: IAgentRuntime): SensitiveRequestDeliveryAdapter {
+  const adapter = createDiscordDmSensitiveRequestAdapter(runtime)
+  try {
+    const registry = runtime.getService(SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE) as SensitiveRequestDispatchRegistry | null
+    if (registry && typeof registry.register === "function") {
+      registry.register(adapter)
+    }
+  } catch (err) {
+    logger.warn({ src: "plugin:discord", err: err instanceof Error ? err.message : String(err) }, "Failed to register Discord DM sensitive request adapter")
+  }
+  return adapter
+}
+
+export interface DiscordEnumerationResult {
+  readonly guilds: readonly { readonly id: string; readonly name: string }[]
+  readonly channels: readonly { readonly id: string; readonly name: string; readonly guildId?: string }[]
+  readonly fetchedAt: number
+}
+
+export interface DiscordSourceCache {
+  readonly get: () => DiscordEnumerationResult | null
+  readonly set: (result: DiscordEnumerationResult) => void
+  readonly clear: () => void
+}
+
+export function createDiscordSourceCache(ttlMs = DISCORD_FACT_CACHE_TTL_MS): DiscordSourceCache {
+  let entry: DiscordEnumerationResult | null = null
+  return {
+    get: () => (entry && Date.now() - entry.fetchedAt <= ttlMs ? entry : null),
+    set: (result) => {
+      entry = result
+    },
+    clear: () => {
+      entry = null
+    },
+  }
+}
+
+export async function fetchDiscordEnumeration(runtime: IAgentRuntime): Promise<DiscordEnumerationResult> {
+  const service = getDiscordTriageService(runtime)
+  if (!service) return { guilds: [], channels: [], fetchedAt: Date.now() }
+  const rooms = await service.listConnectorRooms({ runtime, source: "discord" })
+  const guilds = new Map<string, { readonly id: string; readonly name: string }>()
+  const channels: { readonly id: string; readonly name: string; readonly guildId?: string }[] = []
+  for (const room of rooms) {
+    const serverId = room.target.serverId
+    const channelId = room.target.channelId
+    const meta = (room.metadata ?? {}) as Record<string, unknown>
+    if (serverId) {
+      guilds.set(serverId, { id: serverId, name: metaString(meta, "serverName") ?? serverId })
+    }
+    if (channelId) {
+      channels.push({ id: channelId, name: room.label ?? channelId, ...(serverId ? { guildId: serverId } : {}) })
+    }
+  }
+  return { guilds: Array.from(guilds.values()), channels, fetchedAt: Date.now() }
+}
+
+export function formatDiscordEnumerationAsFacts(enumeration: DiscordEnumerationResult): string[] {
+  const lines: string[] = []
+  for (const guild of enumeration.guilds) {
+    lines.push(`Discord server "${guild.name}" (guildId=${guild.id})`)
+  }
+  for (const ch of enumeration.channels) {
+    lines.push(`Discord channel #${ch.name} (channelId=${ch.id}${ch.guildId ? `, guildId=${ch.guildId}` : ""})`)
+  }
+  return lines
+}
+
+export interface DiscordTargetSource {
+  readonly source: "discord"
+  readonly enumerate: () => Promise<DiscordEnumerationResult>
+  readonly formatFacts: () => Promise<string[]>
+}
+
+export function createDiscordTargetSource(runtime: IAgentRuntime, cache = createDiscordSourceCache()): DiscordTargetSource {
+  const enumerate = async () => {
+    const cached = cache.get()
+    if (cached) return cached
+    const fresh = await fetchDiscordEnumeration(runtime)
+    cache.set(fresh)
+    return fresh
+  }
+  return {
+    source: "discord",
+    enumerate,
+    formatFacts: async () => formatDiscordEnumerationAsFacts(await enumerate()),
+  }
+}
+
+export function registerDiscordTargetSource(runtime: IAgentRuntime): DiscordTargetSource {
+  return createDiscordTargetSource(runtime)
+}
+
+export interface DiscordLocalStatus {
+  readonly available: boolean
+  readonly connected: boolean
+  readonly authenticated: boolean
+  readonly currentUser: Record<string, unknown> | null
+  readonly subscribedChannelIds: readonly string[]
+  readonly configuredChannelIds: readonly string[]
+  readonly scopes: readonly string[]
+  readonly lastError: string | null
+  readonly ipcPath: string | null
+  readonly reason?: string
+}
+
+export interface DiscordLocalGuildSummary {
+  readonly id: string
+  readonly name: string
+}
+
+export interface DiscordLocalChannelSummary {
+  readonly id: string
+  readonly name: string
+  readonly guildId?: string
+}
+
+export interface DiscordLocalTransport {
+  readonly authorize: () => Promise<{ readonly user: Record<string, unknown>; readonly scopes: readonly string[]; readonly ipcPath?: string }>
+  readonly disconnect: () => Promise<void>
+  readonly listGuilds: () => Promise<readonly DiscordLocalGuildSummary[]>
+  readonly listChannels: (guildId: string) => Promise<readonly DiscordLocalChannelSummary[]>
+}
+
+export class DiscordLocalService extends Service {
+  static override serviceType = DISCORD_LOCAL_SERVICE_NAME
+  override capabilityDescription = "Local desktop IPC transport for Discord OAuth, guild/channel discovery, and channel subscriptions."
+
+  private connected = false
+  private authenticated = false
+  private currentUser: Record<string, unknown> | null = null
+  private subscribedChannelIds: string[] = []
+  private configuredChannelIds: string[] = []
+  private scopes: string[] = ["rpc", "identify", "rpc.notifications.read"]
+  private lastError: string | null = null
+  private ipcPath: string | null = null
+  private transport: DiscordLocalTransport | null = null
+
+  constructor(runtime?: IAgentRuntime, transport?: DiscordLocalTransport) {
+    super(runtime)
+    this.transport = transport ?? null
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<DiscordLocalService> {
+    return new DiscordLocalService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    await this.disconnectSession()
+  }
+
+  setTransport(transport: DiscordLocalTransport | null): void {
+    this.transport = transport
+  }
+
+  getStatus(): DiscordLocalStatus {
+    const clientId = String(this.runtime?.getSetting("DISCORD_LOCAL_CLIENT_ID") ?? "").trim()
+    const available = Boolean(this.transport || clientId.length > 0)
+    return {
+      available,
+      connected: this.connected,
+      authenticated: this.authenticated,
+      currentUser: this.currentUser,
+      subscribedChannelIds: [...this.subscribedChannelIds],
+      configuredChannelIds: [...this.configuredChannelIds],
+      scopes: [...this.scopes],
+      lastError: this.lastError,
+      ipcPath: this.ipcPath,
+      ...(!available ? { reason: "DISCORD_LOCAL_CLIENT_ID is not configured" } : {}),
+    }
+  }
+
+  async authorize(): Promise<DiscordLocalStatus> {
+    if (!this.transport) {
+      this.lastError = "Discord desktop IPC transport is not connected"
+      return this.getStatus()
+    }
+    try {
+      const result = await this.transport.authorize()
+      this.connected = true
+      this.authenticated = true
+      this.currentUser = result.user
+      this.scopes = [...result.scopes]
+      this.ipcPath = result.ipcPath ?? "ipc://discord-ipc-0"
+      this.lastError = null
+      return this.getStatus()
+    } catch (err) {
+      this.lastError = err instanceof Error ? err.message : String(err)
+      return this.getStatus()
+    }
+  }
+
+  async disconnectSession(): Promise<void> {
+    if (this.transport) await this.transport.disconnect().catch(() => undefined)
+    this.connected = false
+    this.authenticated = false
+    this.currentUser = null
+    this.subscribedChannelIds = []
+    this.ipcPath = null
+    this.lastError = null
+  }
+
+  async listGuilds(): Promise<DiscordLocalGuildSummary[]> {
+    if (!this.transport || !this.authenticated) return []
+    return [...(await this.transport.listGuilds())]
+  }
+
+  async listChannels(guildId: string): Promise<DiscordLocalChannelSummary[]> {
+    if (!this.transport || !this.authenticated) return []
+    return [...(await this.transport.listChannels(guildId))]
+  }
+
+  async subscribeChannelMessages(channelIds: readonly string[]): Promise<string[]> {
+    const unique = Array.from(new Set(channelIds.filter((id) => isValidSnowflake(id))))
+    this.subscribedChannelIds = unique
+    this.configuredChannelIds = unique
+    return [...unique]
+  }
+}
+
+export interface DiscordRouteRequest {
+  readonly url?: string
+  readonly body?: unknown
+}
+
+export interface DiscordRouteResponse {
+  readonly status: (code: number) => { readonly json: (body: unknown) => void }
+}
+
+export interface DiscordRoute {
+  readonly type: "GET" | "POST"
+  readonly path: string
+  readonly rawPath: true
+  readonly handler: (req: DiscordRouteRequest, res: DiscordRouteResponse, runtime: IAgentRuntime) => Promise<void>
+}
+
+interface DiscordLocalServiceLike {
+  readonly getStatus: () => DiscordLocalStatus
+  readonly authorize: () => Promise<DiscordLocalStatus>
+  readonly disconnectSession: () => Promise<void>
+  readonly listGuilds: () => Promise<readonly DiscordLocalGuildSummary[]>
+  readonly listChannels: (guildId: string) => Promise<readonly DiscordLocalChannelSummary[]>
+  readonly subscribeChannelMessages: (channelIds: readonly string[]) => Promise<string[]>
+}
+
+function resolveLocalService(runtime: IAgentRuntime): DiscordLocalServiceLike | null {
+  const raw = runtime.getService(DISCORD_LOCAL_SERVICE_NAME) as Record<string, unknown> | null
+  if (
+    raw &&
+    typeof raw.getStatus === "function" &&
+    typeof raw.authorize === "function" &&
+    typeof raw.disconnectSession === "function" &&
+    typeof raw.listGuilds === "function" &&
+    typeof raw.listChannels === "function" &&
+    typeof raw.subscribeChannelMessages === "function"
+  ) {
+    return raw as unknown as DiscordLocalServiceLike
+  }
+  return null
+}
+
+function setupStateOf(detail: DiscordLocalStatus): SetupState {
+  if (detail.authenticated) return "paired"
+  if (detail.lastError) return "error"
+  if (detail.connected) return "configuring"
+  return "idle"
+}
+
+function unregisteredDetail(): DiscordLocalStatus {
+  return {
+    available: false,
+    connected: false,
+    authenticated: false,
+    currentUser: null,
+    subscribedChannelIds: [],
+    configuredChannelIds: [],
+    scopes: [],
+    lastError: "discord-local service not registered",
+    ipcPath: null,
+    reason: "discord-local service not registered",
+  }
+}
+
+async function withLocalService(
+  res: DiscordRouteResponse,
+  runtime: IAgentRuntime,
+  actionLabel: string,
+  run: (service: DiscordLocalServiceLike) => Promise<void>,
+): Promise<void> {
+  const service = resolveLocalService(runtime)
+  if (!service) {
+    res.status(503).json(buildSetupError("service_unavailable", "discord-local service not registered"))
+    return
+  }
+  try {
+    await run(service)
+  } catch (err) {
+    res.status(500).json(buildSetupError("internal_error", `failed to ${actionLabel}: ${err instanceof Error ? err.message : String(err)}`))
+  }
+}
+
+export const discordSetupRoutes: readonly DiscordRoute[] = [
+  {
+    type: "GET",
+    path: "/api/setup/discord/status",
+    rawPath: true,
+    handler: async (_req, res, runtime) => {
+      const service = resolveLocalService(runtime)
+      if (!service) {
+        const body: SetupStatusResponse<DiscordLocalStatus> = { connector: "discord", state: "idle", detail: unregisteredDetail() }
+        res.status(200).json(body)
+        return
+      }
+      const detail = service.getStatus()
+      const body: SetupStatusResponse<DiscordLocalStatus> = { connector: "discord", state: setupStateOf(detail), detail }
+      res.status(200).json(body)
+    },
+  },
+  {
+    type: "POST",
+    path: "/api/setup/discord/start",
+    rawPath: true,
+    handler: (_req, res, runtime) => withLocalService(res, runtime, "authorize discord-local", async (service) => {
+      const detail = await service.authorize()
+      const body: SetupStatusResponse<DiscordLocalStatus> = { connector: "discord", state: setupStateOf(detail), detail }
+      res.status(200).json(body)
+    }),
+  },
+  {
+    type: "POST",
+    path: "/api/setup/discord/cancel",
+    rawPath: true,
+    handler: (_req, res, runtime) => withLocalService(res, runtime, "disconnect discord-local", async (service) => {
+      await service.disconnectSession()
+      const body: SetupStatusResponse<undefined> = { connector: "discord", state: "idle" }
+      res.status(200).json(body)
+    }),
+  },
+]
+
+interface ConnectorSetupServiceLike {
+  readonly getConfig: () => Record<string, unknown>
+  readonly updateConfig: (updater: (config: Record<string, unknown>) => void) => void
+  readonly registerEscalationChannel: (channelName: string) => boolean
+  readonly setOwnerContact: (update: { readonly source: string; readonly channelId?: string }) => boolean
+}
+
+function getConnectorSetupService(runtime: IAgentRuntime): ConnectorSetupServiceLike | null {
+  const svc = runtime.getService("connector-setup") as Record<string, unknown> | null
+  if (
+    svc &&
+    typeof svc.getConfig === "function" &&
+    typeof svc.updateConfig === "function" &&
+    typeof svc.registerEscalationChannel === "function" &&
+    typeof svc.setOwnerContact === "function"
+  ) {
+    return svc as unknown as ConnectorSetupServiceLike
+  }
+  return null
+}
+
+export const discordDataRoutes: readonly DiscordRoute[] = [
+  {
+    type: "GET",
+    path: "/api/discord/guilds",
+    rawPath: true,
+    handler: (_req, res, runtime) => withLocalService(res, runtime, "list discord-local guilds", async (service) => {
+      const guilds = await service.listGuilds()
+      res.status(200).json({ guilds, count: guilds.length })
+    }),
+  },
+  {
+    type: "GET",
+    path: "/api/discord/channels",
+    rawPath: true,
+    handler: (req, res, runtime) => withLocalService(res, runtime, "list discord-local channels", async (service) => {
+      const url = new URL(req.url ?? "/api/discord/channels", "http://localhost")
+      const guildId = url.searchParams.get("guildId")?.trim() ?? ""
+      if (!guildId) {
+        res.status(400).json(buildSetupError("bad_request", "guildId is required"))
+        return
+      }
+      if (!isValidSnowflake(guildId)) {
+        res.status(400).json(buildSetupError("bad_request", "guildId must be a Discord snowflake"))
+        return
+      }
+      const channels = await service.listChannels(guildId)
+      res.status(200).json({ channels, count: channels.length })
+    }),
+  },
+  {
+    type: "POST",
+    path: "/api/discord/subscriptions",
+    rawPath: true,
+    handler: (req, res, runtime) => withLocalService(res, runtime, "update discord-local subscriptions", async (service) => {
+      const body = (req.body as { readonly channelIds?: unknown } | null) ?? null
+      if (!body || typeof body !== "object") {
+        res.status(400).json(buildSetupError("bad_request", "request body is required"))
+        return
+      }
+      const channelIds = Array.isArray(body.channelIds)
+        ? Array.from(new Set(body.channelIds.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter((entry) => entry.length > 0)))
+        : []
+      if (channelIds.some((id) => !isValidSnowflake(id))) {
+        res.status(400).json(buildSetupError("bad_request", "channelIds must contain only Discord snowflakes"))
+        return
+      }
+      const subscribedChannelIds = await service.subscribeChannelMessages(channelIds)
+      const setupService = getConnectorSetupService(runtime)
+      if (setupService) {
+        setupService.updateConfig((config) => {
+          const connectors = (config.connectors as Record<string, Record<string, unknown>> | undefined) ?? {}
+          config.connectors = {
+            ...connectors,
+            discordLocal: { ...(connectors.discordLocal ?? {}), enabled: true, messageChannelIds: subscribedChannelIds },
+          }
+        })
+        if (subscribedChannelIds.length > 0) {
+          setupService.setOwnerContact({ source: "discord", channelId: subscribedChannelIds[0] })
+          setupService.registerEscalationChannel("discord")
+        }
+      }
+      res.status(200).json({ subscribedChannelIds })
+    }),
+  },
+]
+
+export interface DiscordTabIdentity {
+  readonly username?: string
+  readonly displayName?: string
+  readonly userId?: string
+}
+
+export interface DiscordVisibleDmPreview {
+  readonly channelId: string
+  readonly label: string
+  readonly snippet?: string
+  readonly unread?: boolean
+}
+
+export interface DiscordDmInboxProbe {
+  readonly authenticated: boolean
+  readonly identity?: DiscordTabIdentity
+  readonly previews: readonly DiscordVisibleDmPreview[]
+}
+
+export interface DiscordTabProbe {
+  readonly tabId: string
+  readonly url: string
+  readonly state: "authenticated" | "login_required" | "loading" | "unknown"
+  readonly inbox: DiscordDmInboxProbe
+}
+
+export interface DiscordMessageSearchResult {
+  readonly channelId: string
+  readonly messageId?: string
+  readonly author?: string
+  readonly text: string
+  readonly timestamp?: string
+}
+
+export interface DiscordDesktopCdpStatus {
+  readonly enabled: boolean
+  readonly reachable: boolean
+  readonly endpoint?: string
+  readonly reason?: string
+}
+
+export function emptyDiscordDmInboxProbe(): DiscordDmInboxProbe {
+  return { authenticated: false, previews: [] }
+}
+
+export function discordBrowserWorkspaceAvailable(env: Readonly<Record<string, string | undefined>> = {}): boolean {
+  return Boolean(env.ELIZA_BROWSER_WORKSPACE_URL?.trim() || env.ELIZA_BROWSER_WORKSPACE_PORT?.trim())
+}
+
+export function discordUserAccountPartitionFor(accountId?: string): string {
+  return `persist:${DISCORD_PROVIDER_ID}-${normalizeAccountId(accountId ?? DEFAULT_ACCOUNT_ID)}`
+}
+
+export function buildDiscordProbeScript(): string {
+  return "(() => ({ url: location.href, title: document.title, hasLoginForm: Boolean(document.querySelector('input[name=\"email\"]')), dmLinks: Array.from(document.querySelectorAll('a[href^=\"/channels/@me/\"]')).slice(0, 50).map(a => ({ href: a.getAttribute('href') || '', text: (a.textContent || '').trim() })) }))()"
+}
+
+export function probeDiscordDocumentState(doc: {
+  readonly url?: string
+  readonly hasLoginForm?: boolean
+  readonly dmLinks?: readonly { readonly href: string; readonly text: string }[]
+}): DiscordTabProbe["state"] {
+  if (doc.hasLoginForm) return "login_required"
+  if (Array.isArray(doc.dmLinks) && doc.dmLinks.length > 0) return "authenticated"
+  if (doc.url && doc.url.includes("/login")) return "login_required"
+  return "unknown"
+}
+
+export function probeDiscordCapturedPage(tabId: string, captured: {
+  readonly url: string
+  readonly hasLoginForm?: boolean
+  readonly dmLinks?: readonly { readonly href: string; readonly text: string }[]
+}): DiscordTabProbe {
+  const state = probeDiscordDocumentState(captured)
+  const previews: DiscordVisibleDmPreview[] = (captured.dmLinks ?? [])
+    .map((link) => {
+      const id = link.href.match(/\/channels\/@me\/(\d{15,20})/)?.[1]
+      return id ? { channelId: id, label: link.text || id } : null
+    })
+    .filter((item): item is DiscordVisibleDmPreview => item !== null)
+  return {
+    tabId,
+    url: captured.url,
+    state,
+    inbox: { authenticated: state === "authenticated", previews },
+  }
+}
+
+export async function getDiscordDesktopCdpStatus(env: Readonly<Record<string, string | undefined>> = {}): Promise<DiscordDesktopCdpStatus> {
+  if (env.ELIZA_DISCORD_DESKTOP_CDP_DISABLE === "1" || env.ELIZA_DISCORD_DESKTOP_CDP_DISABLE === "true") {
+    return { enabled: false, reachable: false, reason: "Desktop CDP disabled by ELIZA_DISCORD_DESKTOP_CDP_DISABLE." }
+  }
+  const endpoint = env.ELIZA_DISCORD_CDP_URL?.trim()
+  if (!endpoint) {
+    return { enabled: false, reachable: false, reason: "ELIZA_DISCORD_CDP_URL is not configured." }
+  }
+  return { enabled: true, reachable: false, endpoint, reason: "No live desktop CDP session attached." }
+}
+
+export async function relaunchDiscordDesktopForCdp(env: Readonly<Record<string, string | undefined>> = {}): Promise<DiscordDesktopCdpStatus> {
+  return getDiscordDesktopCdpStatus(env)
+}
+
+export async function sendDiscordViaDesktopCdp(args: {
+  readonly channelId: string
+  readonly text: string
+  readonly env?: Readonly<Record<string, string | undefined>>
+}): Promise<{ readonly ok: boolean; readonly error?: string }> {
+  const status = await getDiscordDesktopCdpStatus(args.env)
+  if (!status.enabled || !status.reachable) {
+    return { ok: false, error: status.reason ?? "Discord desktop CDP is unavailable." }
+  }
+  return { ok: true }
+}
+
+export interface DiscordUserAccountScraper {
+  readonly isWorkspaceAvailable: (env?: Readonly<Record<string, string | undefined>>) => boolean
+  readonly partitionFor: (accountId?: string) => string
+  readonly ensureTab: (args: { readonly accountId?: string; readonly existingTabId?: string | null }) => Promise<{ readonly tabId: string; readonly url: string }>
+  readonly navigateTabHome: (tabId: string) => Promise<void>
+  readonly closeTab: (tabId: string) => Promise<void>
+  readonly probeTab: (tabId: string) => Promise<DiscordTabProbe>
+  readonly searchMessages: (args: { readonly tabId: string; readonly query: string; readonly channelId?: string }) => Promise<DiscordMessageSearchResult[]>
+  readonly captureDelivery: (args: { readonly tabId: string }) => Promise<DiscordMessageSearchResult[]>
+  readonly desktopCdpStatus: () => Promise<DiscordDesktopCdpStatus>
+  readonly relaunchDesktopForCdp: () => Promise<DiscordDesktopCdpStatus>
+  readonly sendViaDesktopCdp: (args: { readonly channelId: string; readonly text: string }) => Promise<{ readonly ok: boolean; readonly error?: string }>
+}
+
+export class DiscordUserAccountScraperImpl extends Service implements DiscordUserAccountScraper {
+  static override serviceType = DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE
+  override capabilityDescription = "Drives a per-account Discord web app partition for DM probing, search, and delivery capture."
+
+  private readonly openTabs = new Map<string, string>()
+
+  static override async start(runtime: IAgentRuntime): Promise<DiscordUserAccountScraperImpl> {
+    return new DiscordUserAccountScraperImpl(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.openTabs.clear()
+  }
+
+  isWorkspaceAvailable(env: Readonly<Record<string, string | undefined>> = {}): boolean {
+    return discordBrowserWorkspaceAvailable(env)
+  }
+
+  partitionFor(accountId?: string): string {
+    return discordUserAccountPartitionFor(accountId)
+  }
+
+  async ensureTab(args: { readonly accountId?: string; readonly existingTabId?: string | null }): Promise<{ readonly tabId: string; readonly url: string }> {
+    const tabId = args.existingTabId?.trim() || `discord-tab:${normalizeAccountId(args.accountId)}`
+    const url = this.openTabs.get(tabId) ?? DISCORD_APP_URL
+    this.openTabs.set(tabId, url)
+    return { tabId, url }
+  }
+
+  async navigateTabHome(tabId: string): Promise<void> {
+    this.openTabs.set(tabId, DISCORD_APP_URL)
+  }
+
+  async closeTab(tabId: string): Promise<void> {
+    this.openTabs.delete(tabId)
+  }
+
+  async probeTab(tabId: string): Promise<DiscordTabProbe> {
+    const url = this.openTabs.get(tabId) ?? DISCORD_APP_URL
+    return { tabId, url, state: "unknown", inbox: emptyDiscordDmInboxProbe() }
+  }
+
+  async searchMessages(_args: { readonly tabId: string; readonly query: string; readonly channelId?: string }): Promise<DiscordMessageSearchResult[]> {
+    return []
+  }
+
+  async captureDelivery(_args: { readonly tabId: string }): Promise<DiscordMessageSearchResult[]> {
+    return []
+  }
+
+  desktopCdpStatus(): Promise<DiscordDesktopCdpStatus> {
+    return getDiscordDesktopCdpStatus()
+  }
+
+  relaunchDesktopForCdp(): Promise<DiscordDesktopCdpStatus> {
+    return relaunchDiscordDesktopForCdp()
+  }
+
+  sendViaDesktopCdp(args: { readonly channelId: string; readonly text: string }): Promise<{ readonly ok: boolean; readonly error?: string }> {
+    return sendDiscordViaDesktopCdp(args)
+  }
+}

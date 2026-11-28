@@ -1,36 +1,54 @@
-// spec/nativeSwabble/index.md, "Story: Listen for a wake phrase only during the current authorized session"
-import type { SwabblePlugin } from "./native-contract.vibe"
+// spec/nativeSwabble/index.md, "Story: Listen for a wake phrase only during the current authorized session"; spec/nativeSwabble/session.md, "Story: Rotate wake leases on start, audio-device switch and stop"
+import { mayReportWakeObservation, type WakeLease, type WakeObservation } from "../gen/nativeSwabble.effect.vibe"
+import type { SwabblePlugin, SwabbleTranscriptEvent } from "./native-contract.vibe"
+import { SwabbleWeb, createSwabbleSessionHandle, matchWakeTrigger, type SwabbleSessionMachineHandle } from "./web.vibe"
 
 export type * from "./native-contract.vibe"
+export { SwabbleWeb, createSwabbleSessionHandle, matchWakeTrigger, type SwabbleSessionMachineHandle }
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { SwabblePlugin } from "./native-contract.vibe"
+  import { SwabbleWeb } from "./web.vibe"
 
-  export const native = registerPlugin<SwabblePlugin>("Swabble")
+  export const native = registerPlugin<SwabblePlugin>("Swabble", {
+    web: () => Promise.resolve(new SwabbleWeb()),
+  })
 }
 import { native } from capacitor
 
 export const Swabble = native
 
-import { mayReportWakeObservation, type WakeLease, type WakeObservation } from "../gen/nativeSwabble.effect.vibe"
-
-export function currentWakeListener<T>(lease: () => WakeLease, callbackId: string, observation: WakeObservation, forward: (value: T) => void): (value: T) => void {
+export function currentWakeListener<T>(
+  lease: () => WakeLease,
+  callbackId: string,
+  observation: WakeObservation,
+  forward: (value: T) => void,
+): (value: T) => void {
   return (value) => {
     if (mayReportWakeObservation(lease(), callbackId, observation)) forward(value)
   }
 }
 
-import type { SwabbleTranscriptEvent } from "./native-contract.vibe"
+schema SwabbleSegmentSchema {
+  text: Schema.String
+  start: Schema.Number
+  duration: Schema.Number
+  isFinal: Schema.Boolean
+}
 
 const Transcript = Schema.Struct({
   transcript: Schema.String,
   isFinal: Schema.Boolean,
-  segments: Schema.Array(Schema.Struct({ text: Schema.String, start: Schema.Number, duration: Schema.Number, isFinal: Schema.Boolean })),
+  segments: Schema.Array(SwabbleSegmentSchema),
   confidence: Schema.optionalKey(Schema.Number),
 })
 
-export effect function observeWakeTranscript(lease: () => WakeLease, forward: (value: SwabbleTranscriptEvent) => void, port: SwabblePlugin = Swabble) {
+export effect function observeWakeTranscript(
+  lease: () => WakeLease,
+  forward: (value: SwabbleTranscriptEvent) => void,
+  port: SwabblePlugin = Swabble,
+) {
   const leaseId = lease().leaseId
   let retired = false
   try acquireRelease(tryPromise(() => port.addListener("transcript", (raw) => {

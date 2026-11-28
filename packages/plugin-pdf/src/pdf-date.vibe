@@ -1,0 +1,62 @@
+// spec/pdf/index.md, "A text query selects a range and preserves native run order"
+import { pdfUtcOffsetMs, type PdfUtcRelation } from "../gen/pdf.effect.vibe"
+
+const PDF_SPEC_DATE_REGEX = /^D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?([Z+-])?(\d{2})?'?(\d{2})?'?$/
+
+function clampInt(value: string | undefined, min: number, max: number, fallback: number): number {
+  const parsed = value === undefined ? Number.NaN : Number.parseInt(value, 10)
+  return parsed >= min && parsed <= max ? parsed : fallback
+}
+
+function matchesUtcWallClock(
+  date: Date,
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+): boolean {
+  return (
+    Number.isFinite(date.getTime()) &&
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === monthIndex &&
+    date.getUTCDate() === day &&
+    date.getUTCHours() === hour &&
+    date.getUTCMinutes() === minute &&
+    date.getUTCSeconds() === second
+  )
+}
+
+function parseRelation(raw: string | undefined): PdfUtcRelation {
+  if (raw === "Z") return "UtcZulu"
+  if (raw === "+") return "UtcPlus"
+  if (raw === "-") return "UtcMinus"
+  return "UtcLocal"
+}
+
+export function parsePdfSpecDate(value: string): Date | undefined {
+  const matches = PDF_SPEC_DATE_REGEX.exec(value)
+  if (matches === null) return undefined
+  const year = Number.parseInt(matches[1] ?? "", 10)
+  const monthIndex = clampInt(matches[2], 1, 12, 1) - 1
+  const day = clampInt(matches[3], 1, 31, 1)
+  const hour = clampInt(matches[4], 0, 23, 0)
+  const minute = clampInt(matches[5], 0, 59, 0)
+  const second = clampInt(matches[6], 0, 59, 0)
+  const relation = parseRelation(matches[7])
+  const wall = new Date(0)
+  wall.setUTCFullYear(year, monthIndex, day)
+  wall.setUTCHours(hour, minute, second, 0)
+  if (!matchesUtcWallClock(wall, year, monthIndex, day, hour, minute, second)) return undefined
+  if (relation === "UtcLocal") {
+    const localDate = new Date(0)
+    localDate.setFullYear(year, monthIndex, day)
+    localDate.setHours(hour, minute, second, 0)
+    return localDate
+  }
+  if (relation === "UtcZulu") return wall
+  const offsetMinutes = clampInt(matches[8], 0, 23, 0) * 60 + clampInt(matches[9], 0, 59, 0)
+  const resolved = new Date(wall.getTime() + pdfUtcOffsetMs(relation, offsetMinutes))
+  return Number.isFinite(resolved.getTime()) ? resolved : undefined
+}

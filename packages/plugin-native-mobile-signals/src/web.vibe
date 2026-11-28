@@ -1,0 +1,384 @@
+// spec/nativeMobileSignals/index.md, "Story: Observe only the mobile signals I have authorized"
+import type { PluginListenerHandle } from "@capacitor/core"
+import type {
+  MobileSignalsBackgroundRefreshResult,
+  MobileSignalsCancelBackgroundRefreshResult,
+  MobileSignalsHealthSnapshot,
+  MobileSignalsOpenSettingsOptions,
+  MobileSignalsOpenSettingsResult,
+  MobileSignalsPermissionStatus,
+  MobileSignalsPlatform,
+  MobileSignalsPlugin,
+  MobileSignalsPresentScreenTimeReportResult,
+  MobileSignalsRequestPermissionsOptions,
+  MobileSignalsScreenTimeStatus,
+  MobileSignalsSettingsTarget,
+  MobileSignalsSetupAction,
+  MobileSignalsSignal,
+  MobileSignalsSnapshot,
+  MobileSignalsSnapshotResult,
+  MobileSignalsStartOptions,
+  MobileSignalsStartResult,
+  MobileSignalsStopResult,
+} from "./native-contract.vibe"
+
+type Cleanup = () => void
+
+const SCREEN_TIME_REQUIREMENTS = {
+  entitlements: {
+    familyControls: "com.apple.developer.family-controls",
+  },
+  frameworks: ["FamilyControls", "DeviceActivity"],
+  deviceActivityReportExtension: false,
+  deviceActivityMonitorExtension: false,
+  android: {
+    usageStatsPermission: "android.permission.PACKAGE_USAGE_STATS",
+    usageAccessSettingsAction: "android.settings.USAGE_ACCESS_SETTINGS",
+  },
+}
+
+const SETTINGS_TARGETS = new Set<MobileSignalsSettingsTarget>([
+  "app",
+  "health",
+  "healthConnect",
+  "screenTime",
+  "usageAccess",
+  "notification",
+  "batteryOptimization",
+  "localNetwork",
+  "deviceSettings",
+])
+
+const WEB_HEALTH_REASON = "Web fallback cannot access native HealthKit or Health Connect."
+
+module signalsWebEnv {
+  interface BatteryLike {
+    charging?: unknown
+    level?: unknown
+  }
+
+  export function failTarget(message: string): never {
+    throw new Error(message)
+  }
+
+  export function readNavigator(): (Navigator & { getBattery?: () => Promise<BatteryLike> }) | undefined {
+    return (globalThis as { navigator?: Navigator & { getBattery?: () => Promise<BatteryLike> } }).navigator
+  }
+
+  export function readDocument(): Document | undefined {
+    return (globalThis as { document?: Document }).document
+  }
+
+  export function readWindow(): Window | undefined {
+    return (globalThis as { window?: Window }).window
+  }
+
+  export async function readBattery(): Promise<{ onBattery: boolean | null; batteryLevel: number | null; isCharging: boolean | null }> {
+    const nav = readNavigator()
+    if (!nav || typeof nav.getBattery !== "function") {
+      return { onBattery: null, batteryLevel: null, isCharging: null }
+    }
+    try {
+      const battery = await nav.getBattery()
+      const charging = typeof battery.charging === "boolean" ? battery.charging : null
+      const level = typeof battery.level === "number" && Number.isFinite(battery.level)
+        ? Math.max(0, Math.min(1, battery.level))
+        : null
+      return { onBattery: charging === null ? null : !charging, batteryLevel: level, isCharging: charging }
+    } catch {
+      return { onBattery: null, batteryLevel: null, isCharging: null }
+    }
+  }
+}
+import { failTarget, readBattery, readDocument, readNavigator, readWindow } from signalsWebEnv
+
+function normalizeSettingsTarget(target: unknown): MobileSignalsSettingsTarget {
+  if (target === undefined) return "app"
+  if (typeof target !== "string" || !SETTINGS_TARGETS.has(target as MobileSignalsSettingsTarget)) {
+    failTarget("target must be a valid mobile settings target")
+  }
+  return target as MobileSignalsSettingsTarget
+}
+
+function getPlatform(): MobileSignalsPlatform {
+  const nav = readNavigator()
+  if (!nav) return "web"
+  const ua = nav.userAgent.toLowerCase()
+  if (ua.includes("android")) return "android"
+  if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) return "ios"
+  return "web"
+}
+
+function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
+  return {
+    supported: false,
+    hostEnvironment: "web",
+    availability: "platform-unavailable",
+    requirements: SCREEN_TIME_REQUIREMENTS,
+    entitlements: { familyControls: false },
+    provisioning: {
+      satisfied: false,
+      status: "missing",
+      inspected: "not-inspectable",
+      reason,
+    },
+    authorization: {
+      status: "unavailable",
+      canRequest: false,
+    },
+    reportAvailable: false,
+    coarseSummaryAvailable: false,
+    thresholdEventsAvailable: false,
+    rawUsageExportAvailable: false,
+    android: {
+      usageAccessGranted: false,
+      packageUsageStatsPermissionDeclared: false,
+      canOpenUsageAccessSettings: false,
+      foregroundEventsAvailable: false,
+      totalTimeForegroundMs: null,
+    },
+    reason,
+  }
+}
+
+function buildSetupActions(reason: string): MobileSignalsSetupAction[] {
+  return [
+    {
+      id: "health_permissions",
+      label: "Health permissions",
+      status: "unavailable",
+      canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      reason,
+    },
+    {
+      id: "screen_time_authorization",
+      label: "Screen Time",
+      status: "unavailable",
+      canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      reason: "Web fallback cannot open native Screen Time settings.",
+    },
+  ]
+}
+
+async function buildSnapshot(reason: string): Promise<MobileSignalsSnapshot> {
+  const doc = readDocument()
+  const isVisible = doc ? doc.visibilityState === "visible" : true
+  const hasFocus = doc && typeof doc.hasFocus === "function" ? doc.hasFocus() : true
+  const battery = await readBattery()
+  return {
+    source: "mobile_device",
+    platform: getPlatform(),
+    state: isVisible && hasFocus ? "active" : "background",
+    observedAt: Date.now(),
+    idleState: isVisible ? "active" : "idle",
+    idleTimeSeconds: null,
+    onBattery: battery.onBattery,
+    metadata: {
+      reason,
+      visibilityState: doc ? doc.visibilityState : "visible",
+      hasFocus,
+      ...battery,
+    },
+  }
+}
+
+function buildHealthSnapshot(reason: string): MobileSignalsHealthSnapshot {
+  return {
+    source: "mobile_health",
+    platform: getPlatform(),
+    state: "idle",
+    observedAt: Date.now(),
+    idleState: null,
+    idleTimeSeconds: null,
+    onBattery: null,
+    healthSource: "healthkit",
+    screenTime: buildScreenTimeStatus(WEB_HEALTH_REASON),
+    permissions: { sleep: false, biometrics: false },
+    sleep: {
+      available: false,
+      isSleeping: false,
+      asleepAt: null,
+      awakeAt: null,
+      durationMinutes: null,
+      stage: null,
+    },
+    biometrics: {
+      sampleAt: null,
+      heartRateBpm: null,
+      restingHeartRateBpm: null,
+      heartRateVariabilityMs: null,
+      respiratoryRate: null,
+      bloodOxygenPercent: null,
+    },
+    warnings: [WEB_HEALTH_REASON],
+    metadata: { reason },
+  }
+}
+
+function buildPermissionStatus(): MobileSignalsPermissionStatus {
+  return {
+    status: "not-applicable",
+    canRequest: false,
+    canOpenSettings: false,
+    settingsTarget: null,
+    engine: "web-fallback",
+    capabilities: { health: false, screenTime: false, notifications: false, settings: false },
+    reason: WEB_HEALTH_REASON,
+    screenTime: buildScreenTimeStatus(WEB_HEALTH_REASON),
+    setupActions: buildSetupActions(WEB_HEALTH_REASON),
+    permissions: { sleep: false, biometrics: false },
+  }
+}
+
+export class MobileSignalsWeb implements MobileSignalsPlugin {
+  private monitoring = false
+  private generation = 0
+  private cleanup: Cleanup[] = []
+  private readonly signalListeners: Array<(event: MobileSignalsSignal) => void> = []
+
+  private notifyListeners(_eventName: "signal", data: MobileSignalsSignal): void {
+    for (const cb of this.signalListeners) cb(data)
+  }
+
+  async addListener(
+    _eventName: "signal",
+    listenerFunc: (event: MobileSignalsSignal) => void,
+  ): Promise<PluginListenerHandle> {
+    this.signalListeners.push(listenerFunc)
+    return {
+      remove: async () => {
+        const index = this.signalListeners.indexOf(listenerFunc)
+        if (index >= 0) this.signalListeners.splice(index, 1)
+      },
+    }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    this.signalListeners.length = 0
+  }
+
+  async checkPermissions(): Promise<MobileSignalsPermissionStatus> {
+    return buildPermissionStatus()
+  }
+
+  async requestPermissions(_options?: MobileSignalsRequestPermissionsOptions): Promise<MobileSignalsPermissionStatus> {
+    return buildPermissionStatus()
+  }
+
+  async openSettings(options: MobileSignalsOpenSettingsOptions = {}): Promise<MobileSignalsOpenSettingsResult> {
+    const target = normalizeSettingsTarget(options.target)
+    return {
+      opened: false,
+      target,
+      actualTarget: "app",
+      reason: "Web fallback cannot open native device settings.",
+    }
+  }
+
+  async presentScreenTimeReport(): Promise<MobileSignalsPresentScreenTimeReportResult> {
+    return {
+      presented: false,
+      reason: "Web fallback cannot present a native DeviceActivity report.",
+    }
+  }
+
+  private emitSignal = async (reason: string): Promise<void> => {
+    if (!this.monitoring) return
+    const gen = this.generation
+    const snapshot = await buildSnapshot(reason)
+    if (!this.monitoring || this.generation !== gen) return
+    this.notifyListeners("signal", snapshot)
+    this.notifyListeners("signal", buildHealthSnapshot(reason))
+  }
+
+  private attachListeners(): void {
+    const doc = readDocument()
+    if (doc && typeof doc.addEventListener === "function") {
+      const handleVisibilityChange = (): void => {
+        void this.emitSignal("visibilitychange")
+      }
+      doc.addEventListener("visibilitychange", handleVisibilityChange)
+      this.cleanup.push(() => doc.removeEventListener("visibilitychange", handleVisibilityChange))
+    }
+    const win = readWindow()
+    if (win && typeof win.addEventListener === "function") {
+      const handleFocus = (): void => {
+        void this.emitSignal("focus")
+      }
+      const handleBlur = (): void => {
+        void this.emitSignal("blur")
+      }
+      win.addEventListener("focus", handleFocus)
+      win.addEventListener("blur", handleBlur)
+      this.cleanup.push(() => win.removeEventListener("focus", handleFocus))
+      this.cleanup.push(() => win.removeEventListener("blur", handleBlur))
+    }
+  }
+
+  private clearListeners(): void {
+    while (this.cleanup.length > 0) {
+      const fn = this.cleanup.pop()
+      fn?.()
+    }
+  }
+
+  async startMonitoring(options: MobileSignalsStartOptions = {}): Promise<MobileSignalsStartResult> {
+    const starting = !this.monitoring
+    if (starting) {
+      this.monitoring = true
+      this.generation += 1
+      this.attachListeners()
+    }
+    const gen = this.generation
+    const snapshot = await buildSnapshot("start")
+    const healthSnapshot = buildHealthSnapshot("start")
+    const active = this.monitoring && this.generation === gen
+    if (active && starting && (options.emitInitial ?? true)) {
+      this.notifyListeners("signal", snapshot)
+      this.notifyListeners("signal", healthSnapshot)
+    }
+    return {
+      enabled: active,
+      supported: true,
+      platform: snapshot.platform,
+      snapshot,
+      healthSnapshot,
+    }
+  }
+
+  async stopMonitoring(): Promise<MobileSignalsStopResult> {
+    this.monitoring = false
+    this.clearListeners()
+    return { stopped: true }
+  }
+
+  async getSnapshot(): Promise<MobileSignalsSnapshotResult> {
+    return {
+      supported: true,
+      snapshot: await buildSnapshot("snapshot"),
+      healthSnapshot: buildHealthSnapshot("snapshot"),
+    }
+  }
+
+  async scheduleBackgroundRefresh(): Promise<MobileSignalsBackgroundRefreshResult> {
+    return {
+      scheduled: false,
+      reason: "Web fallback cannot schedule native background refresh tasks.",
+    }
+  }
+
+  async cancelBackgroundRefresh(): Promise<MobileSignalsCancelBackgroundRefreshResult> {
+    return {
+      cancelled: false,
+      reason: "Web fallback has no native background refresh task to cancel.",
+    }
+  }
+}
+
+export const __internal = {
+  buildScreenTimeStatus,
+}

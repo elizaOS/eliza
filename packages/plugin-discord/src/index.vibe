@@ -1,8 +1,436 @@
-// spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/index.md, "Every accepted Discord event keeps the captured account and channel"; spec/discord/index.md, "A stale response is tagged, suppressed, or left alone by its policy"; spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated"
+// spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/index.md, "Every accepted Discord event keeps the captured account and channel"; spec/discord/index.md, "A stale response is tagged, suppressed, or left alone by its policy"; spec/discord/index.md, "Each Discord reply part is stored once even when its send is repeated"; spec/discord/index.md, "A structural server operation matches the account, guild, requester, and granted operation"; spec/discord/coordination.md, "Story: Coordinate Discord group replies and durable turn lifecycles"
 import { Client, Events, GatewayIntentBits, Partials, type AttachmentPayload, type Message, type SendableChannels } from "discord.js"
-import { ChannelType, Service, checkPairingAllowed, chunkText, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
+import {
+  ChannelType,
+  Service,
+  checkPairingAllowed,
+  chunkText,
+  createUniqueUuid,
+  getConnectorAccountManager,
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  type MessageConnectorManageServerDestination,
+  type MessageConnectorQueryContext,
+  type MessageConnectorTarget,
+  type Plugin,
+  type SendHandlerOutcome,
+  type TargetInfo,
+} from "@elizaos/core"
 import { fetchRemoteMedia } from "@elizaos/core-node"
-import { initial, machineOver, discordStalenessDecision, type DiscordPolicy } from "../gen/discord.effect.vibe"
+import {
+  Machine,
+  discordStalenessDecision,
+  initial,
+  machine,
+  machineOver,
+  type DiscordCaller,
+  type DiscordEffect,
+  type DiscordPolicy,
+  type DiscordSession,
+  type Event as DiscordSessionEvent,
+} from "../gen/discord.effect.vibe"
+import {
+  DEFAULT_ACCOUNT_ID,
+  DISCORD_ACCOUNT_POLICY_CACHE_KEY,
+  DiscordAccountClientPool,
+  __resetProfileCachesForTests,
+  __setProfileCacheValueForTests,
+  buildDiscordAvatarCacheFileName,
+  buildDiscordEntityMetadata,
+  buildDiscordWorldMetadata,
+  cacheDiscordAvatarForRuntime,
+  cacheDiscordAvatarUrl,
+  createDiscordConnectorAccountProvider,
+  discordTokenFingerprint,
+  extractDiscordOwnerUserIds,
+  extractDiscordTeamAdminUserIds,
+  getDiscordAvatarCacheDir,
+  getDiscordAvatarCachePath,
+  getDiscordAvatarPublicPath,
+  getMultiAccountConfig,
+  isAliasedDiscordEntityId,
+  isCanonicalDiscordSource,
+  isDiscordAccountDisabledByPolicy,
+  isDiscordAvatarUrl,
+  isMultiAccountEnabled,
+  listDiscordAccountIds,
+  listEnabledDiscordAccounts,
+  normalizeAccountId,
+  normalizeDiscordToken,
+  parseDiscordOwnerUserIds,
+  persistDiscordAccountDisabled,
+  readDiscordAccountPolicy,
+  resolveDefaultDiscordAccountId,
+  resolveDiscordAccount,
+  resolveDiscordMessageAuthorProfile,
+  resolveDiscordRoomProfile,
+  resolveDiscordRuntimeEntityId,
+  resolveDiscordToken,
+  resolveDiscordUserProfile,
+  resolveElizaOwnerEntityId,
+  resolveStoredDiscordEntityProfile,
+  type DiscordAccountClientState,
+  type DiscordAccountPolicy,
+  type DiscordDisabledAccountPolicy,
+  type DiscordMultiAccountConfig,
+  type DiscordResolvedProfile,
+  type DiscordTokenResolution,
+  type DiscordTokenSource,
+  type ResolvedDiscordAccount,
+} from "./accounts.vibe"
+import {
+  DISCORD_APP_URL,
+  DISCORD_FACT_CACHE_TTL_MS,
+  DiscordLocalService,
+  DiscordTriageAdapter,
+  DiscordUserAccountScraperImpl,
+  IPC_MAX_PAYLOAD_BYTES,
+  buildDiscordProbeScript,
+  createDiscordDmSensitiveRequestAdapter,
+  createDiscordSourceCache,
+  createDiscordTargetSource,
+  discordBrowserWorkspaceAvailable,
+  discordDataRoutes,
+  discordSetupRoutes,
+  discordUserAccountPartitionFor,
+  emptyDiscordDmInboxProbe,
+  fetchDiscordEnumeration,
+  formatDiscordEnumerationAsFacts,
+  getDiscordDesktopCdpStatus,
+  mapDiscordMemoryToRef,
+  probeDiscordCapturedPage,
+  probeDiscordDocumentState,
+  registerDiscordDmSensitiveRequestAdapter,
+  registerDiscordTargetSource,
+  registerDiscordTriageAdapter,
+  relaunchDiscordDesktopForCdp,
+  sendDiscordViaDesktopCdp,
+  type DiscordDesktopCdpStatus,
+  type DiscordDmInboxProbe,
+  type DiscordDraftRequest,
+  type DiscordEnumerationResult,
+  type DiscordLocalChannelSummary,
+  type DiscordLocalGuildSummary,
+  type DiscordLocalStatus,
+  type DiscordLocalTransport,
+  type DiscordMessageRef,
+  type DiscordMessageSearchResult,
+  type DiscordRoute,
+  type DiscordRouteRequest,
+  type DiscordRouteResponse,
+  type DiscordSourceCache,
+  type DiscordTabIdentity,
+  type DiscordTabProbe,
+  type DiscordTargetSource,
+  type DiscordUserAccountScraper,
+  type DiscordVisibleDmPreview,
+} from "./adapters.vibe"
+import {
+  COMMAND_ARG_CUSTOM_ID_KEY,
+  DiscordOwnerPairingServiceImpl,
+  _resetRateLimitStateForTesting,
+  addCommand,
+  buildCommandArgCustomId,
+  buildCommandArgMenu,
+  buildCommandText,
+  buildDiscordCommandOptions,
+  buildDiscordSlashCommand,
+  createCommandArgs,
+  decodeCommandArgValue,
+  encodeCommandArgValue,
+  getRegisteredCommands,
+  handleAutocomplete,
+  handleElizaPairCommand,
+  handleSlashCommand,
+  isGuildOnlyCommand,
+  isUnknownInteractionError,
+  parseCommandArgCustomId,
+  registerSlashCommands,
+  removeCommand,
+  safeInteractionCall,
+  serializeCommandArgs,
+  transformCommandToDiscordApi,
+  type BuiltCommandOption,
+  type CommandArgButton,
+  type CommandArgButtonRow,
+  type CommandArgDefinition,
+  type CommandArgMenu,
+  type CommandArgValues,
+  type CommandArgs,
+  type DiscordOwnerPairingService,
+  type NativeCommandSpec,
+  type SlashCommand,
+  type SlashCommandContext,
+  type SlashCommandOption,
+  type SlashCommandRole,
+} from "./commands.vibe"
+import {
+  DEFAULT_BOT_REPLY_BUDGET,
+  DEFAULT_COORDINATION_SWEEP_MS,
+  DEFAULT_SPEAKER_LEASE_MS,
+  DISCORD_COORDINATION_AUDIT_SCOPE,
+  DISCORD_COORDINATION_RECEIPT_TABLE,
+  DISCORD_SPEAKER_LEASE_TABLE,
+  DISCORD_TURN_MAX_ATTEMPTS,
+  DISCORD_TURN_TABLE,
+  MAX_LEASE_GENERATIONS,
+  claimDiscordTurn,
+  createDiscordCoordinationHandle,
+  createInMemorySpeakerLeaseStore,
+  discordTurnId,
+  getGroupCoordinationConfig,
+  isTerminalTurnState,
+  loadDiscordTurn,
+  markDiscordTurnDispatched,
+  markDiscordTurnFailed,
+  markDiscordTurnReplied,
+  type DiscordCoordinationMachineHandle,
+  type DiscordTurnRecord,
+  type DiscordTurnRuntime,
+  type DiscordTurnState,
+  type GroupCoordinationConfig,
+  type SpeakerLease,
+  type SpeakerLeaseClaimOutcome,
+  type SpeakerLeaseStore,
+} from "./coordination.vibe"
+import {
+  BUILT_IN_GUILD_TEMPLATES,
+  GUILD_MANAGEMENT_OPERATIONS,
+  GUILD_TEMPLATE_LIMITS,
+  GuildManagementError,
+  OPERATION_GATES,
+  authorizeGuildManagementMutation,
+  normalizeGuildManagementOperation,
+  renderTemplateString,
+  resolveDiscordManageServerDestination,
+  resolveGuildManagementGates,
+  revalidateDiscordManageServerAuthorization,
+  validateGuildTemplate,
+  type GuildManagementGates,
+  type GuildManagementOperation,
+  type GuildManagementReceipt,
+  type GuildManagementRequest,
+  type GuildTemplate,
+  type GuildTemplateCategory,
+  type GuildTemplateChannel,
+  type GuildTemplateChannelType,
+  type GuildTemplateOverwrite,
+  type GuildTemplateRole,
+} from "./guild-management.vibe"
+import {
+  DISCORD_REACTION_RECONCILE_TIMEOUT_MS,
+  DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
+  DISCORD_STRUCTURED_TEXT_UNBOUNDED,
+  IN_PROGRESS_STATUS_EMOJIS,
+  INTERACTION_ONLY_FALLBACK_TEXT,
+  MAX_DISCORD_STRUCTURED_TEXT_DEPTH,
+  MAX_DISCORD_STRUCTURED_TEXT_NODES,
+  appendCoalescedDiscordMetadata,
+  batchMediaProperties,
+  buildChannelLink,
+  buildDiscordReplyPayload,
+  buildDuplicateTextPreview,
+  buildMessageLink,
+  chunkDiscordText,
+  chunkDiscordTextWithMode,
+  createChannelDebouncer,
+  createDraftStreamController,
+  createStatusReactionController,
+  createTurnDrainRegistry,
+  createTypingController,
+  escapeDiscordMarkdown,
+  extractAllChannelMentions,
+  extractAllRoleMentions,
+  extractAllUserMentions,
+  extractChannelIdFromMention,
+  extractRoleIdFromMention,
+  extractUserIdFromMention,
+  formatCoalescedDiscordMessages,
+  formatDiscordChannelMention,
+  formatDiscordReactionEmoji,
+  formatDiscordRoleMention,
+  formatDiscordTimestamp,
+  formatDiscordUserMention,
+  formatInboundEnvelope,
+  formatMessageReactionEmoji,
+  getDiscordMessageCoalesceConfig,
+  getDiscordMessageMeta,
+  getDiscordReplyContext,
+  makeCoalescedDiscordMessage,
+  messageContainsMention,
+  normalizeDiscordMessageText,
+  numericFactSignatureTokens,
+  parseMessageLink,
+  renderDiscordInteractions,
+  resolveDiscordSystemLocation,
+  resolveTimestampMs,
+  sanitizeThreadName,
+  shouldShowStatusReaction,
+  stripDiscordFormatting,
+  truncateText,
+  truncateUtf16Safe,
+  type ChannelDebouncer,
+  type ChannelDebouncerOptions,
+  type ChatType,
+  type CoalescedDiscordMessageMeta,
+  type DebouncerFlushCallback,
+  type DiscordDrainResult,
+  type DiscordInteractionOptionItem,
+  type DiscordInteractionRender,
+  type DiscordMessageCoalesceConfig,
+  type DiscordMessageMetadata,
+  type DiscordMessageWithCoalescedMetadata,
+  type DiscordReplyContext,
+  type DiscordTurnDrainRegistry,
+  type DraftStreamController,
+  type DraftStreamOptions,
+  type EnvelopeResult,
+  type StatusReactionController,
+  type StatusReactionScope,
+  type TypingController,
+} from "./messaging.vibe"
+import {
+  DM_REGISTRY_MAX_ENTRIES,
+  DiscordPermissionTiers,
+  DmChannelRegistry,
+  ELEVATED_PERMISSIONS,
+  PERMISSIONS_ADMIN,
+  PERMISSIONS_ADMIN_VOICE,
+  PERMISSIONS_BASIC,
+  PERMISSIONS_BASIC_VOICE,
+  PERMISSIONS_MODERATOR,
+  PERMISSIONS_MODERATOR_VOICE,
+  allowListMatches,
+  applyDiscordStalenessGuard,
+  checkDiscordDmAccess,
+  diffMemberRoles,
+  diffOverwrites,
+  diffRolePermissions,
+  formatDiscordUserTag,
+  generateAllInviteUrls,
+  generateInviteUrl,
+  getDiscordChannelMessageSequence,
+  getDiscordStalenessConfig,
+  getPermissionValues,
+  hasElevatedPermissions,
+  isDiscordAutoThreadOwnedByBot,
+  isDiscordGroupAllowedByPolicy,
+  isDiscordUserAddressed,
+  isElevatedRole,
+  normalizeDiscordAllowList,
+  normalizeDiscordSlug,
+  recordDiscordChannelMessageSeen,
+  resolveDiscordAllowListMatch,
+  resolveDiscordChannelConfig,
+  resolveDiscordChannelConfigWithFallback,
+  resolveDiscordCommandAuthorized,
+  resolveDiscordGuildEntry,
+  resolveDiscordShouldRequireMention,
+  resolveDiscordUserAllowed,
+  shouldEmitDiscordReactionNotification,
+  type AllowListMatchSource,
+  type ChannelMatchSource,
+  type DiscordAllowList,
+  type DiscordAllowListMatch,
+  type DiscordChannelConfigResolved,
+  type DiscordDmAccessResult,
+  type DiscordDmIdentity,
+  type DiscordInviteUrls,
+  type DiscordPermissionTier,
+  type DiscordPermissionValues,
+  type DiscordStalenessBehavior,
+  type DiscordStalenessConfig,
+  type DiscordStalenessDecision,
+  type DmChannelRecord,
+} from "./policy.vibe"
+import {
+  DEFAULT_DISCORD_DM_POLICY,
+  DISCORD_DEFAULTS,
+  DISCORD_LOCAL_ACCOUNT_ID,
+  DISCORD_LOCAL_SERVICE_NAME,
+  DISCORD_OWNER_PAIRING_SERVICE_TYPE,
+  DISCORD_PROVIDER_ID,
+  DISCORD_SERVICE_NAME,
+  DISCORD_SNOWFLAKE_EPOCH_MS,
+  DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+  DiscordEventTypes,
+  discordCoordinationHumanEdgesTable,
+  discordCoordinationReceiptsTable,
+  discordCoordinationReplySlotsTable,
+  discordCoordinationSchema,
+  discordCoordinationTrustMembersTable,
+  getDiscordSettings,
+  isValidSnowflake,
+  resolveDiscordDmPolicy,
+  shouldEnable,
+  snowflakeBefore,
+  validateDiscordConfig,
+  wrapDiscordSenderMachineHandle,
+  type AuditInfo,
+  type ChannelPermissionsChangedPayload,
+  type DiscordAccountConfig,
+  type DiscordActionConfig,
+  type DiscordChannelConfig,
+  type DiscordConfig,
+  type DiscordDmConfig,
+  type DiscordDmPolicyMode,
+  type DiscordEventType,
+  type DiscordExecApprovalConfig,
+  type DiscordGroupPolicyMode,
+  type DiscordGuildChannelConfig,
+  type DiscordGuildEntry,
+  type DiscordIntentsConfig,
+  type DiscordListenChannelPayload,
+  type DiscordMachineHandle,
+  type DiscordMessageReceivedPayload,
+  type DiscordMessageSentPayload,
+  type DiscordNotInChannelsPayload,
+  type DiscordPluralKitConfig,
+  type DiscordReactionNotificationMode,
+  type DiscordReactionPayload,
+  type DiscordSchemaTableDescriptor,
+  type DiscordSenderMachineHandle,
+  type DiscordServerPayload,
+  type DiscordUserJoinedPayload,
+  type DiscordUserLeftPayload,
+  type DiscordVoiceStateChangedPayload,
+  type MemberRolesChangedPayload,
+  type PermissionDiff,
+  type PermissionState,
+  type RoleLifecyclePayload,
+  type RolePermissionsChangedPayload,
+} from "./types.vibe"
+import {
+  DEFAULT_DISCORD_AUDIO_LANES,
+  DISCORD_AUDIO_LANE_AMBIENT,
+  DISCORD_AUDIO_LANE_MUSIC,
+  DISCORD_AUDIO_LANE_SFX,
+  DISCORD_AUDIO_LANE_TTS,
+  DISCORD_VOICE_TRANSCRIPTS_SETTING,
+  DiscordVoiceTargetAudioSink,
+  DiscordVoiceTargetRegistry,
+  MEETING_PIPELINE_SAMPLE_RATE,
+  canPreemptDiscordAudioLane,
+  discordPcmToPipelineFrame,
+  getDiscordAudioLaneConfig,
+  isVoiceTranscriptsSettingEnabled,
+  normalizeDiscordAudioLane,
+  pcm16ToFloat32,
+  resampleLinear,
+  type DiscordAudioLane,
+  type DiscordAudioLaneConfig,
+  type DiscordAudioLaneConfigMap,
+  type DiscordAudioPlaybackHandle,
+  type DiscordAudioSinkPlayOptions,
+  type DiscordAudioSinkStatus,
+  type DiscordVoicePlaybackOptions,
+  type DiscordVoiceTarget,
+  type DiscordVoiceTargetRegistration,
+  type IDiscordAudioSink,
+} from "./voice.vibe"
 
 module node {
   import { randomBytes } from "node:crypto"
@@ -26,6 +454,23 @@ export interface DiscordConnection {
 
 export error DiscordRequestFailed { stage: string }
 
+export type DiscordSessionMachineHandle = DiscordSenderMachineHandle<
+  DiscordSession,
+  DiscordSessionEvent,
+  DiscordCaller,
+  DiscordEffect
+>
+
+export function createDiscordSessionHandle(): DiscordSessionMachineHandle {
+  const created = runSync(effect {
+    provide machine() {
+      const m = try Machine
+      return m
+    }
+  })
+  return wrapDiscordSenderMachineHandle(created)
+}
+
 export effect function postDiscordPart(channel: SendableChannels, part: string, files: readonly AttachmentPayload[]) {
   const nonce = try Effect.try({ try: () => nextDiscordNonce(), catch: () => new DiscordRequestFailed({ stage: "nonce" }) })
   const post: () => Promise<{ id: string }> = () => channel.send({
@@ -40,25 +485,45 @@ export effect function postDiscordPart(channel: SendableChannels, part: string, 
 }
 
 export effect function connectDiscordAccount(runtime: IAgentRuntime, config: DiscordConnection) {
-  const client = try Effect.try({ try: () => new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] }), catch: () => new DiscordRequestFailed({ stage: "client" }) })
+  const client = try Effect.try({
+    try: () => new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
+      ],
+      partials: [Partials.Channel],
+    }),
+    catch: () => new DiscordRequestFailed({ stage: "client" }),
+  })
   const state = try Ref.make(initial)
-  const admission = try machineOver(() => Ref.get(state), next => Ref.set(state, next))
+  const admission = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
   const epoch = (try admission.send({ type: "connectDiscord", accountId: config.accountId }, "DiscordGateway")).state.epoch
   const sequence = new Map<string, number>()
 
   effect function send(target: TargetInfo, content: Content): SendHandlerOutcome!DiscordRequestFailed {
     const channelId = target.threadId ?? target.channelId
-    if (channelId === undefined || target.accountId !== undefined && target.accountId !== config.accountId || !(try admission.get()).connected) return { kind: "not_delivered", code: "DISCORD_INVALID_TARGET", message: "The selected Discord account or channel is unavailable." }
+    if (channelId === undefined || (target.accountId !== undefined && target.accountId !== config.accountId) || !(try admission.get()).connected) {
+      return { kind: "not_delivered", code: "DISCORD_INVALID_TARGET", message: "The selected Discord account or channel is unavailable." }
+    }
     const text = content.text?.trim() ?? ""
     const attachments = content.attachments ?? []
-    if ((text === "" && attachments.length === 0) || attachments.length > 10) return { kind: "not_delivered", code: "DISCORD_INVALID_CONTENT", message: "Discord requires text or up to ten attachments." }
+    if ((text === "" && attachments.length === 0) || attachments.length > 10) {
+      return { kind: "not_delivered", code: "DISCORD_INVALID_CONTENT", message: "Discord requires text or up to ten attachments." }
+    }
     const files: AttachmentPayload[] = []
     for (const attachment of attachments) {
-      const media = try tryPromise({ try: signal => fetchRemoteMedia({ url: attachment.url, maxBytes: 8 * 1024 * 1024, signal }), catch: () => new DiscordRequestFailed({ stage: "media" }) })
+      const media = try tryPromise({
+        try: (signal) => fetchRemoteMedia({ url: attachment.url, maxBytes: 8 * 1024 * 1024, signal }),
+        catch: () => new DiscordRequestFailed({ stage: "media" }),
+      })
       files.push({ attachment: media.buffer, name: media.fileName ?? attachment.filename ?? "attachment" })
     }
     const channel = try tryPromise({ try: () => client.channels.fetch(channelId), catch: () => new DiscordRequestFailed({ stage: "channel" }) })
-    if (!channel?.isSendable() || !(try admission.get()).connected) return { kind: "not_delivered", code: "DISCORD_CHANNEL_UNAVAILABLE", message: "The selected Discord channel does not accept messages." }
+    if (!channel?.isSendable() || !(try admission.get()).connected) {
+      return { kind: "not_delivered", code: "DISCORD_CHANNEL_UNAVAILABLE", message: "The selected Discord channel does not accept messages." }
+    }
     const parts = text === "" ? [""] : try Effect.try({ try: () => chunkText(text, 2000), catch: () => new DiscordRequestFailed({ stage: "text" }) })
     const ids: string[] = []
     for (const [index, part] of parts.entries()) {
@@ -70,8 +535,14 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     const [first, ...rest] = ids
     if (first === undefined) throw new DiscordRequestFailed({ stage: "delivery-unknown" })
     const providerMessageIds: [string, ...string[]] = [first, ...rest]
-    const receipt = { providerMessageIds, acceptedAt: try Clock.currentTimeMillis, persistence: { status: "not_attempted" as const, reason: "Discord returned provider message identifiers." } }
-    return ids.length === parts.length ? { kind: "delivered", receipt, memories: [] } : { kind: "partially_delivered", receipt, memories: [], code: "DISCORD_PARTIAL_SEND", message: "Discord confirmed part of the send. Repeating it may duplicate messages." }
+    const receipt = {
+      providerMessageIds,
+      acceptedAt: try Clock.currentTimeMillis,
+      persistence: { status: "not_attempted" as const, reason: "Discord returned provider message identifiers." },
+    }
+    return ids.length === parts.length
+      ? { kind: "delivered", receipt, memories: [] }
+      : { kind: "partially_delivered", receipt, memories: [], code: "DISCORD_PARTIAL_SEND", message: "Discord confirmed part of the send. Repeating it may duplicate messages." }
   }
 
   effect function inbound(message: Message) {
@@ -81,15 +552,43 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     const prior = (sequence.get(message.channelId) ?? 0) + 1
     sequence.set(message.channelId, prior)
     const thread = try Effect.orDie(Effect.try({
-      try: () => message.channel.isThread() ? message.channel : undefined,
+      try: () => (message.channel.isThread() ? message.channel : undefined),
       catch: (error) => error,
     }))
     const parentId = thread?.parentId
     const channelAllowed = config.channelIds.has(message.channelId) || (parentId != null && config.channelIds.has(parentId))
-    const pairing = message.guildId === null && config.dmMode === "DiscordDmPairing" && !config.directSenderIds.has(message.author.id) ? tryPromise(() => checkPairingAllowed(runtime, { channel: "discord", senderId: message.author.id, metadata: { username: message.author.username } })) catch () => undefined : undefined
+    const pairing = message.guildId === null && config.dmMode === "DiscordDmPairing" && !config.directSenderIds.has(message.author.id)
+      ? tryPromise(() => checkPairingAllowed(runtime, { channel: "discord", senderId: message.author.id, metadata: { username: message.author.username } })) catch () => undefined
+      : undefined
     if (pairing?.replyMessage) send({ source: "discord", accountId: config.accountId, channelId: message.channelId }, { text: pairing.replyMessage }) catch () => undefined
-    const policy: DiscordPolicy = { dmMode: config.dmMode, groupMode: config.groupMode, guildAllowed: message.guildId !== null && (config.guildIds.size === 0 || config.guildIds.has(message.guildId)), channelListConfigured: config.channelIds.size > 0, channelAllowed, actorAllowed: config.directSenderIds.has(message.author.id), admin: false, paired: pairing?.allowed === true, channelAddressing: config.requireMention ? "DiscordRequireMention" : "DiscordDoNotRequireMention", guildAddressing: "DiscordDefaultMention", botAutoThread: config.allowAutoThreads && thread?.ownerId === bot.id }
-    const accepted = admission.send({ type: "admitDiscord", inbound: { accountId: config.accountId, epoch, channelId: message.channelId, messageId: message.id, senderId: message.author.id, scope: thread !== undefined ? "DiscordThread" : message.guildId === null ? "DiscordDirect" : "DiscordGuild", inboundKind: "DiscordMessage", mentioned: message.mentions.users.has(bot.id), commandAllowed: false }, policy }, "DiscordGateway") catch () => undefined
+    const policy: DiscordPolicy = {
+      dmMode: config.dmMode,
+      groupMode: config.groupMode,
+      guildAllowed: message.guildId !== null && (config.guildIds.size === 0 || config.guildIds.has(message.guildId)),
+      channelListConfigured: config.channelIds.size > 0,
+      channelAllowed,
+      actorAllowed: config.directSenderIds.has(message.author.id),
+      admin: false,
+      paired: pairing?.allowed === true,
+      channelAddressing: config.requireMention ? "DiscordRequireMention" : "DiscordDoNotRequireMention",
+      guildAddressing: "DiscordDefaultMention",
+      botAutoThread: config.allowAutoThreads && thread?.ownerId === bot.id,
+    }
+    const accepted = admission.send({
+      type: "admitDiscord",
+      inbound: {
+        accountId: config.accountId,
+        epoch,
+        channelId: message.channelId,
+        messageId: message.id,
+        senderId: message.author.id,
+        scope: thread !== undefined ? "DiscordThread" : message.guildId === null ? "DiscordDirect" : "DiscordGuild",
+        inboundKind: "DiscordMessage",
+        mentioned: message.mentions.users.has(bot.id),
+        commandAllowed: false,
+      },
+      policy,
+    }, "DiscordGateway") catch () => undefined
     if (accepted === undefined) return
     const scope = `discord:${config.accountId}`
     const id = try Effect.try(() => createUniqueUuid(runtime, `${scope}:message:${message.id}`))
@@ -97,13 +596,45 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     const roomId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:channel:${message.channelId}`))
     const worldId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:world:${message.guildId ?? message.author.id}`))
     const channelType = message.guildId === null ? ChannelType.DM : ChannelType.GROUP
-    try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "discord", name: message.author.displayName, userName: message.author.username, channelId: message.channelId, serverId: message.guildId ?? message.author.id, type: channelType, metadata: { accountId: config.accountId } }))
-    const incoming: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: message.createdTimestamp, content: { text: message.content, source: "discord", channelType, attachments: Array.from(message.attachments.values(), attachment => ({ id: attachment.id, url: attachment.url, title: attachment.name, ...(attachment.contentType ? { mimeType: attachment.contentType } : {}), source: "discord" })) } }
-    try tryPromise(() => messageService.handleMessage(runtime, incoming, async reply => {
+    try tryPromise(() => runtime.ensureConnection({
+      entityId,
+      roomId,
+      worldId,
+      source: "discord",
+      name: message.author.displayName,
+      userName: message.author.username,
+      channelId: message.channelId,
+      serverId: message.guildId ?? message.author.id,
+      type: channelType,
+      metadata: { accountId: config.accountId },
+    }))
+    const incoming: Memory = {
+      id,
+      entityId,
+      roomId,
+      worldId,
+      agentId: runtime.agentId,
+      createdAt: message.createdTimestamp,
+      content: {
+        text: message.content,
+        source: "discord",
+        channelType,
+        attachments: Array.from(message.attachments.values(), (attachment) => ({
+          id: attachment.id,
+          url: attachment.url,
+          title: attachment.name,
+          ...(attachment.contentType ? { mimeType: attachment.contentType } : {}),
+          source: "discord",
+        })),
+      },
+    }
+    try tryPromise(() => messageService.handleMessage(runtime, incoming, async (reply) => {
       const decision = discordStalenessDecision(config.replyMode, true, config.replyThreshold, prior, sequence.get(message.channelId) ?? prior)
       if (decision !== "DiscordSuppressReply") {
         const text = reply.text ?? ""
-        const content = decision === "DiscordSendTagged" && text !== "" && !/^\s*\(catching up:\)/i.test(text) ? { ...reply, text: `(catching up:) ${text}` } : reply
+        const content = decision === "DiscordSendTagged" && text !== "" && !/^\s*\(catching up:\)/i.test(text)
+          ? { ...reply, text: `(catching up:) ${text}` }
+          : reply
         requireConfirmedSendHandlerDelivery(await runPromise(send({ source: "discord", accountId: config.accountId, channelId: message.channelId }, content)))
       }
       return []
@@ -114,8 +645,18 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
     void runPromise(exit(inbound(message)))
   })
   try tryPromise({ try: () => client.login(Redacted.value(config.token)), catch: () => new DiscordRequestFailed({ stage: "login" }) })
-  try Effect.try({ try: () => runtime.registerMessageConnector({ source: "discord", accountId: config.accountId, accountRouting: "connector", label: "Discord", sendHandler: (_runtime, target, content) => runPromise(send(target, content)) }), catch: () => new DiscordRequestFailed({ stage: "registration" }) })
+  try Effect.try({
+    try: () => runtime.registerMessageConnector({
+      source: "discord",
+      accountId: config.accountId,
+      accountRouting: "connector",
+      label: "Discord",
+      sendHandler: (_runtime, target, content) => runPromise(send(target, content)),
+    }),
+    catch: () => new DiscordRequestFailed({ stage: "registration" }),
+  })
   return {
+    client,
     send,
     effect stop() {
       admission.send({ type: "disconnectDiscord" }, "DiscordGateway") catch () => undefined
@@ -124,34 +665,561 @@ export effect function connectDiscordAccount(runtime: IAgentRuntime, config: Dis
   }
 }
 
-function readIds(value: unknown): Set<string> {
-  return new Set(typeof value === "string" ? value.split(",").map(id => id.trim()).filter(id => /^\d+$/.test(id)) : [])
+function readSnowflakeSet(value: unknown): Set<string> {
+  return new Set(typeof value === "string" ? value.split(",").map((id) => id.trim()).filter((id) => /^\d+$/.test(id)) : [])
 }
 
-class DiscordConnector extends Service {
-  static override serviceType = "discord"
-  override capabilityDescription = "Connects authorized Discord bot channels to the agent"
+export class DiscordService extends Service {
+  static override serviceType = DISCORD_SERVICE_NAME
+  override capabilityDescription = "Connects authorized Discord bot channels, threads, voice targets, and server management to the agent."
 
-  constructor(runtime?: IAgentRuntime)
-  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
-  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
+  readonly pool = new DiscordAccountClientPool()
+  readonly dmRegistry = new DmChannelRegistry()
+  readonly voiceTargets = new DiscordVoiceTargetRegistry()
+  readonly drainRegistry = createTurnDrainRegistry()
+  readonly speakerLeases = createInMemorySpeakerLeaseStore()
+  private readonly closeHandlers: Array<() => Promise<void>> = []
+  private readonly sendHandlers = new Map<string, (target: TargetInfo, content: Content) => Promise<SendHandlerOutcome>>()
+  private readonly knownRooms = new Map<string, MessageConnectorTarget>()
+  private readonly recentChannelMemories = new Map<string, Memory[]>()
 
-  static override async start(runtime: IAgentRuntime): Promise<DiscordConnector> {
-    const token = runtime.getSetting("DISCORD_API_TOKEN")
-    if (typeof token !== "string" || token.trim() === "") return new DiscordConnector(runtime)
-    const dmSetting = runtime.getSetting("DISCORD_DM_POLICY")
-    const groupSetting = runtime.getSetting("DISCORD_GROUP_POLICY")
-    const connection = await runPromise(connectDiscordAccount(runtime, {
-      accountId: "default", token: Redacted.make(token), channelIds: readIds(runtime.getSetting("CHANNEL_IDS")), guildIds: readIds(runtime.getSetting("DISCORD_GUILD_IDS")), directSenderIds: readIds(runtime.getSetting("DISCORD_ALLOW_FROM")),
-      dmMode: dmSetting === "open" ? "DiscordDmOpen" : dmSetting === "disabled" ? "DiscordDmDisabled" : dmSetting === "allowlist" ? "DiscordDmAllowlist" : "DiscordDmPairing",
-      groupMode: groupSetting === "disabled" ? "DiscordGroupDisabled" : groupSetting === "open" ? "DiscordGroupOpen" : "DiscordGroupAllowlist",
-      requireMention: runtime.getSetting("DISCORD_REQUIRE_MENTION") !== "false", replyMode: "DiscordTagStale", replyThreshold: 3, allowAutoThreads: false,
-    }))
-    return new DiscordConnector(runtime, () => runPromise(connection.stop()))
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
   }
 
-  override stop(): Promise<void> { return this.close() }
+  static override async start(runtime: IAgentRuntime): Promise<DiscordService> {
+    const service = new DiscordService(runtime)
+    const policy = await readDiscordAccountPolicy(runtime).catch(() => ({}))
+    const accounts = listEnabledDiscordAccounts(runtime).filter((acc) => !isDiscordAccountDisabledByPolicy(policy, acc))
+    const settings = getDiscordSettings(runtime)
+    for (const account of accounts) {
+      const dmMode: DiscordPolicy["dmMode"] =
+        settings.DISCORD_DM_POLICY === "open"
+          ? "DiscordDmOpen"
+          : settings.DISCORD_DM_POLICY === "disabled"
+            ? "DiscordDmDisabled"
+            : settings.DISCORD_DM_POLICY === "allowlist"
+              ? "DiscordDmAllowlist"
+              : "DiscordDmPairing"
+      const groupMode: DiscordPolicy["groupMode"] =
+        settings.DISCORD_GROUP_POLICY === "disabled"
+          ? "DiscordGroupDisabled"
+          : settings.DISCORD_GROUP_POLICY === "open"
+            ? "DiscordGroupOpen"
+            : "DiscordGroupAllowlist"
+      const connection = await runPromise(connectDiscordAccount(runtime, {
+        accountId: account.accountId,
+        token: Redacted.make(account.token),
+        channelIds: readSnowflakeSet(account.config.channelIds?.join(",") ?? settings.CHANNEL_IDS),
+        guildIds: readSnowflakeSet(settings.DISCORD_GUILD_IDS),
+        directSenderIds: readSnowflakeSet(settings.DISCORD_ALLOW_FROM),
+        dmMode,
+        groupMode,
+        requireMention: settings.DISCORD_REQUIRE_MENTION,
+        replyMode: "DiscordTagStale",
+        replyThreshold: 3,
+        allowAutoThreads: false,
+      }))
+      service.pool.set(account.accountId, connection.client, connection.client.isReady(), connection.client.user?.id)
+      service.sendHandlers.set(account.accountId, (target, content) => runPromise(connection.send(target, content)))
+      service.closeHandlers.push(() => runPromise(connection.stop()))
+    }
+    return service
+  }
+
+  getClient(accountId?: string): Client | null {
+    return this.pool.getClient(accountId)
+  }
+
+  registerConnectorRoom(room: MessageConnectorTarget): void {
+    if (room.target.channelId) this.knownRooms.set(room.target.channelId, room)
+  }
+
+  recordChannelMemory(channelId: string, memory: Memory): void {
+    const existing = this.recentChannelMemories.get(channelId) ?? []
+    existing.push(memory)
+    if (existing.length > 200) existing.splice(0, existing.length - 200)
+    this.recentChannelMemories.set(channelId, existing)
+  }
+
+  setSendHandlerForAccount(accountId: string, handler: (target: TargetInfo, content: Content) => Promise<SendHandlerOutcome>): void {
+    this.sendHandlers.set(normalizeAccountId(accountId), handler)
+  }
+
+  async listConnectorRooms(_context: MessageConnectorQueryContext): Promise<MessageConnectorTarget[]> {
+    return Array.from(this.knownRooms.values())
+  }
+
+  async fetchConnectorMessages(
+    _context: MessageConnectorQueryContext,
+    params: { readonly target?: TargetInfo; readonly channelId?: string; readonly limit?: number; readonly before?: string; readonly after?: string },
+  ): Promise<Memory[]> {
+    const channelId = params.channelId ?? params.target?.channelId
+    if (!channelId) return []
+    const stored = this.recentChannelMemories.get(channelId) ?? []
+    const limit = Math.max(1, params.limit ?? 25)
+    return stored.slice(-limit)
+  }
+
+  async handleSendMessage(
+    _runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content,
+  ): Promise<SendHandlerOutcome> {
+    const accountId = normalizeAccountId(target.accountId ?? DEFAULT_ACCOUNT_ID)
+    const handler = this.sendHandlers.get(accountId) ?? this.sendHandlers.values().next().value
+    if (!handler) {
+      return { kind: "not_delivered", code: "DISCORD_NOT_CONNECTED", message: "No active Discord account send handler." }
+    }
+    return handler(target, content)
+  }
+
+  resolveManageServerDestination(
+    params: { readonly target?: TargetInfo; readonly serverId: string },
+    accountId = DEFAULT_ACCOUNT_ID,
+  ): MessageConnectorManageServerDestination {
+    return resolveDiscordManageServerDestination(this.runtime, params, normalizeAccountId(accountId))
+  }
+
+  override async stop(): Promise<void> {
+    await this.drainRegistry.drain(DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS)
+    const closers = [...this.closeHandlers]
+    this.closeHandlers.length = 0
+    for (const close of closers) {
+      await close().catch(() => undefined)
+    }
+    await this.pool.destroyAll()
+    this.voiceTargets.clear()
+  }
 }
 
-export const discordPlugin: Plugin = { name: "@elizaos/plugin-discord", description: "Discord connector", services: [DiscordConnector] }
+export type DiscordPlugin = Plugin & {
+  readonly routes: readonly DiscordRoute[]
+}
+
+export const discordPlugin: DiscordPlugin = {
+  name: "@elizaos/plugin-discord",
+  description: "Discord service plugin for integration with Discord servers, channels, threads, voice, and local IPC",
+  connectorSources: [
+    {
+      source: "discord",
+      aliases: ["discord", "discord-local"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
+  services: [
+    DiscordService,
+    DiscordLocalService,
+    DiscordOwnerPairingServiceImpl,
+    DiscordUserAccountScraperImpl,
+  ],
+  routes: [...discordSetupRoutes, ...discordDataRoutes],
+  actions: [],
+  providers: [],
+  schema: discordCoordinationSchema,
+  autoEnable: {
+    connectorKeys: ["discord"],
+    shouldEnable,
+  },
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    try {
+      const manager = getConnectorAccountManager(runtime)
+      manager.registerProvider(createDiscordConnectorAccountProvider(runtime))
+    } catch (err) {
+      logger.warn({ src: "plugin:discord", err: err instanceof Error ? err.message : String(err) }, "Failed to register Discord provider with ConnectorAccountManager")
+    }
+    registerDiscordDmSensitiveRequestAdapter(runtime)
+    registerDiscordTriageAdapter()
+    registerDiscordTargetSource(runtime)
+  },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<DiscordService>(DISCORD_SERVICE_NAME)
+    await svc?.stop()
+  },
+}
+
 export default discordPlugin
+
+export {
+  BUILT_IN_GUILD_TEMPLATES,
+  COMMAND_ARG_CUSTOM_ID_KEY,
+  DEFAULT_ACCOUNT_ID,
+  DEFAULT_BOT_REPLY_BUDGET,
+  DEFAULT_COORDINATION_SWEEP_MS,
+  DEFAULT_DISCORD_AUDIO_LANES,
+  DEFAULT_DISCORD_DM_POLICY,
+  DEFAULT_SPEAKER_LEASE_MS,
+  DISCORD_ACCOUNT_POLICY_CACHE_KEY,
+  DISCORD_APP_URL,
+  DISCORD_AUDIO_LANE_AMBIENT,
+  DISCORD_AUDIO_LANE_MUSIC,
+  DISCORD_AUDIO_LANE_SFX,
+  DISCORD_AUDIO_LANE_TTS,
+  DISCORD_COORDINATION_AUDIT_SCOPE,
+  DISCORD_COORDINATION_RECEIPT_TABLE,
+  DISCORD_DEFAULTS,
+  DISCORD_FACT_CACHE_TTL_MS,
+  DISCORD_LOCAL_ACCOUNT_ID,
+  DISCORD_LOCAL_SERVICE_NAME,
+  DISCORD_OWNER_PAIRING_SERVICE_TYPE,
+  DISCORD_PROVIDER_ID,
+  DISCORD_REACTION_RECONCILE_TIMEOUT_MS,
+  DISCORD_SERVICE_NAME,
+  DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
+  DISCORD_SNOWFLAKE_EPOCH_MS,
+  DISCORD_SPEAKER_LEASE_TABLE,
+  DISCORD_STRUCTURED_TEXT_UNBOUNDED,
+  DISCORD_TURN_MAX_ATTEMPTS,
+  DISCORD_TURN_TABLE,
+  DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+  DISCORD_VOICE_TRANSCRIPTS_SETTING,
+  DM_REGISTRY_MAX_ENTRIES,
+  DiscordAccountClientPool,
+  DiscordEventTypes,
+  DiscordLocalService,
+  DiscordOwnerPairingServiceImpl,
+  DiscordPermissionTiers,
+  DiscordTriageAdapter,
+  DiscordUserAccountScraperImpl,
+  DiscordVoiceTargetAudioSink,
+  DiscordVoiceTargetRegistry,
+  DmChannelRegistry,
+  ELEVATED_PERMISSIONS,
+  GUILD_MANAGEMENT_OPERATIONS,
+  GUILD_TEMPLATE_LIMITS,
+  GuildManagementError,
+  IN_PROGRESS_STATUS_EMOJIS,
+  INTERACTION_ONLY_FALLBACK_TEXT,
+  IPC_MAX_PAYLOAD_BYTES,
+  MAX_DISCORD_STRUCTURED_TEXT_DEPTH,
+  MAX_DISCORD_STRUCTURED_TEXT_NODES,
+  MAX_LEASE_GENERATIONS,
+  MEETING_PIPELINE_SAMPLE_RATE,
+  OPERATION_GATES,
+  PERMISSIONS_ADMIN,
+  PERMISSIONS_ADMIN_VOICE,
+  PERMISSIONS_BASIC,
+  PERMISSIONS_BASIC_VOICE,
+  PERMISSIONS_MODERATOR,
+  PERMISSIONS_MODERATOR_VOICE,
+  __resetProfileCachesForTests,
+  __setProfileCacheValueForTests,
+  _resetRateLimitStateForTesting,
+  addCommand,
+  allowListMatches,
+  appendCoalescedDiscordMetadata,
+  applyDiscordStalenessGuard,
+  authorizeGuildManagementMutation,
+  batchMediaProperties,
+  buildChannelLink,
+  buildCommandArgCustomId,
+  buildCommandArgMenu,
+  buildCommandText,
+  buildDiscordAvatarCacheFileName,
+  buildDiscordCommandOptions,
+  buildDiscordEntityMetadata,
+  buildDiscordProbeScript,
+  buildDiscordReplyPayload,
+  buildDiscordSlashCommand,
+  buildDiscordWorldMetadata,
+  buildDuplicateTextPreview,
+  buildMessageLink,
+  cacheDiscordAvatarForRuntime,
+  cacheDiscordAvatarUrl,
+  canPreemptDiscordAudioLane,
+  checkDiscordDmAccess,
+  chunkDiscordText,
+  chunkDiscordTextWithMode,
+  claimDiscordTurn,
+  createChannelDebouncer,
+  createCommandArgs,
+  createDiscordConnectorAccountProvider,
+  createDiscordCoordinationHandle,
+  createDiscordDmSensitiveRequestAdapter,
+  createDiscordSourceCache,
+  createDiscordTargetSource,
+  createDraftStreamController,
+  createInMemorySpeakerLeaseStore,
+  createStatusReactionController,
+  createTurnDrainRegistry,
+  createTypingController,
+  decodeCommandArgValue,
+  diffMemberRoles,
+  diffOverwrites,
+  diffRolePermissions,
+  discordBrowserWorkspaceAvailable,
+  discordCoordinationHumanEdgesTable,
+  discordCoordinationReceiptsTable,
+  discordCoordinationReplySlotsTable,
+  discordCoordinationSchema,
+  discordCoordinationTrustMembersTable,
+  discordDataRoutes,
+  discordPcmToPipelineFrame,
+  discordSetupRoutes,
+  discordTokenFingerprint,
+  discordTurnId,
+  discordUserAccountPartitionFor,
+  emptyDiscordDmInboxProbe,
+  encodeCommandArgValue,
+  escapeDiscordMarkdown,
+  extractAllChannelMentions,
+  extractAllRoleMentions,
+  extractAllUserMentions,
+  extractChannelIdFromMention,
+  extractDiscordOwnerUserIds,
+  extractDiscordTeamAdminUserIds,
+  extractRoleIdFromMention,
+  extractUserIdFromMention,
+  fetchDiscordEnumeration,
+  formatCoalescedDiscordMessages,
+  formatDiscordChannelMention,
+  formatDiscordEnumerationAsFacts,
+  formatDiscordReactionEmoji,
+  formatDiscordRoleMention,
+  formatDiscordTimestamp,
+  formatDiscordUserMention,
+  formatDiscordUserTag,
+  formatInboundEnvelope,
+  formatMessageReactionEmoji,
+  generateAllInviteUrls,
+  generateInviteUrl,
+  getDiscordAudioLaneConfig,
+  getDiscordAvatarCacheDir,
+  getDiscordAvatarCachePath,
+  getDiscordAvatarPublicPath,
+  getDiscordChannelMessageSequence,
+  getDiscordDesktopCdpStatus,
+  getDiscordMessageCoalesceConfig,
+  getDiscordMessageMeta,
+  getDiscordReplyContext,
+  getDiscordSettings,
+  getDiscordStalenessConfig,
+  getGroupCoordinationConfig,
+  getMultiAccountConfig,
+  getPermissionValues,
+  getRegisteredCommands,
+  handleAutocomplete,
+  handleElizaPairCommand,
+  handleSlashCommand,
+  hasElevatedPermissions,
+  isAliasedDiscordEntityId,
+  isCanonicalDiscordSource,
+  isDiscordAccountDisabledByPolicy,
+  isDiscordAutoThreadOwnedByBot,
+  isDiscordAvatarUrl,
+  isDiscordGroupAllowedByPolicy,
+  isDiscordUserAddressed,
+  isElevatedRole,
+  isGuildOnlyCommand,
+  isMultiAccountEnabled,
+  isTerminalTurnState,
+  isUnknownInteractionError,
+  isValidSnowflake,
+  isVoiceTranscriptsSettingEnabled,
+  listDiscordAccountIds,
+  listEnabledDiscordAccounts,
+  loadDiscordTurn,
+  makeCoalescedDiscordMessage,
+  mapDiscordMemoryToRef,
+  markDiscordTurnDispatched,
+  markDiscordTurnFailed,
+  markDiscordTurnReplied,
+  messageContainsMention,
+  normalizeAccountId,
+  normalizeDiscordAllowList,
+  normalizeDiscordAudioLane,
+  normalizeDiscordMessageText,
+  normalizeDiscordSlug,
+  normalizeDiscordToken,
+  normalizeGuildManagementOperation,
+  numericFactSignatureTokens,
+  parseCommandArgCustomId,
+  parseDiscordOwnerUserIds,
+  parseMessageLink,
+  pcm16ToFloat32,
+  persistDiscordAccountDisabled,
+  probeDiscordCapturedPage,
+  probeDiscordDocumentState,
+  readDiscordAccountPolicy,
+  registerDiscordDmSensitiveRequestAdapter,
+  registerDiscordTargetSource,
+  registerDiscordTriageAdapter,
+  registerSlashCommands,
+  relaunchDiscordDesktopForCdp,
+  removeCommand,
+  renderDiscordInteractions,
+  renderTemplateString,
+  resampleLinear,
+  resolveDefaultDiscordAccountId,
+  resolveDiscordAccount,
+  resolveDiscordAllowListMatch,
+  resolveDiscordChannelConfig,
+  resolveDiscordChannelConfigWithFallback,
+  resolveDiscordCommandAuthorized,
+  resolveDiscordDmPolicy,
+  resolveDiscordGuildEntry,
+  resolveDiscordManageServerDestination,
+  resolveDiscordMessageAuthorProfile,
+  resolveDiscordRoomProfile,
+  resolveDiscordRuntimeEntityId,
+  resolveDiscordShouldRequireMention,
+  resolveDiscordSystemLocation,
+  resolveDiscordToken,
+  resolveDiscordUserAllowed,
+  resolveDiscordUserProfile,
+  resolveElizaOwnerEntityId,
+  resolveGuildManagementGates,
+  resolveStoredDiscordEntityProfile,
+  resolveTimestampMs,
+  revalidateDiscordManageServerAuthorization,
+  safeInteractionCall,
+  sanitizeThreadName,
+  sendDiscordViaDesktopCdp,
+  serializeCommandArgs,
+  shouldEmitDiscordReactionNotification,
+  shouldEnable,
+  shouldShowStatusReaction,
+  snowflakeBefore,
+  stripDiscordFormatting,
+  transformCommandToDiscordApi,
+  truncateText,
+  truncateUtf16Safe,
+  validateDiscordConfig,
+  validateGuildTemplate,
+  recordDiscordChannelMessageSeen,
+  type AllowListMatchSource,
+  type AuditInfo,
+  type BuiltCommandOption,
+  type ChannelDebouncer,
+  type ChannelDebouncerOptions,
+  type ChannelMatchSource,
+  type ChannelPermissionsChangedPayload,
+  type ChatType,
+  type CoalescedDiscordMessageMeta,
+  type CommandArgButton,
+  type CommandArgButtonRow,
+  type CommandArgDefinition,
+  type CommandArgMenu,
+  type CommandArgValues,
+  type CommandArgs,
+  type DebouncerFlushCallback,
+  type DiscordAccountClientState,
+  type DiscordAccountConfig,
+  type DiscordAccountPolicy,
+  type DiscordActionConfig,
+  type DiscordAllowList,
+  type DiscordAllowListMatch,
+  type DiscordAudioLane,
+  type DiscordAudioLaneConfig,
+  type DiscordAudioLaneConfigMap,
+  type DiscordAudioPlaybackHandle,
+  type DiscordAudioSinkPlayOptions,
+  type DiscordAudioSinkStatus,
+  type DiscordChannelConfig,
+  type DiscordChannelConfigResolved,
+  type DiscordConfig,
+  type DiscordCoordinationMachineHandle,
+  type DiscordDesktopCdpStatus,
+  type DiscordDisabledAccountPolicy,
+  type DiscordDmAccessResult,
+  type DiscordDmConfig,
+  type DiscordDmIdentity,
+  type DiscordDmInboxProbe,
+  type DiscordDmPolicyMode,
+  type DiscordDraftRequest,
+  type DiscordDrainResult,
+  type DiscordEnumerationResult,
+  type DiscordEventType,
+  type DiscordExecApprovalConfig,
+  type DiscordGroupPolicyMode,
+  type DiscordGuildChannelConfig,
+  type DiscordGuildEntry,
+  type DiscordIntentsConfig,
+  type DiscordInteractionOptionItem,
+  type DiscordInteractionRender,
+  type DiscordInviteUrls,
+  type DiscordListenChannelPayload,
+  type DiscordLocalChannelSummary,
+  type DiscordLocalGuildSummary,
+  type DiscordLocalStatus,
+  type DiscordLocalTransport,
+  type DiscordMachineHandle,
+  type DiscordMessageCoalesceConfig,
+  type DiscordMessageMetadata,
+  type DiscordMessageReceivedPayload,
+  type DiscordMessageRef,
+  type DiscordMessageSearchResult,
+  type DiscordMessageSentPayload,
+  type DiscordMessageWithCoalescedMetadata,
+  type DiscordMultiAccountConfig,
+  type DiscordNotInChannelsPayload,
+  type DiscordOwnerPairingService,
+  type DiscordPermissionTier,
+  type DiscordPermissionValues,
+  type DiscordPluralKitConfig,
+  type DiscordReactionNotificationMode,
+  type DiscordReactionPayload,
+  type DiscordReplyContext,
+  type DiscordResolvedProfile,
+  type DiscordRoute,
+  type DiscordRouteRequest,
+  type DiscordRouteResponse,
+  type DiscordSchemaTableDescriptor,
+  type DiscordSenderMachineHandle,
+  type DiscordServerPayload,
+  type DiscordSourceCache,
+  type DiscordStalenessBehavior,
+  type DiscordStalenessConfig,
+  type DiscordStalenessDecision,
+  type DiscordTabIdentity,
+  type DiscordTabProbe,
+  type DiscordTargetSource,
+  type DiscordTokenResolution,
+  type DiscordTokenSource,
+  type DiscordTurnDrainRegistry,
+  type DiscordTurnRecord,
+  type DiscordTurnRuntime,
+  type DiscordTurnState,
+  type DiscordUserAccountScraper,
+  type DiscordUserJoinedPayload,
+  type DiscordUserLeftPayload,
+  type DiscordVisibleDmPreview,
+  type DiscordVoicePlaybackOptions,
+  type DiscordVoiceStateChangedPayload,
+  type DiscordVoiceTarget,
+  type DiscordVoiceTargetRegistration,
+  type DmChannelRecord,
+  type DraftStreamController,
+  type DraftStreamOptions,
+  type EnvelopeResult,
+  type GroupCoordinationConfig,
+  type GuildManagementGates,
+  type GuildManagementOperation,
+  type GuildManagementReceipt,
+  type GuildManagementRequest,
+  type GuildTemplate,
+  type GuildTemplateCategory,
+  type GuildTemplateChannel,
+  type GuildTemplateChannelType,
+  type GuildTemplateOverwrite,
+  type GuildTemplateRole,
+  type IDiscordAudioSink,
+  type MemberRolesChangedPayload,
+  type NativeCommandSpec,
+  type PermissionDiff,
+  type PermissionState,
+  type ResolvedDiscordAccount,
+  type RoleLifecyclePayload,
+  type RolePermissionsChangedPayload,
+  type SlashCommand,
+  type SlashCommandContext,
+  type SlashCommandOption,
+  type SlashCommandRole,
+  type SpeakerLease,
+  type SpeakerLeaseClaimOutcome,
+  type SpeakerLeaseStore,
+  type StatusReactionController,
+  type StatusReactionScope,
+  type TypingController,
+}

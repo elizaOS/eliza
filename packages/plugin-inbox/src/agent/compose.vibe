@@ -62,12 +62,16 @@ export function emailDraftAnswer(message: Memory, options: unknown): ActionResul
 export const inboxComposeAction: Action = {
   name: inboxComposeActionName,
   description: "Open a new email draft in phone's Inbox composer for owner review; never sends. Replies, CC/BCC, attachments & scheduled sends happen in Inbox.",
+  descriptionCompressed: "Open a new email draft in phone Inbox composer (never sends).",
   similes: ["DRAFT_EMAIL", "WRITE_EMAIL", "COMPOSE_EMAIL"],
+  toolSchemaStrict: true,
+  cacheStable: true,
   parameters: [
-    { name: "to", required: true, schema: { type: "array", items: { type: "string" } }, description: "Explicit recipient emails." },
-    { name: "subject", required: false, schema: { type: "string" }, description: "" },
     { name: "body", required: true, schema: { type: "string" }, description: "Body written as owner." },
+    { name: "subject", required: false, schema: { type: "string" }, description: "Optional subject line." },
+    { name: "to", required: true, schema: { type: "array", items: { type: "string" } }, description: "Explicit recipient emails." },
   ],
+  summarize: (result) => (result?.success ? "Opened email draft in phone composer." : undefined),
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   validate: async (_runtime, message) => message.content.source === "device",

@@ -5,6 +5,13 @@ export interface MeteredHint {
   source: "android-os";
 }
 
+export interface PathHints {
+  isExpensive: boolean | null;
+  isConstrained: boolean | null;
+  source: "nw-path-monitor";
+}
+
 export interface NetworkPolicyPlugin {
   getMeteredHint(): Promise<MeteredHint>;
+  getPathHints?(): Promise<PathHints>;
 }

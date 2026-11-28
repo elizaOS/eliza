@@ -151,7 +151,7 @@ it.live('Make the wallet once on the device, seal its keys, and serve nothing wh
       whileOff: { holdings: OFF, asked: OFF, offered: false, told: {} },
       malformed: 400,
       offeredOn: [true, false],
-      hosted: [1, 1, 9],
+      hosted: [5, 4, 20],
       unopened: { status: { custody: "unavailable", canHold: false, accounts: [] }, holdings: 404, actions: 0 },
     }))
   }

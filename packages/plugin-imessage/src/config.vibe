@@ -1,0 +1,32 @@
+// spec/imessage/index.md, "iMessage direct and group access differ, and passive connectors send no automatic reply"
+
+export type IMessageReactionNotificationMode = "off" | "own" | "all" | "allowlist"
+export type IMessageDmPolicy = "open" | "allowlist" | "pairing" | "disabled"
+export type IMessageGroupPolicy = "open" | "allowlist" | "disabled"
+
+export interface IMessageChannelAccountConfig {
+  name?: string
+  capabilities?: string[]
+  markdown?: { tables?: "off" | "bullets" | "code" }
+  configWrites?: boolean
+  enabled?: boolean
+  dmPolicy?: IMessageDmPolicy
+  allowFrom?: Array<string | number>
+  groupAllowFrom?: Array<string | number>
+  groupPolicy?: IMessageGroupPolicy
+  historyLimit?: number
+  dmHistoryLimit?: number
+  dms?: Record<string, { historyLimit?: number }>
+  textChunkLimit?: number
+  chunkMode?: "length" | "newline"
+  blockStreaming?: boolean
+  blockStreamingCoalesce?: { minChars?: number; maxChars?: number; idleMs?: number }
+  mediaMaxMb?: number
+  reactionNotifications?: IMessageReactionNotificationMode
+  reactionAllowlist?: Array<string | number>
+  heartbeat?: { showOk?: boolean; showAlerts?: boolean; useIndicator?: boolean }
+}
+
+export type IMessageConfig = {
+  accounts?: Record<string, IMessageChannelAccountConfig>
+} & IMessageChannelAccountConfig

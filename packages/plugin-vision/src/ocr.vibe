@@ -1,0 +1,494 @@
+// spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import * as Deferred from "effect/Deferred"
+import * as Duration from "effect/Duration"
+import * as Effect from "effect/Effect"
+import * as Option from "effect/Option"
+import type { BoundingBox, OCRResult } from "./types.vibe"
+
+module ocrNode {
+  import { execFile } from "node:child_process"
+  import { randomUUID } from "node:crypto"
+  import { mkdtemp, rm, writeFile } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+  import { promisify } from "node:util"
+  import sharp from "sharp"
+
+  const runExec = promisify(execFile)
+
+  export const nextRequestId = randomUUID
+
+  /** @throws {never} */
+  export function toBase64(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("base64")
+  }
+
+  /** @throws {never} */
+  export function fromBase64(value: string): Uint8Array {
+    return new Uint8Array(Buffer.from(value, "base64"))
+  }
+
+  export async function readImageDimensions(
+    bytes: Uint8Array,
+  ): Promise<{ width: number; height: number } | null> {
+    if (bytes.byteLength >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      const width = view.getUint32(16, false)
+      const height = view.getUint32(20, false)
+      if (width > 0 && height > 0) return { width, height }
+    }
+    try {
+      const meta = await sharp(Buffer.from(bytes)).metadata()
+      if (typeof meta.width === "number" && typeof meta.height === "number" && meta.width > 0 && meta.height > 0) {
+        return { width: meta.width, height: meta.height }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  export async function runTesseractTsv(pngBytes: Uint8Array, psm?: number): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "eliza-vision-ocr-"))
+    const file = join(dir, "tile.png")
+    try {
+      await writeFile(file, pngBytes)
+      const args = [file, "stdout", "tsv"]
+      if (typeof psm === "number") {
+        args.push("--psm", String(psm))
+      }
+      const res = await runExec("tesseract", args, { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 })
+      return res.stdout
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+}
+import { fromBase64, nextRequestId, readImageDimensions, runTesseractTsv, toBase64 } from ocrNode
+
+export type SemanticPosition =
+  | "upper-left"
+  | "upper-center"
+  | "upper-right"
+  | "middle-left"
+  | "center"
+  | "middle-right"
+  | "lower-left"
+  | "lower-center"
+  | "lower-right"
+
+export interface OcrWithCoordsWord {
+  readonly text: string
+  readonly bbox: BoundingBox
+  readonly semantic_position: SemanticPosition
+}
+
+export interface OcrWithCoordsBlock {
+  readonly text: string
+  readonly bbox: BoundingBox
+  readonly words: ReadonlyArray<OcrWithCoordsWord>
+  readonly semantic_position: SemanticPosition
+}
+
+export interface OcrWithCoordsResult {
+  readonly blocks: ReadonlyArray<OcrWithCoordsBlock>
+}
+
+export interface OcrWithCoordsInput {
+  readonly displayId: string
+  readonly sourceX: number
+  readonly sourceY: number
+  readonly pngBytes: Uint8Array
+}
+
+export interface OcrWithCoordsService {
+  readonly name: string
+  describe(input: OcrWithCoordsInput): Promise<OcrWithCoordsResult>
+}
+
+export interface OcrBridgeWord {
+  text: string
+  left: number
+  top: number
+  width: number
+  height: number
+  confidence: number
+  block: number
+  par: number
+  line: number
+}
+
+export interface OcrRequest {
+  requestId: string
+  createdAt: number
+  imageBase64: string
+  psm?: number
+}
+
+export type ScreenCaptureImageFormat = "png" | "jpeg"
+
+export interface ScreenCaptureRequest {
+  requestId: string
+  createdAt: number
+  format: ScreenCaptureImageFormat
+  scale: number
+  quality: number
+  displayId?: number
+}
+
+export interface ScreenCaptureFrame {
+  imageBytes: Uint8Array
+  format: ScreenCaptureImageFormat
+  width: number
+  height: number
+  displayId: number
+  capturedAt: number
+}
+
+export const OCR_BRIDGE_SERVICE_TYPE = "vision-ocr-bridge"
+export const SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE = "vision-screen-capture-bridge"
+
+const ROW_LABELS = ["upper", "middle", "lower"] as const
+const COL_LABELS = ["left", "center", "right"] as const
+
+function clamp012(n: number): 0 | 1 | 2 {
+  if (n <= 0) return 0
+  if (n >= 2) return 2
+  return 1
+}
+
+export function computeSemanticPosition(args: {
+  readonly bbox: BoundingBox
+  readonly tileWidth: number
+  readonly tileHeight: number
+}): SemanticPosition {
+  const { bbox, tileWidth, tileHeight } = args
+  if (tileWidth <= 0 || tileHeight <= 0) {
+    return "center"
+  }
+  const centerX = bbox.x + bbox.width / 2
+  const centerY = bbox.y + bbox.height / 2
+  const col = COL_LABELS[clamp012(Math.floor((centerX * 3) / tileWidth))]
+  const row = ROW_LABELS[clamp012(Math.floor((centerY * 3) / tileHeight))]
+  if (row === "middle" && col === "center") return "center"
+  return `${row}-${col}` as SemanticPosition
+}
+
+function shiftBbox(bbox: BoundingBox, dx: number, dy: number): BoundingBox {
+  return { x: bbox.x + dx, y: bbox.y + dy, width: bbox.width, height: bbox.height }
+}
+
+export async function readPngDimensionsOrNull(
+  bytes: Uint8Array,
+): Promise<{ width: number; height: number } | null> {
+  return readImageDimensions(bytes)
+}
+
+export async function readPngDimensions(
+  bytes: Uint8Array,
+): Promise<{ width: number; height: number }> {
+  const dims = await readImageDimensions(bytes)
+  if (!dims) {
+    throw new Error("Unable to decode PNG image dimensions")
+  }
+  return dims
+}
+
+export function parseTesseractTsvWords(table: string): OcrBridgeWord[] {
+  const out: OcrBridgeWord[] = []
+  const lines = table.split(/\r?\n/).slice(1)
+  for (const entry of lines) {
+    const fields = entry.split("\t")
+    if (fields.length < 12) continue
+    const level = fields[0]
+    const block = Number(fields[2])
+    const par = Number(fields[3])
+    const line = Number(fields[4])
+    const left = Number(fields[6])
+    const top = Number(fields[7])
+    const width = Number(fields[8])
+    const height = Number(fields[9])
+    const confidence = Number(fields[10])
+    const text = fields.slice(11).join("\t").trim()
+    if (
+      level !== "5" ||
+      text === "" ||
+      ![left, top, width, height].every((v) => Number.isFinite(v) && v >= 0)
+    ) {
+      continue
+    }
+    out.push({
+      text,
+      left,
+      top,
+      width,
+      height,
+      confidence: Number.isFinite(confidence) ? confidence : 0,
+      block: Number.isFinite(block) ? block : 0,
+      par: Number.isFinite(par) ? par : 0,
+      line: Number.isFinite(line) ? line : 0,
+    })
+  }
+  return out
+}
+
+export function groupOcrWordsToResult(
+  words: ReadonlyArray<OcrBridgeWord>,
+  tileDims: { width: number; height: number },
+  sourceX: number,
+  sourceY: number,
+): OcrWithCoordsResult {
+  const grouped = new Map<string, OcrBridgeWord[]>()
+  for (const w of words) {
+    const key = `${w.block}:${w.par}:${w.line}`
+    const bucket = grouped.get(key)
+    if (bucket) {
+      bucket.push(w)
+    } else {
+      grouped.set(key, [w])
+    }
+  }
+  const blocks: OcrWithCoordsBlock[] = []
+  for (const group of grouped.values()) {
+    const ordered = [...group].sort((a, b) => a.left - b.left)
+    const minX = Math.min(...ordered.map((w) => w.left))
+    const minY = Math.min(...ordered.map((w) => w.top))
+    const maxX = Math.max(...ordered.map((w) => w.left + w.width))
+    const maxY = Math.max(...ordered.map((w) => w.top + w.height))
+    const tileBbox: BoundingBox = { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+    const semantic_position = computeSemanticPosition({
+      bbox: tileBbox,
+      tileWidth: tileDims.width,
+      tileHeight: tileDims.height,
+    })
+    const blockWords: OcrWithCoordsWord[] = ordered.map((w) => {
+      const wTile: BoundingBox = { x: w.left, y: w.top, width: w.width, height: w.height }
+      return {
+        text: w.text,
+        bbox: shiftBbox(wTile, sourceX, sourceY),
+        semantic_position: computeSemanticPosition({
+          bbox: wTile,
+          tileWidth: tileDims.width,
+          tileHeight: tileDims.height,
+        }),
+      }
+    })
+    blocks.push({
+      text: ordered.map((w) => w.text).join(" "),
+      bbox: shiftBbox(tileBbox, sourceX, sourceY),
+      words: blockWords,
+      semantic_position,
+    })
+  }
+  return { blocks }
+}
+
+export function ocrResultFromWords(words: ReadonlyArray<OcrBridgeWord>): OCRResult {
+  const fullText = words.map((w) => w.text).join(" ")
+  return {
+    text: fullText,
+    fullText,
+    blocks: words.map((w) => ({
+      text: w.text,
+      bbox: { x: w.left, y: w.top, width: w.width, height: w.height },
+      confidence: w.confidence,
+    })),
+  }
+}
+
+let registeredCoordOcrService: OcrWithCoordsService | null = null
+
+export function registerOcrWithCoordsService(service: OcrWithCoordsService | null): void {
+  registeredCoordOcrService = service
+}
+
+export function getOcrWithCoordsService(): OcrWithCoordsService | null {
+  return registeredCoordOcrService
+}
+
+export class TesseractCoordOcrService implements OcrWithCoordsService {
+  readonly name = "tesseract-coord-ocr"
+
+  async describe(input: OcrWithCoordsInput): Promise<OcrWithCoordsResult> {
+    if (input.pngBytes.byteLength === 0) return { blocks: [] }
+    const tileDims = await readPngDimensions(input.pngBytes)
+    const tsv = await runTesseractTsv(input.pngBytes)
+    const words = parseTesseractTsvWords(tsv)
+    return groupOcrWordsToResult(words, tileDims, input.sourceX, input.sourceY)
+  }
+}
+
+function awaitPendingWithTimeout<T>(
+  deferred: Deferred.Deferred<T | null>,
+  timeoutMs: number,
+  onTimeout: () => void,
+): Promise<T | null> {
+  const waited = Effect.timeoutOption(Deferred.await(deferred), Duration.millis(timeoutMs))
+  return Effect.runPromise(
+    Effect.map(waited, (result) => {
+      if (Option.isSome(result)) return result.value
+      onTimeout()
+      return null
+    }),
+  )
+}
+
+function removeQueuedRequest(queue: Array<{ requestId: string }>, requestId: string): void {
+  const idx = queue.findIndex((q) => q.requestId === requestId)
+  if (idx >= 0) queue.splice(idx, 1)
+}
+
+export class OcrBridgeService extends Service {
+  static override serviceType: string = OCR_BRIDGE_SERVICE_TYPE
+  override capabilityDescription = "Renderer-pulled bridge for agent-triggered on-device OCR."
+
+  private readonly queue: OcrRequest[] = []
+  private readonly pending = new Map<string, Deferred.Deferred<OcrBridgeWord[] | null>>()
+  private readonly timeoutMs: number
+
+  constructor(runtime?: IAgentRuntime, timeoutMs = 20_000) {
+    super(runtime)
+    this.timeoutMs = timeoutMs
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<OcrBridgeService> {
+    return Promise.resolve(new OcrBridgeService(runtime))
+  }
+
+  requestOcr(pngBytes: Uint8Array, psm?: number): Promise<OcrBridgeWord[] | null> {
+    const requestId = nextRequestId()
+    const request: OcrRequest = {
+      requestId,
+      createdAt: Date.now(),
+      imageBase64: toBase64(pngBytes),
+      ...(typeof psm === "number" ? { psm } : {}),
+    }
+    this.queue.push(request)
+    const deferred = Deferred.makeUnsafe<OcrBridgeWord[] | null>()
+    this.pending.set(requestId, deferred)
+    return awaitPendingWithTimeout(deferred, this.timeoutMs, () => {
+      this.pending.delete(requestId)
+      removeQueuedRequest(this.queue, requestId)
+    })
+  }
+
+  takeRequests(): OcrRequest[] {
+    return this.queue.splice(0, this.queue.length)
+  }
+
+  submitResult(requestId: string, words: OcrBridgeWord[]): boolean {
+    const deferred = this.pending.get(requestId)
+    if (!deferred) return false
+    this.pending.delete(requestId)
+    Deferred.doneUnsafe(deferred, Effect.succeed(words))
+    return true
+  }
+
+  failRequest(requestId: string, _reason: string): boolean {
+    const deferred = this.pending.get(requestId)
+    if (!deferred) return false
+    this.pending.delete(requestId)
+    Deferred.doneUnsafe(deferred, Effect.succeed(null))
+    return true
+  }
+
+  stop(): Promise<void> {
+    this.queue.length = 0
+    for (const [requestId, deferred] of this.pending) {
+      Deferred.doneUnsafe(deferred, Effect.succeed(null))
+      this.pending.delete(requestId)
+    }
+    return Promise.resolve()
+  }
+}
+
+export class ScreenCaptureBridgeService extends Service {
+  static override serviceType: string = SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE
+  override capabilityDescription =
+    "Renderer-pulled bridge for agent-triggered mobile and host screen capture."
+
+  private readonly queue: ScreenCaptureRequest[] = []
+  private readonly pending = new Map<
+    string,
+    { deferred: Deferred.Deferred<ScreenCaptureFrame | null>; displayId: number }
+  >()
+  private readonly timeoutMs: number
+
+  constructor(runtime?: IAgentRuntime, timeoutMs = 30_000) {
+    super(runtime)
+    this.timeoutMs = timeoutMs
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<ScreenCaptureBridgeService> {
+    return Promise.resolve(new ScreenCaptureBridgeService(runtime))
+  }
+
+  requestFrame(displayId?: number): Promise<ScreenCaptureFrame | null> {
+    const requestId = nextRequestId()
+    const request: ScreenCaptureRequest = {
+      requestId,
+      createdAt: Date.now(),
+      format: "jpeg",
+      scale: 0.5,
+      quality: 70,
+      ...(typeof displayId === "number" ? { displayId } : {}),
+    }
+    this.queue.push(request)
+    const deferred = Deferred.makeUnsafe<ScreenCaptureFrame | null>()
+    this.pending.set(requestId, {
+      deferred,
+      displayId: typeof displayId === "number" ? displayId : 0,
+    })
+    return awaitPendingWithTimeout(deferred, this.timeoutMs, () => {
+      this.pending.delete(requestId)
+      removeQueuedRequest(this.queue, requestId)
+    })
+  }
+
+  takeRequests(): ScreenCaptureRequest[] {
+    return this.queue.splice(0, this.queue.length)
+  }
+
+  submitFrame(
+    requestId: string,
+    base64: string,
+    format: ScreenCaptureImageFormat,
+    width: number,
+    height: number,
+    capturedAt: number = Date.now(),
+  ): boolean {
+    const entry = this.pending.get(requestId)
+    if (!entry) return false
+    this.pending.delete(requestId)
+    Deferred.doneUnsafe(
+      entry.deferred,
+      Effect.succeed({
+        imageBytes: fromBase64(base64),
+        format,
+        width,
+        height,
+        displayId: entry.displayId,
+        capturedAt,
+      }),
+    )
+    return true
+  }
+
+  failFrame(requestId: string, _reason: string): boolean {
+    const entry = this.pending.get(requestId)
+    if (!entry) return false
+    this.pending.delete(requestId)
+    Deferred.doneUnsafe(entry.deferred, Effect.succeed(null))
+    return true
+  }
+
+  stop(): Promise<void> {
+    this.queue.length = 0
+    for (const [requestId, entry] of this.pending) {
+      Deferred.doneUnsafe(entry.deferred, Effect.succeed(null))
+      this.pending.delete(requestId)
+    }
+    return Promise.resolve()
+  }
+}

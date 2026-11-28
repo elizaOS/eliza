@@ -1,0 +1,167 @@
+// spec/imessage/index.md, "iMessage direct and group access differ, and passive connectors send no automatic reply"
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  normalizeConnectorAccountId,
+  selectDefaultConnectorAccountId,
+  type IAgentRuntime,
+} from "@elizaos/core"
+
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID
+
+export interface IMessageGroupConfig {
+  enabled?: boolean
+  allowFrom?: Array<string | number>
+  requireMention?: boolean
+  systemPrompt?: string
+  skills?: string[]
+}
+
+export interface IMessageAccountConfig {
+  name?: string
+  enabled?: boolean
+  dbPath?: string
+  service?: "iMessage" | "SMS"
+  region?: string
+  allowFrom?: Array<string | number>
+  groupAllowFrom?: Array<string | number>
+  dmPolicy?: "open" | "allowlist" | "pairing" | "disabled"
+  groupPolicy?: "open" | "allowlist" | "disabled"
+  includeAttachments?: boolean
+  mediaMaxMb?: number
+  textChunkLimit?: number
+  groups?: Record<string, IMessageGroupConfig>
+}
+
+export interface IMessageMultiAccountConfig {
+  enabled?: boolean
+  dbPath?: string
+  service?: "iMessage" | "SMS"
+  region?: string
+  dmPolicy?: "open" | "allowlist" | "pairing" | "disabled"
+  groupPolicy?: "open" | "allowlist" | "disabled"
+  includeAttachments?: boolean
+  mediaMaxMb?: number
+  textChunkLimit?: number
+  accounts?: Record<string, IMessageAccountConfig>
+  groups?: Record<string, IMessageGroupConfig>
+}
+
+export interface ResolvedIMessageAccount {
+  accountId: string
+  enabled: boolean
+  name?: string
+  dbPath?: string
+  configured: boolean
+  config: IMessageAccountConfig
+}
+
+export function normalizeAccountId(accountId?: string | null): string {
+  return normalizeConnectorAccountId(accountId)
+}
+
+export function getMultiAccountConfig(runtime: IAgentRuntime): IMessageMultiAccountConfig {
+  const characterIMessage = runtime.character?.settings?.imessage as IMessageMultiAccountConfig | undefined
+  return {
+    enabled: characterIMessage?.enabled,
+    dbPath: characterIMessage?.dbPath,
+    service: characterIMessage?.service,
+    region: characterIMessage?.region,
+    dmPolicy: characterIMessage?.dmPolicy,
+    groupPolicy: characterIMessage?.groupPolicy,
+    includeAttachments: characterIMessage?.includeAttachments,
+    mediaMaxMb: characterIMessage?.mediaMaxMb,
+    textChunkLimit: characterIMessage?.textChunkLimit,
+    accounts: characterIMessage?.accounts,
+    groups: characterIMessage?.groups,
+  }
+}
+
+export function listIMessageAccountIds(runtime: IAgentRuntime): string[] {
+  const accounts = getMultiAccountConfig(runtime).accounts
+  if (!accounts || typeof accounts !== "object") return [DEFAULT_ACCOUNT_ID]
+  const ids = Object.keys(accounts).filter(Boolean)
+  return ids.length === 0 ? [DEFAULT_ACCOUNT_ID] : ids.slice().sort((a, b) => a.localeCompare(b))
+}
+
+export function resolveDefaultIMessageAccountId(runtime: IAgentRuntime): string {
+  return selectDefaultConnectorAccountId(listIMessageAccountIds(runtime))
+}
+
+function getAccountConfig(runtime: IAgentRuntime, accountId: string): IMessageAccountConfig | undefined {
+  const accounts = getMultiAccountConfig(runtime).accounts
+  return accounts && typeof accounts === "object" ? accounts[accountId] : undefined
+}
+
+function filterDefined<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined)) as Partial<T>
+}
+
+function mergeIMessageAccountConfig(runtime: IAgentRuntime, accountId: string): IMessageAccountConfig {
+  const multiConfig = getMultiAccountConfig(runtime)
+  const { accounts: _ignored, ...baseConfig } = multiConfig
+  const accountConfig = getAccountConfig(runtime, accountId) ?? {}
+  const envDbPath = runtime.getSetting("IMESSAGE_DB_PATH") as string | undefined
+  const envDmPolicy = runtime.getSetting("IMESSAGE_DM_POLICY") as IMessageAccountConfig["dmPolicy"] | undefined
+  const envGroupPolicy = runtime.getSetting("IMESSAGE_GROUP_POLICY") as IMessageAccountConfig["groupPolicy"] | undefined
+  const envConfig: IMessageAccountConfig = {
+    dbPath: envDbPath || undefined,
+    dmPolicy: envDmPolicy || undefined,
+    groupPolicy: envGroupPolicy || undefined,
+  }
+  return { ...filterDefined(envConfig), ...filterDefined(baseConfig), ...filterDefined(accountConfig) }
+}
+
+export function resolveIMessageAccount(runtime: IAgentRuntime, accountId?: string | null): ResolvedIMessageAccount {
+  const normalizedAccountId = normalizeAccountId(accountId)
+  const multiConfig = getMultiAccountConfig(runtime)
+  const baseEnabled = multiConfig.enabled !== false
+  const merged = mergeIMessageAccountConfig(runtime, normalizedAccountId)
+  const enabled = baseEnabled && merged.enabled !== false
+  const configured = Boolean(
+    merged.dbPath?.trim() ||
+      merged.service ||
+      merged.region?.trim() ||
+      (merged.allowFrom && merged.allowFrom.length > 0) ||
+      (merged.groupAllowFrom && merged.groupAllowFrom.length > 0) ||
+      merged.dmPolicy ||
+      merged.groupPolicy ||
+      typeof merged.includeAttachments === "boolean" ||
+      typeof merged.mediaMaxMb === "number" ||
+      typeof merged.textChunkLimit === "number" ||
+      (merged.groups && Object.keys(merged.groups).length > 0),
+  )
+  return {
+    accountId: normalizedAccountId,
+    enabled,
+    name: merged.name?.trim() || undefined,
+    dbPath: merged.dbPath?.trim() || undefined,
+    configured,
+    config: merged,
+  }
+}
+
+export function listEnabledIMessageAccounts(runtime: IAgentRuntime): ResolvedIMessageAccount[] {
+  return listIMessageAccountIds(runtime)
+    .map((accountId) => resolveIMessageAccount(runtime, accountId))
+    .filter((account) => account.enabled)
+}
+
+export function isMultiAccountEnabled(runtime: IAgentRuntime): boolean {
+  return listEnabledIMessageAccounts(runtime).length > 1
+}
+
+export function resolveIMessageGroupConfig(
+  runtime: IAgentRuntime,
+  accountId: string,
+  groupId: string,
+): IMessageGroupConfig | undefined {
+  const multiConfig = getMultiAccountConfig(runtime)
+  return getAccountConfig(runtime, accountId)?.groups?.[groupId] ?? multiConfig.groups?.[groupId]
+}
+
+export function isIMessageMentionRequired(params: {
+  accountConfig: IMessageAccountConfig
+  groupConfig?: IMessageGroupConfig
+}): boolean {
+  return params.groupConfig?.requireMention ?? false
+}

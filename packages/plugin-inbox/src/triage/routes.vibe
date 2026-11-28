@@ -1,0 +1,88 @@
+// spec/inbox/triage.md, "Story: Triage my unified cross-channel inbox and safely manage subscriptions"
+import type { LocalRoute, RouteInput } from "@elizaos/agent-host"
+import type { InboxPlatform } from "./helpers.vibe"
+import type { InboxTriageService } from "./service.vibe"
+
+export type InboxRouteTarget = () => InboxTriageService | undefined
+
+type Answer = { readonly status: number; readonly body: object }
+
+function asObj(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function routeOver(target: InboxRouteTarget) {
+  return (
+    method: "GET" | "POST",
+    path: string,
+    handle: (input: RouteInput, svc: InboxTriageService) => Promise<Answer> | Answer,
+  ): LocalRoute => ({
+    method,
+    path,
+    handler: async (input) => {
+      const svc = target()
+      if (!svc) return { status: 503, body: { error: "InboxTriageService is not active." } }
+      return handle(input, svc)
+    },
+  })
+}
+
+export function inboxRoutes(target: InboxRouteTarget): LocalRoute[] {
+  const route = routeOver(target)
+  return [
+    route("GET", "/api/inbox/triage", async (input, svc) => {
+      const limitRaw = input.query.get("limit")
+      const limit = limitRaw ? Number(limitRaw) : 25
+      const query = input.query.get("query") ?? undefined
+      const platformParam = input.query.get("platforms")
+      const platforms = platformParam ? (platformParam.split(",").filter(Boolean) as InboxPlatform[]) : undefined
+      const snapshot = await svc.fetchUnified({ ...(platforms ? { platforms } : {}), ...(query ? { query } : {}), limit })
+      return { status: 200, body: snapshot }
+    }),
+    route("GET", "/api/inbox/digest", async (_input, svc) => {
+      const snapshot = svc.getLastSnapshot() ?? (await svc.fetchUnified({ limit: 50 }))
+      return {
+        status: 200,
+        body: {
+          total: snapshot.items.length,
+          complete: snapshot.complete,
+          degraded: snapshot.degraded,
+          countsByPriority: snapshot.countsByPriority,
+          countsByPlatform: snapshot.countsByPlatform,
+        },
+      }
+    }),
+    route("POST", "/api/inbox/triage/:id/state", (input, svc) => {
+      const id = input.parameters.get("id") ?? ""
+      const body = asObj(input.body)
+      const action = typeof body.action === "string" ? body.action : ""
+      const res = action === "snooze"
+        ? svc.stepItemMachine(id, { type: "snoozeItem", untilMs: typeof body.untilMs === "number" ? body.untilMs : 0, nowMs: Date.now() })
+        : action === "reply"
+          ? svc.stepItemMachine(id, { type: "replyItem" })
+          : action === "archive"
+            ? svc.stepItemMachine(id, { type: "archiveItem" })
+            : action === "dismiss"
+              ? svc.stepItemMachine(id, { type: "dismissItem" })
+              : action === "reopen"
+                ? svc.stepItemMachine(id, { type: "reopenItem" })
+                : undefined
+      if (!res) return { status: 400, body: { error: "Unknown triage state action." } }
+      return { status: res.accepted ? 200 : 409, body: { id, accepted: res.accepted, state: res.state } }
+    }),
+    route("GET", "/api/inbox/subscriptions", (_input, svc) => ({
+      status: 200,
+      body: { subscriptions: svc.scanSubscriptions() },
+    })),
+    route("POST", "/api/inbox/subscriptions/unsubscribe", async (input, svc) => {
+      const body = asObj(input.body)
+      const outcome = await svc.unsubscribeSender({
+        senderAddress: typeof body.senderAddress === "string" ? body.senderAddress : "",
+        ...(typeof body.targetUrl === "string" ? { targetUrl: body.targetUrl } : {}),
+        oneClick: body.oneClick === true,
+        userAuthorized: body.userAuthorized === true,
+      })
+      return { status: outcome.executed ? 200 : outcome.status === "refused" ? 403 : 502, body: outcome }
+    }),
+  ]
+}

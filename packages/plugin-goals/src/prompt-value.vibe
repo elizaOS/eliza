@@ -1,0 +1,109 @@
+// spec/goals/lifecycle.md, "Prompt value rendering fails closed on excessive depth, cycles, or hostile accessors"
+import { checkPromptValue, maxPromptValueDepth } from "../gen/goals__lifecycle.effect.vibe"
+import { makeGoalsError } from "./normalize.vibe"
+import type { GoalsServiceError } from "./types.vibe"
+
+export const MAX_GOAL_PROMPT_VALUE_DEPTH = maxPromptValueDepth
+export const GOAL_PROMPT_VALUE_UNBOUNDED = "GOAL_PROMPT_VALUE_UNBOUNDED" as const
+
+export type PromptFormatResult =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly error: GoalsServiceError }
+
+interface PromptWalkContext {
+  readonly ancestors: WeakSet<object>
+}
+
+function unboundedResult(axis: "depth" | "cycle" | "reflection", context: Record<string, unknown>): PromptFormatResult {
+  const message =
+    axis === "depth"
+      ? `goal prompt value exceeds ${MAX_GOAL_PROMPT_VALUE_DEPTH} nesting depth`
+      : axis === "cycle"
+        ? "goal prompt value contains a cyclic object"
+        : "goal prompt value could not be inspected safely"
+  return {
+    ok: false,
+    error: makeGoalsError(400, `${message} (${JSON.stringify(context)})`, GOAL_PROMPT_VALUE_UNBOUNDED),
+  }
+}
+
+function indentLines(text: string, indent: string): string {
+  return text
+    .split("\n")
+    .map((line) => (line.length > 0 ? `${indent}${line}` : line))
+    .join("\n")
+}
+
+function formatPromptValueAt(value: unknown, depth: number, ctx: PromptWalkContext): PromptFormatResult {
+  if (checkPromptValue(depth, false, false) === "PromptDepthExceeded") {
+    return unboundedResult("depth", { depth, max: MAX_GOAL_PROMPT_VALUE_DEPTH })
+  }
+  const indent = "  ".repeat(depth)
+  const childIndent = "  ".repeat(depth + 1)
+  if (value === null) return { ok: true, text: "null" }
+  if (value === undefined) return { ok: true, text: "" }
+  if (typeof value === "string") {
+    return { ok: true, text: value.includes("\n") ? indentLines(value, indent) : value }
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return { ok: true, text: String(value) }
+  }
+  if (typeof value === "object") {
+    if (checkPromptValue(depth, ctx.ancestors.has(value), false) === "PromptCycleDetected") {
+      return unboundedResult("cycle", { depth })
+    }
+    ctx.ancestors.add(value)
+    try {
+      if (Array.isArray(value)) {
+        const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length")
+        const length = lengthDescriptor?.value
+        if (!Number.isSafeInteger(length) || (length as number) < 0) {
+          return unboundedResult("reflection", { kind: "array-length" })
+        }
+        const len = length as number
+        if (len === 0) return { ok: true, text: "(none)" }
+        const parts: string[] = []
+        for (let index = 0; index < len; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+          if (
+            checkPromptValue(depth, false, !descriptor || "get" in descriptor || "set" in descriptor) ===
+            "PromptHostileAccessor"
+          ) {
+            return unboundedResult("reflection", { kind: "array-slot", index })
+          }
+          const child = formatPromptValueAt(descriptor!.value, depth + 1, ctx)
+          if (!child.ok) return child
+          parts.push(`${childIndent}- ${child.text}`)
+        }
+        return { ok: true, text: parts.join("\n") }
+      }
+      const parts: string[] = []
+      for (const key in value) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key)
+        if (!descriptor?.enumerable) continue
+        if (checkPromptValue(depth, false, "get" in descriptor || "set" in descriptor) === "PromptHostileAccessor") {
+          return unboundedResult("reflection", { kind: "object-accessor", key })
+        }
+        const child = formatPromptValueAt(descriptor.value, depth + 1, ctx)
+        if (!child.ok) return child
+        parts.push(child.text.includes("\n") ? `${indent}${key}:\n${child.text}` : `${indent}${key}: ${child.text}`)
+      }
+      return { ok: true, text: parts.length === 0 ? "(empty)" : parts.join("\n") }
+    } catch (error) {
+      return unboundedResult("reflection", { kind: error instanceof Error ? error.name : typeof error })
+    } finally {
+      ctx.ancestors.delete(value)
+    }
+  }
+  return unboundedResult("reflection", { kind: typeof value })
+}
+
+export function formatPromptValueSafe(value: unknown): PromptFormatResult {
+  return formatPromptValueAt(value, 0, { ancestors: new WeakSet<object>() })
+}
+
+export effect function formatPromptValue(value: unknown): string!GoalsServiceError {
+  const res = formatPromptValueSafe(value)
+  if (!res.ok) throw res.error
+  return res.text
+}

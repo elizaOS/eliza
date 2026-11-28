@@ -1,8 +1,44 @@
 // spec/network/index.md, "Availability uses the member's own evidence and calendar window"; spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar"; spec/network/index.md, "Only the authenticated turn may request a state write or relay"; spec/network/index.md, "A successful Network action requires its own matching receipt"; spec/network/index.md, "Only unseen updates for the bound member appear in the read acknowledgement"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
-import type { Action, ActionResult, Memory, Plugin } from "@elizaos/core"
+import type { Action, ActionResult, IAgentRuntime, Memory, Plugin } from "@elizaos/core"
+import { authorizeSetState, NETWORK_CONTEXT_DEFINITION } from "./authz.vibe"
 import { isoEpochDay, statedNetworkWindow } from "./dates.vibe"
-import { initial, machineOver, effectiveNetworkAvailability, networkWindow, validNetworkAvailability, type Availability, type AvailabilityCue, type AvailabilityRequest, type MemberTurn, type NetworkAction, type NetworkOutcome } from "../gen/network.effect.vibe"
+import {
+  createNetworkActionFieldEvaluator,
+  createNetworkSignalsEvaluator,
+} from "./evaluators.vibe"
+import {
+  createMemberContextProvider,
+  createNetworkVoiceProvider,
+} from "./providers.vibe"
+import type {
+  NetworkAppId,
+  NetworkMemberState,
+  NetworkRouteAuthority,
+  NetworkRouting,
+  NetworkStore,
+  NetworkStoreTurnAuthority,
+} from "./types.vibe"
+import {
+  initial,
+  machineOver,
+  effectiveNetworkAvailability,
+  networkWindow,
+  validNetworkAvailability,
+  type Availability,
+  type AvailabilityCue,
+  type AvailabilityRequest,
+  type MemberTurn,
+  type NetworkAction,
+  type NetworkOutcome,
+} from "../gen/network.effect.vibe"
+
+export * from "./authz.vibe"
+export * from "./dates.vibe"
+export * from "./evaluators.vibe"
+export * from "./providers.vibe"
+export * from "./stores.vibe"
+export * from "./types.vibe"
 
 module node {
   import { createHash, createHmac } from "node:crypto"
@@ -14,14 +50,6 @@ module node {
 import { signNetworkRequest } from node
 
 export error NetworkUnavailable { stage: string; status: number }
-
-export interface NetworkRouteAuthority {
-  readonly version: 1
-  readonly routeId: string
-  readonly generation: string
-  readonly audience: string
-  readonly realmId: string
-}
 
 export interface NetworkTurnAuthority {
   readonly turn: MemberTurn
@@ -37,14 +65,64 @@ export interface NetworkServiceOptions {
   readonly secret: Redacted.Redacted<string>
 }
 
-const StateReceipt = Schema.Struct({ eventId: Schema.NullOr(Schema.String), previous: Schema.String, current: Schema.String, committedAt: Schema.String, replayed: Schema.Boolean, unchanged: Schema.Boolean })
-const RelayReceipt = Schema.Struct({ decision: Schema.Literals(["pass", "hold", "block", "none"]), senderNotice: Schema.String, delivered: Schema.Boolean, replayed: Schema.Boolean })
-const UpdatesReceipt = Schema.Struct({ items: Schema.Array(Schema.Struct({ summary: Schema.String })) })
-const SetStateParameters = Schema.Struct({ state: Schema.Literals(["open", "busy", "traveling", "paused"]), from: Schema.optionalKey(Schema.String), until: Schema.optionalKey(Schema.String), evidence: Schema.optionalKey(Schema.String), note: Schema.optionalKey(Schema.String) })
-const RelayParameters = Schema.Struct({ itemId: Schema.optionalKey(Schema.String) })
+export interface NetworkServiceEdgePluginOptions {
+  readonly service: NetworkServiceOptions
+  readonly authority: NetworkTurnAuthority
+  readonly actionsEnabled?: boolean
+  readonly routing?: NetworkRouting
+  readonly now?: () => Date
+  readonly voice?: { readonly app: NetworkAppId }
+}
+
+export interface NetworkStoreEdgePluginOptions {
+  readonly store: NetworkStore
+  readonly authority: NetworkStoreTurnAuthority
+  readonly actionsEnabled?: boolean
+  readonly routing?: NetworkRouting
+  readonly now?: () => Date
+  readonly voice?: { readonly app: NetworkAppId }
+}
+
+export type NetworkEdgePluginOptions = NetworkServiceEdgePluginOptions | NetworkStoreEdgePluginOptions
+
+schema StateReceipt {
+  readonly eventId: string | null
+  readonly previous: string
+  readonly current: string
+  readonly committedAt: string
+  readonly replayed: boolean
+  readonly unchanged: boolean
+}
+
+schema RelayReceipt {
+  readonly decision: "pass" | "hold" | "block" | "none"
+  readonly senderNotice: string
+  readonly delivered: boolean
+  readonly replayed: boolean
+}
+
+schema UpdatesReceiptItem {
+  readonly summary: string
+}
+
+schema UpdatesReceipt {
+  readonly items: readonly UpdatesReceiptItem[]
+}
+
+schema SetStateParameters {
+  readonly state: "open" | "busy" | "traveling" | "paused"
+  readonly from?: string
+  readonly until?: string
+  readonly evidence?: string
+  readonly note?: string
+}
+
+schema RelayParameters {
+  readonly itemId?: string
+}
 
 const application = { NtwrkApp: "ntwrk", SlopApp: "slop", PeonApp: "peon", FriendsApp: "friends" } as const
-const stateName: Record<Availability, string> = { OpenAvailability: "open", BusyAvailability: "busy", TravelingAvailability: "traveling", PausedAvailability: "paused" }
+const stateName: Record<Availability, NetworkMemberState> = { OpenAvailability: "open", BusyAvailability: "busy", TravelingAvailability: "traveling", PausedAvailability: "paused" }
 const availabilityOf = { open: "OpenAvailability", busy: "BusyAvailability", traveling: "TravelingAvailability", paused: "PausedAvailability" } as const
 const failed = (text: string): ActionResult => ({ success: false, text, continueChain: false })
 
@@ -80,7 +158,173 @@ function cue(text: string): AvailabilityCue {
   return "NoCue"
 }
 
-export function createNetworkEdgePlugin(options: { readonly service: NetworkServiceOptions; readonly authority: NetworkTurnAuthority; readonly actionsEnabled?: boolean }): Plugin {
+const SET_STATE_PARAMS: Action["parameters"] = [
+  { name: "evidence", description: "Exact words from the member's message", schema: { type: "string" } },
+  { name: "from", description: "Start date", schema: { type: "string" } },
+  { name: "note", description: "Member's reason", schema: { type: "string" } },
+  { name: "state", description: "open, busy, traveling, or paused", required: true, schema: { type: "string", enum: ["open", "busy", "traveling", "paused"] } },
+  { name: "until", description: "End date", schema: { type: "string" } },
+]
+
+const RELAY_PARAMS: Action["parameters"] = [
+  { name: "itemId", description: "Optional exact active item identifier", schema: { type: "string" } },
+]
+
+function registerNetworkContext(runtime: IAgentRuntime): void {
+  const contexts = (runtime as { readonly contexts?: { tryRegister?(def: typeof NETWORK_CONTEXT_DEFINITION): void } }).contexts
+  contexts?.tryRegister?.(NETWORK_CONTEXT_DEFINITION)
+}
+
+function createStoreBackedEdgePlugin(options: NetworkStoreEdgePluginOptions): Plugin {
+  const actionsEnabled = options.actionsEnabled ?? true
+  const routing: NetworkRouting = options.routing ?? "planner"
+  const auth = options.authority
+  const currentMessageText = (message: Memory) =>
+    typeof message.content?.text === "string" ? message.content.text : (auth.text ?? "")
+  const matchesTurn = (message: Memory) =>
+    auth.text === undefined || currentMessageText(message).trim() === auth.text.trim()
+
+  const setStateAction: Action = {
+    name: "SET_STATE",
+    description: "Change the member's availability only using their current words and dates.",
+    descriptionCompressed: "Update Network member availability state.",
+    toolSchemaStrict: true,
+    cacheStable: true,
+    contexts: ["network"],
+    roleGate: { minRole: "GUEST" },
+    parameters: SET_STATE_PARAMS,
+    validate: async (_runtime, message) => matchesTurn(message),
+    handler: async (_runtime, message, _state, raw): Promise<ActionResult> => {
+      if (!matchesTurn(message)) return failed("The Network request no longer matches the member's turn.")
+      const input = (parameters(raw) ?? {}) as Readonly<Record<string, unknown>>
+      const memberText = currentMessageText(message)
+      const evidence = typeof input.evidence === "string" && input.evidence.trim().length > 0 ? input.evidence.trim() : memberText
+      const decision = authorizeSetState(
+        { state: input.state, from: input.from, until: input.until, evidence },
+        memberText,
+        options.now ? options.now() : new Date(),
+        { timeZone: auth.timeZone ?? null },
+      )
+      if (!decision.allowed) return failed(`Those dates or that availability do not match the member's request (${decision.reason}).`)
+      const note = typeof input.note === "string" ? input.note : null
+      if (note !== null && note.length > 280) return failed("Availability note exceeds 280 characters.")
+      const messageId = auth.messageId || String(message.id ?? "")
+      const receipt = await options.store.setState({
+        memberId: auth.memberId,
+        messageId,
+        idempotencyKey: `state:${auth.memberId}:${messageId}`,
+        state: decision.state,
+        from: decision.from,
+        until: decision.until,
+        note,
+      })
+      return {
+        success: true,
+        text: receipt.unchanged ? `Your availability was already ${receipt.current}.` : `Your availability is now ${receipt.current}.`,
+        data: { eventId: receipt.eventId, replayed: receipt.replayed },
+      }
+    },
+  }
+
+  const getUpdatesAction: Action | undefined = options.store.readUpdates
+    ? {
+        name: "GET_UPDATES",
+        description: "Show and acknowledge the member's new Network updates.",
+        descriptionCompressed: "Read unseen Network updates.",
+        toolSchemaStrict: true,
+        cacheStable: true,
+        contexts: ["network"],
+        roleGate: { minRole: "GUEST" },
+        parameters: [],
+        validate: async (_runtime, message) => matchesTurn(message),
+        handler: async (_runtime, message): Promise<ActionResult> => {
+          const readUpdates = options.store.readUpdates
+          if (!readUpdates) return failed("Updates are unavailable.")
+          const receipt = await readUpdates({
+            memberId: auth.memberId,
+            messageId: auth.messageId || String(message.id ?? ""),
+          })
+          return {
+            success: true,
+            text: receipt.items.length === 0 ? "No new Network updates." : `Network updates:\n${receipt.items.map((item) => `- ${item.summary}`).join("\n")}`,
+            data: { count: receipt.items.length },
+          }
+        },
+      }
+    : undefined
+
+  const relayAction: Action | undefined = options.store.relay
+    ? {
+        name: "RELAY",
+        description: "Ask the Network to pass the member's exact message to an active introduction or plan.",
+        descriptionCompressed: "Relay message to active Network match.",
+        toolSchemaStrict: true,
+        cacheStable: true,
+        contexts: ["network"],
+        roleGate: { minRole: "GUEST" },
+        parameters: RELAY_PARAMS,
+        validate: async (_runtime, message) => matchesTurn(message),
+        handler: async (_runtime, message, _state, raw): Promise<ActionResult> => {
+          if (auth.singlePlayer) return failed("Relays are unavailable for this Network account.")
+          const relayFn = options.store.relay
+          if (!relayFn) return failed("Relays are unavailable.")
+          const input = (parameters(raw) ?? {}) as Readonly<Record<string, unknown>>
+          const itemId = typeof input.itemId === "string" && input.itemId.trim().length > 0 ? input.itemId.trim() : null
+          const receipt = await relayFn({
+            memberId: auth.memberId,
+            messageId: auth.messageId || String(message.id ?? ""),
+            itemId,
+            text: currentMessageText(message),
+          })
+          return {
+            success: receipt.delivered,
+            text: receipt.senderNotice || (receipt.delivered ? "Passed on." : "The message was not sent."),
+            data: { decision: receipt.decision, delivered: receipt.delivered, replayed: receipt.replayed },
+          }
+        },
+      }
+    : undefined
+
+  const actions: Action[] = actionsEnabled
+    ? [
+        ...(routing === "planner" ? [setStateAction] : []),
+        ...(getUpdatesAction !== undefined ? [getUpdatesAction] : []),
+        ...(relayAction !== undefined ? [relayAction] : []),
+      ]
+    : []
+
+  return {
+    name: "@elizaos/plugin-network",
+    description: "The Network: member context, availability state, updates, relays and post-turn signals.",
+    contexts: ["network"],
+    init: async (_config, runtime) => {
+      registerNetworkContext(runtime)
+    },
+    ...(actionsEnabled && routing === "structured"
+      ? {
+          responseHandlerFieldEvaluators: [
+            createNetworkActionFieldEvaluator({
+              store: options.store,
+              authority: auth,
+              ...(options.now !== undefined ? { now: options.now } : {}),
+            }),
+          ],
+        }
+      : {}),
+    providers: [
+      ...(options.voice ? [createNetworkVoiceProvider(options.voice)] : []),
+      createMemberContextProvider({ store: options.store, authority: auth }),
+    ],
+    actions,
+    evaluators: [createNetworkSignalsEvaluator({ store: options.store, authority: auth })],
+  }
+}
+
+export function createNetworkEdgePlugin(options: NetworkEdgePluginOptions): Plugin {
+  if ("store" in options) {
+    return createStoreBackedEdgePlugin(options)
+  }
+  const service = options.service
   const host = options.authority
   const turn: MemberTurn = { ...host.turn, messageUnits: units(host.text) }
   const bound = { ...(host.route === undefined ? {} : { networkAuthority: host.route }), memberId: turn.memberId, channel: host.channel, app: application[turn.app], messageId: turn.messageId }
@@ -88,7 +332,7 @@ export function createNetworkEdgePlugin(options: { readonly service: NetworkServ
   effect function run(action: "state" | "relay" | "updates", message: Memory, raw: unknown) {
     if (!isCurrent(message)) return failed("The Network request no longer matches the member's turn.")
     if (action === "updates") {
-      const receipt = try Schema.decodeUnknownEffect(UpdatesReceipt)(try postNetwork(options.service, "/internal/updates", turn.messageId, bound))
+      const receipt = try Schema.decodeUnknownEffect(UpdatesReceipt)(try postNetwork(service, "/internal/updates", turn.messageId, bound))
       return { success: true, text: receipt.items.length === 0 ? "No new Network updates." : `Network updates:\n${receipt.items.map(item => `- ${item.summary}`).join("\n")}`, data: { count: receipt.items.length } } satisfies ActionResult
     }
     const kept = try Ref.make(initial)
@@ -99,7 +343,7 @@ export function createNetworkEdgePlugin(options: { readonly service: NetworkServ
       const input = try Schema.decodeUnknownEffect(RelayParameters)(parameters(raw) ?? {})
       const itemId = input.itemId?.trim() ?? ""
       const dispatched = try journal.send({ type: "relayNetwork", itemId }, "NetworkHost")
-      const receipt = try Schema.decodeUnknownEffect(RelayReceipt)(try postNetwork(options.service, "/internal/relay", turn.messageId, { ...bound, itemId: itemId === "" ? null : itemId, text: host.text }))
+      const receipt = try Schema.decodeUnknownEffect(RelayReceipt)(try postNetwork(service, "/internal/relay", turn.messageId, { ...bound, itemId: itemId === "" ? null : itemId, text: host.text }))
       const result: NetworkOutcome = receipt.decision === "hold" ? { tag: "RelayHeld" } : receipt.decision === "block" ? { tag: "RelayBlocked" } : receipt.decision === "none" ? { tag: "RelayNotRequested" } : receipt.delivered ? { tag: "RelayDelivered", deliveryRequestId: turn.messageId } : { tag: "RelayUnconfirmed" }
       try journal.send({ type: "observeNetworkAction", turn, operation: dispatched.state.operation, result }, "NetworkService")
       return { success: result.tag === "RelayDelivered", text: receipt.senderNotice || (result.tag === "RelayDelivered" ? "Passed on." : result.tag === "RelayUnconfirmed" ? "The service accepted the request. Delivery is unconfirmed." : "The message was not sent."), data: { decision: receipt.decision, delivered: receipt.delivered, replayed: receipt.replayed } } satisfies ActionResult
@@ -113,20 +357,29 @@ export function createNetworkEdgePlugin(options: { readonly service: NetworkServ
     const next: NetworkAction = { tag: "SetAvailability", availability: effectiveNetworkAvailability(request), window: networkWindow(request) }
     try journal.send({ type: "setNetworkAvailability", availabilityRequest: request }, "NetworkHost")
     const idempotencyKey = `state:${turn.memberId}:${turn.messageId}`
-    const receipt = try Schema.decodeUnknownEffect(StateReceipt)(try postNetwork(options.service, "/internal/set-state", idempotencyKey, { ...bound, idempotencyKey, state: stateName[next.availability], from: isoDay(next.window.begins), until: isoDay(next.window.ends), note: input.note ?? null }))
+    const receipt = try Schema.decodeUnknownEffect(StateReceipt)(try postNetwork(service, "/internal/set-state", idempotencyKey, { ...bound, idempotencyKey, state: stateName[next.availability], from: isoDay(next.window.begins), until: isoDay(next.window.ends), note: input.note ?? null }))
     if (!receipt.unchanged && (receipt.eventId === null || receipt.eventId === "")) return failed("The Network service did not confirm the change.")
     const result: NetworkOutcome = receipt.unchanged ? { tag: "AvailabilityUnchanged" } : { tag: "AvailabilityCommitted", eventId: receipt.eventId ?? "" }
     try journal.send({ type: "observeNetworkAction", turn, operation: next, result }, "NetworkService")
     return { success: true, text: receipt.unchanged ? `Your availability was already ${receipt.current}.` : `Your availability is now ${receipt.current}.`, data: { eventId: receipt.eventId, replayed: receipt.replayed } } satisfies ActionResult
   }
 
-  const action = (name: string, description: string, kind: "state" | "relay" | "updates", args: Action["parameters"]): Action => ({
-    name, description, contexts: ["network"], roleGate: { minRole: "GUEST" }, ...(args === undefined ? {} : { parameters: args }), validate: async (_runtime, message) => isCurrent(message),
+  const action = (name: string, description: string, descriptionCompressed: string, kind: "state" | "relay" | "updates", args: Action["parameters"]): Action => ({
+    name, description, descriptionCompressed, toolSchemaStrict: true, cacheStable: true, contexts: ["network"], roleGate: { minRole: "GUEST" }, ...(args === undefined ? {} : { parameters: args }), validate: async (_runtime, message) => isCurrent(message),
     handler: (_runtime, message, _state, raw) => runPromise(Effect.catch(Effect.provide(run(kind, message, raw), FetchHttpClient.layer), () => succeed(failed("The Network service could not confirm this request.")))),
   })
-  return { name: "@elizaos/plugin-network", description: "Network member availability, updates and relays", contexts: ["network"], actions: options.actionsEnabled === false ? [] : [
-    action("SET_STATE", "Change the member's availability only using their current words and dates.", "state", [{ name: "state", description: "open, busy, traveling, or paused", required: true, schema: { type: "string", enum: ["open", "busy", "traveling", "paused"] } }, { name: "evidence", description: "Exact words from the member's message", schema: { type: "string" } }, { name: "from", description: "Start date", schema: { type: "string" } }, { name: "until", description: "End date", schema: { type: "string" } }, { name: "note", description: "Member's reason", schema: { type: "string" } }]),
-    action("GET_UPDATES", "Show and acknowledge the member's new Network updates.", "updates", []),
-    action("RELAY", "Ask the Network to pass the member's exact message to an active introduction or plan.", "relay", [{ name: "itemId", description: "Optional exact active item identifier", schema: { type: "string" } }]),
-  ] }
+  return {
+    name: "@elizaos/plugin-network",
+    description: "Network member availability, updates and relays",
+    contexts: ["network"],
+    init: async (_config, runtime) => {
+      registerNetworkContext(runtime)
+    },
+    providers: options.voice ? [createNetworkVoiceProvider(options.voice)] : [],
+    actions: options.actionsEnabled === false ? [] : [
+      action("SET_STATE", "Change the member's availability only using their current words and dates.", "Update Network member availability state.", "state", SET_STATE_PARAMS),
+      action("GET_UPDATES", "Show and acknowledge the member's new Network updates.", "Read unseen Network updates.", "updates", []),
+      action("RELAY", "Ask the Network to pass the member's exact message to an active introduction or plan.", "Relay message to active Network match.", "relay", RELAY_PARAMS),
+    ],
+  }
 }

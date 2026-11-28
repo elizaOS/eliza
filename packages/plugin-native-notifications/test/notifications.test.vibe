@@ -1,0 +1,32 @@
+// spec/nativeNotifications/index.md, "Story: View and act on permitted notifications while the screen is current"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  evaluateNoticeMirrorList,
+  evaluateNoticePreviewAccess,
+  noticesClient,
+  notificationsPlugin,
+  resolveNoticeTap,
+  workflowApprovalNoticeIdentity,
+} from "../src/index.vibe"
+
+describe("Native notifications (spec/nativeNotifications/index.md, \"Story: View and act on permitted notifications while the screen is current\")", () => {
+  it("Exposes bridge wrappers and enforces mirror list bounds and secret-notice preview redaction (spec/nativeNotifications/index.md, \"The mirror withholds rows when collection or the current owner's display is unavailable\")", () => {
+    assert.isFunction(noticesClient)
+    assert.isFunction(notificationsPlugin)
+    assert.isFunction(resolveNoticeTap)
+    assert.isFunction(workflowApprovalNoticeIdentity)
+
+    const liveFence = { optedIn: true, listenerGranted: true, listenerConnected: true, paused: false, unlocked: true, foreground: true }
+    assert.strictEqual(evaluateNoticeMirrorList(liveFence, 50), "MirrorRows")
+    assert.strictEqual(evaluateNoticeMirrorList(liveFence, 100), "MirrorRows")
+    assert.strictEqual(evaluateNoticeMirrorList(liveFence, 101), "MirrorOverLimit")
+    assert.strictEqual(evaluateNoticeMirrorList({ ...liveFence, paused: true }, 10), "MirrorWithheld")
+    assert.strictEqual(evaluateNoticeMirrorList({ ...liveFence, unlocked: false }, 10), "MirrorWithheld")
+
+    const validAccess = { liveHandle: true, sameUser: true, signerMatches: true, ownPostingUid: true, secretNotice: false }
+    assert.strictEqual(evaluateNoticePreviewAccess(validAccess, true), true)
+    assert.strictEqual(evaluateNoticePreviewAccess(validAccess, false), false)
+    assert.strictEqual(evaluateNoticePreviewAccess({ ...validAccess, secretNotice: true }, true), false)
+    assert.strictEqual(evaluateNoticePreviewAccess({ ...validAccess, signerMatches: false }, true), false)
+  })
+})

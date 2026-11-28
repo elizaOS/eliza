@@ -1,0 +1,87 @@
+// spec/browser/arbitration.md, "Story: Follow the browser the person can see"; spec/browser/arbitration.md, "Story: Keep task binding authority on its original browser"
+import {
+  activePeer,
+  admitsEpoch,
+  guideComposition,
+  keepsEpoch,
+  Machine,
+  machine,
+  numberedEpoch,
+  operationRoute,
+  pageRoute,
+  revokeResult,
+  type BrowserArbitration,
+  type BrowserPeer,
+  type CompetingBinding,
+  type EpochFence,
+  type Event,
+  type GuideComposition,
+  type OperationDispatch,
+  type OperationRoute,
+  type PageRead,
+  type PageRoute,
+  type RevokeOutcome,
+  type RevokePeer,
+} from "../gen/browser__arbitration.effect.vibe"
+
+import { openMachineSession } from "./machine-session.vibe"
+
+export interface BrowserArbitrationSession {
+  dispatch(event: Event): Promise<boolean>
+  beginBind(epoch: number): Promise<boolean>
+  choosePeer(active: BrowserPeer): Promise<boolean>
+  finishBind(peerAccepted: boolean): Promise<boolean>
+  otherBind(competitor: CompetingBinding): Promise<boolean>
+  revokeBrowser(epoch: number): Promise<boolean>
+  stopTargets(): Promise<boolean>
+  snapshot(): Promise<BrowserArbitration>
+}
+
+export function createBrowserArbitrationSession(): BrowserArbitrationSession {
+  const session = openMachineSession(Effect.runSync(Effect.provide(Machine, machine())))
+  return {
+    ...session,
+    beginBind: (epoch) => session.dispatch({ type: "beginBind", epoch }),
+    choosePeer: (active) => session.dispatch({ type: "choosePeer", active }),
+    finishBind: (peerAccepted) => session.dispatch({ type: "finishBind", peerAccepted }),
+    otherBind: (competitor) => session.dispatch({ type: "otherBind", competitor }),
+    revokeBrowser: (epoch) => session.dispatch({ type: "revokeBrowser", epoch }),
+    stopTargets: () => session.dispatch({ type: "stopTargets" }),
+  }
+}
+
+export function resolveBrowserGuideComposition(
+  nativeHost: boolean,
+  embeddedConstructor: boolean,
+  trustValue: string,
+): GuideComposition {
+  return guideComposition(nativeHost, embeddedConstructor, trustValue)
+}
+
+export function resolveActiveBrowserPeer(
+  lastPeer: BrowserPeer,
+  ownedProfile: boolean,
+  embeddedProfile: boolean,
+): BrowserPeer {
+  return activePeer(lastPeer, ownedProfile, embeddedProfile)
+}
+
+export function resolveBrowserPageRoute(reading: PageRoute): PageRead {
+  return pageRoute(reading)
+}
+
+export function resolveBrowserOperationRoute(command: OperationRoute): OperationDispatch {
+  return operationRoute(command)
+}
+
+export function resolveBrowserRevokeOutcome(owned: RevokePeer, embedded: RevokePeer): RevokeOutcome {
+  return revokeResult(owned, embedded)
+}
+
+export function isBindingEpochAdmitted(fence: EpochFence, epoch: number): boolean {
+  return numberedEpoch(epoch) && admitsEpoch(fence, epoch)
+}
+
+export function isBindingEpochCurrent(fence: EpochFence, epoch: number): boolean {
+  return numberedEpoch(epoch) && keepsEpoch(fence, epoch)
+}

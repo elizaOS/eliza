@@ -1,0 +1,277 @@
+// spec/vision/backpressure.md, "Scene description admits work only when memory, arbiter, concurrency, and circuit state permit"; spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+import { visionDescriptionAllowed } from "../gen/vision.effect.vibe"
+import {
+  acquireDescribe,
+  canAcquireDescribe,
+  canFinishFailure,
+  canFinishSuccess,
+  canResetCircuit,
+  canSetArbiter,
+  canSetPressure,
+  finishFailure,
+  finishSuccess,
+  initial,
+  pauseReason,
+  resetCircuit,
+  setArbiter,
+  setPressure,
+  type BackpressureState,
+  type MemoryPressure,
+  type PauseReason,
+} from "../gen/vision__backpressure.effect.vibe"
+import type { DescribePauseReason, MemoryPressureLevel } from "./types.vibe"
+
+module hostRss {
+  import { memoryUsage } from "node:process"
+
+  /** @throws {never} */
+  export function currentRssBytes(): number {
+    return memoryUsage().rss
+  }
+}
+import { currentRssBytes } from hostRss
+
+export interface DescribeBackpressureStats {
+  paused: boolean
+  pressureLevel: MemoryPressureLevel
+  pauseReason: DescribePauseReason
+  inFlight: number
+  maxConcurrent: number
+  consecutiveFailures: number
+  failureThreshold: number
+  circuitOpen: boolean
+  describesSkipped: number
+  pauseTransitions: number
+  memoryBaselineBytes: number | null
+  memoryGrowthBytes: number | null
+}
+
+export interface DescribeBackpressureDecision {
+  describe: boolean
+  transitionedTo: "paused" | "active" | null
+  reason: DescribePauseReason
+  pausedForMs: number
+  warnPaused: boolean
+}
+
+export interface DescribeBackpressureConfig {
+  memoryCapBytes?: number
+  sampleRssBytes?: () => number
+  arbiterPauseCooldownMs?: number
+  pauseWarningThresholdMs?: number
+  pauseWarningIntervalMs?: number
+  now?: () => number
+}
+
+const DEFAULT_ARBITER_PAUSE_COOLDOWN_MS = 15_000
+const DEFAULT_PAUSE_WARNING_THRESHOLD_MS = 60_000
+const DEFAULT_PAUSE_WARNING_INTERVAL_MS = 60_000
+
+function toSpecPressure(level: MemoryPressureLevel): MemoryPressure {
+  if (level === "critical") return "PressureCritical"
+  if (level === "elevated") return "PressureElevated"
+  return "PressureNormal"
+}
+
+function fromSpecPressure(pressure: MemoryPressure): MemoryPressureLevel {
+  if (pressure === "PressureCritical") return "critical"
+  if (pressure === "PressureElevated") return "elevated"
+  return "normal"
+}
+
+function fromSpecPauseReason(reason: PauseReason): DescribePauseReason {
+  if (reason === "PauseCriticalMemory") return "critical_memory"
+  if (reason === "PauseArbiterDenied") return "arbiter_denied"
+  if (reason === "PauseCircuitOpen") return "circuit_open"
+  if (reason === "PauseConcurrencyLimit") return "concurrency_limit"
+  return null
+}
+
+export class DescribeBackpressureController {
+  private readonly memoryCapBytes: number
+  private readonly sampleRssBytes: () => number
+  private readonly arbiterPauseCooldownMs: number
+  private readonly pauseWarningThresholdMs: number
+  private readonly pauseWarningIntervalMs: number
+  private readonly now: () => number
+  private state: BackpressureState = initial
+  private externalPressure: MemoryPressure = "PressureNormal"
+  private pauseUntilMs = 0
+  private paused = false
+  private describesSkipped = 0
+  private pauseTransitions = 0
+  private memoryBaselineBytes: number | null = null
+  private latestMemoryGrowthBytes: number | null = null
+  private pauseStartedAtMs: number | null = null
+  private lastPauseWarningAtMs = 0
+
+  constructor(config: DescribeBackpressureConfig = {}) {
+    this.memoryCapBytes =
+      typeof config.memoryCapBytes === "number" && config.memoryCapBytes > 0
+        ? config.memoryCapBytes
+        : 0
+    this.sampleRssBytes = config.sampleRssBytes ?? currentRssBytes
+    this.arbiterPauseCooldownMs =
+      typeof config.arbiterPauseCooldownMs === "number" && config.arbiterPauseCooldownMs > 0
+        ? config.arbiterPauseCooldownMs
+        : DEFAULT_ARBITER_PAUSE_COOLDOWN_MS
+    this.pauseWarningThresholdMs =
+      typeof config.pauseWarningThresholdMs === "number" && config.pauseWarningThresholdMs > 0
+        ? config.pauseWarningThresholdMs
+        : DEFAULT_PAUSE_WARNING_THRESHOLD_MS
+    this.pauseWarningIntervalMs =
+      typeof config.pauseWarningIntervalMs === "number" && config.pauseWarningIntervalMs > 0
+        ? config.pauseWarningIntervalMs
+        : DEFAULT_PAUSE_WARNING_INTERVAL_MS
+    this.now = config.now ?? (() => Date.now())
+  }
+
+  private applyPressure(next: MemoryPressure): void {
+    if (canSetPressure(this.state, next)) {
+      this.state = setPressure(this.state, next)
+    }
+  }
+
+  private applyArbiter(allowed: boolean): void {
+    if (canSetArbiter(this.state, allowed)) {
+      this.state = setArbiter(this.state, allowed)
+    }
+  }
+
+  setPressure(level: MemoryPressureLevel): void {
+    const specLevel = toSpecPressure(level)
+    this.externalPressure = specLevel
+    if (level === "normal") {
+      this.pauseUntilMs = 0
+    } else {
+      this.pauseUntilMs = this.now() + this.arbiterPauseCooldownMs
+    }
+    this.applyPressure(specLevel)
+  }
+
+  setArbiterAllowed(allowed: boolean): void {
+    if (allowed) {
+      this.pauseUntilMs = 0
+    } else {
+      this.pauseUntilMs = this.now() + this.arbiterPauseCooldownMs
+    }
+    this.applyArbiter(allowed)
+  }
+
+  acquire(): boolean {
+    if (!canAcquireDescribe(this.state)) return false
+    const allowedByResources = visionDescriptionAllowed({
+      memoryCritical: this.state.pressure === "PressureCritical",
+      modelAvailable: this.state.arbiterAllowed && !this.state.circuitOpen,
+      outstanding: this.state.inFlight,
+      concurrencyLimit: this.state.maxConcurrent,
+    })
+    if (!allowedByResources) return false
+    this.state = acquireDescribe(this.state)
+    return true
+  }
+
+  finishSuccess(): boolean {
+    if (!canFinishSuccess(this.state)) return false
+    this.state = finishSuccess(this.state)
+    return true
+  }
+
+  finishFailure(): boolean {
+    if (!canFinishFailure(this.state)) return false
+    this.state = finishFailure(this.state)
+    return true
+  }
+
+  resetCircuit(): boolean {
+    if (!canResetCircuit(this.state)) return false
+    this.state = resetCircuit(this.state)
+    return true
+  }
+
+  getSpecState(): BackpressureState {
+    return this.state
+  }
+
+  evaluate(): DescribeBackpressureDecision {
+    const now = this.now()
+    if (this.pauseUntilMs > 0 && now >= this.pauseUntilMs) {
+      this.pauseUntilMs = 0
+      this.externalPressure = "PressureNormal"
+      this.applyArbiter(true)
+    }
+
+    const sampledRssBytes = this.memoryCapBytes > 0 ? this.sampleRssBytes() : null
+    if (sampledRssBytes !== null && this.memoryBaselineBytes === null) {
+      this.memoryBaselineBytes = sampledRssBytes
+    }
+    this.latestMemoryGrowthBytes =
+      sampledRssBytes !== null && this.memoryBaselineBytes !== null
+        ? Math.max(0, sampledRssBytes - this.memoryBaselineBytes)
+        : null
+    const overCap =
+      this.memoryCapBytes > 0 &&
+      sampledRssBytes !== null &&
+      this.memoryBaselineBytes !== null &&
+      sampledRssBytes > this.memoryBaselineBytes + this.memoryCapBytes
+
+    const effectivePressure: MemoryPressure = overCap
+      ? "PressureCritical"
+      : this.externalPressure
+    this.applyPressure(effectivePressure)
+
+    const specReason = pauseReason(this.state)
+    const paused = !canAcquireDescribe(this.state)
+
+    let transitionedTo: "paused" | "active" | null = null
+    if (paused !== this.paused) {
+      transitionedTo = paused ? "paused" : "active"
+      this.paused = paused
+      this.pauseTransitions += 1
+      this.pauseStartedAtMs = paused ? now : null
+      this.lastPauseWarningAtMs = 0
+    }
+
+    let pausedForMs = 0
+    let warnPaused = false
+    if (paused) {
+      this.describesSkipped += 1
+      if (this.pauseStartedAtMs !== null) {
+        pausedForMs = Math.max(0, now - this.pauseStartedAtMs)
+        if (
+          pausedForMs >= this.pauseWarningThresholdMs &&
+          (this.lastPauseWarningAtMs === 0 ||
+            now - this.lastPauseWarningAtMs >= this.pauseWarningIntervalMs)
+        ) {
+          warnPaused = true
+          this.lastPauseWarningAtMs = now
+        }
+      }
+    }
+
+    return {
+      describe: !paused,
+      transitionedTo,
+      reason: fromSpecPauseReason(specReason),
+      pausedForMs,
+      warnPaused,
+    }
+  }
+
+  getStats(): DescribeBackpressureStats {
+    return {
+      paused: this.paused,
+      pressureLevel: fromSpecPressure(this.state.pressure),
+      pauseReason: fromSpecPauseReason(pauseReason(this.state)),
+      inFlight: Number(this.state.inFlight),
+      maxConcurrent: Number(this.state.maxConcurrent),
+      consecutiveFailures: Number(this.state.consecutiveFailures),
+      failureThreshold: Number(this.state.failureThreshold),
+      circuitOpen: this.state.circuitOpen,
+      describesSkipped: this.describesSkipped,
+      pauseTransitions: this.pauseTransitions,
+      memoryBaselineBytes: this.memoryBaselineBytes,
+      memoryGrowthBytes: this.latestMemoryGrowthBytes,
+    }
+  }
+}

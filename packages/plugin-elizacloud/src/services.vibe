@@ -1,0 +1,437 @@
+// spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/delegation.md, "Story: Gate managed Google delegation and gateway relay on owner consent"; spec/elizaCloud/index.md, "Story: See which configured Cloud models can answer my request"
+import { ModelType, Service, type IAgentRuntime } from "@elizaos/core"
+import { Result } from "effect"
+import {
+  apply as applyCloudView,
+  cloudTextReadiness,
+  initial as initialCloudView,
+  type CloudView,
+  type Event as CloudViewEvent,
+  type TextReadiness,
+} from "../gen/elizaCloud.effect.vibe"
+import {
+  apply as applyDelegation,
+  initial as initialDelegation,
+  mayPerformGoogleAction,
+  type DelegationRelayState,
+  type Event as DelegationEvent,
+} from "../gen/elizaCloud__delegation.effect.vibe"
+import {
+  getApiKey,
+  getBaseURL,
+  getCloudLink,
+  getSetting,
+  isApprovedCloudOrigin,
+  resolveSlotModel,
+} from "./config.vibe"
+import { CloudApiFailure, cloudJsonFetch } from "./http.vibe"
+
+module node {
+  import { timingSafeEqual } from "node:crypto"
+
+  /** @throws {never} */
+  export function constantTimeEqual(a: string, b: string): boolean {
+    const left = Buffer.from(a, "utf8")
+    const right = Buffer.from(b, "utf8")
+    if (left.length !== right.length) return false
+    return timingSafeEqual(left, right)
+  }
+}
+import { constantTimeEqual } from node
+
+export const CLOUD_AUTH_SERVICE_TYPE = "CLOUD_AUTH"
+export const CLOUD_MODEL_REGISTRY_SERVICE_TYPE = "CLOUD_MODEL_REGISTRY"
+export const CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE = "CLOUD_GOOGLE_DELEGATION"
+export const CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE = "CLOUD_MANAGED_GATEWAY_RELAY"
+
+export interface CloudCatalogModel {
+  readonly id: string
+  readonly provider: string
+  readonly aliases: readonly string[]
+}
+
+export type ModelsByProvider = Record<string, CloudCatalogModel[]>
+
+export interface CloudTextReadinessReport {
+  readonly readiness: TextReadiness
+  readonly smallModelId: string
+  readonly largeModelId: string
+  readonly catalogCount: number
+}
+
+export function normalizeCloudCatalogIdentifiers(entries: ReadonlyArray<{ readonly id: string }>): string[] {
+  const ids = new Set<string>()
+  for (const entry of entries) {
+    const trimmed = entry.id.trim()
+    if (!trimmed) continue
+    ids.add(trimmed)
+    const slash = trimmed.indexOf("/")
+    if (slash > 0 && slash + 1 < trimmed.length) {
+      ids.add(trimmed.slice(slash + 1))
+    }
+  }
+  return [...ids]
+}
+
+export class CloudAuthService extends Service {
+  static override serviceType = CLOUD_AUTH_SERVICE_TYPE
+  override capabilityDescription = "Authenticates the owner against Eliza Cloud and tracks connection epochs."
+
+  private view: CloudView = initialCloudView
+  private organizationId: string | undefined = undefined
+  private apiKeyValue = ""
+
+  static override async start(runtime: IAgentRuntime): Promise<CloudAuthService> {
+    const svc = new CloudAuthService(runtime)
+    svc.initializeFromRuntime()
+    return svc
+  }
+
+  private initializeFromRuntime(): void {
+    const key = getApiKey(this.runtime)
+    const org = getSetting(this.runtime, "ELIZAOS_CLOUD_ORG_ID") || undefined
+    if (key !== "") {
+      this.authenticateWithApiKey(key, org ?? `key:${String(this.runtime.agentId)}`, org)
+      return
+    }
+    if (getCloudLink(this.runtime) !== undefined) {
+      this.attachSession(`link:${String(this.runtime.agentId)}`, getBaseURL(this.runtime), org)
+    }
+  }
+
+  stepMachine(event: CloudViewEvent): { readonly accepted: boolean; readonly state: CloudView } {
+    const outcome = runSync(Effect.result(applyCloudView(this.view, event)))
+    if (Result.isFailure(outcome)) {
+      return { accepted: false, state: this.view }
+    }
+    this.view = outcome.success
+    if (event.type === "detachCloud") {
+      this.apiKeyValue = ""
+      this.organizationId = undefined
+    }
+    return { accepted: true, state: this.view }
+  }
+
+  authenticateWithApiKey(apiKey: string, accountId = "owner", organizationId?: string): { readonly accepted: boolean; readonly state: CloudView } {
+    const trimmed = apiKey.trim()
+    if (!trimmed) return { accepted: false, state: this.view }
+    const attached = this.attachSession(accountId, getBaseURL(this.runtime), organizationId ?? accountId)
+    if (attached.accepted) {
+      this.apiKeyValue = trimmed
+      this.organizationId = organizationId ?? accountId
+    }
+    return attached
+  }
+
+  attachSession(accountId: string, originId: string, organizationId?: string): { readonly accepted: boolean; readonly state: CloudView } {
+    const stepped = this.stepMachine({
+      type: "attachCloud",
+      accountId,
+      originId,
+      epoch: this.view.link.epoch + 1,
+      originAllowed: isApprovedCloudOrigin(originId),
+    })
+    if (stepped.accepted) {
+      this.organizationId = organizationId ?? accountId
+    }
+    return stepped
+  }
+
+  recordObservation(observation: "ProfileSummary" | "CreditSummary" | "AccountKeys" | "AgentInventory"): { readonly accepted: boolean; readonly state: CloudView } {
+    return this.stepMachine({
+      type: "observeCloud",
+      accountId: this.view.link.accountId,
+      originId: this.view.link.originId,
+      epoch: this.view.link.epoch,
+      observation,
+    })
+  }
+
+  disconnect(): CloudView {
+    return this.stepMachine({ type: "detachCloud" }).state
+  }
+
+  isAuthenticated(): boolean {
+    return this.view.link.accountId !== "" || getApiKey(this.runtime) !== "" || getCloudLink(this.runtime) !== undefined
+  }
+
+  getApiKey(): string {
+    return this.apiKeyValue || getApiKey(this.runtime)
+  }
+
+  getAccountId(): string {
+    return this.view.link.accountId
+  }
+
+  getOrganizationId(): string | undefined {
+    return this.organizationId
+  }
+
+  getEpoch(): number {
+    return this.view.link.epoch
+  }
+
+  getView(): CloudView {
+    return this.view
+  }
+
+  getSsoRedirectUrl(state: string, clientId?: string, redirectUri?: string): string | undefined {
+    const resolvedClientId = (clientId ?? getSetting(this.runtime, "ELIZA_CLOUD_CLIENT_ID")).trim()
+    const base = getBaseURL(this.runtime)
+    if (!resolvedClientId || !state.trim() || !isApprovedCloudOrigin(base)) {
+      return undefined
+    }
+    const url = new URL("/oauth/authorize", `${base}/`)
+    url.searchParams.set("response_type", "code")
+    url.searchParams.set("client_id", resolvedClientId)
+    url.searchParams.set("state", state)
+    if (redirectUri) url.searchParams.set("redirect_uri", redirectUri)
+    return url.toString()
+  }
+
+  async exchangeSsoCode(code: string, state: string, expectedState: string): Promise<{ readonly cloudUserId: string; readonly email: string; readonly displayName: string }> {
+    if (!code.trim() || !state.trim() || !constantTimeEqual(state, expectedState)) {
+      return Promise.reject(new Error("Eliza Cloud SSO state validation failed."))
+    }
+    const raw = await runPromise(cloudJsonFetch(this.runtime, {
+      method: "POST",
+      path: "/api/v1/oauth/token",
+      body: { grant_type: "authorization_code", code },
+      requireKey: false,
+    }))
+    const rec = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {}
+    const sub = typeof rec.sub === "string" && rec.sub.trim() ? rec.sub.trim() : ""
+    const email = typeof rec.email === "string" ? rec.email.trim() : ""
+    const name = typeof rec.name === "string" ? rec.name.trim() : email || sub
+    if (!sub) {
+      return Promise.reject(new Error("Eliza Cloud SSO exchange returned no subject claim."))
+    }
+    this.attachSession(sub, getBaseURL(this.runtime), sub)
+    return { cloudUserId: sub, email, displayName: name }
+  }
+
+  override async stop(): Promise<void> {
+    this.disconnect()
+  }
+}
+
+export class CloudModelRegistryService extends Service {
+  static override serviceType = CLOUD_MODEL_REGISTRY_SERVICE_TYPE
+  override capabilityDescription = "Fetches, normalizes, and caches the Eliza Cloud model catalog and readiness state."
+
+  private cachedAt = 0
+  private catalog: CloudCatalogModel[] = []
+  private loaded = false
+
+  static override async start(runtime: IAgentRuntime): Promise<CloudModelRegistryService> {
+    return new CloudModelRegistryService(runtime)
+  }
+
+  invalidate(): void {
+    this.cachedAt = 0
+    this.catalog = []
+    this.loaded = false
+  }
+
+  async getModels(forceRefresh = false, nowMs = Date.now()): Promise<readonly CloudCatalogModel[]> {
+    if (!forceRefresh && this.loaded && nowMs - this.cachedAt < 300000) {
+      return this.catalog
+    }
+    try {
+      const link = getCloudLink(this.runtime)
+      let payload: unknown
+      if (link !== undefined && getApiKey(this.runtime) === "") {
+        const reply = await link.request({ method: "GET", path: "/api/v1/models" })
+        if (reply.kind !== "answered") return []
+        payload = reply.body
+      } else {
+        payload = await runPromise(cloudJsonFetch(this.runtime, { method: "GET", path: "/api/v1/models", maxWarmingRetries: 1 }))
+      }
+      const root = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
+      const list = Array.isArray(root.data) ? root.data : []
+      const models: CloudCatalogModel[] = []
+      for (const item of list) {
+        if (!item || typeof item !== "object") continue
+        const rec = item as Record<string, unknown>
+        const id = typeof rec.id === "string" ? rec.id.trim() : ""
+        if (!id) continue
+        const slash = id.indexOf("/")
+        const provider = typeof rec.owned_by === "string" && rec.owned_by.trim()
+          ? rec.owned_by.trim()
+          : slash > 0
+            ? id.slice(0, slash)
+            : "elizacloud"
+        const aliases = slash > 0 && slash + 1 < id.length ? [id.slice(slash + 1)] : []
+        models.push({ id, provider, aliases })
+      }
+      this.catalog = models
+      this.loaded = true
+      this.cachedAt = nowMs
+      return this.catalog
+    } catch {
+      return this.loaded ? this.catalog : []
+    }
+  }
+
+  async getModelsByProvider(forceRefresh = false): Promise<ModelsByProvider> {
+    const models = await this.getModels(forceRefresh)
+    const grouped: ModelsByProvider = {}
+    for (const model of models) {
+      const bucket = grouped[model.provider] ?? []
+      bucket.push(model)
+      grouped[model.provider] = bucket
+    }
+    return grouped
+  }
+
+  async checkTextModelReadiness(forceRefresh = false): Promise<CloudTextReadinessReport> {
+    const models = await this.getModels(forceRefresh)
+    const small = resolveSlotModel(this.runtime, ModelType.TEXT_SMALL)
+    const large = resolveSlotModel(this.runtime, ModelType.TEXT_LARGE)
+    const ids = normalizeCloudCatalogIdentifiers(models)
+    const catalogState = !this.loaded ? "CatalogUnavailable" : "CatalogSnapshot"
+    const readiness = cloudTextReadiness(catalogState, ids, small.modelId, large.modelId)
+    return {
+      readiness,
+      smallModelId: small.modelId,
+      largeModelId: large.modelId,
+      catalogCount: models.length,
+    }
+  }
+
+  override async stop(): Promise<void> {
+    this.invalidate()
+  }
+}
+
+export class CloudGoogleDelegationService extends Service {
+  static override serviceType = CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE
+  override capabilityDescription = "Owner-consented managed Google Gmail and Calendar delegation through Eliza Cloud."
+
+  private state: DelegationRelayState = initialDelegation
+
+  static override async start(runtime: IAgentRuntime): Promise<CloudGoogleDelegationService> {
+    return new CloudGoogleDelegationService(runtime)
+  }
+
+  stepMachine(event: DelegationEvent): { readonly accepted: boolean; readonly state: DelegationRelayState } {
+    const outcome = runSync(Effect.result(applyDelegation(this.state, event)))
+    if (Result.isFailure(outcome)) {
+      return { accepted: false, state: this.state }
+    }
+    this.state = outcome.success
+    return { accepted: true, state: this.state }
+  }
+
+  connect(accountId: string, gmailConsent: boolean, calendarConsent: boolean): { readonly accepted: boolean; readonly state: DelegationRelayState } {
+    return this.stepMachine({
+      type: "connectDelegation",
+      accountId,
+      epoch: this.state.epoch + 1,
+      gmailConsent,
+      calendarConsent,
+    })
+  }
+
+  setConsent(gmailConsent: boolean, calendarConsent: boolean): { readonly accepted: boolean; readonly state: DelegationRelayState } {
+    return this.stepMachine({
+      type: "updateConsent",
+      gmailConsent,
+      calendarConsent,
+    })
+  }
+
+  disconnect(): DelegationRelayState {
+    return this.stepMachine({ type: "disconnectDelegation" }).state
+  }
+
+  getState(): DelegationRelayState {
+    return this.state
+  }
+
+  canExecute(area: "gmail" | "calendar", isMutation: boolean): boolean {
+    return mayPerformGoogleAction(this.state, isMutation, area === "gmail", area === "calendar")
+  }
+
+  async requestDelegated(area: "gmail" | "calendar", method: "GET" | "POST", subPath: string, body?: object): Promise<unknown> {
+    const isMutation = method !== "GET"
+    if (!this.canExecute(area, isMutation)) {
+      return Promise.reject(new CloudApiFailure({ status: 403, code: "consent_required", reason: `Owner consent required for ${area} ${method}.`, retryable: false }))
+    }
+    const cleanSub = subPath.startsWith("/") ? subPath : `/${subPath}`
+    const fullPath = `/api/v1/eliza/google/${area}${cleanSub}`
+    const link = getCloudLink(this.runtime)
+    if (link !== undefined && getApiKey(this.runtime) === "") {
+      const reply = await link.request({ method, path: fullPath, ...(body === undefined ? {} : { body }) })
+      if (reply.kind !== "answered") {
+        return Promise.reject(new CloudApiFailure({ status: 403, code: "delegation_refused", reason: "Managed Google delegation request was refused.", retryable: false }))
+      }
+      return reply.body
+    }
+    return runPromise(cloudJsonFetch(this.runtime, { method, path: fullPath, ...(body === undefined ? {} : { body }) }))
+  }
+
+  override async stop(): Promise<void> {
+    this.disconnect()
+  }
+}
+
+export class CloudManagedGatewayRelayService extends Service {
+  static override serviceType = CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE
+  override capabilityDescription = "Tracks managed Eliza Cloud gateway relay activation and dispatches relay requests."
+
+  private state: DelegationRelayState = initialDelegation
+
+  static override async start(runtime: IAgentRuntime): Promise<CloudManagedGatewayRelayService> {
+    const svc = new CloudManagedGatewayRelayService(runtime)
+    if (getApiKey(runtime) !== "" || getCloudLink(runtime) !== undefined) {
+      svc.activate(`owner:${String(runtime.agentId)}`)
+    }
+    return svc
+  }
+
+  activate(accountId: string): { readonly accepted: boolean; readonly state: DelegationRelayState } {
+    if (!this.state.connected) {
+      const connected = runSync(Effect.result(applyDelegation(this.state, {
+        type: "connectDelegation",
+        accountId,
+        epoch: this.state.epoch + 1,
+        gmailConsent: false,
+        calendarConsent: false,
+      })))
+      if (Result.isFailure(connected)) return { accepted: false, state: this.state }
+      this.state = connected.success
+    }
+    const activated = runSync(Effect.result(applyDelegation(this.state, { type: "activateRelay" })))
+    if (Result.isFailure(activated)) return { accepted: false, state: this.state }
+    this.state = activated.success
+    return { accepted: true, state: this.state }
+  }
+
+  disconnect(): DelegationRelayState {
+    const outcome = runSync(Effect.result(applyDelegation(this.state, { type: "disconnectDelegation" })))
+    if (Result.isSuccess(outcome)) this.state = outcome.success
+    return this.state
+  }
+
+  getRelayStatus(): { readonly connected: boolean; readonly relayActive: boolean; readonly accountId: string; readonly epoch: number; readonly revokedCount: number } {
+    return {
+      connected: this.state.connected,
+      relayActive: this.state.relayActive,
+      accountId: this.state.accountId,
+      epoch: this.state.epoch,
+      revokedCount: this.state.revokedCount,
+    }
+  }
+
+  async fetchUpstreamRelayStatus(): Promise<unknown> {
+    if (!this.state.relayActive) {
+      return { connected: false, relayActive: false }
+    }
+    return runPromise(cloudJsonFetch(this.runtime, { method: "GET", path: "/api/v1/relay/status", maxWarmingRetries: 1 }))
+  }
+
+  override async stop(): Promise<void> {
+    this.disconnect()
+  }
+}

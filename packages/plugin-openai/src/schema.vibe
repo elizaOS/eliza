@@ -5,6 +5,7 @@ import {
   ElizaError,
   logger,
   resolveEffectiveSystemPrompt,
+  thrown,
   toWellFormedUnicode,
   type GenerateTextContentPart,
   type GenerateTextParams,
@@ -316,6 +317,24 @@ module node {
 }
 import { normalizeSchemaForCerebrasSync, sanitizeUnicodeDeep } from node
 
+effect function failStructuredOutputStallEffect(
+  controller: AbortController,
+  consecutiveWhitespace: number,
+  limit: number,
+): never!ElizaError {
+  const error = new ElizaError(
+    "Structured output stopped making JSON progress; the incomplete request was aborted.",
+    {
+      code: "STRUCTURED_OUTPUT_STALLED",
+      context: { consecutiveWhitespace, limit },
+    },
+  )
+  controller.abort(error)
+  throw error
+}
+
+const failStructuredOutputStall = thrown(failStructuredOutputStallEffect)
+
 export function normalizeSchemaForCerebras(
   schema: unknown,
   isRoot = false,
@@ -493,6 +512,23 @@ export function createStructuredOutputProgressTracker(): ProgressTracker {
       }
       return { stalled: false, consecutiveWhitespace: whitespace }
     },
+  }
+}
+
+export class StructuredOutputProgressGuard {
+  readonly #controller: AbortController
+  readonly #tracker: ProgressTracker
+
+  constructor(controller: AbortController) {
+    this.#controller = controller
+    this.#tracker = createStructuredOutputProgressTracker()
+  }
+
+  observe(chunk: string): void {
+    const result = this.#tracker.observe(chunk)
+    if (result.stalled) {
+      failStructuredOutputStall(this.#controller, result.consecutiveWhitespace, MAX_CONSECUTIVE_JSON_WHITESPACE)
+    }
   }
 }
 

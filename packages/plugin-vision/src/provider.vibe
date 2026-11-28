@@ -1,0 +1,124 @@
+// spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core"
+import type { VisionService } from "./service.vibe"
+import { VisionMode, VisionServiceType, hasReadyInputForMode } from "./types.vibe"
+
+export const visionProvider: Provider = {
+  name: "VISION_PERCEPTION",
+  description:
+    "Provides current visual perception data including scene description, screen OCR summaries, detected objects, people, and tracked entities.",
+  descriptionCompressed: "Current camera/screen scene description, OCR summary, and tracked entities.",
+  position: 99,
+  contexts: ["media", "browser"],
+  contextGate: { anyOf: ["media", "browser"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  dynamic: false,
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
+    const visionService = runtime.getService<VisionService>(VisionServiceType.VISION)
+    if (!visionService) {
+      return {
+        values: {
+          visionAvailable: false,
+          sceneDescription: "Vision service is not available.",
+          cameraStatus: "No camera connected",
+        },
+        text: "Vision service is not available.",
+        data: { hasVision: false },
+      }
+    }
+
+    const enhanced = await visionService.getEnhancedSceneDescription()
+    const baseScene = enhanced ?? (await visionService.getSceneDescription())
+    const screenAnalysis = enhanced?.screenAnalysis
+    const cameraInfo = visionService.getCameraInfo()
+    const isActive = visionService.isActive()
+    const visionMode = visionService.getVisionMode()
+    const capabilities = visionService.getCapabilities()
+    const hasReadyInput = hasReadyInputForMode(capabilities, visionMode)
+    const tracker = visionService.getEntityTracker()
+    const stats = tracker.getStatistics()
+    const activeEntities = tracker.getActiveEntities()
+    const recentlyLeft = tracker.getRecentlyLeft()
+
+    if (!isActive || !hasReadyInput) {
+      const reason =
+        visionMode === VisionMode.OFF
+          ? "Vision is disabled."
+          : isActive
+            ? `Vision input unavailable: ${
+                visionMode === VisionMode.CAMERA
+                  ? (capabilities.unavailableReasons?.camera ?? "camera unavailable")
+                  : (capabilities.unavailableReasons?.screenCapture ?? "screen unavailable")
+              }`
+            : "Vision service is not active."
+      return {
+        values: {
+          visionAvailable: false,
+          visionMode,
+          sceneDescription: reason,
+          cameraStatus: cameraInfo
+            ? `Camera "${cameraInfo.name}" detected but not active`
+            : "No camera",
+        },
+        text: `Vision mode: ${visionMode}\n${reason}`,
+        data: { hasVision: false, visionMode, capabilities },
+      }
+    }
+
+    const lines: string[] = [`Vision mode: ${visionMode}`]
+    if (baseScene) {
+      const ts = baseScene.descriptionTimestamp ?? baseScene.timestamp
+      const secondsAgo = Math.max(0, Math.round((Date.now() - ts) / 1000))
+      lines.push(`Scene (${secondsAgo}s ago): ${baseScene.description}`)
+      if (baseScene.descriptionStale || baseScene.describePaused) {
+        const pauseTag = baseScene.describePauseReason ? ` (${baseScene.describePauseReason})` : ""
+        lines.push(`Describe paused${pauseTag}; OCR and entity tracking signals remain live.`)
+      }
+      if (screenAnalysis?.fullScreenOCR) {
+        const ocrSnippet = screenAnalysis.fullScreenOCR.slice(0, 400)
+        lines.push(`Screen OCR: ${ocrSnippet}`)
+      }
+    } else {
+      lines.push("No scene frame captured yet.")
+    }
+
+    if (activeEntities.length > 0) {
+      const entitySummary = activeEntities
+        .slice(0, 12)
+        .map((e) => `${e.attributes.name ?? e.id} [${e.entityType}]`)
+        .join(", ")
+      lines.push(`Tracked entities (${stats.activeEntities}): ${entitySummary}`)
+    }
+    if (recentlyLeft.length > 0) {
+      lines.push(`Recently left: ${recentlyLeft.length}`)
+    }
+
+    return {
+      values: {
+        visionAvailable: true,
+        visionMode,
+        sceneDescription: baseScene?.description ?? "",
+        activeEntityCount: stats.activeEntities,
+        cameraStatus: cameraInfo ? `Camera "${cameraInfo.name}" active` : "No camera",
+      },
+      text: lines.join("\n"),
+      data: {
+        hasVision: true,
+        visionMode,
+        capabilities,
+        statistics: stats,
+        activeEntities: activeEntities.map((e) => ({
+          id: e.id,
+          type: e.entityType,
+          name: e.attributes.name,
+          position: e.lastPosition,
+        })),
+      },
+    }
+  },
+}

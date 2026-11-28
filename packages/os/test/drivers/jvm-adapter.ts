@@ -459,7 +459,7 @@ interface LineDriver<E> {
   [Symbol.asyncDispose](): PromiseLike<void>;
 }
 
-export async function answerDriverLines<E>(driver: LineDriver<E>, key: string, output: (key: string) => unknown, withOutcome = false): Promise<void> {
+export async function answerDriverLines<E>(driver: LineDriver<E>, key: string, output?: (key: string) => unknown, withOutcome = false): Promise<void> {
   const answer = async (line: string) => {
     const request: unknown = JSON.parse(line);
     if (typeof request !== "object" || request === null || Array.isArray(request)) throw new Error(`not a driver request: ${line}`);
@@ -468,8 +468,9 @@ export async function answerDriverLines<E>(driver: LineDriver<E>, key: string, o
     if (event === undefined) await driver.reset();
     else outcome = await driver.dispatch(key, event);
     const state = await driver.observe(key);
-    const out = event === undefined ? [] : await output(key);
-    return withOutcome && event !== undefined ? { outcome, state, out } : { state, out };
+    const out = output === undefined || event === undefined ? undefined : await output(key);
+    const base = out === undefined ? { state } : { state, out };
+    return withOutcome && event !== undefined ? { outcome, ...base } : base;
   };
   for await (const line of readline.createInterface({ input: process.stdin })) {
     if (line.trim() === "") continue;

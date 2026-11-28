@@ -1,10 +1,131 @@
-// spec/nativeWifi/index.md, "Story: See whether I joined the network I chose"
-export { wifiClient, wifiPlugin } from "@elizaos/os-bridges"
-export type { WiFiSecurity, JoinableWiFiSecurity, WiFiNetwork, ListNetworksOptions, ConnectOptions, WifiStateResult, ConnectedNetworkResult, ListNetworksResult, ConnectResult, ConnectivityResult, WiFiCapabilities, WiFiPermissionStatus, ApprovedJoinResult, WiFiPlugin } from "@elizaos/os-bridges"
-
-import { wifiClient, type WiFiClient } from "@elizaos/os-bridges"
-import type { ConnectOptions } from "@elizaos/os-bridges"
+// spec/nativeWifi/index.md, "Story: See whether I joined the network I chose"; spec/nativeWifi/index.md, "A confirmed join names the same network and Android's observed link"
+import type { IAgentRuntime, Memory, Plugin, Provider, ProviderResult, State } from "@elizaos/core"
+import {
+  wifiClient,
+  wifiPlugin,
+  type ApprovedJoinResult,
+  type ConnectOptions,
+  type ConnectResult,
+  type ConnectedNetworkResult,
+  type ConnectivityResult,
+  type ListNetworksOptions,
+  type ListNetworksResult,
+  type WiFiCapabilities,
+  type WiFiClient,
+  type WiFiNetwork,
+  type WiFiPermissionStatus,
+  type WiFiPlugin,
+  type WifiStateResult,
+} from "@elizaos/os-bridges"
 import { wifiJoinReport, type WifiRead } from "../gen/nativeWifi.effect.vibe"
+
+export { wifiClient, wifiPlugin }
+export type {
+  ApprovedJoinResult,
+  ConnectOptions,
+  ConnectResult,
+  ConnectedNetworkResult,
+  ConnectivityResult,
+  JoinableWiFiSecurity,
+  ListNetworksOptions,
+  ListNetworksResult,
+  WiFiCapabilities,
+  WiFiNetwork,
+  WiFiPermissionStatus,
+  WiFiPlugin,
+  WiFiSecurity,
+  WifiStateResult,
+} from "@elizaos/os-bridges"
+
+export const WIFI_APP_NAME = "@elizaos/plugin-native-wifi"
+const WIFI_UNAVAILABLE_MESSAGE = "Wi-Fi management is only available on Android."
+const JOINABLE_SECURITY = new Set<unknown>(["open", "owe", "wpa2", "wpa3"])
+
+module node {
+  export function rejectWifiUnavailable(message: string): Promise<never> {
+    return Promise.reject(new Error(message))
+  }
+
+  export function throwWifiOptionError(message: string): never {
+    throw new Error(message)
+  }
+}
+import { rejectWifiUnavailable, throwWifiOptionError } from node
+
+function normalizeListOptions(options?: ListNetworksOptions): void {
+  if (options === undefined) return
+  if (typeof options !== "object" || options === null) throwWifiOptionError("options must be an object")
+  if (options.maxAge !== undefined && (typeof options.maxAge !== "number" || !Number.isFinite(options.maxAge) || options.maxAge < 0)) {
+    throwWifiOptionError("maxAge must be a non-negative finite number")
+  }
+  if (options.joinable !== undefined && typeof options.joinable !== "boolean") {
+    throwWifiOptionError("joinable must be a boolean")
+  }
+  if (options.timeout !== undefined && (typeof options.timeout !== "number" || !Number.isInteger(options.timeout) || options.timeout < 0 || options.timeout > 30000)) {
+    throwWifiOptionError("timeout must be an integer from 0 to 30000")
+  }
+  if (options.limit !== undefined && (typeof options.limit !== "number" || !Number.isFinite(options.limit) || !Number.isInteger(options.limit) || options.limit < 0)) {
+    throwWifiOptionError("limit must be a non-negative finite integer")
+  }
+}
+
+function validateConnectOptions(options: ConnectOptions): void {
+  const ssid = typeof options?.ssid === "string" ? options.ssid.trim() : ""
+  if (!ssid) throwWifiOptionError("ssid is required")
+  if (options?.password !== undefined && typeof options.password !== "string") throwWifiOptionError("password must be a string")
+  if (options?.security !== undefined && !JOINABLE_SECURITY.has(options.security)) {
+    throwWifiOptionError("security must be open, owe, wpa2 or wpa3")
+  }
+}
+
+export class WiFiWeb implements WiFiPlugin {
+  async checkPermissions(): Promise<WiFiPermissionStatus> {
+    return rejectWifiUnavailable(WIFI_UNAVAILABLE_MESSAGE)
+  }
+
+  async requestPermissions(): Promise<WiFiPermissionStatus> {
+    return rejectWifiUnavailable(WIFI_UNAVAILABLE_MESSAGE)
+  }
+
+  async getCapabilities(): Promise<WiFiCapabilities> {
+    return { sdk: 0, approvedJoin: false, internetPanel: false }
+  }
+
+  async openInternetPanel(): Promise<void> {
+    return rejectWifiUnavailable(WIFI_UNAVAILABLE_MESSAGE)
+  }
+
+  async getWifiState(): Promise<WifiStateResult> {
+    return { enabled: false, connected: false, rssi: null }
+  }
+
+  async getConnectedNetwork(): Promise<ConnectedNetworkResult> {
+    return { network: null }
+  }
+
+  async listAvailableNetworks(options?: ListNetworksOptions): Promise<ListNetworksResult> {
+    normalizeListOptions(options)
+    return { networks: [] }
+  }
+
+  async connectToNetwork(options: ConnectOptions): Promise<ConnectResult> {
+    validateConnectOptions(options)
+    return { success: false, message: WIFI_UNAVAILABLE_MESSAGE }
+  }
+
+  async disconnectFromNetwork(): Promise<ConnectResult> {
+    return { success: false, message: WIFI_UNAVAILABLE_MESSAGE }
+  }
+
+  async getConnectivity(): Promise<ConnectivityResult> {
+    return rejectWifiUnavailable(WIFI_UNAVAILABLE_MESSAGE)
+  }
+
+  async addNetworkWithApproval(options: ConnectOptions): Promise<ApprovedJoinResult> {
+    validateConnectOptions(options)
+    return rejectWifiUnavailable(WIFI_UNAVAILABLE_MESSAGE)
+  }
+}
 
 export effect function joinNativeWifi(network: ConnectOptions, device: WiFiClient = wifiClient()) {
   const receipt = try tryPromise(() => device.addNetworkWithApproval(network))
@@ -13,8 +134,68 @@ export effect function joinNativeWifi(network: ConnectOptions, device: WiFiClien
     return { receipt, report: wifiJoinReport(network.ssid, false, disconnected ? { tag: "WifiDisconnected" } : { tag: "WifiNoAnswer" }) }
   }
   const read = tryPromise(() => device.getConnectivity()) catch () => undefined
-  const observed: WifiRead = read === undefined ? { tag: "WifiNoAnswer" } :
-    read.ssid === null ? { tag: "WifiDisconnected" } :
-    { tag: "WifiLink", networkId: read.ssid, validated: read.validated, portal: read.captivePortal }
+  const observed: WifiRead = read === undefined
+    ? { tag: "WifiNoAnswer" }
+    : read.ssid === null
+      ? { tag: "WifiDisconnected" }
+      : { tag: "WifiLink", networkId: read.ssid, validated: read.validated, portal: read.captivePortal }
   return { receipt, report: wifiJoinReport(network.ssid, false, observed) }
 }
+
+interface WifiNetworkEntry {
+  readonly ssid: string
+  readonly bssid: string
+  readonly rssi: number
+  readonly frequency: number
+  readonly secured: boolean
+}
+
+const MAX_WIFI_PROVIDER_ITEMS = 50
+
+export function createWifiNetworksProvider(deviceFactory: () => Pick<WiFiPlugin, "listAvailableNetworks"> = () => wifiPlugin()): Provider {
+  return {
+    name: "wifiNetworks",
+    description: "Read-only nearby Wi-Fi networks (ssid, bssid, rssi dBm, frequency MHz, secured).",
+    descriptionCompressed: "Wi-Fi networks: ssid, bssid, rssi, frequency, secured.",
+    dynamic: true,
+    contexts: ["system"],
+    contextGate: { anyOf: ["system"] },
+    cacheStable: false,
+    cacheScope: "turn",
+    get: async (_runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+      try {
+        const { networks } = await deviceFactory().listAvailableNetworks({ limit: MAX_WIFI_PROVIDER_ITEMS })
+        const entries: WifiNetworkEntry[] = networks.slice(0, MAX_WIFI_PROVIDER_ITEMS).map((n: WiFiNetwork) => ({
+          ssid: n.ssid,
+          bssid: n.bssid,
+          rssi: n.rssi,
+          frequency: n.frequency,
+          secured: n.secured,
+        }))
+        return {
+          text: JSON.stringify({ wifi_networks: { count: entries.length, items: entries } }),
+          values: { wifiNetworksAvailable: entries.length > 0, wifiNetworkCount: entries.length },
+          data: { networks: entries, count: entries.length },
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          text: JSON.stringify({ wifi_networks: { error: message } }),
+          values: { wifiNetworksAvailable: false, wifiNetworkCount: 0, wifiNetworksError: message },
+          data: { networks: [], count: 0, error: message },
+        }
+      }
+    },
+  }
+}
+
+export const wifiNetworksProvider: Provider = createWifiNetworksProvider()
+
+export const appWifiPlugin: Plugin = {
+  name: WIFI_APP_NAME,
+  description: "WiFi overlay: list nearby networks via Android WifiManager as a read-only provider.",
+  providers: [wifiNetworksProvider],
+}
+
+const defaultAppWifiPlugin: Plugin = appWifiPlugin
+export default defaultAppWifiPlugin

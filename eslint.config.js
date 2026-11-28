@@ -333,6 +333,8 @@ if (import.meta.main) {
       "packages/plugin-mcp",
       "packages/plugin-meetings",
       "packages/plugin-network",
+    ],
+    [
       "packages/plugin-openai",
       "packages/plugin-pdf",
       "packages/plugin-pty",
@@ -352,14 +354,45 @@ if (import.meta.main) {
       "packages/plugin-web-search",
       "packages/plugin-x",
     ],
+    [
+      "packages/plugin-native-action-journal",
+      "packages/plugin-native-activity-tracker",
+      "packages/plugin-native-appblocker",
+      "packages/plugin-native-canvas",
+      "packages/plugin-native-contacts",
+      "packages/plugin-native-desktop",
+      "packages/plugin-native-eliza-tasks",
+      "packages/plugin-native-filesystem",
+      "packages/plugin-native-gateway",
+      "packages/plugin-native-location",
+      "packages/plugin-native-media",
+    ],
+    [
+      "packages/plugin-native-messages",
+      "packages/plugin-native-mobile-signals",
+      "packages/plugin-native-notifications",
+      "packages/plugin-native-passwords",
+      "packages/plugin-native-phone",
+      "packages/plugin-native-settings",
+      "packages/plugin-native-shared-types",
+      "packages/plugin-native-swabble",
+      "packages/plugin-native-system",
+      "packages/plugin-native-talkmode",
+      "packages/plugin-native-websiteblocker",
+      "packages/plugin-native-wifi",
+    ],
   ]
   const ignoreVibe = ["--ignore-pattern", vibeFiles]
   const ignorePackages = packageGroups.flat().flatMap((directory) => ["--ignore-pattern", `${directory}/`])
   const extra = process.argv.slice(2)
+  const vibePasses = [
+    ...packageGroups.map((group) => [...group.map((directory) => `${directory}/${vibeFiles}`), "--no-error-on-unmatched-pattern", "--max-warnings", "0"]),
+    [vibeFiles, ...ignorePackages, "--no-error-on-unmatched-pattern", "--max-warnings", "0"],
+  ]
   const passes = extra.length
     ? [[".", "--max-warnings", "0", ...extra]]
     : [
-      [vibeFiles, "--no-error-on-unmatched-pattern", "--max-warnings", "0"],
+      ...vibePasses,
       ...packageGroups.map((group) => [...group, ...ignoreVibe, "--no-error-on-unmatched-pattern", "--max-warnings", "0"]),
       [".", ...ignoreVibe, ...ignorePackages, "--max-warnings", "0"],
     ]

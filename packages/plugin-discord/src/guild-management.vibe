@@ -1,0 +1,414 @@
+// spec/discord/index.md, "Story: Manage only the Discord server I authorized"; spec/discord/index.md, "A structural server operation matches the account, guild, requester, and granted operation"
+import {
+  authorizeManageServerDestination,
+  createUniqueUuid,
+  stringToUuid,
+  type IAgentRuntime,
+  type MessageConnectorManageServerAuthorization,
+  type MessageConnectorManageServerDestination,
+  type TargetInfo,
+} from "@elizaos/core"
+import {
+  mayManageDiscord,
+  type DiscordManagement,
+  type DiscordManagementKind,
+} from "../gen/discord.effect.vibe"
+import { isValidSnowflake } from "./types.vibe"
+
+module node {
+  import { ElizaError } from "@elizaos/core"
+
+  export class GuildManagementError extends Error {
+    readonly code: string
+    readonly context?: Readonly<Record<string, unknown>>
+
+    constructor(code: string, message: string, context?: Readonly<Record<string, unknown>>) {
+      super(message)
+      this.name = "GuildManagementError"
+      this.code = code
+      this.context = context
+    }
+  }
+
+  export function throwAuthError(code: string, message: string, context: Record<string, unknown>): never {
+    throw new ElizaError(message, { code, context })
+  }
+
+  export function throwGuildManagementError(code: string, message: string, context?: Record<string, unknown>): never {
+    throw new GuildManagementError(code, message, context)
+  }
+}
+import { GuildManagementError, throwAuthError, throwGuildManagementError } from node
+export { GuildManagementError }
+
+export const GUILD_MANAGEMENT_OPERATIONS = [
+  "create_channel",
+  "update_channel",
+  "delete_channel",
+  "set_channel_overwrites",
+  "create_role",
+  "update_role",
+  "delete_role",
+  "assign_role",
+  "remove_role",
+  "create_invite",
+  "revoke_invite",
+  "kick_member",
+  "ban_member",
+  "timeout_member",
+  "apply_template",
+] as const
+
+export type GuildManagementOperation = (typeof GUILD_MANAGEMENT_OPERATIONS)[number]
+
+export interface GuildManagementGates {
+  readonly enabled: boolean
+  readonly allowChannels: boolean
+  readonly allowRoles: boolean
+  readonly allowInvites: boolean
+  readonly allowModeration: boolean
+  readonly allowTemplates: boolean
+}
+
+export interface GuildManagementRequest {
+  readonly accountId: string
+  readonly guildId: string
+  readonly requesterId: string
+  readonly operation: GuildManagementOperation
+  readonly reason?: string
+  readonly payload?: Readonly<Record<string, unknown>>
+}
+
+export interface GuildManagementReceipt {
+  readonly ok: boolean
+  readonly accountId: string
+  readonly guildId: string
+  readonly requesterId: string
+  readonly operation: GuildManagementOperation
+  readonly auditReason: string
+  readonly appliedAt: number
+  readonly details?: Readonly<Record<string, unknown>>
+}
+
+export const OPERATION_GATES: Readonly<Record<GuildManagementOperation, keyof Omit<GuildManagementGates, "enabled">>> = {
+  create_channel: "allowChannels",
+  update_channel: "allowChannels",
+  delete_channel: "allowChannels",
+  set_channel_overwrites: "allowChannels",
+  create_role: "allowRoles",
+  update_role: "allowRoles",
+  delete_role: "allowRoles",
+  assign_role: "allowRoles",
+  remove_role: "allowRoles",
+  create_invite: "allowInvites",
+  revoke_invite: "allowInvites",
+  kick_member: "allowModeration",
+  ban_member: "allowModeration",
+  timeout_member: "allowModeration",
+  apply_template: "allowTemplates",
+}
+
+export function normalizeGuildManagementOperation(raw: string): GuildManagementOperation | null {
+  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, "_")
+  return (GUILD_MANAGEMENT_OPERATIONS as readonly string[]).includes(normalized)
+    ? (normalized as GuildManagementOperation)
+    : null
+}
+
+function toSpecManagementKind(operation: GuildManagementOperation): DiscordManagementKind {
+  const gate = OPERATION_GATES[operation]
+  if (gate === "allowChannels") return "DiscordManageChannels"
+  if (gate === "allowRoles") return "DiscordManageRoles"
+  if (gate === "allowInvites") return "DiscordManageInvites"
+  if (gate === "allowModeration") return "DiscordManageMembers"
+  return "DiscordApplyTemplate"
+}
+
+export function resolveGuildManagementGates(runtime: Pick<IAgentRuntime, "getSetting">): GuildManagementGates {
+  const readFlag = (key: string, fallback: boolean) => {
+    const raw = runtime.getSetting(key)
+    if (typeof raw === "boolean") return raw
+    if (typeof raw === "string") {
+      const lower = raw.trim().toLowerCase()
+      if (lower === "true" || lower === "1") return true
+      if (lower === "false" || lower === "0") return false
+    }
+    return fallback
+  }
+  const enabled = readFlag("DISCORD_GUILD_MANAGEMENT_ENABLED", false)
+  return {
+    enabled,
+    allowChannels: enabled && readFlag("DISCORD_GUILD_MANAGE_CHANNELS", true),
+    allowRoles: enabled && readFlag("DISCORD_GUILD_MANAGE_ROLES", true),
+    allowInvites: enabled && readFlag("DISCORD_GUILD_MANAGE_INVITES", true),
+    allowModeration: enabled && readFlag("DISCORD_GUILD_MANAGE_MODERATION", false),
+    allowTemplates: enabled && readFlag("DISCORD_GUILD_APPLY_TEMPLATES", true),
+  }
+}
+
+export function resolveDiscordManageServerDestination(
+  runtime: IAgentRuntime,
+  params: { readonly target?: TargetInfo; readonly serverId: string },
+  accountId: string,
+): MessageConnectorManageServerDestination {
+  const serverId = params.serverId.trim()
+  if (!isValidSnowflake(serverId)) {
+    throwAuthError(
+      "DISCORD_MANAGE_SERVER_ID_REQUIRED",
+      "Discord server management requires an exact guild snowflake; display names are not authorized.",
+      { accountId },
+    )
+  }
+  if (params.target?.source && params.target.source !== "discord") {
+    throwAuthError(
+      "DISCORD_MANAGE_SERVER_SOURCE_MISMATCH",
+      "Discord server management received a target from another connector source.",
+      { accountId, targetSource: params.target.source },
+    )
+  }
+  if (params.target?.accountId && params.target.accountId !== accountId) {
+    throwAuthError(
+      "DISCORD_MANAGE_SERVER_ACCOUNT_MISMATCH",
+      "Discord server management target account does not match the selected connector account.",
+      { accountId, targetAccountId: params.target.accountId },
+    )
+  }
+  if (params.target?.serverId && params.target.serverId !== serverId) {
+    throwAuthError(
+      "DISCORD_MANAGE_SERVER_BINDING_MISMATCH",
+      "Discord server management target does not match the requested guild.",
+      { accountId, serverId },
+    )
+  }
+  return {
+    source: "discord",
+    accountId,
+    serverId,
+    messageServerId: stringToUuid(serverId),
+    destinationWorldId: createUniqueUuid(runtime, serverId),
+    target: {
+      ...params.target,
+      source: "discord",
+      accountId,
+      serverId,
+    },
+  }
+}
+
+export async function revalidateDiscordManageServerAuthorization(
+  runtime: IAgentRuntime,
+  authorization: MessageConnectorManageServerAuthorization,
+  accountId: string,
+  guildId: string,
+): Promise<MessageConnectorManageServerAuthorization> {
+  if (
+    authorization.source !== "discord" ||
+    authorization.accountId !== accountId ||
+    authorization.target.source !== "discord" ||
+    authorization.target.accountId !== accountId ||
+    authorization.serverId !== guildId ||
+    authorization.target.serverId !== guildId
+  ) {
+    throwAuthError(
+      "DISCORD_MANAGE_SERVER_PROVENANCE_MISMATCH",
+      "Discord server management authorization does not match the live mutation destination.",
+      { accountId, guildId },
+    )
+  }
+  return authorizeManageServerDestination(runtime, authorization.requesterEntityId, {
+    source: "discord",
+    accountId,
+    serverId: guildId,
+    messageServerId: authorization.messageServerId,
+    destinationWorldId: authorization.destinationWorldId,
+    target: authorization.target,
+  })
+}
+
+export function authorizeGuildManagementMutation(params: {
+  readonly request: GuildManagementRequest
+  readonly grant: {
+    readonly accountId: string
+    readonly guildId: string
+    readonly requesterId: string
+    readonly operation: GuildManagementOperation
+  }
+  readonly gates: GuildManagementGates
+  readonly providerAllows: boolean
+}): GuildManagementReceipt {
+  const { request, grant, gates, providerAllows } = params
+  if (!gates.enabled) {
+    throwGuildManagementError("GUILD_MANAGEMENT_DISABLED", "Discord guild management is disabled.", { guildId: request.guildId })
+  }
+  const gateKey = OPERATION_GATES[request.operation]
+  if (!gates[gateKey]) {
+    throwGuildManagementError("GUILD_MANAGEMENT_GATE_CLOSED", `Operation "${request.operation}" is disabled by gate "${gateKey}".`, { operation: request.operation })
+  }
+  const proposal: DiscordManagement = {
+    forAccount: request.accountId,
+    forGuild: request.guildId,
+    requestedBy: request.requesterId,
+    operation: toSpecManagementKind(request.operation),
+  }
+  const specGrant: DiscordManagement = {
+    forAccount: grant.accountId,
+    forGuild: grant.guildId,
+    requestedBy: grant.requesterId,
+    operation: toSpecManagementKind(grant.operation),
+  }
+  if (!mayManageDiscord(proposal, specGrant, providerAllows)) {
+    throwGuildManagementError(
+      "GUILD_MANAGEMENT_UNAUTHORIZED",
+      "Guild management mutation does not match its authorization grant or live provider permissions.",
+      { guildId: request.guildId, operation: request.operation },
+    )
+  }
+  const cleanReason = (request.reason?.trim() || `eliza:${request.operation}:by:${request.requesterId}`).slice(0, 512)
+  return {
+    ok: true,
+    accountId: request.accountId,
+    guildId: request.guildId,
+    requesterId: request.requesterId,
+    operation: request.operation,
+    auditReason: cleanReason,
+    appliedAt: Date.now(),
+    ...(request.payload ? { details: request.payload } : {}),
+  }
+}
+
+export interface GuildTemplateRole {
+  readonly key: string
+  readonly name: string
+  readonly color?: string
+  readonly hoist?: boolean
+  readonly mentionable?: boolean
+  readonly permissions?: readonly string[]
+}
+
+export interface GuildTemplateCategory {
+  readonly key: string
+  readonly name: string
+}
+
+export interface GuildTemplateOverwrite {
+  readonly role: string
+  readonly allow?: readonly string[]
+  readonly deny?: readonly string[]
+}
+
+export type GuildTemplateChannelType = "text" | "voice" | "announcement" | "forum"
+
+export interface GuildTemplateChannel {
+  readonly key: string
+  readonly name: string
+  readonly type: GuildTemplateChannelType
+  readonly category?: string
+  readonly topic?: string
+  readonly overwrites?: readonly GuildTemplateOverwrite[]
+}
+
+export interface GuildTemplate {
+  readonly id: string
+  readonly name: string
+  readonly description?: string
+  readonly roles: readonly GuildTemplateRole[]
+  readonly categories: readonly GuildTemplateCategory[]
+  readonly channels: readonly GuildTemplateChannel[]
+}
+
+export const GUILD_TEMPLATE_LIMITS = {
+  maxRoles: 25,
+  maxCategories: 15,
+  maxChannels: 50,
+  maxNameLength: 100,
+} as const
+
+export const BUILT_IN_GUILD_TEMPLATES: Readonly<Record<string, GuildTemplate>> = {
+  community: {
+    id: "community",
+    name: "Community Server",
+    description: "Standard community layout with announcements, general discussion, and moderation.",
+    roles: [
+      { key: "moderator", name: "Moderator", color: "#5865F2", hoist: true, permissions: ["ManageMessages", "KickMembers", "ModerateMembers"] },
+      { key: "member", name: "Member", color: "#57F287", permissions: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+    ],
+    categories: [
+      { key: "info", name: "Information" },
+      { key: "general", name: "General" },
+      { key: "voice", name: "Voice" },
+    ],
+    channels: [
+      { key: "announcements", name: "announcements", type: "announcement", category: "info", overwrites: [{ role: "@everyone", deny: ["SendMessages"] }] },
+      { key: "chat", name: "general", type: "text", category: "general" },
+      { key: "lounge", name: "Lounge", type: "voice", category: "voice" },
+    ],
+  },
+  project: {
+    id: "project",
+    name: "Project Workspace",
+    description: "Focused engineering and operations channels.",
+    roles: [
+      { key: "maintainer", name: "Maintainer", color: "#FEE75C", hoist: true, permissions: ["ManageChannels", "ManageMessages"] },
+      { key: "contributor", name: "Contributor", color: "#3498DB", permissions: ["ViewChannel", "SendMessages"] },
+    ],
+    categories: [
+      { key: "ops", name: "Operations" },
+      { key: "dev", name: "Development" },
+    ],
+    channels: [
+      { key: "status", name: "status", type: "text", category: "ops" },
+      { key: "engineering", name: "engineering", type: "text", category: "dev" },
+      { key: "standup", name: "Standup", type: "voice", category: "dev" },
+    ],
+  },
+}
+
+export function renderTemplateString(template: string, variables: Readonly<Record<string, string>>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "")
+}
+
+export function validateGuildTemplate(template: GuildTemplate): { readonly valid: boolean; readonly errors: readonly string[] } {
+  const errors: string[] = []
+  if (!template.id.trim()) errors.push("Template id is required.")
+  if (!template.name.trim()) errors.push("Template name is required.")
+  if (template.roles.length > GUILD_TEMPLATE_LIMITS.maxRoles) errors.push(`Too many roles (max ${GUILD_TEMPLATE_LIMITS.maxRoles}).`)
+  if (template.categories.length > GUILD_TEMPLATE_LIMITS.maxCategories) errors.push(`Too many categories (max ${GUILD_TEMPLATE_LIMITS.maxCategories}).`)
+  if (template.channels.length > GUILD_TEMPLATE_LIMITS.maxChannels) errors.push(`Too many channels (max ${GUILD_TEMPLATE_LIMITS.maxChannels}).`)
+  const roleKeys = new Set<string>(["@everyone"])
+  for (const role of template.roles) {
+    if (!role.key.trim()) errors.push("Role key is required.")
+    if (roleKeys.has(role.key)) errors.push(`Duplicate role key: ${role.key}`)
+    roleKeys.add(role.key)
+    for (const perm of role.permissions ?? []) {
+      if (perm.trim().toLowerCase() === "administrator") {
+        errors.push(`Role "${role.key}" may not grant Administrator permission.`)
+      }
+    }
+  }
+  const categoryKeys = new Set<string>()
+  for (const category of template.categories) {
+    if (!category.key.trim()) errors.push("Category key is required.")
+    if (categoryKeys.has(category.key)) errors.push(`Duplicate category key: ${category.key}`)
+    categoryKeys.add(category.key)
+  }
+  const channelKeys = new Set<string>()
+  for (const channel of template.channels) {
+    if (!channel.key.trim()) errors.push("Channel key is required.")
+    if (channelKeys.has(channel.key)) errors.push(`Duplicate channel key: ${channel.key}`)
+    channelKeys.add(channel.key)
+    if (channel.category && !categoryKeys.has(channel.category)) {
+      errors.push(`Channel "${channel.key}" references unknown category "${channel.category}".`)
+    }
+    for (const overwrite of channel.overwrites ?? []) {
+      if (!roleKeys.has(overwrite.role)) {
+        errors.push(`Channel "${channel.key}" overwrite references unknown role "${overwrite.role}".`)
+      }
+      for (const perm of [...(overwrite.allow ?? []), ...(overwrite.deny ?? [])]) {
+        if (perm.trim().toLowerCase() === "administrator") {
+          errors.push(`Channel "${channel.key}" overwrite may not reference Administrator.`)
+        }
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors }
+}

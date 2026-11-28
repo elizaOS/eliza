@@ -1,0 +1,115 @@
+// spec/browser/websiteGoal.md, "Story: Show a website answer for the entire request with the supporting words"; spec/browser/websiteGoal.md, "Story: Preserve a checked answer while honoring the task's completion and ownership fences"
+import {
+  completionAdmission,
+  expireDocument,
+  hostMayProduce,
+  Machine,
+  machine,
+  observedAnswerCoverageValid,
+  observedAnswerReadable,
+  projectRetained,
+  resultRoute,
+  retentionMs,
+  reviewAfterAttempt,
+  reviewVerdict,
+  routeAfterSave,
+  saveAnswer,
+  validGoalShape,
+  validRequirementReview,
+  type AnswerInput,
+  type AnswerShape,
+  type Event,
+  type EvidenceReview,
+  type ExpiryDocument,
+  type GoalShape,
+  type HostResult,
+  type RequirementReview,
+  type ResultProjection,
+  type ResultTaskShape,
+  type SaveAttempt,
+  type SavedAnswerShape,
+  type WebsiteResult,
+} from "../gen/browser__websiteGoal.effect.vibe"
+
+import { openMachineSession } from "./machine-session.vibe"
+
+export const WEBSITE_GOAL_RETENTION_MS = retentionMs
+
+export interface WebsiteGoalSession {
+  dispatch(event: Event): Promise<boolean>
+  saveReading(reading: SavedAnswerShape, clock: number, ownerCurrent: boolean): Promise<boolean>
+  completeReading(ownerCurrent: boolean, unresolved: boolean): Promise<boolean>
+  sweepReading(clock: number): Promise<boolean>
+  snapshot(): Promise<WebsiteResult>
+}
+
+export function createWebsiteGoalSession(): WebsiteGoalSession {
+  const session = openMachineSession(Effect.runSync(Effect.provide(Machine, machine())))
+  return {
+    ...session,
+    saveReading: (reading, clock, ownerCurrent) => session.dispatch({ type: "saveReading", reading, clock, ownerCurrent }),
+    completeReading: (ownerCurrent, unresolved) => session.dispatch({ type: "completeReading", ownerCurrent, unresolved }),
+    sweepReading: (clock) => session.dispatch({ type: "sweepReading", clock }),
+  }
+}
+
+export function validateWebsiteGoal(goal: GoalShape): boolean {
+  return validGoalShape(goal)
+}
+
+export function validateGoalRequirementReview(review: RequirementReview): boolean {
+  return validRequirementReview(review)
+}
+
+export function evaluateWebsiteGoalReview(evidence: EvidenceReview, attempt: number): string {
+  return reviewAfterAttempt(reviewVerdict(evidence), attempt)
+}
+
+export function validateObservedWebsiteAnswer(input: AnswerInput, shape: AnswerShape): boolean {
+  return observedAnswerCoverageValid(input) && observedAnswerReadable(shape)
+}
+
+export function evaluateHostWebsiteResult(facts: HostResult): boolean {
+  return hostMayProduce(facts)
+}
+
+export function evaluateWebsiteResultSave(attempt: SaveAttempt): string {
+  return saveAnswer(attempt)
+}
+
+export function evaluateWebsiteResultRoute(
+  taskShape: ResultTaskShape,
+  view: ResultProjection,
+  method: string,
+  routeAction: string,
+): string {
+  return resultRoute(taskShape, view, method, routeAction)
+}
+
+export function evaluateWebsiteResultProjection(
+  taskShape: ResultTaskShape,
+  rowKind: string,
+  validAnswer: boolean,
+  eligible: boolean,
+  revision: number,
+  epoch: number,
+): ResultProjection {
+  return projectRetained(taskShape, rowKind, validAnswer, eligible, revision, epoch)
+}
+
+export function evaluateWebsiteResultExpiry(doc: ExpiryDocument): string {
+  return expireDocument(doc)
+}
+
+export function evaluateWebsiteCompletionAdmission(
+  taskShape: ResultTaskShape,
+  expectedRevision: number,
+  ownerCurrent: boolean,
+  unresolved: boolean,
+): string {
+  return completionAdmission(taskShape, expectedRevision, ownerCurrent, unresolved)
+}
+
+export function evaluateRouteAfterWebsiteSave(stored: boolean, completed: boolean): string {
+  return routeAfterSave(stored, completed)
+}

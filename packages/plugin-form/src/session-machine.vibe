@@ -1,0 +1,89 @@
+// spec/form/index.md, "Story: Complete a form across several turns"
+import { Machine, stored, type FormSession as FormMachineState } from "../gen/form.effect.vibe"
+
+export type { FormMachineState }
+
+export error MissingFormIdentity { field: "owner" | "session" }
+export error MismatchedFormOwner { sessionId: string }
+
+export interface FormReference {
+  readonly ownerId: string
+  readonly sessionId: string
+}
+
+export type FormEdit =
+  | {
+      readonly type: "recordAnswer"
+      readonly question: string
+      readonly answerText: string
+      readonly confirmed: boolean
+      readonly visible: string[]
+      readonly required: string[]
+    }
+  | { readonly type: "confirmAnswer"; readonly question: string }
+  | { readonly type: "stashForm" | "resumeForm" | "cancelForm" | "submitForm" }
+
+export effect function readForm(ref: FormReference) {
+  const key = try sessionKey(ref)
+  provide stored(key) {
+    const session = try (try Machine).get()
+    try verifyOwner(ref, session)
+    return session
+  }
+}
+
+export effect function startFormSession(
+  ref: FormReference,
+  definition: {
+    readonly formId: string
+    readonly fields: readonly string[]
+    readonly required: readonly string[]
+    readonly deadline: number
+  },
+) {
+  const key = try sessionKey(ref)
+  provide stored(key) {
+    return try (try Machine).receive({
+      type: "startForm",
+      ownerId: ref.ownerId,
+      formId: definition.formId,
+      visible: [...new Set(definition.fields)],
+      required: [...new Set(definition.required)],
+      deadline: definition.deadline,
+    })
+  }
+}
+
+effect function withOwnedForm<A, E>(
+  ref: FormReference,
+  atOverride: number | undefined,
+  run: (machine: Machine.Shape, at: number) => A!E,
+) {
+  const key = try sessionKey(ref)
+  const at = atOverride ?? (try Clock.currentTimeMillis)
+  provide stored(key) {
+    const machine = try Machine
+    try verifyOwner(ref, try machine.get())
+    return try run(machine, at)
+  }
+}
+
+export effect function editForm(ref: FormReference, version: number, edit: FormEdit, atOverride?: number) {
+  return try withOwnedForm(ref, atOverride, (machine, at) => machine.receive({ ...edit, ownerId: ref.ownerId, version, at }))
+}
+
+export effect function expireFormSession(ref: FormReference, atOverride?: number) {
+  return try withOwnedForm(ref, atOverride, (machine, at) => machine.send({ type: "expireForm", at }))
+}
+
+effect function sessionKey(ref: FormReference) {
+  if (ref.ownerId === "") throw new MissingFormIdentity({ field: "owner" })
+  if (ref.sessionId === "") throw new MissingFormIdentity({ field: "session" })
+  return "form:" + ref.ownerId.length + ":" + ref.ownerId + ":" + ref.sessionId
+}
+
+effect function verifyOwner(ref: FormReference, session: FormMachineState) {
+  if (session.ownerId !== "" && session.ownerId !== ref.ownerId) {
+    throw new MismatchedFormOwner({ sessionId: ref.sessionId })
+  }
+}

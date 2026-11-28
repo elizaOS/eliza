@@ -1,0 +1,910 @@
+// spec/x/index.md, "X cursors compare complete decimal provider IDs and stay with the selected session"; spec/x/index.md, "Direct requests, discovered items and autonomous actions use their own policy gates"; spec/x/index.md, "The X direct-message journal retries only a confirmed transient refusal before any part was accepted"
+import { ApiResponseError, TwitterApi } from "twitter-api-v2"
+import {
+  ChannelType,
+  Service,
+  checkPairingAllowed,
+  createUniqueUuid,
+  requireConfirmedSendHandlerDelivery,
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  type MessageConnectorRegistration,
+  type SendHandlerOutcome,
+  type TargetInfo,
+  type UUID,
+} from "@elizaos/core"
+import {
+  Machine,
+  emptyXDmWrite,
+  initial,
+  laterXId,
+  machineOver,
+  stored,
+  validXId,
+  xDispatchDmPart,
+  xDmDecision,
+  xObserveDmPart,
+  xReserveDmWrite,
+  xWriteDecision,
+  type XCaller,
+  type XDmMode,
+  type XSession,
+  type XWritePolicy,
+} from "../gen/x.effect.vibe"
+import {
+  normalizeXAccountId,
+  resolveTwitterDmPolicy,
+  validateTwitterConfig,
+} from "./environment.vibe"
+import { materializeEnvAccountIfMissing } from "./oauth.vibe"
+import {
+  countTwitterWeightedLength,
+  extractXWriteReceiptId,
+  quoteThreadFirstChunkMaxLength,
+  quoteTweetText,
+  sendTextAsTweetThread,
+  splitXDirectMessageContent,
+} from "./tweet-text.vibe"
+import {
+  DEFAULT_X_ACCOUNT_ID,
+  MessageType,
+  TWEET_MAX_LENGTH,
+  TWITTER_SERVICE_NAME,
+  TwitterErrorType,
+  X_RECENT_SEARCH_MIN_RESULTS,
+  X_USER_TWEETS_MIN_RESULTS,
+  failTwitter,
+  maxResultsFor,
+  type CreatePostOptions,
+  type GetMessagesOptions,
+  type GetPostsOptions,
+  type IMessageService,
+  type IPostService,
+  type Message,
+  type Post,
+  type SentTweet,
+  type TweetThreadReceipt,
+  type TwitterProfile,
+} from "./types.vibe"
+
+export error XRequestFailed { stage: string }
+
+export type XCredentials =
+  | {
+      readonly kind: "oauth1"
+      readonly appKey: string
+      readonly appSecret: Redacted.Redacted<string>
+      readonly accessToken: Redacted.Redacted<string>
+      readonly accessSecret: Redacted.Redacted<string>
+    }
+  | { readonly kind: "oauth2"; readonly accessToken: Redacted.Redacted<string> }
+
+export interface XAccount {
+  readonly binding: XSession
+  readonly credentials: XCredentials
+  readonly policy: XWritePolicy
+  readonly dmMode: XDmMode
+  readonly allowedSenders: ReadonlySet<string>
+  readonly pollSeconds: number
+}
+
+export interface XRateLimitWindow {
+  readonly endpoint: string
+  readonly resetAtMs: number
+  readonly remaining: number
+}
+
+export interface XAccountStatus {
+  readonly accountId: string
+  readonly connected: boolean
+  readonly authMode: string
+  readonly profile: TwitterProfile | null
+  readonly rateLimitedEndpoints: string[]
+}
+
+const ProviderEventSchema = Schema.Struct({
+  id: Schema.String,
+  sender_id: Schema.optionalKey(Schema.String),
+  text: Schema.optionalKey(Schema.String),
+  dm_conversation_id: Schema.optionalKey(Schema.String),
+  created_at: Schema.optionalKey(Schema.String),
+  event_type: Schema.optionalKey(Schema.String),
+  participant_ids: Schema.optionalKey(Schema.Array(Schema.String)),
+})
+
+schema DmReceiptSchema {
+  dm_event_id: string
+}
+
+const DmResponseSchema = Schema.Union([Schema.Struct({ data: DmReceiptSchema }), DmReceiptSchema])
+
+function digits(value: string): number[] {
+  return /^\d+$/.test(value) ? Array.from(value, (digit) => Number(digit)) : []
+}
+
+export effect function bindXCursor(key: string, by: XCaller, binding: XSession) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.send({ type: "bindX", binding }, by)
+  }
+}
+
+export effect function seedXCursorState(key: string, by: XCaller, binding: XSession, eventId: number[]) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.send({ type: "seedXCursor", binding, eventId }, by)
+  }
+}
+
+export effect function advanceXCursorState(
+  key: string,
+  by: XCaller,
+  binding: XSession,
+  eventId: number[],
+  eventFinalized: boolean,
+) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.send({ type: "advanceXCursor", binding, eventId, eventFinalized }, by)
+  }
+}
+
+export effect function readXCursorState(key: string) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.get()
+  }
+}
+
+interface XAccountRuntime {
+  readonly runtime: IAgentRuntime
+  readonly config: XAccount
+  readonly client: TwitterApi
+  readonly ownId: string
+  readonly cache: string
+  readonly active: Ref.Ref<boolean>
+  readonly poller: Machine.Shape
+}
+
+effect function sendXAccountDm(
+  ctx: XAccountRuntime,
+  target: TargetInfo,
+  content: Content,
+  runtimeKey?: string,
+): SendHandlerOutcome!XRequestFailed {
+  const text = content.text?.trim() ?? ""
+  const recipient = target.channelId
+  if (
+    xWriteDecision("XSendDm", ctx.config.policy) !== "XDoWrite" ||
+    (target.accountId !== undefined && target.accountId !== ctx.config.binding.accountId) ||
+    recipient === undefined ||
+    text === "" ||
+    !(try Ref.get(ctx.active)) ||
+    (content.attachments?.length ?? 0) > 0
+  ) {
+    return {
+      kind: "not_delivered",
+      code: "X_DM_UNAVAILABLE",
+      message: "The selected X account cannot send this direct message.",
+    }
+  }
+  const parts = splitXDirectMessageContent(text)
+  let journal = xReserveDmWrite(parts.length, emptyXDmWrite)
+  if (runtimeKey !== undefined) {
+    const settled = try tryPromise({
+      try: () => ctx.runtime.getCache<string>(runtimeKey),
+      catch: () => new XRequestFailed({ stage: "journal-read" }),
+    })
+    if (settled !== undefined && settled !== null) return { kind: "duplicate", priorDelivery: "in_flight" }
+    const saved = try tryPromise({
+      try: () => ctx.runtime.setCache(runtimeKey, "egress_started"),
+      catch: () => new XRequestFailed({ stage: "journal-save" }),
+    })
+    if (!saved) throw new XRequestFailed({ stage: "journal-save" })
+  }
+  for (const textPart of parts) {
+    journal = xDispatchDmPart(try Ref.get(ctx.active), journal)
+    if (journal.phase !== "XAwaitingPart") break
+    const outcome = try exit(
+      tryPromise(() =>
+        recipient.includes("-")
+          ? ctx.client.v2.sendDmInConversation(recipient, { text: textPart })
+          : ctx.client.v2.sendDmToParticipant(recipient, { text: textPart }),
+      ),
+    )
+    if (Exit.isSuccess(outcome)) {
+      const response = Schema.decodeUnknownEffect(DmResponseSchema)(outcome.value) catch () => undefined
+      if (response === undefined) {
+        journal = xObserveDmPart({ tag: "XDmOutcomeUnknown" }, journal)
+      } else {
+        const receiptId = "data" in response ? response.data.dm_event_id : response.dm_event_id
+        journal = xObserveDmPart({ tag: "XDmAccepted", receiptId }, journal)
+      }
+    } else {
+      const reason = Cause.findErrorOption(outcome.cause)
+      const issue = Option.isSome(reason) && reason.value instanceof Cause.UnknownError ? reason.value.cause : undefined
+      const observation =
+        issue instanceof ApiResponseError && issue.code >= 400 && issue.code < 500
+          ? issue.code === 404
+            ? "XDmExplicitPermanentRefusal"
+            : "XDmExplicitTransientRefusal"
+          : "XDmOutcomeUnknown"
+      journal = xObserveDmPart({ tag: observation }, journal)
+    }
+    if (journal.phase !== "XPartAccepted") break
+  }
+  if (runtimeKey !== undefined) {
+    if (journal.phase === "XNoAttempt") {
+      try tryPromise({
+        try: () => ctx.runtime.deleteCache(runtimeKey),
+        catch: () => new XRequestFailed({ stage: "journal-release" }),
+      })
+    } else {
+      try tryPromise({
+        try: () => ctx.runtime.setCache(runtimeKey, journal.phase),
+        catch: () => new XRequestFailed({ stage: "journal-settle" }),
+      })
+    }
+  }
+  const [first, ...rest] = journal.acceptedIds
+  if (first === undefined) {
+    if (journal.phase === "XIndeterminateWrite" || journal.phase === "XNoAttempt") {
+      throw new XRequestFailed({
+        stage: journal.phase === "XNoAttempt" ? "temporarily-refused" : "delivery-unknown",
+      })
+    }
+    return { kind: "not_delivered", code: "X_DM_NOT_DELIVERED", message: "X did not confirm delivery." }
+  }
+  const providerMessageIds: [string, ...string[]] = [first, ...rest]
+  const receipt = {
+    providerMessageIds,
+    acceptedAt: try Clock.currentTimeMillis,
+    persistence: { status: "not_attempted" as const, reason: "X returned provider event IDs." },
+  }
+  return journal.phase === "XAllPartsAccepted"
+    ? { kind: "delivered", receipt, memories: [] }
+    : {
+        kind: "partially_delivered",
+        code: "X_DM_PARTIAL",
+        message: "X accepted part of the message. Repeating it may duplicate delivery.",
+        receipt,
+        memories: [],
+      }
+}
+
+effect function handleXAccountDmEvent(ctx: XAccountRuntime, event: typeof ProviderEventSchema.Type) {
+  const sender = event.sender_id
+  const text = event.text?.trim() ?? ""
+  if (
+    sender === undefined ||
+    sender === ctx.ownId ||
+    text === "" ||
+    (event.event_type !== undefined && event.event_type !== "MessageCreate")
+  ) {
+    return
+  }
+  const settledKey = `${ctx.cache}/dm_settled/${event.id}`
+  if (try tryPromise(() => ctx.runtime.getCache<string>(settledKey))) return
+  const group = (event.participant_ids?.length ?? 0) > 2
+  const conversation = event.dm_conversation_id ?? ""
+  const scope = group ? "XGroupDm" : "XOneToOne"
+  const allowlisted = ctx.config.allowedSenders.has(sender)
+  let decision = xDmDecision(scope, ctx.config.dmMode, allowlisted, false, conversation)
+  if (decision === "XPairDm") {
+    const pairing = try tryPromise(() => checkPairingAllowed(ctx.runtime, { channel: "twitter", senderId: sender }))
+    if (pairing.replyMessage) {
+      sendXAccountDm(ctx, { source: "twitter", channelId: sender }, { text: pairing.replyMessage }) catch () => undefined
+    }
+    decision = xDmDecision(scope, ctx.config.dmMode, allowlisted, pairing.allowed, conversation)
+  }
+  if (decision !== "XAcceptDm" || !(try Ref.get(ctx.active))) return
+  const bound = `${ctx.cache}/${conversation || sender}`
+  const { id, roomId, worldId, entityId } = try Effect.try(() => ({
+    id: createUniqueUuid(ctx.runtime, `${bound}/event/${event.id}`),
+    roomId: createUniqueUuid(ctx.runtime, `${bound}/room`),
+    worldId: createUniqueUuid(ctx.runtime, `${ctx.cache}/world`),
+    entityId: createUniqueUuid(ctx.runtime, `${ctx.cache}/user/${sender}`),
+  }))
+  const channelType = group ? ChannelType.GROUP : ChannelType.DM
+  const channelId = group ? conversation : sender
+  const createdAt = Date.parse(event.created_at ?? "")
+  try tryPromise(() =>
+    ctx.runtime.ensureConnection({
+      entityId,
+      roomId,
+      worldId,
+      source: "twitter",
+      channelId,
+      type: channelType,
+      metadata: { accountId: ctx.config.binding.accountId },
+    }),
+  )
+  const incoming: Memory = {
+    id,
+    entityId,
+    roomId,
+    worldId,
+    agentId: ctx.runtime.agentId,
+    ...(Number.isFinite(createdAt) ? { createdAt } : {}),
+    content: { text, source: "twitter", channelType },
+  }
+  if (!ctx.runtime.messageService) {
+    try tryPromise(() => ctx.runtime.createMemory(incoming, "messages"))
+    return
+  }
+  const messageService = ctx.runtime.messageService
+  try tryPromise(() =>
+    messageService.handleMessage(ctx.runtime, incoming, async (reply) => {
+      requireConfirmedSendHandlerDelivery(
+        await runPromise(
+          sendXAccountDm(ctx, { source: "twitter", accountId: ctx.config.binding.accountId, channelId }, reply, settledKey),
+        ),
+      )
+      return []
+    }),
+  )
+}
+
+effect function pollXAccountDms(ctx: XAccountRuntime) {
+  const before = try ctx.poller.get()
+  const page = try tryPromise(() =>
+    ctx.client.v2.listDmEvents({
+      max_results: 50,
+      "dm_event.fields": ["id", "created_at", "dm_conversation_id", "sender_id", "text", "event_type", "participant_ids"],
+      event_types: ["MessageCreate"],
+    }),
+  )
+  let previousCount = -1
+  while (before.initialized && !page.done && page.events.length > 0) {
+    const oldest = page.events[page.events.length - 1]
+    if (oldest === undefined || !laterXId(digits(oldest.id), before.cursor)) break
+    if (page.events.length === previousCount) throw new XRequestFailed({ stage: "pagination" })
+    previousCount = page.events.length
+    try tryPromise(() => page.fetchNext(50))
+  }
+  const events = page.events
+    .filter((event) => validXId(digits(event.id)))
+    .toSorted((left, right) => (left.id === right.id ? 0 : laterXId(digits(left.id), digits(right.id)) ? 1 : -1))
+  if (!(try Ref.get(ctx.active))) return
+  if (!before.initialized) {
+    const newest = events.at(-1)
+    if (newest === undefined) return
+    if (!(try tryPromise(() => ctx.runtime.setCache(`${ctx.cache}/dm_cursor`, newest.id)))) {
+      throw new XRequestFailed({ stage: "cursor-save" })
+    }
+    try ctx.poller.send({ type: "seedXCursor", binding: ctx.config.binding, eventId: digits(newest.id) }, "XAdapter")
+    return
+  }
+  for (const candidate of events) {
+    if (!(try Ref.get(ctx.active))) return
+    const eventId = digits(candidate.id)
+    if (!laterXId(eventId, (try ctx.poller.get()).cursor)) continue
+    const event = Schema.decodeUnknownEffect(ProviderEventSchema)(candidate) catch () => undefined
+    if (event) try handleXAccountDmEvent(ctx, event)
+    if (!(try Ref.get(ctx.active))) return
+    if (!(try tryPromise(() => ctx.runtime.setCache(`${ctx.cache}/dm_cursor`, candidate.id)))) {
+      throw new XRequestFailed({ stage: "cursor-save" })
+    }
+    try ctx.poller.send({ type: "advanceXCursor", binding: ctx.config.binding, eventId, eventFinalized: true }, "XAdapter")
+  }
+}
+
+export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount) {
+  const credential = config.credentials
+  const client = try Effect.try({
+    try: () =>
+      credential.kind === "oauth2"
+        ? new TwitterApi(Redacted.value(credential.accessToken))
+        : new TwitterApi({
+            appKey: credential.appKey,
+            appSecret: Redacted.value(credential.appSecret),
+            accessToken: Redacted.value(credential.accessToken),
+            accessSecret: Redacted.value(credential.accessSecret),
+          }),
+    catch: () => new XRequestFailed({ stage: "client" }),
+  })
+  const profile = try tryPromise({
+    try: () => client.v2.me(),
+    catch: () => new XRequestFailed({ stage: "identity" }),
+  })
+  const ownId = profile.data.id
+  if (ownId === "") throw new XRequestFailed({ stage: "identity" })
+  const cache = `twitter/${config.binding.accountId}/${ownId}`
+  const durableCursor = try tryPromise(() => runtime.getCache<string>(`${cache}/dm_cursor`))
+  const restored = digits(durableCursor ?? "")
+  const state = try Ref.make(validXId(restored) ? { binding: config.binding, cursor: restored, initialized: true } : initial)
+  const active = try Ref.make(true)
+  const poller = try machineOver(() => Ref.get(state), (next) => Ref.set(state, next))
+  if (!validXId(restored)) try poller.send({ type: "bindX", binding: config.binding }, "XAdapter")
+  const ctx: XAccountRuntime = { runtime, config, client, ownId, cache, active, poller }
+  const send = (target: TargetInfo, content: Content, runtimeKey?: string) =>
+    sendXAccountDm(ctx, target, content, runtimeKey)
+
+  effect function publish(content: Content) {
+    const text = content.text?.trim() ?? ""
+    if (
+      text === "" ||
+      (content.attachments?.length ?? 0) > 0 ||
+      xWriteDecision("XPublishPost", config.policy) !== "XDoWrite" ||
+      !(try Ref.get(active))
+    ) {
+      throw new XRequestFailed({ stage: "post-not-authorized" })
+    }
+    const result = try tryPromise({
+      try: () => client.v2.tweet(text),
+      catch: () => new XRequestFailed({ stage: "publish" }),
+    })
+    if (result.data.id === "") throw new XRequestFailed({ stage: "delivery-unknown" })
+    return result.data.id
+  }
+
+  const worker = fork.detached effect {
+    while (try Ref.get(active)) {
+      pollXAccountDms(ctx) catch () => undefined
+      try sleep(Duration.seconds(config.pollSeconds))
+    }
+  }
+  try Effect.try(() =>
+    runtime.registerMessageConnector({
+      source: "twitter",
+      accountId: config.binding.accountId,
+      accountRouting: "connector",
+      label: "X",
+      sendHandler: (_runtime, target, content) => runPromise(send(target, content)),
+    } as MessageConnectorRegistration),
+  )
+  return {
+    client,
+    profile: {
+      id: ownId,
+      username: profile.data.username,
+      screenName: profile.data.name,
+      bio: "",
+      nicknames: [],
+    } satisfies TwitterProfile,
+    send,
+    publish,
+    effect stop() {
+      try Ref.set(active, false)
+      try Fiber.interrupt(worker)
+    },
+  }
+}
+
+export interface XApiTransport {
+  me(): Promise<{ id: string; username: string; name: string; description?: string }>
+  tweet(params: { text: string; replyToId?: string; mediaIds?: string[] }): Promise<SentTweet>
+  deleteTweet(tweetId: string): Promise<void>
+  like(userId: string, tweetId: string): Promise<void>
+  unlike(userId: string, tweetId: string): Promise<void>
+  retweet(userId: string, tweetId: string): Promise<void>
+  unretweet(userId: string, tweetId: string): Promise<void>
+  bookmark(userId: string, tweetId: string): Promise<void>
+  searchRecent(query: string, maxResults: number): Promise<Array<{ id: string; text: string; author_id?: string; created_at?: string }>>
+  userTimeline(userId: string, maxResults: number): Promise<Array<{ id: string; text: string; author_id?: string; created_at?: string }>>
+  userMentions(userId: string, maxResults: number): Promise<Array<{ id: string; text: string; author_id?: string; created_at?: string }>>
+  sendDmToParticipant(participantId: string, text: string): Promise<{ dm_event_id: string }>
+  sendDmInConversation(conversationId: string, text: string): Promise<{ dm_event_id: string }>
+  listDmEvents(maxResults: number): Promise<Array<{ id: string; text?: string; sender_id?: string; dm_conversation_id?: string; created_at?: string }>>
+}
+
+function wrapTwitterApi(client: TwitterApi): XApiTransport {
+  return {
+    async me() {
+      const res = await client.v2.me({ "user.fields": ["description"] })
+      return { id: res.data.id, username: res.data.username, name: res.data.name, description: res.data.description }
+    },
+    async tweet(params) {
+      const payload = {
+        text: params.text,
+        ...(params.replyToId ? { reply: { in_reply_to_tweet_id: params.replyToId } } : {}),
+        ...(params.mediaIds?.length ? { media: { media_ids: params.mediaIds as [string] } } : {}),
+      }
+      const res = await client.v2.tweet(payload)
+      const id = await extractXWriteReceiptId(res)
+      if (!id) failTwitter(TwitterErrorType.API, "X returned no usable post receipt", "X_POST_RESPONSE_INVALID")
+      return { id, text: res.data?.text ?? params.text }
+    },
+    async deleteTweet(tweetId) {
+      await client.v2.deleteTweet(tweetId)
+    },
+    async like(userId, tweetId) {
+      await client.v2.like(userId, tweetId)
+    },
+    async unlike(userId, tweetId) {
+      await client.v2.unlike(userId, tweetId)
+    },
+    async retweet(userId, tweetId) {
+      await client.v2.retweet(userId, tweetId)
+    },
+    async unretweet(userId, tweetId) {
+      await client.v2.unretweet(userId, tweetId)
+    },
+    async bookmark(_userId, tweetId) {
+      await client.v2.bookmark(tweetId)
+    },
+    async searchRecent(query, maxResults) {
+      const res = await client.v2.search(query, { max_results: maxResultsFor(maxResults, X_RECENT_SEARCH_MIN_RESULTS) })
+      return res.tweets.map((t) => ({ id: t.id, text: t.text, author_id: t.author_id, created_at: t.created_at }))
+    },
+    async userTimeline(userId, maxResults) {
+      const res = await client.v2.userTimeline(userId, { max_results: maxResultsFor(maxResults, X_USER_TWEETS_MIN_RESULTS) })
+      return res.tweets.map((t) => ({ id: t.id, text: t.text, author_id: t.author_id, created_at: t.created_at }))
+    },
+    async userMentions(userId, maxResults) {
+      const res = await client.v2.userMentionTimeline(userId, { max_results: maxResultsFor(maxResults, X_USER_TWEETS_MIN_RESULTS) })
+      return res.tweets.map((t) => ({ id: t.id, text: t.text, author_id: t.author_id, created_at: t.created_at }))
+    },
+    async sendDmToParticipant(participantId, text) {
+      const res = await client.v2.sendDmToParticipant(participantId, { text })
+      return { dm_event_id: res.dm_event_id }
+    },
+    async sendDmInConversation(conversationId, text) {
+      const res = await client.v2.sendDmInConversation(conversationId, { text })
+      return { dm_event_id: res.dm_event_id }
+    },
+    async listDmEvents(maxResults) {
+      const res = await client.v2.listDmEvents({ max_results: maxResults })
+      return res.events.map((e) => ({
+        id: e.id,
+        text: "text" in e ? e.text : undefined,
+        sender_id: e.sender_id,
+        dm_conversation_id: e.dm_conversation_id,
+        created_at: e.created_at,
+      }))
+    },
+  }
+}
+
+function toServicePost(
+  row: { id: string; text: string; author_id?: string; created_at?: string },
+  agentId: UUID,
+  roomId?: UUID,
+): Post {
+  return {
+    id: row.id,
+    agentId,
+    roomId: roomId ?? (row.id as UUID),
+    userId: row.author_id ?? "",
+    username: "",
+    text: row.text,
+    timestamp: row.created_at ? Date.parse(row.created_at) : Date.now(),
+  }
+}
+
+export class XService extends Service {
+  static override serviceType: string = TWITTER_SERVICE_NAME
+  override capabilityDescription = "Account-scoped X posting, replies, timeline, search, and direct messages"
+
+  private readonly transports = new Map<string, XApiTransport>()
+  private readonly profiles = new Map<string, TwitterProfile>()
+  private readonly rateLimits = new Map<string, XRateLimitWindow>()
+  private readonly stopCallbacks: Array<() => Promise<void>> = []
+  private authMode = "env"
+
+  constructor(runtime?: IAgentRuntime, defaultTransport?: XApiTransport) {
+    super(runtime)
+    if (defaultTransport) this.transports.set(DEFAULT_X_ACCOUNT_ID, defaultTransport)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<XService> {
+    const service = new XService(runtime)
+    const config = await validateTwitterConfig(runtime)
+    service.authMode = config.TWITTER_AUTH_MODE
+    await materializeEnvAccountIfMissing(runtime).catch(() => undefined)
+    if (
+      config.TWITTER_API_KEY &&
+      config.TWITTER_API_SECRET_KEY &&
+      config.TWITTER_ACCESS_TOKEN &&
+      config.TWITTER_ACCESS_TOKEN_SECRET
+    ) {
+      const dmPolicy = resolveTwitterDmPolicy(config.TWITTER_DM_POLICY)
+      const connection = await runPromise(
+        connectXAccount(runtime, {
+          binding: { accountId: DEFAULT_X_ACCOUNT_ID, epoch: 1, auth: "XEnvironment" },
+          credentials: {
+            kind: "oauth1",
+            appKey: config.TWITTER_API_KEY,
+            appSecret: Redacted.make(config.TWITTER_API_SECRET_KEY),
+            accessToken: Redacted.make(config.TWITTER_ACCESS_TOKEN),
+            accessSecret: Redacted.make(config.TWITTER_ACCESS_TOKEN_SECRET),
+          },
+          policy: {
+            dryRun: config.TWITTER_DRY_RUN === "true",
+            postsEnabled: config.TWITTER_ENABLE_POST === "true",
+            repliesEnabled: config.TWITTER_ENABLE_REPLIES !== "false",
+            directEnabled: config.TWITTER_ENABLE_DMS !== "false",
+            timelineActionsEnabled: config.TWITTER_ENABLE_ACTIONS === "true",
+          },
+          dmMode:
+            dmPolicy === "open"
+              ? "XDmOpen"
+              : dmPolicy === "disabled"
+                ? "XDmDisabled"
+                : dmPolicy === "allowlist"
+                  ? "XDmAllowlist"
+                  : "XDmPairing",
+          allowedSenders: new Set(),
+          pollSeconds: Number(config.TWITTER_DM_POLL_INTERVAL_SECONDS) || 60,
+        }),
+      )
+      service.transports.set(DEFAULT_X_ACCOUNT_ID, wrapTwitterApi(connection.client))
+      service.profiles.set(DEFAULT_X_ACCOUNT_ID, connection.profile)
+      service.stopCallbacks.push(() => runPromise(connection.stop()))
+    }
+    return service
+  }
+
+  override async stop(): Promise<void> {
+    for (const stopFn of this.stopCallbacks) {
+      await stopFn().catch(() => undefined)
+    }
+    this.stopCallbacks.length = 0
+  }
+
+  registerAccountTransport(accountId: string, transport: XApiTransport): void {
+    this.transports.set(normalizeXAccountId(accountId), transport)
+  }
+
+  recordRateLimit(endpoint: string, resetAtMs: number, remaining = 0): void {
+    this.rateLimits.set(endpoint, { endpoint, resetAtMs, remaining })
+  }
+
+  getRateLimitResetAt(endpoint: string): number | null {
+    const window = this.rateLimits.get(endpoint)
+    if (!window || window.remaining > 0 || window.resetAtMs <= Date.now()) return null
+    return window.resetAtMs
+  }
+
+  isRateLimited(endpoint: string): boolean {
+    return this.getRateLimitResetAt(endpoint) !== null
+  }
+
+  private requireTransport(accountId?: string): XApiTransport {
+    const id = normalizeXAccountId(accountId)
+    const transport = this.transports.get(id)
+    if (!transport) failTwitter(TwitterErrorType.AUTH, `X account ${id} is not connected`, "X_ACCOUNT_UNAVAILABLE")
+    return transport
+  }
+
+  getActiveProfile(accountId?: string): TwitterProfile | null {
+    return this.profiles.get(normalizeXAccountId(accountId)) ?? null
+  }
+
+  async refreshActiveProfile(accountId?: string): Promise<TwitterProfile | null> {
+    const id = normalizeXAccountId(accountId)
+    const transport = this.transports.get(id)
+    if (!transport) return null
+    const me = await transport.me()
+    const profile: TwitterProfile = {
+      id: me.id,
+      username: me.username,
+      screenName: me.name,
+      bio: me.description ?? "",
+      nicknames: [],
+    }
+    this.profiles.set(id, profile)
+    return profile
+  }
+
+  async getAccountStatus(accountId?: string): Promise<XAccountStatus> {
+    const id = normalizeXAccountId(accountId)
+    const rateLimitedEndpoints = Array.from(this.rateLimits.keys()).filter((endpoint) => this.isRateLimited(endpoint))
+    return {
+      accountId: id,
+      connected: this.transports.has(id),
+      authMode: this.authMode,
+      profile: this.getActiveProfile(id),
+      rateLimitedEndpoints,
+    }
+  }
+
+  async createPostForAccount(
+    accountId: string | undefined,
+    params: { text: string; inReplyTo?: string; quotedTweetId?: string; mediaIds?: string[] },
+  ): Promise<TweetThreadReceipt[]> {
+    const transport = this.requireTransport(accountId)
+    const firstLimit = params.quotedTweetId
+      ? quoteThreadFirstChunkMaxLength(params.quotedTweetId, TWEET_MAX_LENGTH)
+      : TWEET_MAX_LENGTH
+    return sendTextAsTweetThread(
+      params.text,
+      async (chunk, previousId, index) => {
+        const body = index === 0 && params.quotedTweetId ? quoteTweetText(chunk, params.quotedTweetId) : chunk
+        const weighted = countTwitterWeightedLength(body)
+        if (weighted > TWEET_MAX_LENGTH) {
+          failTwitter(TwitterErrorType.VALIDATION, `X post exceeds ${TWEET_MAX_LENGTH} weighted chars (${weighted})`, "X_POST_LENGTH_EXCEEDED")
+        }
+        return transport.tweet({
+          text: body,
+          replyToId: previousId ?? params.inReplyTo,
+          mediaIds: index === 0 ? params.mediaIds : undefined,
+        })
+      },
+      TWEET_MAX_LENGTH,
+      firstLimit,
+    )
+  }
+
+  async deletePostForAccount(accountId: string | undefined, tweetId: string): Promise<void> {
+    await this.requireTransport(accountId).deleteTweet(tweetId)
+  }
+
+  private async requireUserId(accountId?: string): Promise<string> {
+    const existing = this.getActiveProfile(accountId)?.id
+    if (existing) return existing
+    const refreshed = await this.refreshActiveProfile(accountId)
+    if (!refreshed?.id) failTwitter(TwitterErrorType.AUTH, "X profile id unavailable", "X_PROFILE_UNAVAILABLE")
+    return refreshed.id
+  }
+
+  async likePostForAccount(accountId: string | undefined, tweetId: string): Promise<void> {
+    const userId = await this.requireUserId(accountId)
+    await this.requireTransport(accountId).like(userId, tweetId)
+  }
+
+  async unlikePostForAccount(accountId: string | undefined, tweetId: string): Promise<void> {
+    const userId = await this.requireUserId(accountId)
+    await this.requireTransport(accountId).unlike(userId, tweetId)
+  }
+
+  async repostForAccount(accountId: string | undefined, tweetId: string): Promise<void> {
+    const userId = await this.requireUserId(accountId)
+    await this.requireTransport(accountId).retweet(userId, tweetId)
+  }
+
+  async unrepostForAccount(accountId: string | undefined, tweetId: string): Promise<void> {
+    const userId = await this.requireUserId(accountId)
+    await this.requireTransport(accountId).unretweet(userId, tweetId)
+  }
+
+  async bookmarkPostForAccount(accountId: string | undefined, tweetId: string): Promise<void> {
+    const userId = await this.requireUserId(accountId)
+    await this.requireTransport(accountId).bookmark(userId, tweetId)
+  }
+
+  async searchPostsForAccount(accountId: string | undefined, query: string, limit = 10) {
+    const results = await this.requireTransport(accountId).searchRecent(query, limit)
+    return results.slice(0, limit)
+  }
+
+  async fetchFeedForAccount(accountId: string | undefined, limit = 20) {
+    const userId = await this.requireUserId(accountId)
+    const results = await this.requireTransport(accountId).userTimeline(userId, limit)
+    return results.slice(0, limit)
+  }
+
+  async getMentionsForAccount(accountId: string | undefined, limit = 20) {
+    const userId = await this.requireUserId(accountId)
+    const results = await this.requireTransport(accountId).userMentions(userId, limit)
+    return results.slice(0, limit)
+  }
+
+  async sendDirectMessageForAccount(
+    accountId: string | undefined,
+    params: { participantId: string; text: string },
+  ): Promise<{ ok: boolean; messageId: string | null; status?: number }> {
+    const transport = this.requireTransport(accountId)
+    const parts = splitXDirectMessageContent(params.text)
+    let firstId: string | null = null
+    for (const part of parts) {
+      const receipt = params.participantId.includes("-")
+        ? await transport.sendDmInConversation(params.participantId, part)
+        : await transport.sendDmToParticipant(params.participantId, part)
+      if (!firstId) firstId = receipt.dm_event_id
+    }
+    return { ok: firstId !== null, messageId: firstId }
+  }
+
+  async fetchDirectMessagesForAccount(
+    accountId: string | undefined,
+    params?: { participantId?: string; limit?: number },
+  ): Promise<Memory[]> {
+    const transport = this.requireTransport(accountId)
+    const id = normalizeXAccountId(accountId)
+    const events = await transport.listDmEvents(params?.limit ?? 50)
+    const agentId = (this.runtime?.agentId ?? "00000000-0000-0000-0000-000000000000") as UUID
+    return events
+      .filter((event) => !params?.participantId || event.sender_id === params.participantId)
+      .map((event) => {
+        const createdAt = Date.parse(event.created_at ?? "")
+        return {
+          id: (this.runtime ? createUniqueUuid(this.runtime, `x-dm:${id}:${event.id}`) : event.id) as UUID,
+          agentId,
+          entityId: (event.sender_id ?? "unknown") as UUID,
+          roomId: (event.dm_conversation_id ?? event.sender_id ?? "dm") as UUID,
+          createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+          content: { text: event.text ?? "", source: "twitter" },
+          metadata: {
+            type: "message",
+            accountId: id,
+            messageIdFull: event.id,
+            x: {
+              accountId: id,
+              dmEventId: event.id,
+              senderId: event.sender_id,
+              conversationId: event.dm_conversation_id,
+            },
+          },
+        } as Memory
+      })
+  }
+
+  createPostService(): IPostService {
+    return {
+      createPost: async (options: CreatePostOptions): Promise<Post> => {
+        const receipts = await this.createPostForAccount(undefined, {
+          text: options.text,
+          inReplyTo: options.inReplyTo,
+          quotedTweetId: options.quotedPostId,
+        })
+        const first = receipts[0]!
+        const profile = this.getActiveProfile()
+        return {
+          id: first.id,
+          agentId: options.agentId,
+          roomId: options.roomId,
+          userId: profile?.id ?? "",
+          username: profile?.username ?? "",
+          text: first.text,
+          timestamp: Date.now(),
+          inReplyTo: options.inReplyTo,
+          quotedPostId: options.quotedPostId,
+        }
+      },
+      deletePost: async (postId: string) => this.deletePostForAccount(undefined, postId),
+      getPost: async () => null,
+      getPosts: async (options: GetPostsOptions): Promise<Post[]> => {
+        const rows = await this.fetchFeedForAccount(undefined, options.limit ?? 20)
+        return rows.map((row) => toServicePost(row, options.agentId, options.roomId))
+      },
+      likePost: async (postId: string) => this.likePostForAccount(undefined, postId),
+      unlikePost: async (postId: string) => this.unlikePostForAccount(undefined, postId),
+      repost: async (postId: string) => this.repostForAccount(undefined, postId),
+      unrepost: async (postId: string) => this.unrepostForAccount(undefined, postId),
+      getMentions: async (agentId: UUID, options?: Partial<GetPostsOptions>): Promise<Post[]> => {
+        const rows = await this.getMentionsForAccount(undefined, options?.limit ?? 20)
+        return rows.map((row) => toServicePost(row, agentId, options?.roomId))
+      },
+    }
+  }
+
+  createMessageService(): IMessageService {
+    return {
+      getMessages: async (options: GetMessagesOptions): Promise<Message[]> => {
+        const memories = await this.fetchDirectMessagesForAccount(undefined, { limit: options.limit })
+        return memories.map((memory) => ({
+          id: String((memory.metadata as Record<string, unknown> | undefined)?.messageIdFull ?? memory.id),
+          agentId: options.agentId,
+          roomId: memory.roomId,
+          userId: String(memory.entityId),
+          username: "",
+          text: memory.content.text ?? "",
+          type: options.type ?? MessageType.DIRECT_MESSAGE,
+          timestamp: memory.createdAt ?? Date.now(),
+        }))
+      },
+      sendMessage: async (options): Promise<Message> => {
+        const res = await this.sendDirectMessageForAccount(undefined, {
+          participantId: String(options.roomId),
+          text: options.text,
+        })
+        return {
+          id: res.messageId ?? "",
+          agentId: options.agentId,
+          roomId: options.roomId,
+          userId: this.getActiveProfile()?.id ?? "",
+          username: this.getActiveProfile()?.username ?? "",
+          text: options.text,
+          type: options.type,
+          timestamp: Date.now(),
+          inReplyTo: options.replyToId,
+        }
+      },
+      deleteMessage: async (messageId: string) => this.deletePostForAccount(undefined, messageId),
+      getMessage: async () => null,
+      markAsRead: async () => undefined,
+    }
+  }
+}

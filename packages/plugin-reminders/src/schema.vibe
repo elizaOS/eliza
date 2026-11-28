@@ -1,0 +1,207 @@
+// spec/reminders/index.md, "Story: Preserve a reminder and its escalation policy"; spec/reminders/migration.md, "Migration copies only into an empty target, records a durable marker, and never alters the source"
+export const REMINDERS_SCHEMA_NAME = "app_reminders" as const
+export const REMINDERS_SOURCE_SCHEMA = "app_lifeops" as const
+
+export const MIGRATED_REMINDER_TABLES = [
+  "life_reminder_plans",
+  "life_reminder_attempts",
+  "life_escalation_states",
+] as const
+
+export type MigratedReminderTable = (typeof MIGRATED_REMINDER_TABLES)[number]
+
+export interface ReminderPlanRow {
+  readonly id: string
+  readonly agentId: string
+  readonly ownerType: string
+  readonly ownerId: string
+  readonly stepsJson: string
+  readonly mutePolicyJson: string
+  readonly quietHoursJson: string
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface ReminderAttemptRow {
+  readonly id: string
+  readonly agentId: string
+  readonly planId: string
+  readonly ownerType: string
+  readonly ownerId: string
+  readonly occurrenceId: string | null
+  readonly channel: string
+  readonly stepIndex: number
+  readonly scheduledFor: string
+  readonly attemptedAt: string | null
+  readonly outcome: string
+  readonly connectorRef: string | null
+  readonly deliveryMetadataJson: string
+  readonly reviewAt: string | null
+  readonly reviewStatus: string | null
+  readonly reviewClaimedAt: string | null
+  readonly reviewClaimedBy: string | null
+  readonly reviewAttemptCount: number
+  readonly reviewNextRetryAt: string | null
+  readonly reviewLastError: string | null
+}
+
+export interface EscalationStateRow {
+  readonly id: string
+  readonly agentId: string
+  readonly reason: string
+  readonly text: string
+  readonly currentStep: number
+  readonly channelsSentJson: string
+  readonly startedAt: string
+  readonly lastSentAt: string
+  readonly resolved: boolean
+  readonly resolvedAt: string | null
+  readonly metadataJson: string
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface ReminderTableSchemaSpec {
+  readonly schema: typeof REMINDERS_SCHEMA_NAME
+  readonly name: MigratedReminderTable
+  readonly primaryKey: "id"
+  readonly columns: readonly string[]
+  readonly indexes: readonly string[]
+}
+
+export const remindersDbSchema: Readonly<Record<MigratedReminderTable, ReminderTableSchemaSpec>> = {
+  life_reminder_plans: {
+    schema: REMINDERS_SCHEMA_NAME,
+    name: "life_reminder_plans",
+    primaryKey: "id",
+    columns: [
+      "id",
+      "agent_id",
+      "owner_type",
+      "owner_id",
+      "steps_json",
+      "mute_policy_json",
+      "quiet_hours_json",
+      "created_at",
+      "updated_at",
+    ],
+    indexes: ["idx_life_reminder_plans_owner"],
+  },
+  life_reminder_attempts: {
+    schema: REMINDERS_SCHEMA_NAME,
+    name: "life_reminder_attempts",
+    primaryKey: "id",
+    columns: [
+      "id",
+      "agent_id",
+      "plan_id",
+      "owner_type",
+      "owner_id",
+      "occurrence_id",
+      "channel",
+      "step_index",
+      "scheduled_for",
+      "attempted_at",
+      "outcome",
+      "connector_ref",
+      "delivery_metadata_json",
+      "review_at",
+      "review_status",
+      "review_claimed_at",
+      "review_claimed_by",
+      "review_attempt_count",
+      "review_next_retry_at",
+      "review_last_error",
+    ],
+    indexes: ["idx_life_reminder_attempts_plan", "idx_life_reminder_attempts_review_scan"],
+  },
+  life_escalation_states: {
+    schema: REMINDERS_SCHEMA_NAME,
+    name: "life_escalation_states",
+    primaryKey: "id",
+    columns: [
+      "id",
+      "agent_id",
+      "reason",
+      "text",
+      "current_step",
+      "channels_sent_json",
+      "started_at",
+      "last_sent_at",
+      "resolved",
+      "resolved_at",
+      "metadata_json",
+      "created_at",
+      "updated_at",
+    ],
+    indexes: ["idx_life_escalation_states_agent_resolved"],
+  },
+}
+
+export const REMINDERS_SQLITE_DDL: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS life_reminder_plans (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    owner_type TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    steps_json TEXT NOT NULL DEFAULT '[]',
+    mute_policy_json TEXT NOT NULL DEFAULT '{}',
+    quiet_hours_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_life_reminder_plans_owner ON life_reminder_plans(agent_id, owner_type, owner_id)`,
+  `CREATE TABLE IF NOT EXISTS life_reminder_attempts (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    owner_type TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    occurrence_id TEXT,
+    channel TEXT NOT NULL,
+    step_index INTEGER NOT NULL DEFAULT 0,
+    scheduled_for TEXT NOT NULL,
+    attempted_at TEXT,
+    outcome TEXT NOT NULL DEFAULT 'pending',
+    connector_ref TEXT,
+    delivery_metadata_json TEXT NOT NULL DEFAULT '{}',
+    review_at TEXT,
+    review_status TEXT,
+    review_claimed_at TEXT,
+    review_claimed_by TEXT,
+    review_attempt_count INTEGER NOT NULL DEFAULT 0,
+    review_next_retry_at TEXT,
+    review_last_error TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_life_reminder_attempts_plan ON life_reminder_attempts(plan_id, owner_type, owner_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_life_reminder_attempts_review_scan ON life_reminder_attempts(agent_id, outcome, review_status, review_at)`,
+  `CREATE TABLE IF NOT EXISTS life_escalation_states (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT '',
+    current_step INTEGER NOT NULL DEFAULT 0,
+    channels_sent_json TEXT NOT NULL DEFAULT '[]',
+    started_at TEXT NOT NULL,
+    last_sent_at TEXT NOT NULL,
+    resolved INTEGER NOT NULL DEFAULT 0,
+    resolved_at TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_life_escalation_states_agent_resolved ON life_escalation_states(agent_id, resolved)`,
+  `CREATE TABLE IF NOT EXISTS reminders_migration_state (
+    table_name TEXT PRIMARY KEY,
+    migrated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS reminder_deliveries (
+    owner_id TEXT NOT NULL,
+    reminder_id TEXT NOT NULL,
+    scheduled_at INTEGER NOT NULL,
+    escalation_at INTEGER NOT NULL,
+    delivery_status TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    PRIMARY KEY (owner_id, reminder_id)
+  )`,
+]

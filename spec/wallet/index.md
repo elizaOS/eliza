@@ -10,6 +10,7 @@ transaction model.
 | --- | --- |
 | Keys | [Custody](./custody.md) |
 | Asking | [Requests](./requests.md) |
+| Policy | [Policy](./policy.md) |
 
 ## Story: Preview an exact wallet operation before executing it
 

@@ -1,0 +1,482 @@
+// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/oauth.md, "Story: Connect, refresh, and disconnect a Google Workspace account without leaving stale grants active"
+import {
+  ElizaError,
+  Service,
+  type ConnectorAccount,
+  type ConnectorAccountProvider,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import {
+  DefaultGoogleCredentialResolver,
+  GoogleApiClientFactory,
+  MissingGoogleCredentialResolver,
+  createOAuthSession,
+  getGoogleOAuthProviderConfig,
+  getGoogleOAuthProviderMetadata,
+  mergeCredentialObject,
+  resolveGoogleConnectorOAuthCallbackUrl,
+  type OauthCredentialFields,
+} from "./auth.vibe"
+import { readEnv } from "./boundary.vibe"
+import { GoogleCalendarClient } from "./calendar.vibe"
+import { GoogleDriveClient, GoogleMeetClient, GooglePeopleClient } from "./drive-people-meet.vibe"
+import { GoogleGmailClient, createGmailMessageConnector } from "./gmail.vibe"
+import { GOOGLE_CAPABILITIES, scopeBitmask, scopesForGoogleCapabilities, specScopesFromOAuthScopes, type GoogleCapability } from "./scopes.vibe"
+import {
+  DEFAULT_GOOGLE_API_BASE_URLS,
+  GOOGLE_SERVICE_NAME,
+  type GoogleAccountRef,
+  type GoogleApiBaseUrls,
+  type GoogleCalendarEvent,
+  type GoogleCalendarEventDeleteInput,
+  type GoogleCalendarEventInput,
+  type GoogleCalendarEventListPage,
+  type GoogleCalendarEventListPageInput,
+  type GoogleCalendarEventPatchInput,
+  type GoogleCalendarEventResponseInput,
+  type GoogleCalendarFreeBusyInput,
+  type GoogleCalendarFreeBusyResult,
+  type GoogleCalendarListEntry,
+  type GoogleCalendarListPage,
+  type GoogleCalendarListPageInput,
+  type GoogleCalendarStopChannelInput,
+  type GoogleCalendarWatchInput,
+  type GoogleCalendarWatchResponse,
+  type GoogleCredentialResolver,
+  type GoogleDocContent,
+  type GoogleDriveCreateFileInput,
+  type GoogleDriveFile,
+  type GoogleDriveFileList,
+  type GoogleGmailAttachmentContent,
+  type GoogleGmailBulkOperation,
+  type GoogleGmailDraftResult,
+  type GoogleGmailFilterCreateResult,
+  type GoogleGmailHistoryPage,
+  type GoogleGmailMessageDetail,
+  type GoogleGmailMessageSummary,
+  type GoogleGmailMutationReceipt,
+  type GoogleGmailSearchPage,
+  type GoogleGmailSendResult,
+  type GoogleGmailSubscriptionMessageHeaders,
+  type GoogleGmailUnrespondedThread,
+  type GoogleMeetConferenceRecord,
+  type GoogleMeetConferenceRecordInput,
+  type GoogleMeetCreateMeetingInput,
+  type GoogleMeetGenerateReportInput,
+  type GoogleMeetGetMeetingInput,
+  type GoogleMeetMeeting,
+  type GoogleMeetParticipant,
+  type GoogleMeetParticipantSession,
+  type GoogleMeetParticipantSessionInput,
+  type GoogleMeetRecording,
+  type GoogleMeetRecordingInput,
+  type GoogleMeetReport,
+  type GoogleMeetSpace,
+  type GoogleMeetTranscript,
+  type GoogleMeetTranscriptArtifact,
+  type GoogleMeetTranscriptInput,
+  type GoogleMessageSummary,
+  type GoogleOAuthProviderConfig,
+  type GoogleOAuthProviderMetadata,
+  type GoogleParsedMailto,
+  type GooglePeopleContactPage,
+  type GooglePeopleGetContactInput,
+  type GooglePeopleListContactsInput,
+  type GooglePeopleSearchContactsInput,
+  type GooglePersonContact,
+  type GoogleSendEmailInput,
+  type GoogleSheetContent,
+  type GoogleSheetUpdateResult,
+  type IGoogleWorkspaceService,
+} from "./types.vibe"
+
+module node {
+  import { createHash, randomBytes } from "node:crypto"
+
+  export function hashAccountKey(input: string): string {
+    return createHash("sha256").update(input.trim().toLowerCase()).digest("hex").slice(0, 16)
+  }
+
+  export function pkcePair(): { readonly verifier: string; readonly challenge: string } {
+    const verifier = randomBytes(32).toString("base64url")
+    const challenge = createHash("sha256").update(verifier).digest("base64url")
+    return { verifier, challenge }
+  }
+}
+import { hashAccountKey, pkcePair } from node
+
+export const GOOGLE_OAUTH_FETCH_TIMEOUT_MS = 15_000
+
+export function stableGoogleConnectorAccountId(subjectOrEmail: string): string {
+  return `google_${hashAccountKey(subjectOrEmail)}`
+}
+
+export interface GoogleUserInfo {
+  readonly sub: string
+  readonly email?: string
+  readonly emailVerified?: boolean
+  readonly name?: string
+  readonly picture?: string
+}
+
+function postFormRequest(endpoint: string, formBody: string) {
+  return HttpClientRequest.post(endpoint).pipe(
+    HttpClientRequest.setHeader("content-type", "application/x-www-form-urlencoded"),
+    HttpClientRequest.bodyText(formBody),
+  )
+}
+
+export async function exchangeAuthorizationCodeWithFetch(params: {
+  readonly code: string
+  readonly clientId: string
+  readonly clientSecret: string
+  readonly redirectUri: string
+  readonly codeVerifier?: string
+  readonly tokenEndpoint?: string
+  readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+}): Promise<OauthCredentialFields> {
+  const endpoint = params.tokenEndpoint ?? `${DEFAULT_GOOGLE_API_BASE_URLS.oauth}/token`
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code: params.code,
+    client_id: params.clientId,
+    client_secret: params.clientSecret,
+    redirect_uri: params.redirectUri,
+    ...(params.codeVerifier === undefined ? {} : { code_verifier: params.codeVerifier }),
+  }).toString()
+  const raw = await runPromise(
+    Effect.provide(
+      effect {
+        const res = Effect.provideService(HttpClient.execute(postFormRequest(endpoint, body)), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+          throw new ElizaError("Google OAuth token exchange network error.", { code: "GOOGLE_OAUTH_EXCHANGE_FAILED" })
+        }
+        const text = res.text catch effect () => ""
+        if (res.status < 200 || res.status >= 300) {
+          throw new ElizaError(`Google OAuth token exchange failed (${res.status}).`, { code: "GOOGLE_OAUTH_EXCHANGE_FAILED" })
+        }
+        return try Effect.try({
+          try: () => JSON.parse(text) as unknown,
+          catch: () => new ElizaError("Google OAuth token exchange returned malformed JSON.", { code: "GOOGLE_OAUTH_EXCHANGE_FAILED" }),
+        })
+      },
+      params.httpLayer ?? FetchHttpClient.layer,
+    ),
+  )
+  const fields: OauthCredentialFields = {}
+  mergeCredentialObject(fields, raw)
+  return fields
+}
+
+export async function fetchGoogleUserInfoWithFetch(params: {
+  readonly accessToken: string
+  readonly userInfoEndpoint?: string
+  readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+}): Promise<GoogleUserInfo> {
+  const endpoint = params.userInfoEndpoint ?? `${DEFAULT_GOOGLE_API_BASE_URLS.userInfo}/v1/userinfo`
+  const raw = await runPromise(
+    Effect.provide(
+      effect {
+        const req = HttpClientRequest.get(endpoint).pipe(
+          HttpClientRequest.bearerToken(params.accessToken),
+          HttpClientRequest.acceptJson,
+        )
+        const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+          throw new ElizaError("Google userinfo network error.", { code: "GOOGLE_OAUTH_USERINFO_FAILED" })
+        }
+        const text = res.text catch effect () => ""
+        if (res.status < 200 || res.status >= 300) {
+          throw new ElizaError(`Google userinfo request failed (${res.status}).`, { code: "GOOGLE_OAUTH_USERINFO_FAILED" })
+        }
+        return try Effect.try({
+          try: () => JSON.parse(text) as { readonly sub?: string; readonly email?: string; readonly email_verified?: boolean; readonly name?: string; readonly picture?: string },
+          catch: () => new ElizaError("Google userinfo response returned malformed JSON.", { code: "GOOGLE_OAUTH_USERINFO_MALFORMED" }),
+        })
+      },
+      params.httpLayer ?? FetchHttpClient.layer,
+    ),
+  )
+  if (!raw.sub) {
+    throw new ElizaError("Google userinfo response lacked a stable sub identifier.", { code: "GOOGLE_OAUTH_USERINFO_MALFORMED" })
+  }
+  return {
+    sub: raw.sub,
+    ...(raw.email === undefined ? {} : { email: raw.email }),
+    ...(raw.email_verified === undefined ? {} : { emailVerified: raw.email_verified }),
+    ...(raw.name === undefined ? {} : { name: raw.name }),
+    ...(raw.picture === undefined ? {} : { picture: raw.picture }),
+  }
+}
+
+export async function revokeGoogleOAuthGrantWithFetch(params: {
+  readonly token: string
+  readonly revocationEndpoint?: string
+  readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+}): Promise<boolean> {
+  const endpoint = params.revocationEndpoint ?? `${DEFAULT_GOOGLE_API_BASE_URLS.oauth}/revoke`
+  const body = new URLSearchParams({ token: params.token }).toString()
+  return runPromise(
+    Effect.provide(
+      effect {
+        const res = Effect.provideService(HttpClient.execute(postFormRequest(endpoint, body)), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => undefined
+        return res !== undefined && res.status >= 200 && res.status < 300
+      },
+      params.httpLayer ?? FetchHttpClient.layer,
+    ),
+  )
+}
+
+export async function verifyGoogleIdTokenWithVerifier(
+  idToken: string,
+  verifier: (token: string) => Promise<{ readonly sub?: string; readonly email?: string; readonly email_verified?: boolean } | null>,
+): Promise<{ readonly sub: string; readonly email?: string; readonly emailVerified?: boolean }> {
+  const claims = await verifier(idToken)
+  if (claims === null || !claims.sub) {
+    throw new ElizaError("Google ID token verification failed.", { code: "GOOGLE_ID_TOKEN_INVALID" })
+  }
+  return {
+    sub: claims.sub,
+    ...(claims.email === undefined ? {} : { email: claims.email }),
+    ...(claims.email_verified === undefined ? {} : { emailVerified: claims.email_verified }),
+  }
+}
+
+export interface GoogleWorkspaceServiceOptions {
+  readonly credentialResolver?: GoogleCredentialResolver
+  readonly baseUrls?: Partial<GoogleApiBaseUrls>
+  readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+}
+
+export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceService {
+  static override serviceType = GOOGLE_SERVICE_NAME
+  override capabilityDescription = "Google Workspace integration for Gmail, Calendar, Drive, Meet, and People over account-scoped OAuth"
+  readonly factory: GoogleApiClientFactory
+  readonly gmail: GoogleGmailClient
+  readonly calendar: GoogleCalendarClient
+  readonly drive: GoogleDriveClient
+  readonly meet: GoogleMeetClient
+  readonly people: GooglePeopleClient
+  readonly session = Effect.runSync(createOAuthSession())
+
+  constructor(runtime?: IAgentRuntime, options: GoogleWorkspaceServiceOptions = {}) {
+    super(runtime)
+    const resolver = options.credentialResolver ?? {
+      resolve: (req) => Promise.reject(new MissingGoogleCredentialResolver(req.accountId)),
+    }
+    this.factory = new GoogleApiClientFactory(resolver, {
+      baseUrls: options.baseUrls,
+      httpLayer: options.httpLayer,
+    })
+    this.gmail = new GoogleGmailClient(this.factory)
+    this.calendar = new GoogleCalendarClient(this.factory)
+    this.drive = new GoogleDriveClient(this.factory)
+    this.meet = new GoogleMeetClient(this.factory)
+    this.people = new GooglePeopleClient(this.factory)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new GoogleWorkspaceService(runtime)
+  }
+
+  override async stop(): Promise<void> {}
+
+  getOAuthProviderConfig(capabilities: readonly GoogleCapability[]): GoogleOAuthProviderConfig {
+    return getGoogleOAuthProviderConfig(capabilities)
+  }
+
+  getOAuthProviderMetadata(): GoogleOAuthProviderMetadata {
+    return getGoogleOAuthProviderMetadata()
+  }
+
+  getGmailHistoryId(params: GoogleAccountRef) { return this.gmail.getGmailHistoryId(params) }
+  listGmailHistoryPage(params: GoogleAccountRef & { readonly startHistoryId: string; readonly pageToken?: string; readonly maxResults?: number }): Promise<GoogleGmailHistoryPage> { return this.gmail.listGmailHistoryPage(params) }
+  searchMessages(params: GoogleAccountRef & { readonly query: string; readonly limit?: number }): Promise<GoogleMessageSummary[]> { return this.gmail.searchMessages(params) }
+  getMessage(params: GoogleAccountRef & { readonly messageId: string; readonly includeBody?: boolean }): Promise<GoogleMessageSummary> { return this.gmail.getMessage(params) }
+  sendEmail(params: GoogleSendEmailInput) { return this.gmail.sendEmail(params) }
+  listGmailTriageMessages(params: GoogleAccountRef & { readonly selfEmail?: string | null; readonly maxResults?: number }): Promise<GoogleGmailMessageSummary[]> { return this.gmail.listGmailTriageMessages(params) }
+  searchGmailMessages(params: GoogleAccountRef & { readonly query: string; readonly selfEmail?: string | null; readonly maxResults?: number; readonly includeSpamTrash?: boolean; readonly labelIds?: readonly string[] }): Promise<GoogleGmailMessageSummary[]> { return this.gmail.searchGmailMessages(params) }
+  searchGmailMessagesPage(params: GoogleAccountRef & { readonly query: string; readonly selfEmail?: string | null; readonly pageToken?: string | null; readonly pageSize?: number; readonly includeSpamTrash?: boolean }): Promise<GoogleGmailSearchPage> { return this.gmail.searchGmailMessagesPage(params) }
+  getGmailMessage(params: GoogleAccountRef & { readonly messageId: string; readonly selfEmail?: string | null }): Promise<GoogleGmailMessageSummary | null> { return this.gmail.getGmailMessage(params) }
+  getGmailMessageDetail(params: GoogleAccountRef & { readonly messageId: string; readonly selfEmail?: string | null }): Promise<GoogleGmailMessageDetail | null> { return this.gmail.getGmailMessageDetail(params) }
+  getGmailAttachment(params: GoogleAccountRef & { readonly messageId: string; readonly partId: string; readonly maxBytes: number }): Promise<GoogleGmailAttachmentContent> { return this.gmail.getGmailAttachment(params) }
+  getGmailMessageRevision(params: GoogleAccountRef & { readonly messageId: string }): Promise<string | null> { return this.gmail.getGmailMessageRevision(params) }
+  listGmailUnrespondedThreads(params: GoogleAccountRef & { readonly selfEmail?: string | null; readonly olderThanDays?: number; readonly maxResults?: number; readonly now?: Date }): Promise<GoogleGmailUnrespondedThread[]> { return this.gmail.listGmailUnrespondedThreads(params) }
+  modifyGmailMessages(params: GoogleAccountRef & { readonly messageIds: readonly string[]; readonly operation: GoogleGmailBulkOperation; readonly labelIds?: readonly string[] }): Promise<GoogleGmailMutationReceipt> { return this.gmail.modifyGmailMessages(params) }
+  sendGmailReply(params: GoogleAccountRef & { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly subject: string; readonly bodyText: string; readonly threadId: string; readonly inReplyTo?: string | null; readonly references?: string | null }): Promise<GoogleGmailSendResult> { return this.gmail.sendGmailReply(params) }
+  sendGmailMessage(params: GoogleAccountRef & { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly bcc?: readonly string[]; readonly subject: string; readonly bodyText: string }): Promise<GoogleGmailSendResult> { return this.gmail.sendGmailMessage(params) }
+  createGmailDraft(params: GoogleAccountRef & { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly bcc?: readonly string[]; readonly subject: string; readonly bodyText: string; readonly threadId?: string; readonly inReplyTo?: string | null; readonly references?: string | null }): Promise<GoogleGmailDraftResult> { return this.gmail.createGmailDraft(params) }
+  getGmailSubscriptionHeaders(params: GoogleAccountRef & { readonly query?: string; readonly maxMessages?: number }): Promise<GoogleGmailSubscriptionMessageHeaders[]> { return this.gmail.getGmailSubscriptionHeaders(params) }
+  createGmailFilterForSender(params: GoogleAccountRef & { readonly fromAddress: string; readonly trash?: boolean }): Promise<GoogleGmailFilterCreateResult> { return this.gmail.createGmailFilterForSender(params) }
+  trashGmailThread(params: GoogleAccountRef & { readonly threadId: string }): Promise<void> { return this.gmail.trashGmailThread(params) }
+  modifyGmailMessageLabels(params: GoogleAccountRef & { readonly messageId: string; readonly addLabelIds?: readonly string[]; readonly removeLabelIds?: readonly string[] }): Promise<void> { return this.gmail.modifyGmailMessageLabels(params) }
+  sendMailtoUnsubscribeEmail(params: GoogleAccountRef & { readonly mailto: GoogleParsedMailto }): Promise<void> { return this.gmail.sendMailtoUnsubscribeEmail(params) }
+
+  listCalendars(params: GoogleAccountRef): Promise<GoogleCalendarListEntry[]> { return this.calendar.listCalendars(params) }
+  listCalendarPage(params: GoogleCalendarListPageInput): Promise<GoogleCalendarListPage> { return this.calendar.listCalendarPage(params) }
+  listEvents(params: GoogleAccountRef & { readonly calendarId?: string; readonly timeMin?: string; readonly timeMax?: string; readonly limit?: number; readonly timeZone?: string }): Promise<GoogleCalendarEvent[]> { return this.calendar.listEvents(params) }
+  listEventPage(params: GoogleCalendarEventListPageInput): Promise<GoogleCalendarEventListPage> { return this.calendar.listEventPage(params) }
+  watchEvents(params: GoogleCalendarWatchInput): Promise<GoogleCalendarWatchResponse> { return this.calendar.watchEvents(params) }
+  stopCalendarChannel(params: GoogleCalendarStopChannelInput): Promise<void> { return this.calendar.stopCalendarChannel(params) }
+  queryFreeBusy(params: GoogleCalendarFreeBusyInput): Promise<GoogleCalendarFreeBusyResult> { return this.calendar.queryFreeBusy(params) }
+  getEvent(params: GoogleAccountRef & { readonly calendarId?: string; readonly eventId: string; readonly timeZone?: string }): Promise<GoogleCalendarEvent> { return this.calendar.getEvent(params) }
+  findEventByIdempotencyKey(params: GoogleAccountRef & { readonly calendarId: string; readonly idempotencyKey: string; readonly timeZone?: string }): Promise<GoogleCalendarEvent | null> { return this.calendar.findEventByIdempotencyKey(params) }
+  createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> { return this.calendar.createEvent(params) }
+  updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent> { return this.calendar.updateEvent(params) }
+  deleteEvent(params: GoogleCalendarEventDeleteInput): Promise<void> { return this.calendar.deleteEvent(params) }
+  respondToEvent(params: GoogleCalendarEventResponseInput): Promise<GoogleCalendarEvent> { return this.calendar.respondToEvent(params) }
+
+  searchFiles(params: GoogleAccountRef & { readonly query: string; readonly limit?: number }): Promise<GoogleDriveFile[]> { return this.drive.searchFiles(params) }
+  getFile(params: GoogleAccountRef & { readonly fileId: string }): Promise<GoogleDriveFile> { return this.drive.getFile(params) }
+  listDriveFiles(params: GoogleAccountRef & { readonly folderId?: string; readonly maxResults?: number; readonly pageToken?: string }): Promise<GoogleDriveFileList> { return this.drive.listDriveFiles(params) }
+  searchDriveFiles(params: GoogleAccountRef & { readonly query: string; readonly maxResults?: number; readonly pageToken?: string }): Promise<GoogleDriveFileList> { return this.drive.searchDriveFiles(params) }
+  getDocContent(params: GoogleAccountRef & { readonly documentId: string }): Promise<GoogleDocContent> { return this.drive.getDocContent(params) }
+  getSheetContent(params: GoogleAccountRef & { readonly spreadsheetId: string; readonly range?: string }): Promise<GoogleSheetContent> { return this.drive.getSheetContent(params) }
+  createDriveFile(params: GoogleDriveCreateFileInput): Promise<GoogleDriveFile> { return this.drive.createDriveFile(params) }
+  appendToDoc(params: GoogleAccountRef & { readonly documentId: string; readonly text: string }): Promise<void> { return this.drive.appendToDoc(params) }
+  updateSheetCells(params: GoogleAccountRef & { readonly spreadsheetId: string; readonly range: string; readonly values: readonly (readonly (string | number)[])[] }): Promise<GoogleSheetUpdateResult> { return this.drive.updateSheetCells(params) }
+
+  listContacts(params: GooglePeopleListContactsInput): Promise<GooglePeopleContactPage> { return this.people.listContacts(params) }
+  searchContacts(params: GooglePeopleSearchContactsInput): Promise<GooglePersonContact[]> { return this.people.searchContacts(params) }
+  getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact> { return this.people.getContact(params) }
+
+  createMeeting(params: GoogleMeetCreateMeetingInput): Promise<GoogleMeetMeeting> { return this.meet.createMeeting(params) }
+  getMeeting(params: GoogleMeetGetMeetingInput): Promise<GoogleMeetMeeting> { return this.meet.getMeeting(params) }
+  getMeetingSpace(params: GoogleMeetGetMeetingInput): Promise<GoogleMeetSpace> { return this.meet.getMeetingSpace(params) }
+  getConferenceRecord(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetConferenceRecord> { return this.meet.getConferenceRecord(params) }
+  listMeetingParticipants(params: GoogleMeetConferenceRecordInput & { readonly limit?: number }): Promise<GoogleMeetParticipant[]> { return this.meet.listMeetingParticipants(params) }
+  listMeetingParticipantSessions(params: GoogleMeetParticipantSessionInput & { readonly limit?: number }): Promise<GoogleMeetParticipantSession[]> { return this.meet.listMeetingParticipantSessions(params) }
+  listMeetingTranscripts(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetTranscriptArtifact[]> { return this.meet.listMeetingTranscripts(params) }
+  getMeetingTranscript(params: GoogleMeetTranscriptInput): Promise<GoogleMeetTranscript[]> { return this.meet.getMeetingTranscript(params) }
+  listMeetingRecordings(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetRecording[]> { return this.meet.listMeetingRecordings(params) }
+  getMeetingRecordingUrl(params: GoogleMeetRecordingInput): Promise<string | null> { return this.meet.getMeetingRecordingUrl(params) }
+  endMeeting(params: GoogleAccountRef & { readonly spaceName: string }): Promise<void> { return this.meet.endMeeting(params) }
+  generateReport(params: GoogleMeetGenerateReportInput): Promise<GoogleMeetReport> { return this.meet.generateReport(params) }
+}
+
+export function createGoogleConnectorAccountProvider(
+  runtime?: IAgentRuntime,
+  options: {
+    readonly clientId?: string
+    readonly clientSecret?: string
+    readonly baseUrls?: Partial<GoogleApiBaseUrls>
+    readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+  } = {},
+): ConnectorAccountProvider {
+  const tokens = new Map<string, OauthCredentialFields>()
+  const resolver = new DefaultGoogleCredentialResolver({
+    reader: {
+      read: (accountId) => tokens.get(accountId),
+      write: (accountId, creds) => { tokens.set(accountId, creds) },
+      delete: (accountId) => { tokens.delete(accountId) },
+    },
+  })
+  const workspace = new GoogleWorkspaceService(runtime, {
+    credentialResolver: resolver,
+    baseUrls: options.baseUrls,
+    httpLayer: options.httpLayer,
+  })
+  const stateNonces = new Map<string, number>()
+  let nextNonce = 1
+
+  return {
+    provider: GOOGLE_SERVICE_NAME,
+    label: "Google Workspace",
+    messageConnector: createGmailMessageConnector(workspace.gmail),
+    startOAuth: async (request) => {
+      const clientId = options.clientId ?? readEnv("GOOGLE_CLIENT_ID") ?? ""
+      const redirectUri = resolveGoogleConnectorOAuthCallbackUrl({
+        redirectUri: request.redirectUri,
+        servedOrigin: request.servedOrigin,
+      })
+      const scopes = request.scopes && request.scopes.length > 0
+        ? request.scopes
+        : scopesForGoogleCapabilities(GOOGLE_CAPABILITIES)
+      const { verifier, challenge } = pkcePair()
+      const nonce = nextNonce
+      nextNonce += 1
+      stateNonces.set(request.flow.state, nonce)
+      await runPromise(Effect.catch(workspace.session.startOAuth(nonce), () => Effect.void))
+      const authUrl = new URL(getGoogleOAuthProviderMetadata().authorizationEndpoint)
+      authUrl.searchParams.set("client_id", clientId)
+      authUrl.searchParams.set("redirect_uri", redirectUri)
+      authUrl.searchParams.set("response_type", "code")
+      authUrl.searchParams.set("access_type", "offline")
+      authUrl.searchParams.set("prompt", "consent")
+      authUrl.searchParams.set("state", request.flow.state)
+      authUrl.searchParams.set("scope", scopes.join(" "))
+      authUrl.searchParams.set("code_challenge", challenge)
+      authUrl.searchParams.set("code_challenge_method", "S256")
+      return {
+        authUrl: authUrl.toString(),
+        redirectUri,
+        codeVerifier: verifier,
+      }
+    },
+    completeOAuth: async (request) => {
+      const nonce = stateNonces.get(request.flow.state)
+      stateNonces.delete(request.flow.state)
+      if (request.error || !request.code) {
+        await runPromise(Effect.catch(workspace.session.cancelOAuth(), () => Effect.void))
+        throw new ElizaError(request.errorDescription ?? request.error ?? "Google OAuth callback failed.", {
+          code: "GOOGLE_OAUTH_CALLBACK_FAILED",
+        })
+      }
+      const clientId = options.clientId ?? readEnv("GOOGLE_CLIENT_ID") ?? ""
+      const clientSecret = options.clientSecret ?? readEnv("GOOGLE_CLIENT_SECRET") ?? ""
+      const redirectUri = request.flow.redirectUri ?? resolveGoogleConnectorOAuthCallbackUrl({})
+      const exchanged = await exchangeAuthorizationCodeWithFetch({
+        code: request.code,
+        clientId,
+        clientSecret,
+        redirectUri,
+        codeVerifier: request.flow.codeVerifier,
+        tokenEndpoint: options.baseUrls?.oauth ? `${options.baseUrls.oauth}/token` : undefined,
+        httpLayer: options.httpLayer,
+      })
+      const accessToken = exchanged.access_token ?? ""
+      const userInfo = await fetchGoogleUserInfoWithFetch({
+        accessToken,
+        userInfoEndpoint: options.baseUrls?.userInfo ? `${options.baseUrls.userInfo}/v1/userinfo` : undefined,
+        httpLayer: options.httpLayer,
+      })
+      const accountId = request.flow.accountId ?? stableGoogleConnectorAccountId(userInfo.sub)
+      tokens.set(accountId, exchanged)
+      resolver.invalidate(accountId)
+      const grantedScopes = (exchanged.scope ?? "").split(/\s+/).filter((s) => s.length > 0)
+      const mask = Math.max(1, scopeBitmask(specScopesFromOAuthScopes(grantedScopes)))
+      if (nonce !== undefined) {
+        await runPromise(Effect.catch(workspace.session.completeOAuth(nonce, Boolean(exchanged.refresh_token), mask), () => Effect.void))
+      }
+      const now = Date.now()
+      const account: ConnectorAccount = {
+        id: accountId,
+        provider: GOOGLE_SERVICE_NAME,
+        label: userInfo.email ?? userInfo.name ?? accountId,
+        role: "owner",
+        purpose: ["messaging", "workspace"],
+        accessGate: "owner",
+        status: "connected",
+        externalId: userInfo.sub,
+        ...(userInfo.email === undefined ? {} : { displayHandle: userInfo.email }),
+        createdAt: now,
+        updatedAt: now,
+        metadata: { scopes: grantedScopes },
+      }
+      return { account, flow: { status: "completed", accountId } }
+    },
+    deleteAccount: async (accountId) => {
+      const existing = tokens.get(accountId)
+      tokens.delete(accountId)
+      resolver.invalidate(accountId)
+      await runPromise(Effect.catch(workspace.session.disconnect(), () => Effect.void))
+      const tokenToRevoke = existing?.refresh_token ?? existing?.access_token
+      if (tokenToRevoke) {
+        await revokeGoogleOAuthGrantWithFetch({
+          token: tokenToRevoke,
+          revocationEndpoint: options.baseUrls?.oauth ? `${options.baseUrls.oauth}/revoke` : undefined,
+          httpLayer: options.httpLayer,
+        })
+      }
+    },
+  }
+}

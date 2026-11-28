@@ -1,0 +1,525 @@
+// spec/network/index.md, "Availability uses the member's own evidence and calendar window"; spec/network/index.md, "A stated weekday or day of the month is read on the member's own calendar"
+import type { ContextDefinition } from "@elizaos/core"
+import { NETWORK_MEMBER_STATES, type NetworkMemberState } from "./types.vibe"
+
+export const NETWORK_CONTEXT_DEFINITION: ContextDefinition = {
+  id: "network",
+  label: "The Network",
+  description:
+    "The member's Network membership: pausing or resuming introductions, being busy or traveling (in another city until a date), how often The Network contacts them, and their Network profile and active introductions.",
+  descriptionCompressed: "Network availability: pause/resume intros, busy, traveling until a date",
+  sensitivity: "personal",
+}
+
+export interface DateWindow {
+  from: string | null
+  until: string | null
+}
+
+export interface ProposedSetState {
+  readonly state: NetworkMemberState
+  readonly from?: string | null
+  readonly until: string | null
+  readonly evidence: string
+}
+
+export type DateGuard =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: "missing until" | "date mismatch" }
+
+export type SetStateDecision =
+  | {
+      readonly allowed: true
+      readonly state: NetworkMemberState
+      readonly from: string | null
+      readonly until: string | null
+    }
+  | { readonly allowed: false; readonly reason: string }
+
+export function sanitize(text: string): string {
+  return text
+    .replace(/[\u{E0000}-\u{E007F}]/gu, "")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/gu, "")
+    .normalize("NFKC")
+    .replace(/[‘’]/gu, "'")
+}
+
+const norm = (text: string) =>
+  sanitize(text)
+    .toLowerCase()
+    .replace(/[‘’]/gu, "'")
+    .replace(/[^\p{L}\p{N}'+@.]+/gu, " ")
+    .trim()
+
+interface QuotedSpanRange {
+  readonly start: number
+  readonly end: number
+}
+
+const FIRST_PERSON_REPORTING_SUBJECT =
+  /\b(?:I|we)(?:['’](?:ve|d))?(?:\s+(?:have|had|just|also|still|never|already|once|both|\p{L}+ly))*\s*$/iu
+
+function capturedRange(match: RegExpMatchArray, group: number): QuotedSpanRange | null {
+  const range = match.indices?.[group]
+  return range !== undefined ? { start: range[0], end: range[1] } : null
+}
+
+function quotedSpanRanges(text: string): QuotedSpanRange[] {
+  const ranges: QuotedSpanRange[] = []
+  for (const match of text.matchAll(/"([^"]{3,})"|“([^”]{3,})”/dgu)) {
+    const range = capturedRange(match, match[1] ? 1 : 2)
+    if (range !== null) ranges.push(range)
+  }
+  for (const match of text.matchAll(/(?<![\p{L}\p{N}])['‘]([^'‘’\n]{3,}?)['’](?![\p{L}\p{N}])/dgu)) {
+    const range = capturedRange(match, 1)
+    if (range !== null) ranges.push(range)
+  }
+  for (const match of text.matchAll(
+    /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=,\s*(?:and|but)\s+(?:I|we)\b|\s+and\s+(?:I|we)\s+(?:said|says|told|asked|wrote|writes|texted|messaged)\b|\s+but\b|[\n.;!?]|$)/dgiu,
+  )) {
+    if (FIRST_PERSON_REPORTING_SUBJECT.test(text.slice(0, match.index))) continue
+    const range = match[1] && match[1].trim().length >= 2 ? capturedRange(match, 1) : null
+    if (range !== null) ranges.push(range)
+  }
+  const fwd =
+    /(?:^|\n)[ \t]*(?:-{2,}\s*forwarded message\s*-{2,}|begin forwarded message:?|fwd?:)[\s\S]*$/iu.exec(
+      text,
+    )
+  if (fwd !== null) {
+    ranges.push({ start: fwd.index, end: fwd.index + fwd[0].length })
+  }
+  let lineOffset = 0
+  for (const line of text.split("\n")) {
+    const marker = /^\s*>/u.exec(line)
+    if (marker !== null) {
+      ranges.push({ start: lineOffset + marker[0].length, end: lineOffset + line.length })
+    }
+    lineOffset += line.length + 1
+  }
+  return ranges
+}
+
+export function quotedSpans(text: string): string[] {
+  return quotedSpanRanges(text).map(({ start, end }) => text.slice(start, end))
+}
+
+export function ownWords(memberText: string): string {
+  const own = sanitize(memberText)
+  const chars = own.split("")
+  for (const { start, end } of quotedSpanRanges(own)) {
+    chars.fill(" ", start, end)
+  }
+  return chars.join("")
+}
+
+export function evidenceOk(
+  evidence: string,
+  memberText: string,
+): { readonly ok: true } | { readonly ok: false; readonly why: string } {
+  const e = norm(evidence)
+  const t = norm(memberText)
+  if (e.length < 2) return { ok: false, why: "empty evidence" }
+  if (!t.includes(e)) return { ok: false, why: "evidence not in member text" }
+  if (quotedSpans(memberText).some((quote) => norm(quote).includes(e))) {
+    return { ok: false, why: "evidence is inside quoted third-party text" }
+  }
+  return { ok: true }
+}
+
+const PAUSE_OR_BUSY_CUE =
+  /\b(?:pause|stop|break|hold|on hold|hold off|mute|snooze|quiet|step back|time off|me time|leave me|don'?t (?:send|message|text|contact|ping)|do not (?:send|message|text|contact|ping)|no (?:more )?(?:intros|introductions|messages|texts)|busy|slammed|swamped|underwater|buried|crazy|hectic|insane|nuts|fewer|less|go easy|only (?:ping|message|text|contact) me if|minimum|a lot going on|overwhelmed)\b/giu
+const STATE_CUE: Readonly<Record<NetworkMemberState, RegExp>> = {
+  paused: PAUSE_OR_BUSY_CUE,
+  busy: PAUSE_OR_BUSY_CUE,
+  traveling:
+    /\b(?:travel\w*|trip|away|out of town|vacation|holiday|abroad|fly\w*|visiting|heading|going to|off to|road|(?:in|to|at) \p{L}{3,})\b/giu,
+  open: /\b(?:back|resume|unpause|un-pause|available|open|free again|ready|keep (?:them|em|'em|it) coming|send (?:me )?(?:more )?(?:intros|introductions)|start (?:sending|again)|turn (?:\w+ )?(?:back )?on|i'?m in|good to go)\b/giu,
+}
+const NEGATED =
+  /\b(?:not|never|no longer|don'?t|do not|didn'?t|isn'?t|won'?t|can'?t|ain'?t|nothing)\s+(?:\w+\s+)?$/iu
+
+export function evidenceSupportsState(state: NetworkMemberState, evidence: string): boolean {
+  const e = sanitize(evidence).toLowerCase().replace(/[‘’]/gu, "'")
+  for (const m of e.matchAll(STATE_CUE[state])) {
+    if (!NEGATED.test(e.slice(0, m.index))) return true
+  }
+  return false
+}
+
+const EXPLICIT_PAUSE =
+  /\b(?:pause|unpause|stop|break|on hold|mute|snooze|don'?t (?:message|text|contact|ping)|do not (?:message|text|contact|ping)|no (?:more )?(?:intros|messages|texts))\b/iu
+const BUSY_CUE =
+  /\b(?:busy|slammed|swamped|underwater|buried|crazy|hectic|insane|nuts|fewer|less|go easy|only (?:ping|message|text|contact) me if|hold off on new|minimum)\b/iu
+
+export function resolveBusyVsPaused(
+  state: NetworkMemberState,
+  memberText: string,
+): NetworkMemberState {
+  if (state !== "paused") return state
+  const own = ownWords(memberText)
+  return BUSY_CUE.test(own) && !EXPLICIT_PAUSE.test(own) ? "busy" : state
+}
+
+export function zonedNow(now: Date, timeZone?: string | null): Date {
+  if (!timeZone) return now
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(now)
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value)
+    return new Date(
+      Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second")),
+    )
+  } catch {
+    return now
+  }
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+const NUMBERS: Readonly<Record<string, number>> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  few: 3,
+  "a few": 3,
+  couple: 2,
+  "a couple": 2,
+  "a couple of": 2,
+}
+
+const MONTH = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)`
+const WEEKDAY = String.raw`(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(?:day|nesday|sday|urday|rsday)?`
+const DAY = String.raw`(\d{1,2})(?:st|nd|rd|th)?`
+const END = String.raw`(?:until|till|til|thru|through|back(?:\s+(?:on|by|in)|(?=\s+the\s))|by)`
+
+const dayUtc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d))
+const startOfDay = (now: Date) => dayUtc(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000)
+const monthIndex = (s: string) => MONTHS.indexOf(s.slice(0, 3).toLowerCase())
+const toIso = (d: Date | null): string | null => (d === null ? null : d.toISOString())
+
+function nextDayOfMonthDate(n: number, today: Date): Date | null {
+  if (n < 1 || n > 31) return null
+  for (let k = 0; k < 13; k += 1) {
+    const d = dayUtc(today.getUTCFullYear(), today.getUTCMonth() + k, n)
+    if (d.getUTCDate() === n && d >= today) return d
+  }
+  return null
+}
+
+function statedMonthDay(m: number, n: number, today: Date): Date | null {
+  for (const year of [today.getUTCFullYear(), today.getUTCFullYear() + 1]) {
+    const candidate = dayUtc(year, m, n)
+    if (candidate.getUTCMonth() === m && candidate.getUTCDate() === n && candidate >= today) {
+      return candidate
+    }
+  }
+  return null
+}
+
+function nextWeekdayDate(weekday: number, today: Date, nextWeek: boolean): Date {
+  if (nextWeek) {
+    const daysToMonday = (8 - today.getUTCDay()) % 7 || 7
+    return addDays(today, daysToMonday + ((weekday + 6) % 7))
+  }
+  const delta = (weekday - today.getUTCDay() + 7) % 7 || 7
+  return addDays(today, delta)
+}
+
+export function parseDateExpr(expr: string, now: Date): Date | null {
+  const t = expr.trim().toLowerCase().replace(/[’]/gu, "'")
+  const today = startOfDay(now)
+
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})\b/u.exec(t)
+  if (isoMatch !== null) {
+    const parsed = dayUtc(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]))
+    if (
+      parsed.getUTCFullYear() === Number(isoMatch[1]) &&
+      parsed.getUTCMonth() === Number(isoMatch[2]) - 1 &&
+      parsed.getUTCDate() === Number(isoMatch[3])
+    ) {
+      return parsed
+    }
+    return null
+  }
+  if (/^tomorrow\b/u.test(t)) return addDays(today, 1)
+  if (/^after\s+new\s*year'?s?\b/u.test(t)) return dayUtc(today.getUTCFullYear() + 1, 0, 2)
+
+  const slashMatch = /^(\d{1,2})\/(\d{1,2})\b/u.exec(t)
+  if (slashMatch !== null) {
+    const m = Number(slashMatch[1]) - 1
+    const d = Number(slashMatch[2])
+    return m >= 0 && m <= 11 ? statedMonthDay(m, d, today) : null
+  }
+
+  const monthDayMatch = new RegExp(String.raw`^${MONTH}\s+${DAY}\b`, "iu").exec(t)
+  if (monthDayMatch !== null) {
+    return statedMonthDay(monthIndex(monthDayMatch[1] ?? ""), Number(monthDayMatch[2]), today)
+  }
+
+  const dayMonthMatch = new RegExp(String.raw`^(?:the\s+)?${DAY}\s+(?:of\s+)?${MONTH}\b`, "iu").exec(t)
+  if (dayMonthMatch !== null) {
+    return statedMonthDay(monthIndex(dayMonthMatch[2] ?? ""), Number(dayMonthMatch[1]), today)
+  }
+
+  const weekdayMatch = new RegExp(
+    String.raw`^(next\s+week(?:'s)?,?\s+(?:on\s+)?)?(next\s+)?${WEEKDAY}\b(,?\s+(?:of\s+)?next\s+week\b)?`,
+    "iu",
+  ).exec(t)
+  if (weekdayMatch !== null) {
+    const wd = WEEKDAYS.indexOf((weekdayMatch[3] ?? "").slice(0, 3).toLowerCase())
+    if (wd >= 0) {
+      const isNextWeek =
+        weekdayMatch[1] !== undefined || weekdayMatch[2] !== undefined || weekdayMatch[4] !== undefined
+      return nextWeekdayDate(wd, today, isNextWeek)
+    }
+  }
+
+  const ordinalMatch = /^(?:the\s+)?(\d{1,2})(st|nd|rd|th)?\b/iu.exec(t)
+  if (ordinalMatch !== null && (ordinalMatch[2] !== undefined || t.startsWith("the "))) {
+    return nextDayOfMonthDate(Number(ordinalMatch[1]), today)
+  }
+
+  const bareMonthMatch = new RegExp(String.raw`^(?!may\b)${MONTH}\b`, "iu").exec(t)
+  if (bareMonthMatch !== null) {
+    return statedMonthDay(monthIndex(bareMonthMatch[1] ?? ""), 1, today)
+  }
+
+  return null
+}
+
+function statedStart(t: string, now: Date): Date | null {
+  for (const m of t.matchAll(/\b(?:from|starting|beginning|on)\s+(?:on\s+)?(?:the\s+)?/gu)) {
+    const rest = t.slice(m.index + m[0].length)
+    const d = parseDateExpr(rest, now)
+    if (d !== null) return d
+  }
+  return null
+}
+
+export function resolveWindow(text: string, now: Date, start?: Date): DateWindow {
+  const t = text.toLowerCase().replace(/[’]/gu, "'")
+  const today = startOfDay(now)
+  const out: DateWindow = { from: null, until: null }
+
+  const range = new RegExp(String.raw`\bfrom\s+(.+?)\s+(?:${END}|to)\s+(.+)$`, "u").exec(t)
+  if (range?.[1] && range[2]) {
+    const base =
+      /\bnext\s+week\b/u.test(t) && new RegExp(String.raw`^${WEEKDAY}\b`, "u").test(range[1])
+        ? addDays(today, ((8 - today.getUTCDay()) % 7 || 7) - 1)
+        : now
+    const from = parseDateExpr(range[1], base)
+    if (from !== null) {
+      let until = parseDateExpr(range[2], now)
+      if (until !== null && until <= from) until = parseDateExpr(range[2], from)
+      out.from = toIso(from)
+      out.until = toIso(until)
+      if (out.until !== null) return out
+    }
+  }
+
+  const end = new RegExp(String.raw`\b${END}\s+(?:the\s+)?(.+)$`, "u").exec(t)
+  if (end !== null) {
+    const d = parseDateExpr(end[0].replace(new RegExp(String.raw`^${END}\s+`, "u"), ""), now)
+    if (d !== null) return { from: out.from, until: toIso(d) }
+  }
+
+  if (/\bafter\s+new\s*year'?s?\b/u.test(t)) {
+    return { from: null, until: toIso(dayUtc(today.getUTCFullYear() + 1, 0, 2)) }
+  }
+
+  const dur =
+    /\bfor\s+(a couple of|a couple|a few|couple|few|an|a|one|two|three|four|five|six|\d+)\s+(day|week|month)s?\b/u.exec(
+      t,
+    )
+  if (dur?.[1]) {
+    const n = /^\d+$/u.test(dur[1]) ? Number(dur[1]) : (NUMBERS[dur[1]] ?? 1)
+    const stated = statedStart(t, now)
+    const base = stated ?? start ?? today
+    const until =
+      dur[2] === "day"
+        ? addDays(base, n)
+        : dur[2] === "week"
+          ? addDays(base, 7 * n)
+          : (() => {
+              const target = base.getUTCMonth() + n
+              const lastDay = dayUtc(base.getUTCFullYear(), target + 1, 0).getUTCDate()
+              return dayUtc(base.getUTCFullYear(), target, Math.min(base.getUTCDate(), lastDay))
+            })()
+    return { from: toIso(stated), until: toIso(until) }
+  }
+
+  if (/\b(?:all\s+)?next\s+week\b/u.test(t)) {
+    const nextMonday = addDays(today, (8 - today.getUTCDay()) % 7 || 7)
+    return { from: toIso(nextMonday), until: toIso(addDays(nextMonday, 6)) }
+  }
+  if (/\bthis\s+week\b/u.test(t)) {
+    return { from: null, until: toIso(addDays(today, (7 - today.getUTCDay()) % 7)) }
+  }
+
+  return out
+}
+
+const END_MARKER =
+  /\b(?:until|till|til|thru|through|back (?:on|by|the|in)|after|for (?:a |an |the )?(?:\d+|one|two|three|four|five|six|few|a few|couple|a couple(?: of)?)\s*(?:days?|weeks?|months?))\b|\bthis week\b|\bnext week\b/iu
+const MONTH_RE =
+  /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/giu
+const ORDINAL_RE = /\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/giu
+
+export function checkDates(
+  state: NetworkMemberState,
+  from: string | null,
+  until: string | null,
+  memberText: string,
+): DateGuard {
+  if (state === "open") return { ok: true }
+  const own = ownWords(memberText)
+  if (!until && END_MARKER.test(own)) return { ok: false, reason: "missing until" }
+  const proposed = [from, until].filter((d): d is string => Boolean(d)).map((d) => new Date(d))
+  if (proposed.length === 0) return { ok: true }
+  const days = [...own.matchAll(ORDINAL_RE)].map((m) => Number(m[1]))
+  if (days.length > 0 && !proposed.some((d) => days.includes(d.getUTCDate()))) {
+    return { ok: false, reason: "date mismatch" }
+  }
+  const months = [...own.matchAll(MONTH_RE)]
+    .filter(
+      (m) =>
+        m[1]?.toLowerCase() !== "may" ||
+        /^\s*\d/u.test(own.slice(m.index + 3)) ||
+        /\b(?:in|until|till|til|thru|through|by|of|early|mid|late|since|from|before|after)\s+$/iu.test(
+          own.slice(0, m.index),
+        ),
+    )
+    .map((m) => MONTHS.indexOf((m[1] ?? "").slice(0, 3).toLowerCase()))
+  if (months.length > 0 && !proposed.some((d) => months.includes(d.getUTCMonth()))) {
+    const lastDayOf = proposed.some(
+      (d) => d.getUTCDate() === 1 && months.includes((d.getUTCMonth() + 11) % 12),
+    )
+    if (!lastDayOf) return { ok: false, reason: "date mismatch" }
+  }
+  return { ok: true }
+}
+
+export function authorizeSetState(
+  proposal: {
+    readonly state: unknown
+    readonly from?: unknown
+    readonly until: unknown
+    readonly evidence: unknown
+  },
+  memberText: string,
+  at: Date = new Date(),
+  opts: { readonly timeZone?: string | null } = {},
+): SetStateDecision {
+  const now = zonedNow(at, opts.timeZone)
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  if (
+    typeof proposal.state !== "string" ||
+    !(NETWORK_MEMBER_STATES as readonly string[]).includes(proposal.state)
+  ) {
+    return { allowed: false, reason: "invalid state" }
+  }
+  if (typeof proposal.evidence !== "string") {
+    return { allowed: false, reason: "missing evidence" }
+  }
+  const evidence = evidenceOk(proposal.evidence, memberText)
+  if (!evidence.ok) return { allowed: false, reason: evidence.why }
+  const requestedState = proposal.state as NetworkMemberState
+  if (!evidenceSupportsState(requestedState, proposal.evidence)) {
+    return { allowed: false, reason: "evidence does not support state" }
+  }
+
+  let until: string | null = null
+  if (typeof proposal.until === "string" && proposal.until.trim().length > 0) {
+    const parsed = Date.parse(proposal.until)
+    if (Number.isNaN(parsed)) return { allowed: false, reason: "invalid until" }
+    if (parsed < today) return { allowed: false, reason: "until is in the past" }
+    until = new Date(parsed).toISOString()
+  }
+
+  let from: string | null = null
+  if (typeof proposal.from === "string" && proposal.from.trim().length > 0) {
+    const parsed = Date.parse(proposal.from)
+    if (Number.isNaN(parsed)) return { allowed: false, reason: "invalid from" }
+    if (parsed < today) return { allowed: false, reason: "from is in the past" }
+    from = parsed > now.getTime() ? new Date(parsed).toISOString() : null
+  }
+
+  const stated = resolveWindow(ownWords(memberText), now, from !== null ? new Date(from) : undefined)
+  if (stated.until !== null) until = stated.until
+  if (stated.from !== null) from = Date.parse(stated.from) > now.getTime() ? stated.from : null
+  if (until !== null && Date.parse(until) < today) {
+    return { allowed: false, reason: "until is in the past" }
+  }
+  if (from !== null && until !== null && Date.parse(until) <= Date.parse(from)) {
+    return { allowed: false, reason: "until is not after from" }
+  }
+
+  const state = resolveBusyVsPaused(requestedState, memberText)
+  const dates = checkDates(state, from, until, memberText)
+  if (!dates.ok) return { allowed: false, reason: dates.reason }
+  return {
+    allowed: true,
+    state,
+    from: state === "open" ? null : from,
+    until: state === "open" ? null : until,
+  }
+}
+
+const SELF = String.raw`(?:^|[.!?,;]\s*|\b(?:i'?m|i am|i'?ll be|i will be|i'?ve been|im)\s+)`
+const UNTIL = String.raw`(?:until|till|til|thru|through|for (?:a|the|two|three|\d+|a couple(?: of)?) (?:days?|weeks?|months?|bit|while)|this week|next week|rn|right now)`
+
+const STATE_PATTERNS: readonly RegExp[] = [
+  /\b(?:pause|unpause|un-pause|resume|restart|stop|mute|snooze|hold)\b[\s\S]{0,40}\b(?:intros?|introductions?|the network|network|everything|messages|texts|me)\b/iu,
+  /\b(?:unpause|un-pause)\b/iu,
+  /\bon hold\b/iu,
+  /\b(?:take|taking|need|needs)\s+(?:a\s+)?break\b/iu,
+  /\bhold\s+off\b/iu,
+  /\b(?:don'?t|dont|do not|stop)\s+(?:send(?:ing)?|message|messaging|text(?:ing)?|ping(?:ing)?|contact(?:ing)?)\s+me\b/iu,
+  /\bturn\s+(?:the\s+|my\s+)?(?:intros?|introductions?|network)\s+(?:back\s+)?(?:on|off)\b/iu,
+  new RegExp(`${SELF}(?:\\w+\\s+)?(?:busy|slammed|swamped|underwater|buried)\\b`, "iu"),
+  new RegExp(
+    `(?:${SELF}|\\bwork(?:'s| is)\\s+)(?:\\w+\\s+){0,2}(?:busy|slammed|swamped|underwater|buried|crazy|hectic|insane|nuts)\\b[\\s\\S]{0,30}\\b${UNTIL}\\b`,
+    "iu",
+  ),
+  /\bmark\s+me\s+(?:as\s+)?(?:busy|away|available|open|back)\b/iu,
+  /\b(?:fewer|less)\s+(?:messages|texts|intros|pings)\b/iu,
+  /\bgo\s+easy\s+on\b/iu,
+  /\bonly\s+(?:ping|message|text|contact)\s+me\s+if\b/iu,
+  new RegExp(
+    `${SELF}(?:(?:heading|going|flying|off|back)\\s+)?(?:to|in)\\s+[\\p{L}][\\p{L}-]+(?:\\s+[\\p{L}][\\p{L}-]+)?\\s+(?:from\\s+[\\s\\S]{0,20}\\s+)?${UNTIL}\\b`,
+    "iu",
+  ),
+  new RegExp(`${SELF}(?:heading|going|flying|off)\\s+to\\s+[\\p{L}]`, "iu"),
+  new RegExp(`${SELF}(?:traveling|travelling|out of town|away)\\b`, "iu"),
+  /\b(?:i'?m|i am|im)\s+back\b(?![\s\S]{0,20}\bfrom (?:the )?(?:gym|store|work|lunch|class|shower|run)\b)/iu,
+  /^\s*back from\b(?![\s\S]{0,6}\b(?:the )?(?:gym|store|lunch|class|shower|run)\b)/iu,
+  /\b(?:open|available|free|ready)\s+(?:again|for intros|to intros|for introductions)\b/iu,
+  /\b(?:i'?m|i am|im)\s+(?:open|available|free)\s+(?:again|(?:to|for)\s+(?:new\s+)?(?:intros|introductions))\b/iu,
+  /\b(?:open|available)\s+(?:to|for)\s+(?:meeting|new|more)\b/iu,
+  /\b(?:send|start sending)\s+(?:me\s+)?(?:intros|introductions)\b/iu,
+]
+
+const NOT_STATE: readonly RegExp[] = [
+  /\b(?:gym|membership|subscription|spotify|netflix|music|song|podcast|video)\b/iu,
+]
+
+export function isNetworkStateIntent(text: string): boolean {
+  const value = ownWords(text).trim()
+  if (!value) return false
+  if (NOT_STATE.some((pattern) => pattern.test(value))) return false
+  return STATE_PATTERNS.some((pattern) => pattern.test(value))
+}

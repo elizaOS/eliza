@@ -1,0 +1,650 @@
+// spec/googleWorkspace/index.md, "A user-account request must match the owner, the explicit account, the current credential generation and all required scopes"
+import { ElizaError } from "@elizaos/core"
+import type { GoogleApiClientFactory } from "./auth.vibe"
+import { raise } from "./boundary.vibe"
+import type {
+  GoogleAccountRef,
+  GoogleDocContent,
+  GoogleDriveCreateFileInput,
+  GoogleDriveFile,
+  GoogleDriveFileList,
+  GoogleMeetActionItem,
+  GoogleMeetCanonicalArtifact,
+  GoogleMeetCanonicalArtifactInput,
+  GoogleMeetConferenceRecord,
+  GoogleMeetConferenceRecordInput,
+  GoogleMeetCreateMeetingInput,
+  GoogleMeetGenerateReportInput,
+  GoogleMeetGetMeetingInput,
+  GoogleMeetMeeting,
+  GoogleMeetParticipant,
+  GoogleMeetParticipantSession,
+  GoogleMeetParticipantSessionInput,
+  GoogleMeetRecording,
+  GoogleMeetRecordingInput,
+  GoogleMeetReport,
+  GoogleMeetSpace,
+  GoogleMeetTranscript,
+  GoogleMeetTranscriptArtifact,
+  GoogleMeetTranscriptInput,
+  GooglePeopleContactPage,
+  GooglePeopleGetContactInput,
+  GooglePeopleListContactsInput,
+  GooglePeopleSearchContactsInput,
+  GooglePersonContact,
+  GoogleSheetContent,
+  GoogleSheetUpdateResult,
+} from "./types.vibe"
+
+interface RawDriveFile {
+  readonly id?: string
+  readonly name?: string
+  readonly mimeType?: string
+  readonly size?: string | number
+  readonly modifiedTime?: string
+  readonly webViewLink?: string
+  readonly parents?: readonly string[]
+  readonly trashed?: boolean
+}
+
+function mapDriveFile(raw: RawDriveFile): GoogleDriveFile {
+  const size = typeof raw.size === "number" ? raw.size : typeof raw.size === "string" && raw.size.length > 0 ? Number(raw.size) : undefined
+  return {
+    id: raw.id ?? "",
+    name: raw.name ?? "",
+    mimeType: raw.mimeType ?? "application/octet-stream",
+    ...(size !== undefined && Number.isFinite(size) ? { size } : {}),
+    ...(raw.modifiedTime === undefined ? {} : { modifiedTime: raw.modifiedTime }),
+    ...(raw.webViewLink === undefined ? {} : { webViewLink: raw.webViewLink }),
+    ...(raw.parents === undefined ? {} : { parents: [...raw.parents] }),
+    ...(raw.trashed === undefined ? {} : { trashed: raw.trashed }),
+  }
+}
+
+export class GoogleDriveClient {
+  private readonly factory: GoogleApiClientFactory
+
+  constructor(factory: GoogleApiClientFactory) {
+    this.factory = factory
+  }
+
+  async searchFiles(params: GoogleAccountRef & { readonly query: string; readonly limit?: number }): Promise<GoogleDriveFile[]> {
+    const result = await this.searchDriveFiles({ ...params, maxResults: params.limit ?? 20 })
+    return [...result.files]
+  }
+
+  async getFile(params: GoogleAccountRef & { readonly fileId: string }): Promise<GoogleDriveFile> {
+    const raw = await this.factory.requestJson<RawDriveFile>(params, ["drive.read"], {
+      url: `${this.factory.baseUrls.drive}/drive/v3/files/${encodeURIComponent(params.fileId)}`,
+      query: { fields: "id,name,mimeType,size,modifiedTime,webViewLink,parents,trashed" },
+      source: "drive",
+    })
+    return mapDriveFile(raw)
+  }
+
+  async listDriveFiles(params: GoogleAccountRef & { readonly folderId?: string; readonly maxResults?: number; readonly pageToken?: string }): Promise<GoogleDriveFileList> {
+    const q = params.folderId ? `'${params.folderId.replace(/'/g, "\\'")}' in parents and trashed = false` : "trashed = false"
+    return this.searchDriveFiles({ ...params, query: q })
+  }
+
+  async searchDriveFiles(params: GoogleAccountRef & { readonly query: string; readonly maxResults?: number; readonly pageToken?: string }): Promise<GoogleDriveFileList> {
+    const data = await this.factory.requestJson<{ readonly files?: readonly RawDriveFile[]; readonly nextPageToken?: string }>(
+      params,
+      ["drive.read"],
+      {
+        url: `${this.factory.baseUrls.drive}/drive/v3/files`,
+        query: {
+          q: params.query,
+          pageSize: params.maxResults ?? 25,
+          pageToken: params.pageToken,
+          fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime,webViewLink,parents,trashed)",
+        },
+        source: "drive",
+      },
+    )
+    return {
+      files: (data.files ?? []).map(mapDriveFile),
+      ...(data.nextPageToken === undefined ? {} : { nextPageToken: data.nextPageToken }),
+    }
+  }
+
+  async getDocContent(params: GoogleAccountRef & { readonly documentId: string }): Promise<GoogleDocContent> {
+    const doc = await this.factory.requestJson<{
+      readonly documentId?: string
+      readonly title?: string
+      readonly revisionId?: string
+      readonly body?: {
+        readonly content?: readonly {
+          readonly paragraph?: { readonly elements?: readonly { readonly textRun?: { readonly content?: string } }[] }
+        }[]
+      }
+    }>(params, ["drive.read"], {
+      url: `${this.factory.baseUrls.docs}/v1/documents/${encodeURIComponent(params.documentId)}`,
+      source: "docs",
+    })
+    const chunks: string[] = []
+    for (const block of doc.body?.content ?? []) {
+      for (const el of block.paragraph?.elements ?? []) {
+        if (typeof el.textRun?.content === "string") chunks.push(el.textRun.content)
+      }
+    }
+    return {
+      documentId: doc.documentId ?? params.documentId,
+      title: doc.title ?? "",
+      bodyText: chunks.join(""),
+      ...(doc.revisionId === undefined ? {} : { revisionId: doc.revisionId }),
+    }
+  }
+
+  async getSheetContent(params: GoogleAccountRef & { readonly spreadsheetId: string; readonly range?: string }): Promise<GoogleSheetContent> {
+    const range = params.range ?? "A1:Z100"
+    const data = await this.factory.requestJson<{ readonly range?: string; readonly values?: readonly (readonly unknown[])[] }>(
+      params,
+      ["drive.read"],
+      {
+        url: `${this.factory.baseUrls.sheets}/v4/spreadsheets/${encodeURIComponent(params.spreadsheetId)}/values/${encodeURIComponent(range)}`,
+        source: "sheets",
+      },
+    )
+    return {
+      spreadsheetId: params.spreadsheetId,
+      title: params.spreadsheetId,
+      range: data.range ?? range,
+      values: (data.values ?? []).map((row) => row.map((cell) => String(cell ?? ""))),
+    }
+  }
+
+  async createDriveFile(params: GoogleDriveCreateFileInput): Promise<GoogleDriveFile> {
+    const raw = await this.factory.requestJson<RawDriveFile>(params, ["drive.write"], {
+      method: "POST",
+      url: `${this.factory.baseUrls.drive}/drive/v3/files`,
+      body: {
+        name: params.name,
+        mimeType: params.mimeType,
+        ...(params.parentFolderId === undefined ? {} : { parents: [params.parentFolderId] }),
+      },
+      source: "drive",
+    })
+    return mapDriveFile(raw)
+  }
+
+  async appendToDoc(params: GoogleAccountRef & { readonly documentId: string; readonly text: string }): Promise<void> {
+    await this.factory.requestJson(params, ["drive.write"], {
+      method: "POST",
+      url: `${this.factory.baseUrls.docs}/v1/documents/${encodeURIComponent(params.documentId)}:batchUpdate`,
+      body: { requests: [{ insertText: { endOfSegmentLocation: {}, text: params.text } }] },
+      source: "docs",
+    })
+  }
+
+  async updateSheetCells(params: GoogleAccountRef & {
+    readonly spreadsheetId: string
+    readonly range: string
+    readonly values: readonly (readonly (string | number)[])[]
+  }): Promise<GoogleSheetUpdateResult> {
+    const data = await this.factory.requestJson<{
+      readonly spreadsheetId?: string
+      readonly updatedRange?: string
+      readonly updatedRows?: number
+      readonly updatedColumns?: number
+      readonly updatedCells?: number
+    }>(params, ["drive.write"], {
+      method: "PUT",
+      url: `${this.factory.baseUrls.sheets}/v4/spreadsheets/${encodeURIComponent(params.spreadsheetId)}/values/${encodeURIComponent(params.range)}`,
+      query: { valueInputOption: "USER_ENTERED" },
+      body: { range: params.range, values: params.values },
+      source: "sheets",
+    })
+    return {
+      spreadsheetId: data.spreadsheetId ?? params.spreadsheetId,
+      updatedRange: data.updatedRange ?? params.range,
+      updatedRows: data.updatedRows ?? params.values.length,
+      updatedColumns: data.updatedColumns ?? (params.values[0]?.length ?? 0),
+      updatedCells: data.updatedCells ?? 0,
+    }
+  }
+}
+
+const CONTACT_PERSON_FIELDS = "names,emailAddresses,phoneNumbers,organizations,photos"
+const OTHER_CONTACT_READ_MASK = "names,emailAddresses,phoneNumbers"
+const MAX_PEOPLE_SEARCH_PAGE_SIZE = 30
+
+interface RawPerson {
+  readonly resourceName?: string
+  readonly names?: readonly { readonly displayName?: string; readonly givenName?: string; readonly familyName?: string; readonly metadata?: { readonly primary?: boolean } }[]
+  readonly emailAddresses?: readonly { readonly value?: string; readonly type?: string; readonly metadata?: { readonly primary?: boolean } }[]
+  readonly phoneNumbers?: readonly { readonly value?: string; readonly type?: string; readonly metadata?: { readonly primary?: boolean } }[]
+  readonly organizations?: readonly { readonly name?: string; readonly title?: string }[]
+  readonly photos?: readonly { readonly url?: string }[]
+}
+
+function mapPerson(person: RawPerson, source: GooglePersonContact["source"], operation: string): GooglePersonContact {
+  const resourceName = person.resourceName
+  if (typeof resourceName !== "string" || resourceName.length === 0) {
+    raise(new ElizaError("Google People returned a person record without a resourceName.", {
+      code: "GOOGLE_PEOPLE_MALFORMED_PERSON",
+      context: { operation, source },
+    }))
+  }
+  const primaryName = person.names?.find((n) => n.metadata?.primary === true) ?? person.names?.[0]
+  const primaryEmail = person.emailAddresses?.find((e) => Boolean(e.value))
+  return {
+    resourceName,
+    displayName: primaryName?.displayName ?? primaryEmail?.value ?? "",
+    ...(primaryName?.givenName === undefined ? {} : { givenName: primaryName.givenName }),
+    ...(primaryName?.familyName === undefined ? {} : { familyName: primaryName.familyName }),
+    emailAddresses: (person.emailAddresses ?? [])
+      .filter((e): e is typeof e & { readonly value: string } => typeof e.value === "string" && e.value.length > 0)
+      .map((e) => ({ value: e.value, ...(e.type === undefined ? {} : { type: e.type }), ...(e.metadata?.primary === undefined ? {} : { primary: e.metadata.primary }) })),
+    phoneNumbers: (person.phoneNumbers ?? [])
+      .filter((p): p is typeof p & { readonly value: string } => typeof p.value === "string" && p.value.length > 0)
+      .map((p) => ({ value: p.value, ...(p.type === undefined ? {} : { type: p.type }), ...(p.metadata?.primary === undefined ? {} : { primary: p.metadata.primary }) })),
+    organizations: (person.organizations ?? [])
+      .filter((o) => Boolean(o.name || o.title))
+      .map((o) => ({ ...(o.name === undefined ? {} : { name: o.name }), ...(o.title === undefined ? {} : { title: o.title }) })),
+    ...(person.photos?.[0]?.url === undefined ? {} : { photoUrl: person.photos[0].url }),
+    source,
+  }
+}
+
+export class GooglePeopleClient {
+  private readonly factory: GoogleApiClientFactory
+
+  constructor(factory: GoogleApiClientFactory) {
+    this.factory = factory
+  }
+
+  async listContacts(params: GooglePeopleListContactsInput): Promise<GooglePeopleContactPage> {
+    const pageSize = params.pageSize !== undefined && Number.isFinite(params.pageSize) && params.pageSize > 0
+      ? Math.min(Math.trunc(params.pageSize), 100)
+      : 25
+    const data = await this.factory.requestJson<{
+      readonly connections?: readonly RawPerson[]
+      readonly nextPageToken?: string
+      readonly totalItems?: number
+    }>(params, ["people.read"], {
+      url: `${this.factory.baseUrls.people}/v1/people/me/connections`,
+      query: { personFields: CONTACT_PERSON_FIELDS, pageSize, pageToken: params.pageToken },
+      source: "people",
+    })
+    return {
+      contacts: (data.connections ?? []).map((p) => mapPerson(p, "contact", "people.listContacts")),
+      ...(data.nextPageToken === undefined ? {} : { nextPageToken: data.nextPageToken }),
+      ...(data.totalItems === undefined ? {} : { totalItems: data.totalItems }),
+    }
+  }
+
+  async searchContacts(params: GooglePeopleSearchContactsInput): Promise<GooglePersonContact[]> {
+    const query = params.query.trim()
+    if (query.length === 0) return []
+    if (params.maxResults !== undefined && (!Number.isSafeInteger(params.maxResults) || params.maxResults <= 0 || params.maxResults > MAX_PEOPLE_SEARCH_PAGE_SIZE)) {
+      throw new ElizaError(`Google People search maxResults must be an integer from 1 to ${MAX_PEOPLE_SEARCH_PAGE_SIZE}.`, {
+        code: "GOOGLE_PEOPLE_SEARCH_LIMIT_UNSUPPORTED",
+      })
+    }
+    const pageSize = params.maxResults ?? MAX_PEOPLE_SEARCH_PAGE_SIZE
+    await this.factory.requestJson(params, ["people.read"], {
+      url: `${this.factory.baseUrls.people}/v1/people:searchContacts`,
+      query: { query: "", readMask: CONTACT_PERSON_FIELDS },
+      source: "people",
+    })
+    const contactRes = await this.factory.requestJson<{ readonly results?: readonly { readonly person?: RawPerson }[] }>(params, ["people.read"], {
+      url: `${this.factory.baseUrls.people}/v1/people:searchContacts`,
+      query: { query, pageSize, readMask: CONTACT_PERSON_FIELDS },
+      source: "people",
+    })
+    const results: GooglePersonContact[] = (contactRes.results ?? [])
+      .flatMap((r) => r.person === undefined ? [] : [mapPerson(r.person, "contact", "people.searchContacts")])
+    if (params.includeOtherContacts !== false) {
+      await this.factory.requestJson(params, ["people.read"], {
+        url: `${this.factory.baseUrls.people}/v1/otherContacts:search`,
+        query: { query: "", readMask: OTHER_CONTACT_READ_MASK },
+        source: "people",
+      })
+      const otherRes = await this.factory.requestJson<{ readonly results?: readonly { readonly person?: RawPerson }[] }>(params, ["people.read"], {
+        url: `${this.factory.baseUrls.people}/v1/otherContacts:search`,
+        query: { query, pageSize, readMask: OTHER_CONTACT_READ_MASK },
+        source: "people",
+      })
+      for (const r of otherRes.results ?? []) {
+        if (r.person !== undefined) results.push(mapPerson(r.person, "otherContact", "people.searchContacts"))
+      }
+    }
+    return params.maxResults === undefined ? results : results.slice(0, params.maxResults)
+  }
+
+  async getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact> {
+    if (!/^people\/[^/\s]+$/.test(params.resourceName)) {
+      throw new ElizaError("Google People getContact requires a canonical people/{personId} resource name.", {
+        code: "GOOGLE_PEOPLE_RESOURCE_NAME_INVALID",
+      })
+    }
+    const person = await this.factory.requestJson<RawPerson>(params, ["people.read"], {
+      url: `${this.factory.baseUrls.people}/v1/${params.resourceName}`,
+      query: { personFields: CONTACT_PERSON_FIELDS },
+      source: "people",
+    })
+    return mapPerson(person, "contact", "people.getContact")
+  }
+}
+
+export const GOOGLE_MEET_API_SURFACE = "meet.googleapis.com/v2"
+
+export function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): { readonly summary: string; readonly actionItems: readonly GoogleMeetActionItem[] } {
+  const actionItems: GoogleMeetActionItem[] = []
+  for (const entry of entries) {
+    if (/\b(?:todo|action item|follow up|will send|need to)\b/i.test(entry.text)) {
+      actionItems.push({ text: entry.text.trim(), ...(entry.participant === undefined ? {} : { owner: entry.participant }) })
+    }
+  }
+  const combined = entries.map((e) => e.text.trim()).filter((t) => t.length > 0).join(" ")
+  const summary = combined.length <= 400 ? combined : `${combined.slice(0, 397)}...`
+  return { summary, actionItems }
+}
+
+export function buildGoogleMeetCanonicalArtifact(input: GoogleMeetCanonicalArtifactInput): GoogleMeetCanonicalArtifact {
+  const { summary, actionItems } = summarizeTranscript(input.transcriptEntries)
+  return {
+    source: "google_meet",
+    conferenceRecord: input.conferenceRecord,
+    participants: input.participants.map((p) => ({
+      id: p.name,
+      displayName: p.displayName,
+      ...(p.email === undefined ? {} : { email: p.email }),
+    })),
+    sessions: input.sessions.map((s) => ({
+      sessionId: s.name,
+      participantId: s.participantName,
+      startTime: s.startTime,
+      ...(s.endTime === undefined ? {} : { endTime: s.endTime }),
+    })),
+    transcriptSpans: input.transcriptEntries.map((t) => ({
+      id: t.name,
+      speaker: t.participant ?? "unknown",
+      text: t.text,
+      ...(t.startOffset === undefined ? {} : { startOffset: t.startOffset }),
+      ...(t.endOffset === undefined ? {} : { endOffset: t.endOffset }),
+    })),
+    generatedNote: { title: `Meet ${input.conferenceRecord.space}`, summary, actionItems },
+    recordings: [...input.recordings],
+    missingArtifacts: [...(input.missingArtifacts ?? [])],
+    warnings: [...(input.warnings ?? [])],
+    capture: {
+      source: "google_meet",
+      conferenceRecord: input.conferenceRecord.name,
+      streams: [
+        { kind: "transcript", resourceName: `${input.conferenceRecord.name}/transcripts`, available: input.transcriptEntries.length > 0 },
+        { kind: "recording", resourceName: `${input.conferenceRecord.name}/recordings`, available: input.recordings.length > 0 },
+      ],
+    },
+  }
+}
+
+export function classifyGoogleMeetImportError(error: unknown): { readonly code: string; readonly retryable: boolean } {
+  if (error instanceof ElizaError) {
+    if (error.code.endsWith("_403")) return { code: "permission_denied", retryable: false }
+    if (error.code.endsWith("_404")) return { code: "not_found", retryable: false }
+    if (error.code.endsWith("_429") || error.code.endsWith("_503")) return { code: "rate_limited", retryable: true }
+  }
+  return { code: "unknown", retryable: false }
+}
+
+export class GoogleMeetClient {
+  private readonly factory: GoogleApiClientFactory
+
+  constructor(factory: GoogleApiClientFactory) {
+    this.factory = factory
+  }
+
+  private api(path: string): string {
+    return `${this.factory.baseUrls.meet}/v2/${path.replace(/^\/+/, "")}`
+  }
+
+  async createMeeting(params: GoogleMeetCreateMeetingInput): Promise<GoogleMeetMeeting> {
+    const space = await this.factory.requestJson<{
+      readonly name?: string
+      readonly meetingUri?: string
+      readonly meetingCode?: string
+      readonly activeConference?: { readonly conferenceRecord?: string }
+    }>(params, ["meet.create"], {
+      method: "POST",
+      url: this.api("spaces"),
+      body: params.accessType === undefined ? {} : { config: { accessType: params.accessType } },
+      source: "meet",
+    })
+    return {
+      spaceName: space.name ?? "",
+      meetingUri: space.meetingUri ?? "",
+      meetingCode: space.meetingCode ?? "",
+      status: space.activeConference?.conferenceRecord ? "active" : "scheduled",
+      ...(space.activeConference?.conferenceRecord === undefined ? {} : { activeConference: space.activeConference.conferenceRecord }),
+    }
+  }
+
+  async getMeetingSpace(params: GoogleMeetGetMeetingInput): Promise<GoogleMeetSpace> {
+    const path = params.spaceNameOrCode.startsWith("spaces/") ? params.spaceNameOrCode : `spaces/${encodeURIComponent(params.spaceNameOrCode)}`
+    const space = await this.factory.requestJson<{
+      readonly name?: string
+      readonly meetingUri?: string
+      readonly meetingCode?: string
+      readonly config?: { readonly accessType?: GoogleMeetSpace["accessType"] }
+      readonly activeConference?: { readonly conferenceRecord?: string }
+    }>(params, ["meet.read"], {
+      url: this.api(path),
+      source: "meet",
+    })
+    return {
+      name: space.name ?? path,
+      meetingUri: space.meetingUri ?? "",
+      meetingCode: space.meetingCode ?? params.spaceNameOrCode,
+      ...(space.config?.accessType === undefined ? {} : { accessType: space.config.accessType }),
+      ...(space.activeConference?.conferenceRecord === undefined ? {} : { activeConference: space.activeConference.conferenceRecord }),
+    }
+  }
+
+  async getMeeting(params: GoogleMeetGetMeetingInput): Promise<GoogleMeetMeeting> {
+    const space = await this.getMeetingSpace(params)
+    return {
+      spaceName: space.name,
+      meetingUri: space.meetingUri,
+      meetingCode: space.meetingCode,
+      status: space.activeConference ? "active" : "scheduled",
+      ...(space.activeConference === undefined ? {} : { activeConference: space.activeConference }),
+    }
+  }
+
+  async getConferenceRecord(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetConferenceRecord> {
+    const rec = await this.factory.requestJson<{
+      readonly name?: string
+      readonly space?: string
+      readonly startTime?: string
+      readonly endTime?: string
+      readonly expireTime?: string
+    }>(params, ["meet.read"], {
+      url: this.api(params.conferenceRecordName),
+      source: "meet",
+    })
+    return {
+      name: rec.name ?? params.conferenceRecordName,
+      space: rec.space ?? "",
+      startTime: rec.startTime ?? "",
+      ...(rec.endTime === undefined ? {} : { endTime: rec.endTime }),
+      ...(rec.expireTime === undefined ? {} : { expireTime: rec.expireTime }),
+    }
+  }
+
+  async listMeetingParticipants(params: GoogleMeetConferenceRecordInput & { readonly limit?: number }): Promise<GoogleMeetParticipant[]> {
+    const data = await this.factory.requestJson<{
+      readonly participants?: readonly {
+        readonly name?: string
+        readonly earliestStartTime?: string
+        readonly latestEndTime?: string
+        readonly signedinUser?: { readonly displayName?: string; readonly user?: string }
+        readonly anonymousUser?: { readonly displayName?: string }
+      }[]
+    }>(params, ["meet.read"], {
+      url: this.api(`${params.conferenceRecordName}/participants`),
+      query: { pageSize: params.limit },
+      source: "meet",
+    })
+    return (data.participants ?? []).map((p) => ({
+      name: p.name ?? "",
+      displayName: p.signedinUser?.displayName ?? p.anonymousUser?.displayName ?? "Participant",
+      ...(p.signedinUser?.user === undefined ? {} : { email: p.signedinUser.user }),
+      ...(p.earliestStartTime === undefined ? {} : { earliestStartTime: p.earliestStartTime }),
+      ...(p.latestEndTime === undefined ? {} : { latestEndTime: p.latestEndTime }),
+      ...(p.anonymousUser === undefined ? {} : { anonymous: true }),
+    }))
+  }
+
+  async listMeetingParticipantSessions(params: GoogleMeetParticipantSessionInput & { readonly limit?: number }): Promise<GoogleMeetParticipantSession[]> {
+    const data = await this.factory.requestJson<{
+      readonly participantSessions?: readonly { readonly name?: string; readonly startTime?: string; readonly endTime?: string }[]
+    }>(params, ["meet.read"], {
+      url: this.api(`${params.participantName}/participantSessions`),
+      query: { pageSize: params.limit },
+      source: "meet",
+    })
+    return (data.participantSessions ?? []).map((s) => ({
+      name: s.name ?? "",
+      participantName: params.participantName,
+      startTime: s.startTime ?? "",
+      ...(s.endTime === undefined ? {} : { endTime: s.endTime }),
+    }))
+  }
+
+  async listMeetingTranscripts(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetTranscriptArtifact[]> {
+    const data = await this.factory.requestJson<{
+      readonly transcripts?: readonly {
+        readonly name?: string
+        readonly state?: string
+        readonly startTime?: string
+        readonly endTime?: string
+        readonly docsDestination?: { readonly document?: string; readonly exportUri?: string }
+      }[]
+    }>(params, ["meet.read"], {
+      url: this.api(`${params.conferenceRecordName}/transcripts`),
+      source: "meet",
+    })
+    return (data.transcripts ?? []).map((t) => ({
+      name: t.name ?? "",
+      state: t.state ?? "STATE_UNSPECIFIED",
+      ...(t.startTime === undefined ? {} : { startTime: t.startTime }),
+      ...(t.endTime === undefined ? {} : { endTime: t.endTime }),
+      ...(t.docsDestination?.document === undefined ? {} : { docsDocumentId: t.docsDestination.document }),
+      ...(t.docsDestination?.exportUri === undefined ? {} : { docsExportUri: t.docsDestination.exportUri }),
+    }))
+  }
+
+  async getMeetingTranscript(params: GoogleMeetTranscriptInput): Promise<GoogleMeetTranscript[]> {
+    const data = await this.factory.requestJson<{
+      readonly transcriptEntries?: readonly {
+        readonly name?: string
+        readonly participant?: string
+        readonly text?: string
+        readonly languageCode?: string
+        readonly startOffset?: string
+        readonly endOffset?: string
+      }[]
+    }>(params, ["meet.read"], {
+      url: this.api(`${params.transcriptName}/entries`),
+      source: "meet",
+    })
+    return (data.transcriptEntries ?? []).map((e) => ({
+      name: e.name ?? "",
+      ...(e.participant === undefined ? {} : { participant: e.participant }),
+      text: e.text ?? "",
+      ...(e.languageCode === undefined ? {} : { languageCode: e.languageCode }),
+      ...(e.startOffset === undefined ? {} : { startOffset: e.startOffset }),
+      ...(e.endOffset === undefined ? {} : { endOffset: e.endOffset }),
+    }))
+  }
+
+  async listMeetingRecordings(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetRecording[]> {
+    const data = await this.factory.requestJson<{
+      readonly recordings?: readonly {
+        readonly name?: string
+        readonly state?: string
+        readonly startTime?: string
+        readonly endTime?: string
+        readonly driveDestination?: { readonly file?: string; readonly exportUri?: string }
+      }[]
+    }>(params, ["meet.read"], {
+      url: this.api(`${params.conferenceRecordName}/recordings`),
+      source: "meet",
+    })
+    return (data.recordings ?? []).map((r) => ({
+      name: r.name ?? "",
+      state: r.state ?? "STATE_UNSPECIFIED",
+      ...(r.startTime === undefined ? {} : { startTime: r.startTime }),
+      ...(r.endTime === undefined ? {} : { endTime: r.endTime }),
+      ...(r.driveDestination?.file === undefined ? {} : { driveFileId: r.driveDestination.file }),
+      ...(r.driveDestination?.exportUri === undefined ? {} : { exportUri: r.driveDestination.exportUri }),
+    }))
+  }
+
+  async getMeetingRecordingUrl(params: GoogleMeetRecordingInput): Promise<string | null> {
+    const rec = await this.factory.requestJson<{ readonly driveDestination?: { readonly exportUri?: string } }>(params, ["meet.read"], {
+      url: this.api(params.recordingName),
+      source: "meet",
+    })
+    return rec.driveDestination?.exportUri ?? null
+  }
+
+  async endMeeting(params: GoogleAccountRef & { readonly spaceName: string }): Promise<void> {
+    await this.factory.requestJson(params, ["meet.create"], {
+      method: "POST",
+      url: this.api(`${params.spaceName}:endActiveConference`),
+      body: {},
+      source: "meet",
+    })
+  }
+
+  async generateReport(params: GoogleMeetGenerateReportInput): Promise<GoogleMeetReport> {
+    const participants = await this.listMeetingParticipants(params)
+    const transcripts = await this.listMeetingTranscripts(params)
+    const recordings = await this.listMeetingRecordings(params)
+    const entries: GoogleMeetTranscript[] = []
+    for (const transcript of transcripts) {
+      entries.push(...(await this.getMeetingTranscript({ ...params, transcriptName: transcript.name })))
+    }
+    const { summary, actionItems } = summarizeTranscript(entries)
+    return {
+      conferenceRecord: params.conferenceRecordName,
+      summary,
+      participantCount: participants.length,
+      transcriptEntryCount: entries.length,
+      actionItems,
+      recordingUrls: recordings.flatMap((r) => r.exportUri === undefined ? [] : [r.exportUri]),
+    }
+  }
+}
+
+export interface TaskCodeContext {
+  readonly accountId: string
+  readonly source?: string
+}
+
+export interface ParsedTaskCode {
+  readonly prefix: string
+  readonly code: string
+  readonly raw: string
+}
+
+export interface TaskCodeResult {
+  readonly matched: boolean
+  readonly parsed?: ParsedTaskCode
+}
+
+export class GoogleTaskCodeResolver {
+  parse(text: string): ParsedTaskCode | undefined {
+    const match = /\b([A-Z]{2,8})-(\d{1,8})\b/.exec(text)
+    if (match === null || match[1] === undefined || match[2] === undefined) return undefined
+    return { prefix: match[1], code: match[2], raw: match[0] }
+  }
+
+  resolve(text: string, _context: TaskCodeContext): TaskCodeResult {
+    const parsed = this.parse(text)
+    return parsed === undefined ? { matched: false } : { matched: true, parsed }
+  }
+}

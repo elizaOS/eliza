@@ -1,0 +1,517 @@
+// spec/googleWorkspace/index.md, "Google Chat service-account messages use their configured installation and space"
+import {
+  ElizaError,
+  Service,
+  type ConnectorAccount,
+  type ConnectorAccountProvider,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { chatDeliveryAllowed, type ChatBinding, type ChatDelivery } from "../gen/googleWorkspace.effect.vibe"
+import { raise, readEnv } from "./boundary.vibe"
+import { DEFAULT_GOOGLE_API_BASE_URLS } from "./types.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { createSign } from "node:crypto"
+
+  export function signRs256Jwt(privateKeyPem: string, payload: Record<string, unknown>): string {
+    const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" }), "utf8").toString("base64url")
+    const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")
+    const signingInput = `${header}.${body}`
+    const signer = createSign("RSA-SHA256")
+    signer.update(signingInput)
+    signer.end()
+    const signature = signer.sign(privateKeyPem).toString("base64url")
+    return `${signingInput}.${signature}`
+  }
+}
+import { signRs256Jwt } from node
+
+export const MAX_GOOGLE_CHAT_MESSAGE_BYTES = 4096
+export const GOOGLE_CHAT_SERVICE_NAME = "google-chat"
+export const GOOGLE_CHAT_PROVIDER_ID = "google-chat"
+export const DEFAULT_GOOGLE_CHAT_ACCOUNT_ID = "default"
+export const GOOGLE_CHAT_API_TIMEOUT_MS = 15_000
+
+export const GoogleChatEventTypes = {
+  MESSAGE: "MESSAGE",
+  ADDED_TO_SPACE: "ADDED_TO_SPACE",
+  REMOVED_FROM_SPACE: "REMOVED_FROM_SPACE",
+  CARD_CLICKED: "CARD_CLICKED",
+} as const
+
+export type GoogleChatAudienceType = "app-url" | "project-number"
+export type GoogleChatReactionNotificationMode = "off" | "own" | "all"
+
+export interface GoogleChatActionConfig {
+  readonly enabled?: boolean
+}
+
+export interface GoogleChatSpaceConfig {
+  readonly spaceId: string
+  readonly enabled?: boolean
+  readonly requireMention?: boolean
+}
+
+export interface GoogleChatAccountConfig {
+  readonly accountId: string
+  readonly serviceAccountEmail?: string
+  readonly privateKey?: string
+  readonly tokenUri?: string
+  readonly audienceType?: GoogleChatAudienceType
+  readonly audience?: string
+  readonly appId?: string
+  readonly enabled?: boolean
+  readonly spaces?: readonly GoogleChatSpaceConfig[]
+}
+
+export interface GoogleChatConfig {
+  readonly defaultAccountId?: string
+  readonly accounts?: Readonly<Record<string, GoogleChatAccountConfig>>
+  readonly reactionNotifications?: GoogleChatReactionNotificationMode
+  readonly actions?: GoogleChatActionConfig
+}
+
+export interface GoogleChatSettings {
+  readonly accountId: string
+  readonly serviceAccountEmail: string
+  readonly privateKey: string
+  readonly tokenUri: string
+  readonly appId: string
+  readonly allowedSpaces: readonly string[]
+  readonly apiBaseUrl: string
+}
+
+export interface GoogleChatSpace {
+  readonly name: string
+  readonly displayName?: string
+  readonly type?: "ROOM" | "DM" | "SPACE" | "DIRECT_MESSAGE" | "GROUP_CHAT"
+  readonly singleUserBotDm?: boolean
+}
+
+export interface GoogleChatUser {
+  readonly name: string
+  readonly displayName?: string
+  readonly email?: string
+  readonly type?: "HUMAN" | "BOT"
+}
+
+export interface GoogleChatThread {
+  readonly name: string
+  readonly threadKey?: string
+}
+
+export interface GoogleChatAttachmentDataRef {
+  readonly resourceName?: string
+  readonly attachmentUploadToken?: string
+}
+
+export interface GoogleChatAttachment {
+  readonly name?: string
+  readonly contentName?: string
+  readonly contentType?: string
+  readonly attachmentDataRef?: GoogleChatAttachmentDataRef
+  readonly downloadUri?: string
+}
+
+export interface GoogleChatAnnotation {
+  readonly type?: string
+  readonly startIndex?: number
+  readonly length?: number
+  readonly userMention?: { readonly user?: GoogleChatUser; readonly type?: string }
+}
+
+export interface GoogleChatMessage {
+  readonly name?: string
+  readonly sender?: GoogleChatUser
+  readonly createTime?: string
+  readonly text?: string
+  readonly argumentText?: string
+  readonly space?: GoogleChatSpace
+  readonly thread?: GoogleChatThread
+  readonly annotations?: readonly GoogleChatAnnotation[]
+  readonly attachments?: readonly GoogleChatAttachment[]
+}
+
+export interface GoogleChatEvent {
+  readonly type: string
+  readonly eventId?: string
+  readonly eventTime?: string
+  readonly appId?: string
+  readonly verified?: boolean
+  readonly space?: GoogleChatSpace
+  readonly user?: GoogleChatUser
+  readonly message?: GoogleChatMessage
+}
+
+export interface GoogleChatReaction {
+  readonly name?: string
+  readonly user?: GoogleChatUser
+  readonly emoji?: { readonly unicode?: string }
+}
+
+export interface GoogleChatMessageSendOptions {
+  readonly spaceName: string
+  readonly text: string
+  readonly threadName?: string
+  readonly threadKey?: string
+  readonly accountId?: string
+}
+
+export interface GoogleChatSendResult {
+  readonly messageName: string
+  readonly spaceName: string
+  readonly threadName?: string
+  readonly chunksSent: number
+}
+
+export interface IGoogleChatService extends Service {
+  sendMessage(options: GoogleChatMessageSendOptions): Promise<GoogleChatSendResult>
+  verifyAndAcceptEvent(event: GoogleChatEvent, accountId?: string): boolean
+  listSpaces(accountId?: string): Promise<GoogleChatSpace[]>
+}
+
+export class GoogleChatPluginError extends ElizaError {
+  constructor(message: string, code = "GOOGLE_CHAT_ERROR", context?: Record<string, unknown>) {
+    super(message, { code, context })
+  }
+}
+
+export class GoogleChatConfigurationError extends GoogleChatPluginError {
+  constructor(message: string, context?: Record<string, unknown>) {
+    super(message, "GOOGLE_CHAT_CONFIGURATION_ERROR", context)
+  }
+}
+
+export class GoogleChatApiError extends GoogleChatPluginError {
+  readonly status: number
+  constructor(message: string, status: number, context?: Record<string, unknown>) {
+    super(message, `GOOGLE_CHAT_API_HTTP_${status}`, { ...context, status })
+    this.status = status
+  }
+}
+
+export class GoogleChatAuthenticationError extends GoogleChatPluginError {
+  constructor(message: string, context?: Record<string, unknown>) {
+    super(message, "GOOGLE_CHAT_AUTHENTICATION_ERROR", context)
+  }
+}
+
+export function isValidGoogleChatSpaceName(name: string): boolean {
+  return /^spaces\/[A-Za-z0-9_-]+$/.test(name.trim())
+}
+
+export function isValidGoogleChatUserName(name: string): boolean {
+  return /^users\/[A-Za-z0-9._-]+$/.test(name.trim())
+}
+
+export function normalizeSpaceTarget(target: string): string {
+  const trimmed = target.trim()
+  if (trimmed.length === 0) return ""
+  return trimmed.startsWith("spaces/") ? trimmed : `spaces/${trimmed}`
+}
+
+export function normalizeUserTarget(target: string): string {
+  const trimmed = target.trim()
+  if (trimmed.length === 0) return ""
+  return trimmed.startsWith("users/") ? trimmed : `users/${trimmed}`
+}
+
+export function extractResourceId(resourceName: string): string {
+  const parts = resourceName.trim().split("/").filter((part) => part.length > 0)
+  return parts.at(-1) ?? ""
+}
+
+export function getUserDisplayName(user: GoogleChatUser | undefined): string {
+  if (user === undefined) return "Unknown"
+  return user.displayName?.trim() || user.email?.trim() || extractResourceId(user.name) || "Unknown"
+}
+
+export function getSpaceDisplayName(space: GoogleChatSpace | undefined): string {
+  if (space === undefined) return "Unknown Space"
+  return space.displayName?.trim() || extractResourceId(space.name) || "Unknown Space"
+}
+
+export function isDirectMessage(space: GoogleChatSpace | undefined): boolean {
+  if (space === undefined) return false
+  return space.type === "DM" || space.type === "DIRECT_MESSAGE" || space.singleUserBotDm === true
+}
+
+export function splitMessageForGoogleChat(text: string, maxBytes = MAX_GOOGLE_CHAT_MESSAGE_BYTES): string[] {
+  const encoder = new TextEncoder()
+  if (encoder.encode(text).byteLength <= maxBytes) return [text]
+  const chunks: string[] = []
+  let current = ""
+  for (const line of text.split("\n")) {
+    const candidate = current.length === 0 ? line : `${current}\n${line}`
+    if (encoder.encode(candidate).byteLength <= maxBytes) {
+      current = candidate
+      continue
+    }
+    if (current.length > 0) chunks.push(current)
+    if (encoder.encode(line).byteLength <= maxBytes) {
+      current = line
+    } else {
+      let piece = ""
+      for (const ch of line) {
+        if (encoder.encode(piece + ch).byteLength > maxBytes) {
+          if (piece.length > 0) chunks.push(piece)
+          piece = ch
+        } else {
+          piece += ch
+        }
+      }
+      current = piece
+    }
+  }
+  if (current.length > 0) chunks.push(current)
+  return chunks
+}
+
+export function normalizeGoogleChatAccountId(accountId?: string | null): string {
+  if (typeof accountId !== "string") return DEFAULT_GOOGLE_CHAT_ACCOUNT_ID
+  const trimmed = accountId.trim().toLowerCase()
+  return trimmed.length > 0 ? trimmed : DEFAULT_GOOGLE_CHAT_ACCOUNT_ID
+}
+
+export function listGoogleChatAccountIds(config: GoogleChatConfig | undefined): string[] {
+  const keys = Object.keys(config?.accounts ?? {}).map((k) => normalizeGoogleChatAccountId(k))
+  return Array.from(new Set(keys.length > 0 ? keys : [DEFAULT_GOOGLE_CHAT_ACCOUNT_ID]))
+}
+
+export function resolveDefaultGoogleChatAccountId(config: GoogleChatConfig | undefined): string {
+  if (config?.defaultAccountId) return normalizeGoogleChatAccountId(config.defaultAccountId)
+  const ids = listGoogleChatAccountIds(config)
+  return ids.includes(DEFAULT_GOOGLE_CHAT_ACCOUNT_ID) ? DEFAULT_GOOGLE_CHAT_ACCOUNT_ID : (ids[0] ?? DEFAULT_GOOGLE_CHAT_ACCOUNT_ID)
+}
+
+export function readGoogleChatAccountId(metadata: Readonly<Record<string, unknown>> | undefined): string {
+  const raw = metadata?.accountId ?? metadata?.googleChatAccountId
+  return typeof raw === "string" ? normalizeGoogleChatAccountId(raw) : DEFAULT_GOOGLE_CHAT_ACCOUNT_ID
+}
+
+export function resolveGoogleChatAccountSettings(
+  config: GoogleChatConfig | undefined,
+  accountId?: string,
+  baseUrlOverrides: { readonly chat?: string; readonly oauth?: string } = {},
+): GoogleChatSettings {
+  const resolvedId = normalizeGoogleChatAccountId(accountId ?? resolveDefaultGoogleChatAccountId(config))
+  const entry = config?.accounts?.[resolvedId]
+  const serviceAccountEmail = entry?.serviceAccountEmail ?? readEnv("GOOGLE_CHAT_CLIENT_EMAIL") ?? ""
+  const privateKey = (entry?.privateKey ?? readEnv("GOOGLE_CHAT_PRIVATE_KEY") ?? "").replace(/\\n/g, "\n")
+  const tokenUri = entry?.tokenUri ?? `${baseUrlOverrides.oauth ?? DEFAULT_GOOGLE_API_BASE_URLS.oauth}/token`
+  const appId = entry?.appId ?? readEnv("GOOGLE_CHAT_APP_ID") ?? ""
+  const allowedSpaces = (entry?.spaces ?? []).filter((s) => s.enabled !== false).map((s) => extractResourceId(s.spaceId))
+  return {
+    accountId: resolvedId,
+    serviceAccountEmail,
+    privateKey,
+    tokenUri,
+    appId,
+    allowedSpaces,
+    apiBaseUrl: baseUrlOverrides.chat ?? DEFAULT_GOOGLE_API_BASE_URLS.chat,
+  }
+}
+
+export class GoogleChatService extends Service implements IGoogleChatService {
+  static override serviceType = GOOGLE_CHAT_SERVICE_NAME
+  override capabilityDescription = "Google Chat service-account messaging with verified installation and space bindings"
+  private readonly accounts = new Map<string, GoogleChatSettings>()
+  private readonly tokenCache = new Map<string, { readonly accessToken: string; readonly expiresAt: number }>()
+  private readonly httpLayer: Layer.Layer<HttpClient.HttpClient>
+
+  constructor(
+    runtime?: IAgentRuntime,
+    options: { readonly config?: GoogleChatConfig; readonly baseUrls?: { readonly chat?: string; readonly oauth?: string }; readonly httpLayer?: Layer.Layer<HttpClient.HttpClient> } = {},
+  ) {
+    super(runtime)
+    this.httpLayer = options.httpLayer ?? FetchHttpClient.layer
+    for (const id of listGoogleChatAccountIds(options.config)) {
+      this.accounts.set(id, resolveGoogleChatAccountSettings(options.config, id, options.baseUrls))
+    }
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new GoogleChatService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.tokenCache.clear()
+  }
+
+  registerAccount(settings: GoogleChatSettings): void {
+    this.accounts.set(normalizeGoogleChatAccountId(settings.accountId), settings)
+  }
+
+  private settingsFor(accountId?: string): GoogleChatSettings {
+    const id = normalizeGoogleChatAccountId(accountId)
+    const found = this.accounts.get(id)
+    if (found === undefined) {
+      raise(new GoogleChatConfigurationError(`Google Chat account "${id}" is not configured.`, { accountId: id }))
+    }
+    return found
+  }
+
+  verifyAndAcceptEvent(event: GoogleChatEvent, accountId?: string): boolean {
+    const settings = this.settingsFor(accountId)
+    const binding: ChatBinding = {
+      installation: settings.appId,
+      allowedSpaces: [...settings.allowedSpaces],
+    }
+    const delivery: ChatDelivery = {
+      appId: event.appId ?? "",
+      spaceId: extractResourceId(event.space?.name ?? ""),
+      eventId: event.eventId ?? "",
+    }
+    return chatDeliveryAllowed(binding, delivery, event.verified === true)
+  }
+
+  private async serviceAccountToken(settings: GoogleChatSettings): Promise<string> {
+    const cached = this.tokenCache.get(settings.accountId)
+    const now = Date.now()
+    if (cached !== undefined && cached.expiresAt > now + 60_000) return cached.accessToken
+    if (settings.serviceAccountEmail.length === 0 || settings.privateKey.length === 0) {
+      throw new GoogleChatAuthenticationError("Google Chat service account credentials are missing.", { accountId: settings.accountId })
+    }
+    const iat = Math.floor(now / 1000)
+    const assertion = signRs256Jwt(settings.privateKey, {
+      iss: settings.serviceAccountEmail,
+      scope: "https://www.googleapis.com/auth/chat.bot",
+      aud: settings.tokenUri,
+      iat,
+      exp: iat + 3600,
+    })
+    const form = new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }).toString()
+    const tokenResponse = await runPromise(
+      Effect.provide(
+        effect {
+          const req = HttpClientRequest.post(settings.tokenUri).pipe(
+            HttpClientRequest.setHeader("content-type", "application/x-www-form-urlencoded"),
+            HttpClientRequest.bodyText(form),
+          )
+          const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+            throw new GoogleChatAuthenticationError("Failed to contact Google OAuth token endpoint for Chat service account.")
+          }
+          const text = res.text catch effect () => ""
+          if (res.status < 200 || res.status >= 300) {
+            throw new GoogleChatAuthenticationError(`Google Chat service account token exchange failed (${res.status}).`)
+          }
+          return try Effect.try({
+            try: () => JSON.parse(text) as { readonly access_token?: string; readonly expires_in?: number },
+            catch: () => new GoogleChatAuthenticationError("Google Chat token exchange returned malformed JSON."),
+          })
+        },
+        this.httpLayer,
+      ),
+    )
+    if (!tokenResponse.access_token) {
+      throw new GoogleChatAuthenticationError("Google Chat token exchange returned no access_token.")
+    }
+    const expiresAt = now + (tokenResponse.expires_in ?? 3600) * 1000
+    this.tokenCache.set(settings.accountId, { accessToken: tokenResponse.access_token, expiresAt })
+    return tokenResponse.access_token
+  }
+
+  async sendMessage(options: GoogleChatMessageSendOptions): Promise<GoogleChatSendResult> {
+    const spaceName = normalizeSpaceTarget(options.spaceName)
+    if (!isValidGoogleChatSpaceName(spaceName)) {
+      throw new GoogleChatConfigurationError(`Invalid Google Chat space name "${options.spaceName}".`)
+    }
+    const settings = this.settingsFor(options.accountId)
+    const token = await this.serviceAccountToken(settings)
+    const chunks = splitMessageForGoogleChat(options.text)
+    let lastMessageName = ""
+    let lastThreadName = options.threadName
+    for (const chunk of chunks) {
+      const payload: Record<string, unknown> = { text: chunk }
+      if (options.threadName) payload.thread = { name: options.threadName }
+      else if (options.threadKey) payload.thread = { threadKey: options.threadKey }
+      const sent = await runPromise(
+        Effect.provide(
+          effect {
+            const req = HttpClientRequest.post(`${settings.apiBaseUrl}/v1/${spaceName}/messages`).pipe(
+              HttpClientRequest.bearerToken(token),
+              HttpClientRequest.acceptJson,
+              HttpClientRequest.bodyJsonUnsafe(payload),
+            )
+            const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+              throw new GoogleChatApiError("Google Chat API request failed.", 0)
+            }
+            const text = res.text catch effect () => ""
+            if (res.status < 200 || res.status >= 300) {
+              throw new GoogleChatApiError(`Google Chat send failed (${res.status}): ${text.slice(0, 200)}`, res.status)
+            }
+            return try Effect.try({
+              try: () => JSON.parse(text) as { readonly name?: string; readonly thread?: { readonly name?: string } },
+              catch: () => new GoogleChatApiError("Google Chat send returned malformed JSON.", res.status),
+            })
+          },
+          this.httpLayer,
+        ),
+      )
+      lastMessageName = sent.name ?? lastMessageName
+      lastThreadName = sent.thread?.name ?? lastThreadName
+    }
+    return {
+      messageName: lastMessageName,
+      spaceName,
+      ...(lastThreadName === undefined ? {} : { threadName: lastThreadName }),
+      chunksSent: chunks.length,
+    }
+  }
+
+  async listSpaces(accountId?: string): Promise<GoogleChatSpace[]> {
+    const settings = this.settingsFor(accountId)
+    const token = await this.serviceAccountToken(settings)
+    const data = await runPromise(
+      Effect.provide(
+        effect {
+          const req = HttpClientRequest.get(`${settings.apiBaseUrl}/v1/spaces`).pipe(
+            HttpClientRequest.bearerToken(token),
+            HttpClientRequest.acceptJson,
+          )
+          const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+            throw new GoogleChatApiError("Google Chat listSpaces failed.", 0)
+          }
+          const text = res.text catch effect () => ""
+          if (res.status < 200 || res.status >= 300) {
+            throw new GoogleChatApiError(`Google Chat listSpaces failed (${res.status}).`, res.status)
+          }
+          return try Effect.try({
+            try: () => JSON.parse(text) as { readonly spaces?: readonly GoogleChatSpace[] },
+            catch: () => new GoogleChatApiError("Google Chat listSpaces returned malformed JSON.", res.status),
+          })
+        },
+        this.httpLayer,
+      ),
+    )
+    return [...(data.spaces ?? [])]
+  }
+}
+
+export function createGoogleChatConnectorAccountProvider(
+  _runtime?: IAgentRuntime,
+  config?: GoogleChatConfig,
+): ConnectorAccountProvider {
+  const now = () => Date.now()
+  return {
+    provider: GOOGLE_CHAT_PROVIDER_ID,
+    label: "Google Chat",
+    listAccounts: async () =>
+      listGoogleChatAccountIds(config).map((id): ConnectorAccount => ({
+        id,
+        provider: GOOGLE_CHAT_PROVIDER_ID,
+        label: `Google Chat (${id})`,
+        role: "owner",
+        purpose: ["messaging"],
+        accessGate: "owner",
+        status: "connected",
+        createdAt: now(),
+        updatedAt: now(),
+      })),
+  }
+}

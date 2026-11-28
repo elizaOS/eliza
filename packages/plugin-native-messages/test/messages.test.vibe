@@ -1,0 +1,27 @@
+// spec/nativeMessages/index.md, "Story: Read my inbox and see the evidence for the message I reviewed"; spec/nativeMessages/index.md, "Sending requires a current review and its provider-specific authority"
+import { assert, it } from "@effect/vitest"
+import { MessagesWeb, appMessagesPlugin } from "../src/index.vibe"
+
+it.effect(`Expose passive SMS appMessagesPlugin metadata and validate MessagesWeb fallback inputs (spec/nativeMessages/index.md, "Story: Read my inbox and see the evidence for the message I reviewed"; spec/nativeMessages/index.md, "Sending requires a current review and its provider-specific authority")`, effect () => {
+  const web = new MessagesWeb()
+  const listed = try tryPromise(() => web.listMessages({ limit: 10 }))
+  const perms = try tryPromise(() => web.checkPermissions())
+  const reqPerms = try tryPromise(() => web.requestPermissions())
+  const badLimit = try Effect.result(Effect.tryPromise(() => web.listMessages({ limit: 0 })))
+  const missingAddr = try Effect.result(Effect.tryPromise(() => web.sendSms({ address: "", body: "hello" })))
+  const missingBody = try Effect.result(Effect.tryPromise(() => web.sendSms({ address: "+15551234", body: " " })))
+  const unsupportedSend = try Effect.result(Effect.tryPromise(() => web.sendSms({ address: "+15551234", body: "hi" })))
+
+  try Effect.try(() => {
+    assert.strictEqual(appMessagesPlugin.name, "@elizaos/plugin-native-messages")
+    assert.strictEqual(appMessagesPlugin.connectorSources?.[0]?.source, "sms")
+    assert.strictEqual(appMessagesPlugin.views?.[0]?.id, "messages")
+    assert.deepStrictEqual(listed, { messages: [] })
+    assert.deepStrictEqual(perms, { sms: "granted" })
+    assert.deepStrictEqual(reqPerms, { sms: "granted" })
+    assert.strictEqual(badLimit._tag, "Failure")
+    assert.strictEqual(missingAddr._tag, "Failure")
+    assert.strictEqual(missingBody._tag, "Failure")
+    assert.strictEqual(unsupportedSend._tag, "Failure")
+  })
+})

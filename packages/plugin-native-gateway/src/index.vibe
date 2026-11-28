@@ -2,19 +2,33 @@
 import type { GatewayPlugin } from "./native-contract.vibe"
 
 export type * from "./native-contract.vibe"
+export { GatewayWeb, assertRpcMethod } from "./web.vibe"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { GatewayPlugin } from "./native-contract.vibe"
+  import { GatewayWeb } from "./web.vibe"
 
-  export const native = registerPlugin<GatewayPlugin>("Gateway")
+  export const native = registerPlugin<GatewayPlugin>("Gateway", {
+    web: () => Promise.resolve(new GatewayWeb()),
+  })
 }
 import { native } from capacitor
 
 export const Gateway = native
 
 import { nativeCall, nativeReply } from "@elizaos/os-bridges"
-import { confirmGateway, connectGateway, initial, mayRouteGatewayRpc } from "../gen/nativeGateway.effect.vibe"
+import {
+  canConfirmGateway,
+  canConnectGateway,
+  canDisconnectGateway,
+  confirmGateway,
+  connectGateway,
+  disconnectGateway,
+  initial,
+  mayRouteGatewayRpc,
+  type GatewayConnection,
+} from "../gen/nativeGateway.effect.vibe"
 import type { GatewayConnectOptions, GatewaySendOptions } from "./native-contract.vibe"
 
 const Connection = Schema.Struct({ url: Schema.NullOr(Schema.String), sessionId: Schema.NullOr(Schema.String) })
@@ -36,6 +50,35 @@ function sessionPermit(port: GatewayPlugin): Semaphore.Semaphore {
 }
 
 export error GatewaySessionRefused
+
+export interface GatewayConnectionSession {
+  readonly state: () => GatewayConnection
+  readonly connect: (endpointId: string) => boolean
+  readonly confirm: (endpointId: string, generation: number, authenticated: boolean) => boolean
+  readonly disconnect: () => boolean
+}
+
+export function createGatewayConnectionSession(): GatewayConnectionSession {
+  let current: GatewayConnection = initial
+  return {
+    state: () => current,
+    connect(endpointId) {
+      if (!canConnectGateway(current, endpointId)) return false
+      current = connectGateway(current, endpointId)
+      return true
+    },
+    confirm(endpointId, generation, authenticated) {
+      if (!canConfirmGateway(current, endpointId, generation, authenticated)) return false
+      current = confirmGateway(current, endpointId, generation, authenticated)
+      return true
+    },
+    disconnect() {
+      if (!canDisconnectGateway(current)) return false
+      current = disconnectGateway(current)
+      return true
+    },
+  }
+}
 
 export effect function openGatewaySession(options: GatewayConnectOptions, port: GatewayPlugin = Gateway) {
   if (options.url.trim() === "") throw new GatewaySessionRefused()

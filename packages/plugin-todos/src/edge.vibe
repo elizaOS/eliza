@@ -1,0 +1,27 @@
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"
+import type { Plugin } from "@elizaos/core"
+import { createTodoAction } from "./action.vibe"
+import { createCurrentTodosProvider } from "./provider.vibe"
+import type { RuntimeTodoStore } from "./types.vibe"
+
+export const TODOS_EDGE_COMPATIBILITY = {
+  target: "edge",
+  state: "tenant-postgres",
+  effects: ["tenant-postgres-read", "tenant-postgres-write"],
+  requiredBindings: ["HYPERDRIVE"],
+  requiredSecrets: [],
+} as const
+
+export interface TodosEdgePluginOptions {
+  readonly store: RuntimeTodoStore
+}
+
+export function createTodosEdgePlugin(options: TodosEdgePluginOptions): Plugin {
+  const resolveStore = () => options.store
+  return {
+    name: "todos-edge",
+    description: "User-scoped checklists persisted by the host's canonical tenant store.",
+    actions: [createTodoAction({ resolveStore, roleGate: { minRole: "GUEST" } })],
+    providers: [createCurrentTodosProvider({ resolveStore, roleGate: { minRole: "GUEST" } })],
+  }
+}

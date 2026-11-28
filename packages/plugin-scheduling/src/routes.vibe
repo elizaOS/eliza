@@ -1,0 +1,435 @@
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"; spec/scheduling/dispatch.md, "Story: Dispatch scheduled tasks safely through escalation ladders without duplicating uncertain deliveries"
+import {
+  type Action,
+  type ActionResult,
+  type EffectReceipt,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core"
+import { getScheduledTaskRunner, type ScheduledTaskRunner } from "./store.vibe"
+import {
+  SCHEDULED_TASK_KINDS,
+  SCHEDULED_TASK_OPS,
+  SCHEDULED_TASK_PRIORITIES,
+  SCHEDULED_TASK_STATUSES,
+  SCHEDULED_TASK_VERBS,
+  SCHEDULED_TASKS_ACTION_NAME,
+  SCHEDULED_TASKS_PROVIDER_NAME,
+  SCHEDULING_CONTEXTS,
+  type ScheduledTask,
+  type ScheduledTaskFireResult,
+  type ScheduledTaskKind,
+  type ScheduledTaskOp,
+  type ScheduledTaskPriority,
+  type ScheduledTaskStatus,
+  type ScheduledTaskTrigger,
+  type ScheduledTaskVerb,
+} from "./types.vibe"
+
+export interface SchedulingRouteSpec {
+  readonly type: "GET" | "POST" | "PATCH" | "DELETE"
+  readonly path: string
+}
+
+export const SCHEDULED_TASKS_ROUTE_PATHS: readonly SchedulingRouteSpec[] = [
+  { type: "GET", path: "/api/lifeops/scheduled-tasks" },
+  { type: "POST", path: "/api/lifeops/scheduled-tasks" },
+  { type: "GET", path: "/api/lifeops/scheduled-tasks/:id" },
+  { type: "PATCH", path: "/api/lifeops/scheduled-tasks/:id" },
+  { type: "DELETE", path: "/api/lifeops/scheduled-tasks/:id" },
+  { type: "POST", path: "/api/lifeops/scheduled-tasks/:id/fire" },
+  { type: "POST", path: "/api/lifeops/scheduled-tasks/:id/:verb" },
+  { type: "GET", path: "/api/lifeops/scheduled-tasks/:id/log" },
+]
+
+export function firstForwardedProto(value: string | readonly string[] | undefined): string {
+  const first = Array.isArray(value) ? value[0] : value
+  const raw = typeof first === "string" ? first.split(",", 1)[0]?.trim() : ""
+  return raw && raw.length > 0 ? raw : "http"
+}
+
+export function requestBaseUrl(headers: Readonly<Record<string, string | readonly string[] | undefined>>): string {
+  const hostRaw = headers.host
+  const host = typeof hostRaw === "string" && hostRaw.trim().length > 0 ? hostRaw.trim() : "localhost"
+  const proto = firstForwardedProto(headers["x-forwarded-proto"])
+  return `${proto}://${host}`
+}
+
+export interface SchedulingHttpRequest {
+  readonly method: string
+  readonly url: string
+  readonly headers?: Readonly<Record<string, string | readonly string[] | undefined>>
+  readonly body?: Record<string, unknown>
+}
+
+export interface SchedulingHttpResponse {
+  readonly status: number
+  readonly body: Record<string, unknown>
+}
+
+export interface ScheduledTaskFireResponse {
+  readonly kind: ScheduledTaskFireResult["kind"]
+  readonly reason?: string
+  readonly error?: string
+  readonly nextAttemptAtIso?: string
+  readonly task: ScheduledTask | null
+}
+
+function serializeFireResult(result: ScheduledTaskFireResult): ScheduledTaskFireResponse {
+  if (result.kind === "fired") return { kind: result.kind, task: result.task }
+  if (result.kind === "retrying") {
+    return { kind: result.kind, reason: result.reason, nextAttemptAtIso: result.nextAttemptAtIso, task: result.task }
+  }
+  if (result.kind === "skipped_gate" || result.kind === "raced") {
+    return { kind: result.kind, reason: result.reason, task: result.task }
+  }
+  if (result.kind === "failed") {
+    return { kind: result.kind, error: result.error, task: result.task }
+  }
+  return { kind: "not_found", task: null }
+}
+
+function decodeSegment(raw: string): string {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
+export function makeScheduledTasksRouteHandler(resolveRunner: () => Promise<ScheduledTaskRunner | null>) {
+  return async (req: SchedulingHttpRequest): Promise<SchedulingHttpResponse | null> => {
+    const base = requestBaseUrl(req.headers ?? {})
+    const parsedUrl = new URL(req.url || "/", base)
+    const pathname = parsedUrl.pathname.replace(/\/+$/, "") || "/"
+    const method = req.method.toUpperCase()
+    const prefix = "/api/lifeops/scheduled-tasks"
+    if (pathname !== prefix && !pathname.startsWith(`${prefix}/`)) return null
+    const runner = await resolveRunner()
+    if (!runner) return { status: 503, body: { error: "ScheduledTaskRunner is unavailable" } }
+
+    if (pathname === prefix && method === "GET") {
+      const statusParam = parsedUrl.searchParams.get("status") ?? undefined
+      const ownerId = parsedUrl.searchParams.get("ownerId") ?? undefined
+      const status =
+        statusParam && (SCHEDULED_TASK_STATUSES as readonly string[]).includes(statusParam)
+          ? (statusParam as ScheduledTaskStatus)
+          : undefined
+      const tasks = await runner.list({ ownerId, status })
+      return { status: 200, body: { tasks, count: tasks.length } }
+    }
+    if (pathname === prefix && method === "POST") {
+      const body = req.body ?? {}
+      const title = typeof body.title === "string" ? body.title.trim() : ""
+      const ownerId = typeof body.ownerId === "string" && body.ownerId.trim() ? body.ownerId.trim() : runner.agentId
+      if (!title) return { status: 400, body: { error: "title is required" } }
+      const trigger =
+        body.trigger && typeof body.trigger === "object" && !Array.isArray(body.trigger)
+          ? (body.trigger as ScheduledTaskTrigger)
+          : ({ kind: "manual" } as const)
+      const task = await runner.create({
+        ownerId,
+        title,
+        kind: (body.kind as ScheduledTaskKind | undefined) ?? "reminder",
+        priority: (body.priority as ScheduledTaskPriority | undefined) ?? "medium",
+        channelKey: typeof body.channelKey === "string" ? body.channelKey : "chat",
+        promptInstructions: typeof body.promptInstructions === "string" ? body.promptInstructions : "",
+        trigger,
+      })
+      return { status: 201, body: { task } }
+    }
+    const rest = pathname.slice(prefix.length + 1).split("/")
+    const taskId = decodeSegment(rest[0] ?? "")
+    if (!taskId) return { status: 400, body: { error: "taskId is required" } }
+
+    if (rest.length === 1 && method === "GET") {
+      const task = await runner.get(taskId)
+      return task ? { status: 200, body: { task } } : { status: 404, body: { error: "Task not found" } }
+    }
+    if (rest.length === 1 && method === "PATCH") {
+      const task = await runner.update(taskId, (req.body ?? {}) as Record<string, unknown>)
+      return task ? { status: 200, body: { task } } : { status: 404, body: { error: "Task not found" } }
+    }
+    if (rest.length === 1 && method === "DELETE") {
+      const deleted = await runner.delete(taskId)
+      return deleted ? { status: 200, body: { deleted: true, id: taskId } } : { status: 404, body: { error: "Task not found" } }
+    }
+    if (rest.length === 2 && rest[1] === "log" && method === "GET") {
+      return { status: 200, body: { log: runner.listLog(taskId) } }
+    }
+    if (rest.length === 2 && rest[1] === "fire" && method === "POST") {
+      const res = await runner.fire(taskId, { manual: true })
+      const code = res.kind === "not_found" ? 404 : res.kind === "raced" ? 409 : 200
+      return { status: code, body: { ...serializeFireResult(res) } }
+    }
+    if (rest.length === 2 && method === "POST") {
+      const verb = rest[1] ?? ""
+      if (!(SCHEDULED_TASK_VERBS as readonly string[]).includes(verb)) {
+        return { status: 400, body: { error: `unsupported verb: ${verb}` } }
+      }
+      const body = req.body ?? {}
+      const res = await runner.apply(taskId, verb as ScheduledTaskVerb, {
+        receiptKey: typeof body.receiptKey === "string" ? body.receiptKey : undefined,
+        snoozeMinutes: typeof body.snoozeMinutes === "number" ? body.snoozeMinutes : undefined,
+      })
+      const code = res.kind === "not_found" ? 404 : res.kind === "applied" ? 200 : 409
+      return { status: code, body: { ...res } }
+    }
+    return null
+  }
+}
+
+export function buildSchedulingRoutes() {
+  return SCHEDULED_TASKS_ROUTE_PATHS.map((spec) => ({
+    type: spec.type,
+    path: spec.path,
+    rawPath: true as const,
+  }))
+}
+
+function makeReceipt(op: ScheduledTaskOp, targetId: string): EffectReceipt {
+  const now = new Date().toISOString()
+  return {
+    outcome: "applied",
+    receiptId: `sched:${op}:${targetId}:${now}`,
+    operation: `${SCHEDULED_TASKS_ACTION_NAME}.${op}`,
+    resource: { kind: "scheduling.task", id: targetId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: now,
+    commit: { kind: "durable", id: targetId, committedAt: now },
+  }
+}
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+  if (!options || typeof options !== "object") return {}
+  const rec = options as Record<string, unknown>
+  if (rec.parameters && typeof rec.parameters === "object" && !Array.isArray(rec.parameters)) {
+    return rec.parameters as Record<string, unknown>
+  }
+  return rec
+}
+
+export const scheduledTasksAction: Action = {
+  name: SCHEDULED_TASKS_ACTION_NAME,
+  similes: ["SCHEDULE_TASK", "SCHEDULED_TASK", "CREATE_SCHEDULE", "MANAGE_SCHEDULES"],
+  description: "List, create, update, delete, manually fire, or apply lifecycle verbs to owner scheduled tasks.",
+  descriptionCompressed: "Manage scheduled tasks (list/create/update/delete/fire/apply).",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  contexts: [...SCHEDULING_CONTEXTS],
+  contextGate: { anyOf: [...SCHEDULING_CONTEXTS] },
+  parameters: [
+    {
+      name: "channelKey",
+      description: "Delivery channel key (e.g. chat, push, sms)",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "kind",
+      description: "Task kind: reminder, checkin, followup, approval, recap, watcher, output, or custom",
+      required: false,
+      schema: { type: "string", enum: [...SCHEDULED_TASK_KINDS] },
+    },
+    {
+      name: "op",
+      description: "Operation: list, create, update, delete, fire, or apply",
+      required: true,
+      schema: { type: "string", enum: [...SCHEDULED_TASK_OPS] },
+    },
+    {
+      name: "priority",
+      description: "Priority level: low, medium, or high",
+      required: false,
+      schema: { type: "string", enum: [...SCHEDULED_TASK_PRIORITIES] },
+    },
+    {
+      name: "promptInstructions",
+      description: "Instructions or notification text for the scheduled task",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "snoozeMinutes",
+      description: "Minutes to snooze when op=apply and verb=snooze",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "status",
+      description: "Optional status filter for list",
+      required: false,
+      schema: { type: "string", enum: [...SCHEDULED_TASK_STATUSES] },
+    },
+    {
+      name: "taskId",
+      description: "Target scheduled task ID",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "title",
+      description: "Scheduled task title",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "trigger",
+      description: "Structured trigger object ({ kind, ... })",
+      required: false,
+      schema: { type: "object" },
+    },
+    {
+      name: "verb",
+      description: "Lifecycle verb for op=apply: complete, skip, snooze, dismiss, or acknowledge",
+      required: false,
+      schema: { type: "string", enum: [...SCHEDULED_TASK_VERBS] },
+    },
+  ],
+  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+    return getScheduledTaskRunner(runtime) !== null
+  },
+  summarize: (result: ActionResult | undefined, params: Record<string, unknown>): string | undefined => {
+    const op = typeof params.op === "string" ? params.op : "list"
+    if (!result) return undefined
+    const data = result.data as Record<string, unknown> | undefined
+    if (Array.isArray(data?.tasks)) return `SCHEDULED_TASKS(${op}): ${data.tasks.length} task(s)`
+    if (result.text) return result.text.slice(0, 140)
+    return `SCHEDULED_TASKS(${op}): ${result.success ? "ok" : "error"}`
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    const runner = getScheduledTaskRunner(runtime)
+    if (!runner) {
+      return { success: false, text: "ScheduledTaskRunner is unavailable.", error: "SCHEDULING_UNAVAILABLE" }
+    }
+    const params = readParams(options)
+    const opRaw = typeof params.op === "string" ? params.op.trim() : "list"
+    if (!(SCHEDULED_TASK_OPS as readonly string[]).includes(opRaw)) {
+      return { success: false, text: `op must be one of: ${SCHEDULED_TASK_OPS.join(", ")}`, error: "INVALID_OP" }
+    }
+    const op = opRaw as ScheduledTaskOp
+    const ownerId =
+      typeof message.entityId === "string" && message.entityId.trim().length > 0
+        ? message.entityId.trim()
+        : runtime.agentId
+    let result: ActionResult
+    if (op === "list") {
+      const status =
+        typeof params.status === "string" && (SCHEDULED_TASK_STATUSES as readonly string[]).includes(params.status)
+          ? (params.status as ScheduledTaskStatus)
+          : undefined
+      const tasks = (await runner.list({ ownerId, status })).slice(0, 30)
+      const text =
+        tasks.length === 0
+          ? "No scheduled tasks found."
+          : tasks.map((t) => `- ${t.title} [${t.state.status}, ${t.trigger.kind}] (${t.id})`).join("\n")
+      result = { success: true, text, data: { op, tasks, count: tasks.length } }
+    } else if (op === "create") {
+      const title = typeof params.title === "string" ? params.title.trim() : ""
+      if (!title) return { success: false, text: "title is required", error: "MISSING_TITLE" }
+      const trigger =
+        params.trigger && typeof params.trigger === "object" && !Array.isArray(params.trigger)
+          ? (params.trigger as ScheduledTaskTrigger)
+          : ({ kind: "manual" } as const)
+      const task = await runner.create({
+        ownerId,
+        title,
+        kind: (params.kind as ScheduledTaskKind | undefined) ?? "reminder",
+        priority: (params.priority as ScheduledTaskPriority | undefined) ?? "medium",
+        channelKey: typeof params.channelKey === "string" ? params.channelKey : "chat",
+        promptInstructions: typeof params.promptInstructions === "string" ? params.promptInstructions : "",
+        trigger,
+      })
+      result = {
+        success: true,
+        text: `Scheduled "${task.title}" (${task.id}).`,
+        data: { op, task },
+        effectReceipts: [makeReceipt(op, task.id)],
+      }
+    } else {
+      const taskId = typeof params.taskId === "string" ? params.taskId.trim() : ""
+      if (!taskId) return { success: false, text: "taskId is required", error: "MISSING_TASK_ID" }
+      if (op === "update") {
+        const updated = await runner.update(taskId, {
+          title: typeof params.title === "string" ? params.title : undefined,
+          priority: params.priority as ScheduledTaskPriority | undefined,
+          channelKey: typeof params.channelKey === "string" ? params.channelKey : undefined,
+          promptInstructions: typeof params.promptInstructions === "string" ? params.promptInstructions : undefined,
+          trigger:
+            params.trigger && typeof params.trigger === "object" && !Array.isArray(params.trigger)
+              ? (params.trigger as ScheduledTaskTrigger)
+              : undefined,
+        })
+        result = updated
+          ? { success: true, text: `Updated task "${updated.title}".`, data: { op, task: updated }, effectReceipts: [makeReceipt(op, updated.id)] }
+          : { success: false, text: `Task ${taskId} not found.`, error: "TASK_NOT_FOUND" }
+      } else if (op === "delete") {
+        const deleted = await runner.delete(taskId)
+        result = deleted
+          ? { success: true, text: `Deleted task ${taskId}.`, data: { op, taskId, deleted }, effectReceipts: [makeReceipt(op, taskId)] }
+          : { success: false, text: `Task ${taskId} not found.`, error: "TASK_NOT_FOUND" }
+      } else if (op === "fire") {
+        const fired = await runner.fire(taskId, { manual: true })
+        result = {
+          success: fired.kind === "fired",
+          text: fired.kind === "fired" ? `Fired task ${taskId}.` : `Task ${taskId} fire outcome: ${fired.kind}.`,
+          data: { op, result: serializeFireResult(fired) },
+          ...(fired.kind === "fired" ? { effectReceipts: [makeReceipt(op, taskId)] } : {}),
+        }
+      } else {
+        const verb = typeof params.verb === "string" ? params.verb.trim() : ""
+        if (!(SCHEDULED_TASK_VERBS as readonly string[]).includes(verb)) {
+          return { success: false, text: `verb must be one of: ${SCHEDULED_TASK_VERBS.join(", ")}`, error: "INVALID_VERB" }
+        }
+        const applied = await runner.apply(taskId, verb as ScheduledTaskVerb, {
+          snoozeMinutes: typeof params.snoozeMinutes === "number" ? params.snoozeMinutes : undefined,
+        })
+        result = {
+          success: applied.kind === "applied",
+          text: applied.kind === "applied" ? `Applied ${verb} to task ${taskId}.` : `Failed to apply ${verb}: ${applied.kind}.`,
+          data: { op, result: applied },
+          ...(applied.kind === "applied" ? { effectReceipts: [makeReceipt(op, taskId)] } : {}),
+        }
+      }
+    }
+    if (callback && result.text) {
+      await callback({ text: result.text, action: SCHEDULED_TASKS_ACTION_NAME })
+    }
+    return result
+  },
+}
+
+export const scheduledTasksProvider: Provider = {
+  name: SCHEDULED_TASKS_PROVIDER_NAME,
+  description: "Bounded summary of the owner's upcoming and active scheduled tasks",
+  dynamic: true,
+  contexts: [...SCHEDULING_CONTEXTS],
+  get: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> => {
+    const runner = getScheduledTaskRunner(runtime)
+    if (!runner) return { text: "", values: { scheduledTaskCount: 0 }, data: {} }
+    const ownerId =
+      typeof message.entityId === "string" && message.entityId.trim().length > 0
+        ? message.entityId.trim()
+        : runtime.agentId
+    const tasks = (await runner.list({ ownerId })).slice(0, 30)
+    if (tasks.length === 0) return { text: "", values: { scheduledTaskCount: 0 }, data: { tasks: [] } }
+    const text = [
+      "Scheduled tasks:",
+      ...tasks.map((t) => `- ${t.title} [${t.state.status}/${t.priority}] next=${t.state.nextFireAt ?? "push"}`),
+    ].join("\n")
+    return { text, values: { scheduledTaskCount: tasks.length }, data: { tasks } }
+  },
+}

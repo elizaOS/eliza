@@ -1,0 +1,1081 @@
+// spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"; spec/googleWorkspace/index.md, "A contact match supplies only its stored confirmed address"
+import { ElizaError, type MessageConnectorRegistration, type ReadRangeUnit } from "@elizaos/core"
+import { selectRecipient } from "../gen/googleWorkspace.effect.vibe"
+import type { GoogleApiClientFactory } from "./auth.vibe"
+import { raise } from "./boundary.vibe"
+import type {
+  GoogleAccountRef,
+  GoogleGmailAttachment,
+  GoogleGmailAttachmentContent,
+  GoogleGmailBulkOperation,
+  GoogleGmailDraftResult,
+  GoogleGmailFilterCreateResult,
+  GoogleGmailHistoryChange,
+  GoogleGmailHistoryMessageRef,
+  GoogleGmailHistoryPage,
+  GoogleGmailMessageDetail,
+  GoogleGmailMessageSummary,
+  GoogleGmailMutationFailure,
+  GoogleGmailMutationReceipt,
+  GoogleGmailSearchPage,
+  GoogleGmailSendResult,
+  GoogleGmailSubscriptionMessageHeaders,
+  GoogleGmailUnrespondedThread,
+  GoogleMessageSummary,
+  GoogleParsedMailto,
+  GoogleSendEmailInput,
+} from "./types.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { createHash } from "node:crypto"
+
+  export function decodeBase64UrlBytes(encoded: string): Uint8Array {
+    return new Uint8Array(Buffer.from(encoded, "base64url"))
+  }
+
+  export function encodeBase64UrlBytes(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("base64url")
+  }
+
+  export function encodeBase64UrlText(text: string): string {
+    return Buffer.from(text, "utf8").toString("base64url")
+  }
+
+  export function sha256Hex(data: Uint8Array | string): string {
+    return createHash("sha256").update(data).digest("hex")
+  }
+}
+import { decodeBase64UrlBytes, encodeBase64UrlBytes, encodeBase64UrlText, sha256Hex } from node
+
+export const MAX_GMAIL_MIME_DEPTH = 32
+export const MAX_GMAIL_MIME_NODES = 256
+export const GMAIL_MIME_PART_UNBOUNDED = "GMAIL_MIME_PART_UNBOUNDED"
+export const MAX_GMAIL_ATTACHMENT_BYTES = 25 * 1024 * 1024
+export const GMAIL_MESSAGE_SOURCE = "gmail"
+
+export const GMAIL_CONTENT_HEAD_TABLE = "gmail_content_heads"
+export const GMAIL_CONTENT_SEGMENT_TABLE = "gmail_content_segments"
+export const GMAIL_CONTENT_SEGMENT_MAX_BYTES = 64 * 1024
+export const GMAIL_CONTENT_PAGE_MAX_SEGMENTS = 8
+export const GMAIL_CONTENT_RETENTION_MS = 24 * 60 * 60 * 1000
+export const GMAIL_CONTENT_REFERENCE_PREFIX = "gmail-content://"
+
+export interface GmailMimeHeader {
+  readonly name?: string
+  readonly value?: string
+}
+
+export interface GmailMimePartLike {
+  readonly partId?: string
+  readonly mimeType?: string
+  readonly filename?: string
+  readonly headers?: readonly GmailMimeHeader[]
+  readonly body?: { readonly attachmentId?: string; readonly size?: number; readonly data?: string }
+  readonly parts?: readonly GmailMimePartLike[]
+}
+
+export const WINDOWS_1252_HIGH: Readonly<Record<number, number>> = {
+  0x80: 0x20ac, 0x82: 0x201a, 0x83: 0x0192, 0x84: 0x201e, 0x85: 0x2026, 0x86: 0x2020,
+  0x87: 0x2021, 0x88: 0x02c6, 0x89: 0x2030, 0x8a: 0x0160, 0x8b: 0x2039, 0x8c: 0x0152,
+  0x8e: 0x017d, 0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201c, 0x94: 0x201d, 0x95: 0x2022,
+  0x96: 0x2013, 0x97: 0x2014, 0x98: 0x02dc, 0x99: 0x2122, 0x9a: 0x0161, 0x9b: 0x203a,
+  0x9c: 0x0153, 0x9e: 0x017e, 0x9f: 0x0178,
+}
+
+export function snapshotGmailMimePart(part: GmailMimePartLike | undefined): GmailMimePartLike | undefined {
+  if (part === undefined) return undefined
+  const ctx = { visits: 0, visiting: new WeakSet<object>() }
+  const clone = (node: GmailMimePartLike, depth: number): GmailMimePartLike => {
+    if (depth > MAX_GMAIL_MIME_DEPTH) {
+      raise(new ElizaError("Gmail MIME structure exceeded maximum nesting depth.", { code: GMAIL_MIME_PART_UNBOUNDED }))
+    }
+    ctx.visits += 1
+    if (ctx.visits > MAX_GMAIL_MIME_NODES) {
+      raise(new ElizaError("Gmail MIME structure exceeded maximum part count.", { code: GMAIL_MIME_PART_UNBOUNDED }))
+    }
+    if (ctx.visiting.has(node)) {
+      raise(new ElizaError("Gmail MIME structure contains a cycle.", { code: GMAIL_MIME_PART_UNBOUNDED }))
+    }
+    ctx.visiting.add(node)
+    try {
+      const childParts = node.parts?.map((child) => clone(child, depth + 1))
+      return {
+        ...(node.partId === undefined ? {} : { partId: node.partId }),
+        ...(node.mimeType === undefined ? {} : { mimeType: node.mimeType }),
+        ...(node.filename === undefined ? {} : { filename: node.filename }),
+        ...(node.headers === undefined ? {} : { headers: node.headers.map((h) => ({ name: h.name, value: h.value })) }),
+        ...(node.body === undefined ? {} : { body: { ...node.body } }),
+        ...(childParts === undefined ? {} : { parts: childParts }),
+      }
+    } finally {
+      ctx.visiting.delete(node)
+    }
+  }
+  return clone(part, 0)
+}
+
+export function walkGmailMimeParts(
+  root: GmailMimePartLike | undefined,
+  visit: (part: GmailMimePartLike, depth: number) => void,
+): void {
+  const safe = snapshotGmailMimePart(root)
+  if (safe === undefined) return
+  const stack: { readonly part: GmailMimePartLike; readonly depth: number }[] = [{ part: safe, depth: 0 }]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    if (current === undefined) break
+    visit(current.part, current.depth)
+    const children = current.part.parts ?? []
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      const child = children[index]
+      if (child !== undefined) stack.push({ part: child, depth: current.depth + 1 })
+    }
+  }
+}
+
+export function gmailPartCharset(part: GmailMimePartLike): string {
+  const ct = (part.headers ?? []).find((h) => h.name?.toLowerCase() === "content-type")?.value ?? ""
+  const match = /charset\s*=\s*"?([^";\s]+)"?/i.exec(ct)
+  return (match?.[1] ?? "utf-8").toLowerCase()
+}
+
+export function decodeGmailPartData(encoded: string, charset = "utf-8"): string {
+  const bytes = decodeBase64UrlBytes(encoded)
+  const normalized = charset.trim().toLowerCase()
+  if (normalized === "windows-1252" || normalized === "cp1252" || normalized === "iso-8859-1" || normalized === "latin1") {
+    let text = ""
+    for (const byte of bytes) {
+      const mapped = WINDOWS_1252_HIGH[byte]
+      text += String.fromCharCode(mapped ?? byte)
+    }
+    return text
+  }
+  try {
+    return new TextDecoder(normalized, { fatal: false }).decode(bytes)
+  } catch {
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes)
+  }
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .trim()
+}
+
+export function extractGmailMimeBody(payload: GmailMimePartLike | undefined): { readonly bodyText: string; readonly bodyHtml?: string } {
+  const plainChunks: string[] = []
+  const htmlChunks: string[] = []
+  walkGmailMimeParts(payload, (part) => {
+    const data = part.body?.data
+    if (typeof data !== "string" || data.length === 0) return
+    if (part.filename && part.filename.length > 0) return
+    const mime = (part.mimeType ?? "").toLowerCase()
+    const charset = gmailPartCharset(part)
+    if (mime === "text/plain") plainChunks.push(decodeGmailPartData(data, charset))
+    else if (mime === "text/html") htmlChunks.push(decodeGmailPartData(data, charset))
+  })
+  const bodyHtml = htmlChunks.length > 0 ? htmlChunks.join("\n") : undefined
+  const bodyText = plainChunks.length > 0 ? plainChunks.join("\n") : bodyHtml === undefined ? "" : stripHtml(bodyHtml)
+  return { bodyText, ...(bodyHtml === undefined ? {} : { bodyHtml }) }
+}
+
+export function attachmentUnavailable(): ElizaError {
+  return new ElizaError("The Gmail attachment could not be read safely.", {
+    code: "GOOGLE_GMAIL_ATTACHMENT_UNAVAILABLE",
+  })
+}
+
+export function gmailAttachmentParts(payload: GmailMimePartLike | undefined): { readonly descriptor: GoogleGmailAttachment; readonly inlineData: string | null }[] {
+  const result: { readonly descriptor: GoogleGmailAttachment; readonly inlineData: string | null }[] = []
+  const seen = new Set<string>()
+  let isRoot = true
+  walkGmailMimeParts(payload, (part) => {
+    const partId = part.partId ?? (isRoot ? "" : undefined)
+    isRoot = false
+    if (!part.filename && !part.body?.attachmentId) return
+    const { filename, mimeType } = part
+    const size = part.body?.size
+    const attachmentId = part.body?.attachmentId ?? null
+    if (
+      typeof partId !== "string"
+      || !/^[0-9.]{0,128}$/.test(partId)
+      || seen.has(partId)
+      || typeof filename !== "string"
+      || filename.length > 1024
+      || typeof mimeType !== "string"
+      || !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(mimeType)
+      || typeof size !== "number"
+      || !Number.isSafeInteger(size)
+      || size < 0
+      || (attachmentId !== null && (typeof attachmentId !== "string" || !/^[A-Za-z0-9_-]{1,8192}$/.test(attachmentId)))
+    ) {
+      raise(attachmentUnavailable())
+    }
+    seen.add(partId)
+    result.push({
+      descriptor: { partId, filename, mimeType, size, attachmentId },
+      inlineData: typeof part.body?.data === "string" ? part.body.data : null,
+    })
+  })
+  return result
+}
+
+export function decodeGmailAttachment(
+  descriptor: GoogleGmailAttachment,
+  messageId: string,
+  data: unknown,
+  reportedSize: unknown,
+  maxBytes: number,
+): GoogleGmailAttachmentContent {
+  if (
+    !Number.isSafeInteger(maxBytes)
+    || maxBytes < 1
+    || maxBytes > MAX_GMAIL_ATTACHMENT_BYTES
+    || descriptor.size > maxBytes
+    || reportedSize !== descriptor.size
+    || typeof data !== "string"
+    || data.length > Math.ceil(maxBytes / 3) * 4
+    || (data.includes("=") && data.length % 4 !== 0)
+    || !/^[A-Za-z0-9_-]*={0,2}$/.test(data)
+  ) {
+    raise(attachmentUnavailable())
+  }
+  const bytes = decodeBase64UrlBytes(data)
+  if (bytes.length !== descriptor.size || bytes.length > maxBytes || encodeBase64UrlBytes(bytes) !== data.replace(/=+$/, "")) {
+    raise(attachmentUnavailable())
+  }
+  return {
+    ...descriptor,
+    messageId,
+    sha256: sha256Hex(bytes),
+    data: bytes,
+  }
+}
+
+export function gmailBriefSourceId(accountId: string, messageId: string): string {
+  return `gmail:${accountId}:${messageId}`
+}
+
+export function gmailThreadSourceLink(threadId: string): string {
+  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`
+}
+
+export function gmailTextLines(text: string): string[] {
+  if (!text) return []
+  const result: string[] = []
+  let start = 0
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index)
+    if (code !== 10 && code !== 13) continue
+    if (code === 13 && text.charCodeAt(index + 1) === 10) index += 1
+    result.push(text.slice(start, index + 1))
+    start = index + 1
+  }
+  if (start < text.length) result.push(text.slice(start))
+  return result
+}
+
+export function gmailTextFragments(text: string): string[] {
+  const fragments: string[] = []
+  let current = ""
+  for (const line of gmailTextLines(text)) {
+    current += line
+    if (line.replace(/[\r\n]/gu, "").trim().length === 0) {
+      fragments.push(current)
+      current = ""
+    }
+  }
+  if (current) fragments.push(current)
+  return fragments
+}
+
+export function readGmailTextRange(text: string, unit: ReadRangeUnit, offset: number, limit?: number) {
+  if (
+    !["byte", "line", "fragment"].includes(unit)
+    || !Number.isSafeInteger(offset)
+    || offset < 0
+    || (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0))
+  ) {
+    raise(new ElizaError("Invalid Gmail read range", { code: "GMAIL_READ_INVALID_RANGE" }))
+  }
+  if (unit === "byte") {
+    const encoded = new TextEncoder().encode(text)
+    const end = limit === undefined ? encoded.length : Math.min(encoded.length, offset + limit)
+    const slice = encoded.subarray(Math.min(offset, encoded.length), end)
+    return {
+      text: new TextDecoder("utf-8", { fatal: false }).decode(slice),
+      unit,
+      offset,
+      returned: slice.length,
+      total: encoded.length,
+      truncated: end < encoded.length,
+    }
+  }
+  const units = unit === "line" ? gmailTextLines(text) : gmailTextFragments(text)
+  const end = limit === undefined ? units.length : Math.min(units.length, offset + limit)
+  const slice = units.slice(offset, end)
+  return {
+    text: slice.join(""),
+    unit,
+    offset,
+    returned: slice.length,
+    total: units.length,
+    truncated: end < units.length,
+  }
+}
+
+export interface GmailContentManifest {
+  readonly reference: string
+  readonly headId: string
+  readonly accountId: string
+  readonly ownerId: string
+  readonly messageId: string
+  readonly revision: string
+  readonly totalBytes: number
+  readonly segmentCount: number
+  readonly createdAt: number
+  readonly expiresAt: number
+}
+
+export interface GmailContentAuthorization {
+  readonly ownerId: string
+  readonly accountId: string
+}
+
+export interface GmailContentPage {
+  readonly reference: string
+  readonly revision: string
+  readonly segmentIndex: number
+  readonly segmentCount: number
+  readonly text: string
+  readonly hasMore: boolean
+}
+
+export function gmailContentReference(accountId: string, messageId: string, revision: string): string {
+  return `${GMAIL_CONTENT_REFERENCE_PREFIX}${encodeURIComponent(accountId)}/${encodeURIComponent(messageId)}/${encodeURIComponent(revision)}`
+}
+
+export function gmailContentHeadId(accountId: string, messageId: string): string {
+  return sha256Hex(`${accountId}:${messageId}`)
+}
+
+export function gmailPublicRevision(messageId: string, bodyText: string, historyId?: string): string {
+  return sha256Hex(`${messageId}:${historyId ?? ""}:${bodyText}`).slice(0, 24)
+}
+
+interface StoredGmailContent {
+  readonly manifest: GmailContentManifest
+  readonly segments: readonly string[]
+}
+
+const contentStore = new Map<string, StoredGmailContent>()
+
+export function requireGmailContentAuthorization(manifest: GmailContentManifest, auth: GmailContentAuthorization): void {
+  if (manifest.ownerId !== auth.ownerId || manifest.accountId !== auth.accountId) {
+    raise(new ElizaError("Unauthorized Gmail cached content read.", {
+      code: "GMAIL_CONTENT_UNAUTHORIZED",
+      context: { accountId: auth.accountId },
+    }))
+  }
+}
+
+export function buildGmailContentPublication(params: {
+  readonly ownerId: string
+  readonly accountId: string
+  readonly messageId: string
+  readonly bodyText: string
+  readonly historyId?: string
+  readonly now?: number
+}): StoredGmailContent {
+  const now = params.now ?? Date.now()
+  const revision = gmailPublicRevision(params.messageId, params.bodyText, params.historyId)
+  const segments: string[] = []
+  const encoded = new TextEncoder().encode(params.bodyText)
+  if (encoded.length === 0) {
+    segments.push("")
+  } else {
+    for (let cursor = 0; cursor < encoded.length; cursor += GMAIL_CONTENT_SEGMENT_MAX_BYTES) {
+      segments.push(new TextDecoder("utf-8", { fatal: false }).decode(encoded.subarray(cursor, cursor + GMAIL_CONTENT_SEGMENT_MAX_BYTES)))
+    }
+  }
+  const manifest: GmailContentManifest = {
+    reference: gmailContentReference(params.accountId, params.messageId, revision),
+    headId: gmailContentHeadId(params.accountId, params.messageId),
+    accountId: params.accountId,
+    ownerId: params.ownerId,
+    messageId: params.messageId,
+    revision,
+    totalBytes: encoded.length,
+    segmentCount: segments.length,
+    createdAt: now,
+    expiresAt: now + GMAIL_CONTENT_RETENTION_MS,
+  }
+  return { manifest, segments }
+}
+
+export function publishGmailContent(params: {
+  readonly ownerId: string
+  readonly accountId: string
+  readonly messageId: string
+  readonly bodyText: string
+  readonly historyId?: string
+  readonly now?: number
+}): GmailContentManifest {
+  const publication = buildGmailContentPublication(params)
+  contentStore.set(publication.manifest.reference, publication)
+  return publication.manifest
+}
+
+export function loadGmailContentManifest(reference: string, auth: GmailContentAuthorization, now = Date.now()): GmailContentManifest | null {
+  const entry = contentStore.get(reference)
+  if (entry === undefined || entry.manifest.expiresAt <= now) return null
+  requireGmailContentAuthorization(entry.manifest, auth)
+  return entry.manifest
+}
+
+export function readGmailContentPage(
+  reference: string,
+  auth: GmailContentAuthorization,
+  startSegment = 0,
+  maxSegments = GMAIL_CONTENT_PAGE_MAX_SEGMENTS,
+  now = Date.now(),
+): GmailContentPage | null {
+  const entry = contentStore.get(reference)
+  if (entry === undefined || entry.manifest.expiresAt <= now) return null
+  requireGmailContentAuthorization(entry.manifest, auth)
+  const bounded = Math.max(1, Math.min(maxSegments, GMAIL_CONTENT_PAGE_MAX_SEGMENTS))
+  const slice = entry.segments.slice(startSegment, startSegment + bounded)
+  return {
+    reference,
+    revision: entry.manifest.revision,
+    segmentIndex: startSegment,
+    segmentCount: entry.segments.length,
+    text: slice.join(""),
+    hasMore: startSegment + slice.length < entry.segments.length,
+  }
+}
+
+export function cleanupExpiredGmailContent(now = Date.now()): number {
+  let removed = 0
+  for (const [key, entry] of contentStore.entries()) {
+    if (entry.manifest.expiresAt <= now) {
+      contentStore.delete(key)
+      removed += 1
+    }
+  }
+  return removed
+}
+
+export class GoogleGmailHistoryExpiredError extends ElizaError {
+  constructor(accountId: string, startHistoryId: string) {
+    super(`Gmail historyId "${startHistoryId}" expired for account "${accountId}".`, {
+      code: "GOOGLE_GMAIL_HISTORY_EXPIRED",
+      context: { accountId, startHistoryId },
+    })
+  }
+}
+
+export function isEmailAddress(value: string): boolean {
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value.trim())
+}
+
+function extractEmail(header: string): string | undefined {
+  const angle = /<([^<>]+)>/.exec(header)
+  const candidate = (angle?.[1] ?? header).trim().toLowerCase()
+  return isEmailAddress(candidate) ? candidate : undefined
+}
+
+function splitAddresses(header: string): string[] {
+  return header.split(",").map((part) => part.trim()).filter((part) => part.length > 0)
+}
+
+function headerValue(headers: readonly GmailMimeHeader[] | undefined, name: string): string {
+  const lower = name.toLowerCase()
+  return (headers ?? []).find((h) => h.name?.toLowerCase() === lower)?.value ?? ""
+}
+
+export function sortGmailMessages<T extends { readonly internalDate?: string; readonly date: string; readonly id: string }>(messages: readonly T[]): T[] {
+  return [...messages].sort((a, b) => {
+    const aMs = a.internalDate ? Number(a.internalDate) : Date.parse(a.date)
+    const bMs = b.internalDate ? Number(b.internalDate) : Date.parse(b.date)
+    if (Number.isFinite(aMs) && Number.isFinite(bMs) && aMs !== bMs) return bMs - aMs
+    return b.id.localeCompare(a.id)
+  })
+}
+
+export function compareUnrespondedThreads(a: GoogleGmailUnrespondedThread, b: GoogleGmailUnrespondedThread): number {
+  if (a.ageDays !== b.ageDays) return b.ageDays - a.ageDays
+  return b.lastReceivedAt.localeCompare(a.lastReceivedAt)
+}
+
+interface RawGmailMessage {
+  readonly id?: string
+  readonly threadId?: string
+  readonly historyId?: string
+  readonly internalDate?: string
+  readonly snippet?: string
+  readonly labelIds?: readonly string[]
+  readonly payload?: GmailMimePartLike
+}
+
+function toSummary(raw: RawGmailMessage, selfEmail?: string | null): GoogleGmailMessageSummary {
+  const headers = raw.payload?.headers ?? []
+  const from = headerValue(headers, "from")
+  const fromEmail = extractEmail(from)
+  const labelIds = [...(raw.labelIds ?? [])]
+  const normalizedSelf = selfEmail?.trim().toLowerCase()
+  const isSentBySelf = labelIds.includes("SENT") || (normalizedSelf !== undefined && normalizedSelf.length > 0 && fromEmail === normalizedSelf)
+  const attachments = gmailAttachmentParts(raw.payload)
+  const messageIdHeader = headerValue(headers, "message-id")
+  const referencesHeader = headerValue(headers, "references")
+  return {
+    id: raw.id ?? "",
+    threadId: raw.threadId ?? "",
+    ...(raw.historyId === undefined ? {} : { historyId: raw.historyId }),
+    ...(raw.internalDate === undefined ? {} : { internalDate: raw.internalDate }),
+    snippet: raw.snippet ?? "",
+    subject: headerValue(headers, "subject"),
+    from,
+    ...(fromEmail === undefined ? {} : { fromEmail }),
+    to: splitAddresses(headerValue(headers, "to")),
+    cc: splitAddresses(headerValue(headers, "cc")),
+    date: headerValue(headers, "date"),
+    labelIds,
+    isUnread: labelIds.includes("UNREAD"),
+    isStarred: labelIds.includes("STARRED"),
+    isImportant: labelIds.includes("IMPORTANT"),
+    isSentBySelf,
+    hasAttachments: attachments.length > 0,
+    ...(messageIdHeader.length === 0 ? {} : { messageIdHeader }),
+    ...(referencesHeader.length === 0 ? {} : { referencesHeader }),
+  }
+}
+
+function buildRawMime(params: {
+  readonly to: readonly string[]
+  readonly cc?: readonly string[]
+  readonly bcc?: readonly string[]
+  readonly subject: string
+  readonly bodyText: string
+  readonly inReplyTo?: string | null
+  readonly references?: string | null
+}): string {
+  const lines = [
+    `To: ${params.to.join(", ")}`,
+    ...(params.cc && params.cc.length > 0 ? [`Cc: ${params.cc.join(", ")}`] : []),
+    ...(params.bcc && params.bcc.length > 0 ? [`Bcc: ${params.bcc.join(", ")}`] : []),
+    `Subject: ${params.subject.replace(/[\r\n]+/g, " ")}`,
+    ...(params.inReplyTo ? [`In-Reply-To: ${params.inReplyTo}`] : []),
+    ...(params.references ? [`References: ${params.references}`] : []),
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    params.bodyText,
+  ]
+  return encodeBase64UrlText(lines.join("\r\n"))
+}
+
+export class GoogleGmailClient {
+  private readonly factory: GoogleApiClientFactory
+
+  constructor(factory: GoogleApiClientFactory) {
+    this.factory = factory
+  }
+
+  private api(path: string): string {
+    return `${this.factory.baseUrls.gmail}/gmail/v1/users/me${path}`
+  }
+
+  async getGmailHistoryId(params: GoogleAccountRef): Promise<string> {
+    const profile = await this.factory.requestJson<{ readonly historyId?: string }>(params, ["gmail.read"], {
+      url: this.api("/profile"),
+      source: "gmail",
+    })
+    return profile.historyId ?? ""
+  }
+
+  async listGmailHistoryPage(params: GoogleAccountRef & { readonly startHistoryId: string; readonly pageToken?: string; readonly maxResults?: number }): Promise<GoogleGmailHistoryPage> {
+    try {
+      const data = await this.factory.requestJson<{
+        readonly historyId?: string
+        readonly nextPageToken?: string
+        readonly history?: readonly {
+          readonly id?: string
+          readonly messagesAdded?: readonly { readonly message?: { readonly id?: string; readonly threadId?: string } }[]
+          readonly messagesDeleted?: readonly { readonly message?: { readonly id?: string; readonly threadId?: string } }[]
+          readonly labelsAdded?: readonly { readonly message?: { readonly id?: string; readonly threadId?: string }; readonly labelIds?: readonly string[] }[]
+          readonly labelsRemoved?: readonly { readonly message?: { readonly id?: string; readonly threadId?: string }; readonly labelIds?: readonly string[] }[]
+        }[]
+      }>(params, ["gmail.read"], {
+        url: this.api("/history"),
+        query: {
+          startHistoryId: params.startHistoryId,
+          pageToken: params.pageToken,
+          maxResults: params.maxResults,
+        },
+        source: "gmail",
+      })
+      const toRef = (m?: { readonly id?: string; readonly threadId?: string }): GoogleGmailHistoryMessageRef => ({
+        id: m?.id ?? "",
+        threadId: m?.threadId ?? "",
+      })
+      const changes: GoogleGmailHistoryChange[] = (data.history ?? []).map((item) => ({
+        id: item.id ?? "",
+        messagesAdded: (item.messagesAdded ?? []).map((m) => toRef(m.message)),
+        messagesDeleted: (item.messagesDeleted ?? []).map((m) => toRef(m.message)),
+        labelsAdded: (item.labelsAdded ?? []).map((l) => ({ message: toRef(l.message), labelIds: [...(l.labelIds ?? [])] })),
+        labelsRemoved: (item.labelsRemoved ?? []).map((l) => ({ message: toRef(l.message), labelIds: [...(l.labelIds ?? [])] })),
+      }))
+      return {
+        historyId: data.historyId ?? params.startHistoryId,
+        changes,
+        ...(data.nextPageToken === undefined ? {} : { nextPageToken: data.nextPageToken }),
+      }
+    } catch (error) {
+      if (error instanceof ElizaError && error.code === "GOOGLE_GMAIL_HTTP_404") {
+        throw new GoogleGmailHistoryExpiredError(params.accountId, params.startHistoryId)
+      }
+      throw error
+    }
+  }
+
+  async searchMessages(params: GoogleAccountRef & { readonly query: string; readonly limit?: number }): Promise<GoogleMessageSummary[]> {
+    const page = await this.searchGmailMessagesPage({ ...params, pageSize: params.limit ?? 20 })
+    return page.messages.map((m) => ({
+      id: m.id,
+      threadId: m.threadId,
+      snippet: m.snippet,
+      subject: m.subject,
+      from: m.from,
+      to: m.to,
+      cc: m.cc,
+      date: m.date,
+      labelIds: m.labelIds,
+    }))
+  }
+
+  async getMessage(params: GoogleAccountRef & { readonly messageId: string; readonly includeBody?: boolean }): Promise<GoogleMessageSummary> {
+    const detail = await this.getGmailMessageDetail({ ...params })
+    if (detail === null) {
+      throw new ElizaError(`Gmail message "${params.messageId}" was not found.`, { code: "GOOGLE_GMAIL_MESSAGE_NOT_FOUND" })
+    }
+    return {
+      id: detail.id,
+      threadId: detail.threadId,
+      snippet: detail.snippet,
+      subject: detail.subject,
+      from: detail.from,
+      to: detail.to,
+      cc: detail.cc,
+      date: detail.date,
+      labelIds: detail.labelIds,
+      ...(params.includeBody === false ? {} : { bodyText: detail.bodyText, ...(detail.bodyHtml === undefined ? {} : { bodyHtml: detail.bodyHtml }) }),
+    }
+  }
+
+  async sendEmail(params: GoogleSendEmailInput): Promise<{ readonly id: string; readonly threadId?: string }> {
+    const exactEmails = params.to.map((addr) => extractEmail(addr) ?? addr.trim()).filter((addr) => addr.length > 0)
+    if (params.confirmedContactEmail !== undefined) {
+      const decision = selectRecipient("ConfirmedContact", params.confirmedContactEmail, exactEmails)
+      if (decision.tag !== "ChosenAddress") {
+        throw new ElizaError("Refused to send Gmail: confirmed contact recipient did not match cleanly.", {
+          code: decision.tag === "AddressConflict" ? "GOOGLE_GMAIL_RECIPIENT_CONFLICT" : "GOOGLE_GMAIL_RECIPIENT_MISSING",
+        })
+      }
+    } else if (exactEmails.length === 1) {
+      const decision = selectRecipient("DirectAddress", "", exactEmails)
+      if (decision.tag !== "ChosenAddress") {
+        throw new ElizaError("Refused to send Gmail: missing recipient address.", { code: "GOOGLE_GMAIL_RECIPIENT_MISSING" })
+      }
+    }
+    const sent = await this.sendGmailMessage({
+      ...params,
+      to: params.to,
+      cc: params.cc,
+      bcc: params.bcc,
+      subject: params.subject,
+      bodyText: params.bodyText,
+      ...(params.threadId === undefined ? {} : { threadId: params.threadId }),
+      ...(params.inReplyTo === undefined ? {} : { inReplyTo: params.inReplyTo }),
+      ...(params.references === undefined ? {} : { references: params.references }),
+    })
+    return { id: sent.id, threadId: sent.threadId }
+  }
+
+  async listGmailTriageMessages(params: GoogleAccountRef & { readonly selfEmail?: string | null; readonly maxResults?: number }): Promise<GoogleGmailMessageSummary[]> {
+    return this.searchGmailMessages({ ...params, query: "in:inbox", maxResults: params.maxResults ?? 25 })
+  }
+
+  async searchGmailMessages(params: GoogleAccountRef & {
+    readonly query: string
+    readonly selfEmail?: string | null
+    readonly maxResults?: number
+    readonly includeSpamTrash?: boolean
+    readonly labelIds?: readonly string[]
+  }): Promise<GoogleGmailMessageSummary[]> {
+    const page = await this.searchGmailMessagesPage({
+      ...params,
+      pageSize: params.maxResults ?? 25,
+    })
+    return [...page.messages]
+  }
+
+  async searchGmailMessagesPage(params: GoogleAccountRef & {
+    readonly query: string
+    readonly selfEmail?: string | null
+    readonly pageToken?: string | null
+    readonly pageSize?: number
+    readonly includeSpamTrash?: boolean
+  }): Promise<GoogleGmailSearchPage> {
+    const list = await this.factory.requestJson<{
+      readonly messages?: readonly { readonly id?: string; readonly threadId?: string }[]
+      readonly nextPageToken?: string
+      readonly resultSizeEstimate?: number
+    }>(params, ["gmail.read"], {
+      url: this.api("/messages"),
+      query: {
+        q: params.query,
+        maxResults: params.pageSize ?? 25,
+        pageToken: params.pageToken ?? undefined,
+        includeSpamTrash: params.includeSpamTrash ? "true" : undefined,
+      },
+      source: "gmail",
+    })
+    const summaries: GoogleGmailMessageSummary[] = []
+    for (const ref of list.messages ?? []) {
+      if (!ref.id) continue
+      const item = await this.getGmailMessage({ ...params, messageId: ref.id, selfEmail: params.selfEmail })
+      if (item !== null) summaries.push(item)
+    }
+    return {
+      messages: sortGmailMessages(summaries),
+      ...(list.nextPageToken === undefined ? {} : { nextPageToken: list.nextPageToken }),
+      resultSizeEstimate: list.resultSizeEstimate ?? summaries.length,
+    }
+  }
+
+  private async fetchMessageByFormat(params: GoogleAccountRef & { readonly messageId: string }, format: "metadata" | "full"): Promise<RawGmailMessage | null> {
+    try {
+      return await this.factory.requestJson<RawGmailMessage>(params, ["gmail.read"], {
+        url: this.api(`/messages/${encodeURIComponent(params.messageId)}`),
+        query: { format },
+        source: "gmail",
+      })
+    } catch (error) {
+      if (error instanceof ElizaError && error.code === "GOOGLE_GMAIL_HTTP_404") return null
+      throw error
+    }
+  }
+
+  async getGmailMessage(params: GoogleAccountRef & { readonly messageId: string; readonly selfEmail?: string | null }): Promise<GoogleGmailMessageSummary | null> {
+    const raw = await this.fetchMessageByFormat(params, "metadata")
+    return raw === null ? null : toSummary(raw, params.selfEmail)
+  }
+
+  async getGmailMessageDetail(params: GoogleAccountRef & { readonly messageId: string; readonly selfEmail?: string | null }): Promise<GoogleGmailMessageDetail | null> {
+    const raw = await this.fetchMessageByFormat(params, "full")
+    if (raw === null) return null
+    const summary = toSummary(raw, params.selfEmail)
+    const body = extractGmailMimeBody(raw.payload)
+    const attachments = gmailAttachmentParts(raw.payload).map((item) => item.descriptor)
+    return { ...summary, ...body, attachments }
+  }
+
+  async getGmailAttachment(params: GoogleAccountRef & { readonly messageId: string; readonly partId: string; readonly maxBytes: number }): Promise<GoogleGmailAttachmentContent> {
+    const raw = await this.factory.requestJson<RawGmailMessage>(params, ["gmail.read"], {
+      url: this.api(`/messages/${encodeURIComponent(params.messageId)}`),
+      query: { format: "full" },
+      source: "gmail",
+    })
+    const part = gmailAttachmentParts(raw.payload).find((entry) => entry.descriptor.partId === params.partId)
+    if (part === undefined) throw attachmentUnavailable()
+    if (part.inlineData !== null) {
+      return decodeGmailAttachment(part.descriptor, params.messageId, part.inlineData, part.descriptor.size, params.maxBytes)
+    }
+    if (part.descriptor.attachmentId === null) throw attachmentUnavailable()
+    const fetched = await this.factory.requestJson<{ readonly data?: unknown; readonly size?: unknown }>(params, ["gmail.read"], {
+      url: this.api(`/messages/${encodeURIComponent(params.messageId)}/attachments/${encodeURIComponent(part.descriptor.attachmentId)}`),
+      source: "gmail",
+    })
+    return decodeGmailAttachment(part.descriptor, params.messageId, fetched.data, fetched.size, params.maxBytes)
+  }
+
+  async getGmailMessageRevision(params: GoogleAccountRef & { readonly messageId: string }): Promise<string | null> {
+    const detail = await this.getGmailMessageDetail(params)
+    if (detail === null) return null
+    return gmailPublicRevision(detail.id, detail.bodyText, detail.historyId)
+  }
+
+  async listGmailUnrespondedThreads(params: GoogleAccountRef & {
+    readonly selfEmail?: string | null
+    readonly olderThanDays?: number
+    readonly maxResults?: number
+    readonly now?: Date
+  }): Promise<GoogleGmailUnrespondedThread[]> {
+    const nowMs = (params.now ?? new Date()).getTime()
+    const minDays = params.olderThanDays ?? 0
+    const messages = await this.listGmailTriageMessages({ ...params, maxResults: params.maxResults ?? 30 })
+    const byThread = new Map<string, GoogleGmailMessageSummary[]>()
+    for (const msg of messages) {
+      const list = byThread.get(msg.threadId) ?? []
+      list.push(msg)
+      byThread.set(msg.threadId, list)
+    }
+    const out: GoogleGmailUnrespondedThread[] = []
+    for (const [threadId, threadMessages] of byThread.entries()) {
+      const sorted = sortGmailMessages(threadMessages)
+      const latest = sorted[0]
+      if (latest === undefined || latest.isSentBySelf) continue
+      const receivedMs = latest.internalDate ? Number(latest.internalDate) : Date.parse(latest.date)
+      const ageDays = Number.isFinite(receivedMs) ? Math.max(0, Math.floor((nowMs - receivedMs) / 86_400_000)) : 0
+      if (ageDays < minDays) continue
+      out.push({
+        threadId,
+        latestMessageId: latest.id,
+        subject: latest.subject,
+        from: latest.from,
+        ...(latest.fromEmail === undefined ? {} : { fromEmail: latest.fromEmail }),
+        lastReceivedAt: Number.isFinite(receivedMs) ? new Date(receivedMs).toISOString() : latest.date,
+        ageDays,
+        messageCount: sorted.length,
+        snippet: latest.snippet,
+      })
+    }
+    return out.sort(compareUnrespondedThreads)
+  }
+
+  async modifyGmailMessages(params: GoogleAccountRef & {
+    readonly messageIds: readonly string[]
+    readonly operation: GoogleGmailBulkOperation
+    readonly labelIds?: readonly string[]
+  }): Promise<GoogleGmailMutationReceipt> {
+    const succeededIds: string[] = []
+    const failed: GoogleGmailMutationFailure[] = []
+    for (const messageId of params.messageIds) {
+      try {
+        if (params.operation === "trash") {
+          await this.factory.requestJson(params, ["gmail.manage"], {
+            method: "POST",
+            url: this.api(`/messages/${encodeURIComponent(messageId)}/trash`),
+            source: "gmail",
+          })
+        } else {
+          const addLabelIds: string[] = []
+          const removeLabelIds: string[] = []
+          switch (params.operation) {
+            case "archive": removeLabelIds.push("INBOX"); break
+            case "markRead": removeLabelIds.push("UNREAD"); break
+            case "markUnread": addLabelIds.push("UNREAD"); break
+            case "star": addLabelIds.push("STARRED"); break
+            case "unstar": removeLabelIds.push("STARRED"); break
+            case "addLabels": addLabelIds.push(...(params.labelIds ?? [])); break
+            case "removeLabels": removeLabelIds.push(...(params.labelIds ?? [])); break
+          }
+          await this.modifyGmailMessageLabels({ ...params, messageId, addLabelIds, removeLabelIds })
+        }
+        succeededIds.push(messageId)
+      } catch (error) {
+        failed.push({
+          messageId,
+          code: error instanceof ElizaError ? error.code : "GOOGLE_GMAIL_MUTATION_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    return { operation: params.operation, succeededIds, failed }
+  }
+
+  async sendGmailReply(params: GoogleAccountRef & {
+    readonly to: readonly string[]
+    readonly cc?: readonly string[]
+    readonly subject: string
+    readonly bodyText: string
+    readonly threadId: string
+    readonly inReplyTo?: string | null
+    readonly references?: string | null
+  }): Promise<GoogleGmailSendResult> {
+    return this.sendGmailMessage(params)
+  }
+
+  async sendGmailMessage(params: GoogleAccountRef & {
+    readonly to: readonly string[]
+    readonly cc?: readonly string[]
+    readonly bcc?: readonly string[]
+    readonly subject: string
+    readonly bodyText: string
+    readonly threadId?: string
+    readonly inReplyTo?: string | null
+    readonly references?: string | null
+  }): Promise<GoogleGmailSendResult> {
+    const sent = await this.factory.requestJson<{ readonly id?: string; readonly threadId?: string; readonly labelIds?: readonly string[] }>(
+      params,
+      ["gmail.send"],
+      {
+        method: "POST",
+        url: this.api("/messages/send"),
+        body: { raw: buildRawMime(params), ...(params.threadId === undefined ? {} : { threadId: params.threadId }) },
+        source: "gmail",
+      },
+    )
+    return { id: sent.id ?? "", threadId: sent.threadId ?? params.threadId ?? "", labelIds: [...(sent.labelIds ?? ["SENT"])] }
+  }
+
+  async createGmailDraft(params: Parameters<GoogleGmailClient["sendGmailMessage"]>[0]): Promise<GoogleGmailDraftResult> {
+    const created = await this.factory.requestJson<{ readonly id?: string; readonly message?: { readonly id?: string; readonly threadId?: string } }>(
+      params,
+      ["gmail.compose"],
+      {
+        method: "POST",
+        url: this.api("/drafts"),
+        body: { message: { raw: buildRawMime(params), ...(params.threadId === undefined ? {} : { threadId: params.threadId }) } },
+        source: "gmail",
+      },
+    )
+    return {
+      id: created.id ?? "",
+      messageId: created.message?.id ?? "",
+      threadId: created.message?.threadId ?? params.threadId ?? "",
+    }
+  }
+
+  async getGmailSubscriptionHeaders(params: GoogleAccountRef & { readonly query?: string; readonly maxMessages?: number }): Promise<GoogleGmailSubscriptionMessageHeaders[]> {
+    const list = await this.factory.requestJson<{ readonly messages?: readonly { readonly id?: string }[] }>(params, ["gmail.read"], {
+      url: this.api("/messages"),
+      query: { q: params.query ?? "has:nouserlabels unsubscribe", maxResults: params.maxMessages ?? 25 },
+      source: "gmail",
+    })
+    const results: GoogleGmailSubscriptionMessageHeaders[] = []
+    for (const ref of list.messages ?? []) {
+      if (!ref.id) continue
+      const raw = await this.factory.requestJson<RawGmailMessage>(params, ["gmail.read"], {
+        url: this.api(`/messages/${encodeURIComponent(ref.id)}`),
+        query: { format: "metadata" },
+        source: "gmail",
+      })
+      const headers = raw.payload?.headers ?? []
+      const listUnsubscribe = headerValue(headers, "list-unsubscribe")
+      const listUnsubscribePost = headerValue(headers, "list-unsubscribe-post")
+      const listId = headerValue(headers, "list-id")
+      results.push({
+        messageId: raw.id ?? ref.id,
+        threadId: raw.threadId ?? "",
+        from: headerValue(headers, "from"),
+        subject: headerValue(headers, "subject"),
+        ...(listUnsubscribe.length === 0 ? {} : { listUnsubscribe }),
+        ...(listUnsubscribePost.length === 0 ? {} : { listUnsubscribePost }),
+        ...(listId.length === 0 ? {} : { listId }),
+      })
+    }
+    return results
+  }
+
+  async createGmailFilterForSender(params: GoogleAccountRef & { readonly fromAddress: string; readonly trash?: boolean }): Promise<GoogleGmailFilterCreateResult> {
+    const created = await this.factory.requestJson<{ readonly id?: string }>(params, ["gmail.manage"], {
+      method: "POST",
+      url: this.api("/settings/filters"),
+      body: {
+        criteria: { from: params.fromAddress },
+        action: params.trash ? { addLabelIds: ["TRASH"], removeLabelIds: ["INBOX"] } : { removeLabelIds: ["INBOX"] },
+      },
+      source: "gmail",
+    })
+    return { id: created.id ?? "", fromAddress: params.fromAddress, trash: Boolean(params.trash) }
+  }
+
+  async trashGmailThread(params: GoogleAccountRef & { readonly threadId: string }): Promise<void> {
+    await this.factory.requestJson(params, ["gmail.manage"], {
+      method: "POST",
+      url: this.api(`/threads/${encodeURIComponent(params.threadId)}/trash`),
+      source: "gmail",
+    })
+  }
+
+  async modifyGmailMessageLabels(params: GoogleAccountRef & {
+    readonly messageId: string
+    readonly addLabelIds?: readonly string[]
+    readonly removeLabelIds?: readonly string[]
+  }): Promise<void> {
+    await this.factory.requestJson(params, ["gmail.manage"], {
+      method: "POST",
+      url: this.api(`/messages/${encodeURIComponent(params.messageId)}/modify`),
+      body: {
+        ...(params.addLabelIds && params.addLabelIds.length > 0 ? { addLabelIds: [...params.addLabelIds] } : {}),
+        ...(params.removeLabelIds && params.removeLabelIds.length > 0 ? { removeLabelIds: [...params.removeLabelIds] } : {}),
+      },
+      source: "gmail",
+    })
+  }
+
+  async sendMailtoUnsubscribeEmail(params: GoogleAccountRef & { readonly mailto: GoogleParsedMailto }): Promise<void> {
+    await this.sendGmailMessage({
+      ...params,
+      to: [params.mailto.to],
+      subject: params.mailto.subject ?? "Unsubscribe",
+      bodyText: params.mailto.body ?? "Please unsubscribe this address.",
+    })
+  }
+}
+
+export function createGmailMessageConnector(gmail: GoogleGmailClient, defaultAccountId = "default"): MessageConnectorRegistration {
+  return {
+    source: GMAIL_MESSAGE_SOURCE,
+    label: "Gmail",
+    sendHandler: async (_runtime, target, content) => {
+      const address = (target.channelId ?? target.entityId ?? "").trim()
+      if (!isEmailAddress(address)) {
+        throw new ElizaError(`Invalid Gmail recipient "${address}".`, { code: "GOOGLE_GMAIL_RECIPIENT_INVALID" })
+      }
+      const meta = typeof content.metadata === "object" && content.metadata !== null ? content.metadata as Record<string, unknown> : {}
+      const subject = typeof meta.subject === "string" && meta.subject.trim().length > 0 ? meta.subject.trim() : "Message"
+      const accountId = typeof meta.accountId === "string" ? meta.accountId : defaultAccountId
+      await gmail.sendEmail({
+        accountId,
+        to: [address],
+        subject,
+        bodyText: content.text ?? "",
+      })
+    },
+  }
+}
+
+export class GoogleGmailAdapter {
+  private readonly gmail: GoogleGmailClient
+  readonly accountId: string
+
+  constructor(gmail: GoogleGmailClient, accountId: string) {
+    this.gmail = gmail
+    this.accountId = accountId
+  }
+
+  listTriage(maxResults = 25, selfEmail?: string | null): Promise<GoogleGmailMessageSummary[]> {
+    return this.gmail.listGmailTriageMessages({ accountId: this.accountId, maxResults, selfEmail })
+  }
+
+  search(query: string, maxResults = 25, selfEmail?: string | null): Promise<GoogleGmailMessageSummary[]> {
+    return this.gmail.searchGmailMessages({ accountId: this.accountId, query, maxResults, selfEmail })
+  }
+
+  getDetail(messageId: string, selfEmail?: string | null): Promise<GoogleGmailMessageDetail | null> {
+    return this.gmail.getGmailMessageDetail({ accountId: this.accountId, messageId, selfEmail })
+  }
+
+  sendReply(input: { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly subject: string; readonly bodyText: string; readonly threadId: string; readonly inReplyTo?: string | null; readonly references?: string | null }): Promise<GoogleGmailSendResult> {
+    return this.gmail.sendGmailReply({ accountId: this.accountId, ...input })
+  }
+
+  sendMessage(input: { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly bcc?: readonly string[]; readonly subject: string; readonly bodyText: string }): Promise<GoogleGmailSendResult> {
+    return this.gmail.sendGmailMessage({ accountId: this.accountId, ...input })
+  }
+}

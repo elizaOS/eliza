@@ -7,17 +7,25 @@
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
+    "@electric-sql/pglite": "catalog:",
+    "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
-    "@electric-sql/pglite": "catalog:"
+    "pg": "8.23.1",
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/vitest": "4.1.1",
     "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
     "typescript": "catalog:",
-    "vibelang": "0.0.13"
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

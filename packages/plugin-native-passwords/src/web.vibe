@@ -1,0 +1,66 @@
+// spec/nativePasswords/index.md, "Story: Manage saved passwords without revealing them to the application renderer"
+import type { ElizaPasswordsPlugin, PasswordsStatus } from "@elizaos/os-bridges"
+
+function passwordsUnavailable(): Error & { readonly code: "unavailable" } {
+  return Object.assign(new Error("Saved passwords are available only in the native app."), {
+    code: "unavailable" as const,
+  })
+}
+
+export class ElizaPasswordsWeb implements ElizaPasswordsPlugin {
+  async status(): Promise<PasswordsStatus> {
+    return {
+      available: false,
+      reason: "unsupported",
+      locked: true,
+      unlockRemainingMs: 0,
+      unlockSeconds: 0,
+      biometric: false,
+      autofill: { supported: null, selected: "unknown" },
+    }
+  }
+
+  async unlock(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async lock(): Promise<{ locked: true }> {
+    return { locked: true }
+  }
+
+  async list(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async anySaved(): Promise<{ saved: boolean }> {
+    return { saved: false }
+  }
+
+  async save(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async openEditor(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async remove(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async reset(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async reveal(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async copy(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+
+  async openAutofillSettings(): Promise<never> {
+    throw passwordsUnavailable()
+  }
+}

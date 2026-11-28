@@ -1,0 +1,274 @@
+// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"; spec/relationships/identity.md, "Story: Resolve identity observations and confirmed recipients without guessing"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import {
+  KNOWLEDGE_GRAPH_SERVICE_TYPE,
+  KnowledgeGraphService,
+  LegacyRelationshipsSchemaAuditService,
+  RELATIONSHIPS_LEGACY_SCHEMA_DATA_REQUIRES_IMPORT,
+  createSqliteGraphStoreLayer,
+  entityAction,
+  entityGraphProvider,
+  foldIdentity,
+  mergeEntities,
+  readRelationships,
+  relationshipsPlugin,
+  resolveIdentity,
+} from "../src/index.vibe"
+
+function createRuntime(service: KnowledgeGraphService): IAgentRuntime {
+  return {
+    agentId: "agent-rel-test",
+    getService: (type: string) => (type === KNOWLEDGE_GRAPH_SERVICE_TYPE ? service : null),
+  } as unknown as IAgentRuntime
+}
+
+function testMessage(tenant: string): Memory {
+  return {
+    entityId: tenant,
+    roomId: "room-rel",
+    content: { text: "manage relationships" },
+  } as unknown as Memory
+}
+
+describe("plugin-relationships end-to-end journeys", () => {
+  it("runs KNOWLEDGE_GRAPH ops and ENTITY_GRAPH provider on real SQLite", async () => {
+    const service = new KnowledgeGraphService(undefined, ":memory:")
+    const runtime = createRuntime(service)
+    const msg = testMessage("tenant-1")
+
+    assert.strictEqual(relationshipsPlugin.name, "@elizaos/plugin-relationships")
+    assert.strictEqual(await entityAction.validate(runtime, msg), true)
+
+    const created = await entityAction.handler(runtime, msg, undefined, {
+      parameters: { op: "create", name: "Alice Chen", kind: "person", tags: ["engineering"] },
+    })
+    assert.strictEqual(created.success, true)
+    assert.strictEqual(created.effectReceipts?.[0]?.outcome, "applied")
+    const aliceId = (created.data as { entity: { id: string } }).entity.id
+
+    const rel = await entityAction.handler(runtime, msg, undefined, {
+      parameters: { op: "set_relationship", toId: aliceId, relation: "colleague", strength: 0.7 },
+    })
+    assert.strictEqual(rel.success, true)
+
+    const logged = await entityAction.handler(runtime, msg, undefined, {
+      parameters: { op: "log_interaction", entityId: aliceId, summary: "Reviewed architecture spec" },
+    })
+    assert.strictEqual(logged.success, true)
+
+    const readRes = await entityAction.handler(runtime, msg, undefined, {
+      parameters: { op: "read", entityId: aliceId },
+    })
+    assert.strictEqual(readRes.success, true)
+
+    const listRes = await entityAction.handler(runtime, msg, undefined, {
+      parameters: { op: "list", query: "Alice" },
+    })
+    assert.strictEqual((listRes.data as { count: number }).count, 1)
+
+    const provided = await entityGraphProvider.get(runtime, msg, {} as State)
+    assert.ok(provided.text && provided.text.includes("Alice Chen"))
+    assert.ok(provided.text && provided.text.includes("colleague"))
+    await service.stop()
+  })
+
+  it("enforces identity auto-merge threshold, conflict surfacing, folding, and recipient confirmation", async () => {
+    const service = new KnowledgeGraphService(undefined, ":memory:")
+    const first = service.observeIdentity({
+      tenant: "tenant-2",
+      platform: "email",
+      handle: "Bob@Example.com",
+      connectorAccountId: "acct-work",
+      displayName: "Bob Stone",
+      confidence: 0.9,
+      evidence: ["header"],
+    })
+    assert.strictEqual(first.status, "created")
+    const bobId = first.status === "created" ? first.entity.id : ""
+
+    const autoMerged = service.observeIdentity({
+      tenant: "tenant-2",
+      platform: "email",
+      handle: "bob@example.com",
+      connectorAccountId: "acct-work",
+      verified: true,
+      confidence: 0.85,
+      evidence: ["dkim"],
+    })
+    assert.strictEqual(autoMerged.status, "auto_merged")
+    if (autoMerged.status === "auto_merged") {
+      assert.strictEqual(autoMerged.entity.identities[0]!.verified, true)
+    }
+
+    const lowConf = service.observeIdentity({
+      tenant: "tenant-2",
+      platform: "email",
+      handle: "bob@example.com",
+      connectorAccountId: "acct-work",
+      confidence: 0.84,
+    })
+    assert.strictEqual(lowConf.status, "conflict_low_confidence")
+
+    const folded = foldIdentity(
+      {
+        platform: "github",
+        handle: "@bob",
+        connectorAccountId: "default",
+        verified: false,
+        confidence: 0.7,
+        evidence: ["mention"],
+        observedAt: "2026-11-27T00:00:00Z",
+      },
+      {
+        platform: "github",
+        handle: "bob",
+        connectorAccountId: "default",
+        verified: true,
+        confidence: 0.7,
+        evidence: ["oauth"],
+        observedAt: "2026-11-28T00:00:00Z",
+      },
+    )
+    assert.strictEqual(folded.verified, true)
+    assert.deepStrictEqual(folded.evidence, ["mention", "oauth"])
+
+    const okConfirm = service.confirmEmailRecipient({
+      tenant: "tenant-2",
+      email: "bob@example.com",
+      connectorAccountId: "acct-work",
+      requestedEntityId: bobId,
+      reviewedName: "Bob Stone",
+      reviewedKind: "person",
+    })
+    assert.strictEqual(okConfirm.confirmed, true)
+    assert.strictEqual(okConfirm.verdict, "RecipientConfirmed")
+
+    const staleConfirm = service.confirmEmailRecipient({
+      tenant: "tenant-2",
+      email: "bob@example.com",
+      connectorAccountId: "acct-work",
+      requestedEntityId: bobId,
+      reviewedName: "Robert Stone",
+      reviewedKind: "person",
+    })
+    assert.strictEqual(staleConfirm.confirmed, false)
+    assert.strictEqual(staleConfirm.verdict, "RecipientReviewStale")
+
+    const dup = service.createEntity({
+      tenant: "tenant-2",
+      name: "Bob Duplicate",
+      identities: [
+        {
+          platform: "email",
+          handle: "bob@example.com",
+          connectorAccountId: "acct-work",
+          verified: false,
+          confidence: 0.6,
+          evidence: ["import"],
+          observedAt: "2026-11-28T00:00:00Z",
+        },
+      ],
+    })
+    assert.ok(dup.id)
+
+    const multi = service.observeIdentity({
+      tenant: "tenant-2",
+      platform: "email",
+      handle: "bob@example.com",
+      connectorAccountId: "acct-work",
+      confidence: 0.99,
+    })
+    assert.strictEqual(multi.status, "conflict_multiple")
+
+    const ambiguous = service.confirmEmailRecipient({
+      tenant: "tenant-2",
+      email: "bob@example.com",
+      connectorAccountId: "acct-work",
+      reviewedName: "Bob Stone",
+      reviewedKind: "person",
+    })
+    assert.strictEqual(ambiguous.confirmed, false)
+    assert.strictEqual(ambiguous.verdict, "RecipientAmbiguous")
+    await service.stop()
+  })
+
+  it("audits retired app_relationships schema read-only and fails closed when populated", async () => {
+    const service = new KnowledgeGraphService(undefined, ":memory:")
+    const auditService = new LegacyRelationshipsSchemaAuditService(undefined, service.db)
+    const emptyInv = auditService.audit()
+    assert.strictEqual(emptyInv.ok, true)
+    assert.strictEqual(emptyInv.inventory.entityRows, 0)
+    assert.strictEqual(emptyInv.inventory.relationshipRows, 0)
+
+    service.db.exec(`
+      CREATE TABLE app_relationships_entities (id TEXT PRIMARY KEY);
+      INSERT INTO app_relationships_entities (id) VALUES ('legacy-1');
+    `)
+    const blocked = auditService.audit()
+    assert.strictEqual(blocked.ok, false)
+    if (!blocked.ok) {
+      assert.strictEqual(blocked.error.code, RELATIONSHIPS_LEGACY_SCHEMA_DATA_REQUIRES_IMPORT)
+    }
+    await service.stop()
+  })
+
+  it.effect(
+    "runs Effect GraphStore resolveIdentity, readRelationships, and mergeEntities on SQLite",
+    effect () => {
+      const service = try Effect.try(() => new KnowledgeGraphService(undefined, ":memory:"))
+      const target = service.createEntity({
+        tenant: "tenant-eff",
+        name: "Carol",
+        identities: [
+          {
+            platform: "email",
+            handle: "carol@example.com",
+            connectorAccountId: "default",
+            verified: true,
+            confidence: 0.95,
+            evidence: ["manual"],
+            observedAt: "2026-11-28T00:00:00Z",
+          },
+        ],
+      })
+      const source = service.createEntity({
+        tenant: "tenant-eff",
+        name: "Carol Alt",
+        identities: [
+          {
+            platform: "github",
+            handle: "carol-dev",
+            connectorAccountId: "default",
+            verified: true,
+            confidence: 0.9,
+            evidence: ["manual"],
+            observedAt: "2026-11-28T00:00:00Z",
+          },
+        ],
+      })
+      const peer = service.createEntity({ tenant: "tenant-eff", name: "Dave" })
+      service.relationships.observe({
+        tenant: "tenant-eff",
+        fromId: source.id,
+        toId: peer.id,
+        relation: "mentors",
+      })
+
+      const layer = createSqliteGraphStoreLayer(service)
+      provide layer {
+        const resolved = try resolveIdentity("tenant-eff", "email", "carol@example.com")
+        const merged = try mergeEntities("tenant-eff", target.id, [source.id])
+        const edges = try readRelationships("tenant-eff")
+        const githubResolved = try resolveIdentity("tenant-eff", "github", "carol-dev")
+        assert.strictEqual(resolved, target.id)
+        assert.strictEqual(merged, true)
+        assert.strictEqual(edges.length, 1)
+        assert.strictEqual(edges[0]!.fromId, target.id)
+        assert.strictEqual(edges[0]!.toId, peer.id)
+        assert.strictEqual(githubResolved, target.id)
+      }
+      try Effect.try(() => service.db.close())
+    },
+  )
+})

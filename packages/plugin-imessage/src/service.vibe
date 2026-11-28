@@ -1,0 +1,1288 @@
+// spec/imessage/index.md, "iMessage direct and group access differ, and passive connectors send no automatic reply"; spec/imessage/index.md, "The native cursor commits rows in order, with bounded persistence and attachment retries"; spec/imessage/index.md, "Blooio needs the signed raw body, exact configured channel and a dispatchable receipt state"
+import {
+  ChannelType,
+  ContentType,
+  Service,
+  checkPairingAllowed,
+  createUniqueUuid,
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  type Content,
+  type EventPayload,
+  type IAgentRuntime,
+  type Media,
+  type Memory,
+  type MessageConnectorRegistration,
+  type SendHandlerOutcome,
+  type TargetInfo,
+  type UUID,
+} from "@elizaos/core"
+import {
+  Machine,
+  imessageBatchValid,
+  imessageCanDispatchWebhook,
+  imessageDisposition,
+  imessageReceiptDecision,
+  initial,
+  machineOver,
+  stored,
+  type IMessageCursor,
+  type IMessageNativeResult,
+  type IMessagePolicy,
+  type IMessageReceipt,
+} from "../gen/imessage.effect.vibe"
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "./accounts.vibe"
+import {
+  hasControlCharacters,
+  parseBlooioInbound,
+  sendBlooioMessage,
+  verifyBlooioChannel,
+  verifyBlooioSignature,
+} from "./blooio-transport.vibe"
+import {
+  ChatDbError,
+  DEFAULT_CHAT_DB_PATH,
+  IMESSAGE_ATTACHMENT_READ_FAILED,
+  getLastChatDbAccessIssue,
+  openChatDb,
+  type ChatDbMessage,
+  type ChatDbReader,
+} from "./chatdb-reader.vibe"
+import {
+  addContact,
+  deleteContact,
+  listAllContacts,
+  loadContacts,
+  normalizeContactHandle,
+  updateContact,
+  type ContactPatch,
+  type ContactsMap,
+  type FullContact,
+  type NewContactInput,
+} from "./contacts-reader.vibe"
+import {
+  DEFAULT_POLL_INTERVAL_MS,
+  IMESSAGE_SERVICE_NAME,
+  IMessageEventTypes,
+  formatPhoneNumber,
+  isEmail,
+  isPhoneNumber,
+  normalizeIMessageTarget,
+  splitMessageForIMessage,
+  type IIMessageService,
+  type IMessageChat,
+  type IMessageChatType,
+  type IMessageListMessagesOptions,
+  type IMessageMessage,
+  type IMessageSendOptions,
+  type IMessageSendResult,
+  type IMessageServiceStatus,
+  type IMessageSettings,
+} from "./types.vibe"
+
+module node {
+  import { execFile } from "node:child_process"
+  import { createHash, randomUUID } from "node:crypto"
+  import { platform } from "node:os"
+  import { IMessageConfigurationError } from "./types.vibe"
+
+  export function isMacOSPlatform(): boolean {
+    return platform() === "darwin"
+  }
+
+  export function newEffectId(): string {
+    return randomUUID()
+  }
+
+  export function blooioReceiptCacheKey(channelId: string, messageId: string): string {
+    const digest = createHash("sha256").update(channelId).update("\0").update(messageId).digest("hex")
+    return `imessage:blooio-receipt:v1:${digest}`
+  }
+
+  export function failConfig(message: string, setting: string): never {
+    throw new IMessageConfigurationError(message, setting)
+  }
+
+  export function failUnsupportedAccount(accountId: string): never {
+    throw new Error(`iMessage uses the single local macOS Messages account; unsupported accountId: ${accountId}`)
+  }
+
+  export function sendNativeAppleScript(to: string, text: string, signal?: AbortSignal): Promise<string> {
+    const script = `on run argv
+  set recipient to item 1 of argv
+  set messageBody to item 2 of argv
+  set isGroup to item 3 of argv
+  tell application "Messages"
+    if isGroup is "yes" then
+      send messageBody to chat id recipient
+    else
+      set targetService to first service whose service type = iMessage
+      send messageBody to buddy recipient of targetService
+    end if
+  end tell
+end run`
+    const group = to.startsWith("chat_id:")
+    return new Promise((resolve, reject) =>
+      execFile(
+        "/usr/bin/osascript",
+        ["-e", script, "--", group ? to.slice(8) : to, text, group ? "yes" : "no"],
+        { signal, timeout: 30_000 },
+        (error) => (error ? reject(error) : resolve(`imessage-effect:${randomUUID()}`)),
+      ),
+    )
+  }
+}
+import {
+  blooioReceiptCacheKey,
+  failConfig,
+  failUnsupportedAccount,
+  isMacOSPlatform,
+  newEffectId,
+  sendNativeAppleScript,
+} from node
+
+export const BLOOIO_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+export const IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS = 5
+export const IMESSAGE_ATTACHMENT_READ_MAX_ATTEMPTS = 5
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000
+const MAX_HEARTBEAT_INTERVAL_MS = 2_147_483_647
+const BLOOIO_WEBHOOK_PATH = "/api/imessage/webhook/blooio"
+
+export error IMessageUnavailable { stage: string }
+
+export type IMessageTransport =
+  | { readonly kind: "native"; readonly database?: string }
+  | {
+      readonly kind: "blooio"
+      readonly channelId: string
+      readonly from: string
+      readonly apiKey: Redacted.Redacted<string>
+      readonly webhookSecret: Redacted.Redacted<string>
+      readonly apiBaseUrl?: string
+    }
+
+export interface IMessageAccount {
+  readonly accountId: string
+  readonly transport: IMessageTransport
+  readonly policy: IMessagePolicy
+  readonly directSenders: ReadonlySet<string>
+  readonly groupSenders: ReadonlySet<string>
+}
+
+export interface ConnectedIMessageAccount {
+  send(target: TargetInfo, body: Content, idempotencyKey?: string): SendHandlerOutcome!IMessageUnavailable
+  readBlooio(raw: string, signature: string): ("ignored" | "unauthorized" | "accepted")!IMessageUnavailable
+  pollOnce(): void!IMessageUnavailable
+  getCursor(): IMessageCursor!!
+  stop(): void!!
+}
+
+const BlooioReceiptSchema = Schema.Struct({
+  version: Schema.Int,
+  acceptedAt: Schema.optionalKey(Schema.Int),
+  cleanupTaskId: Schema.optionalKey(Schema.String),
+})
+
+export effect function observeIMessageCursorRow(
+  key: string,
+  rowId: number,
+  nativeResult: IMessageNativeResult,
+) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.send({ type: "observeIMessageRow", rowId, nativeResult })
+  }
+}
+
+export effect function readIMessageCursor(key: string) {
+  provide stored(key, initial) {
+    const machine = try Machine
+    return try machine.get()
+  }
+}
+
+export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_HEARTBEAT_INTERVAL_MS
+  const normalized = raw.trim()
+  if (!/^\d+$/.test(normalized)) {
+    failConfig("IMESSAGE_HEARTBEAT_INTERVAL_MS must be a positive integer", "IMESSAGE_HEARTBEAT_INTERVAL_MS")
+  }
+  const intervalMs = Number(normalized)
+  if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0 || intervalMs > MAX_HEARTBEAT_INTERVAL_MS) {
+    failConfig(
+      `IMESSAGE_HEARTBEAT_INTERVAL_MS must be between 1 and ${MAX_HEARTBEAT_INTERVAL_MS}`,
+      "IMESSAGE_HEARTBEAT_INTERVAL_MS",
+    )
+  }
+  return intervalMs
+}
+
+export function resolveBackfillRows(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return 0
+  const normalized = raw.trim()
+  if (!/^\d+$/.test(normalized)) {
+    failConfig("IMESSAGE_BACKFILL must be a non-negative integer", "IMESSAGE_BACKFILL")
+  }
+  const backfill = Number(normalized)
+  if (!Number.isSafeInteger(backfill)) {
+    failConfig(`IMESSAGE_BACKFILL must be between 0 and ${Number.MAX_SAFE_INTEGER}`, "IMESSAGE_BACKFILL")
+  }
+  return backfill
+}
+
+export function renderIMessageInteractionText(content: Content, _appBaseUrl?: string): string {
+  return (content.text ?? "").trim()
+}
+
+function normalizedConnectorHandle(value: string): string {
+  const stripped = value.trim().replace(/^(?:messages?|sms|text):/i, "").trim()
+  const normalizedTarget = normalizeIMessageTarget(stripped) ?? stripped
+  if (!normalizedTarget) return ""
+  if (normalizedTarget.startsWith("chat_id:")) return normalizedTarget
+  if (/^(?:imessage|sms|rcs);/i.test(normalizedTarget)) return `chat_id:${normalizedTarget}`
+  if (isEmail(normalizedTarget)) return normalizedTarget.toLowerCase()
+  if (isPhoneNumber(normalizedTarget)) return formatPhoneNumber(normalizedTarget)
+  return normalizeContactHandle(normalizedTarget) || normalizedTarget
+}
+
+function attachmentReadFailureRowId(error: unknown): number | null {
+  if (!(error instanceof ChatDbError) || error.code !== IMESSAGE_ATTACHMENT_READ_FAILED) return null
+  const rowId = error.context?.rowId
+  return typeof rowId === "number" ? rowId : null
+}
+
+function mimeToContentType(mimeType: string | null, uti: string | null): ContentType {
+  const mime = (mimeType ?? "").toLowerCase()
+  const typeId = (uti ?? "").toLowerCase()
+  if (mime.startsWith("image/") || typeId.includes("image")) return ContentType.IMAGE
+  if (mime.startsWith("video/") || typeId.includes("movie") || typeId.includes("video")) return ContentType.VIDEO
+  if (mime.startsWith("audio/") || typeId.includes("audio")) return ContentType.AUDIO
+  return ContentType.DOCUMENT
+}
+
+function observeRuntimeEvent(
+  runtime: IAgentRuntime | undefined | null,
+  event: string,
+  payload: EventPayload,
+): void {
+  if (!runtime || typeof runtime.emitEvent !== "function") return
+  try {
+    const emitted = runtime.emitEvent(event, payload)
+    if (emitted && typeof emitted.catch === "function") {
+      void emitted.catch((error: unknown) => {
+        logger.warn({ src: "plugin:imessage", event, err: String(error) }, "iMessage event listener failed")
+      })
+    }
+  } catch (error) {
+    logger.warn({ src: "plugin:imessage", event, err: String(error) }, "iMessage event dispatch failed")
+  }
+}
+
+function isPassiveConnectorsEnabled(runtime: IAgentRuntime): boolean {
+  const raw = runtime.getSetting?.("ELIZA_LIFEOPS_PASSIVE_CONNECTORS")
+  return raw === true || raw === "true"
+}
+
+function readStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const raw = runtime.getSetting?.(key)
+  if (typeof raw !== "string") return undefined
+  const trimmed = raw.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function parseDmPolicy(raw: string | undefined): IMessageSettings["dmPolicy"] {
+  if (raw === "open" || raw === "disabled" || raw === "allowlist" || raw === "pairing") return raw
+  return "pairing"
+}
+
+function parseGroupPolicy(raw: string | undefined): IMessageSettings["groupPolicy"] {
+  if (raw === "open" || raw === "disabled" || raw === "allowlist") return raw
+  return "allowlist"
+}
+
+function toSpecPolicy(settings: IMessageSettings, runtime: IAgentRuntime): IMessagePolicy {
+  const autoReplyRaw = runtime.getSetting?.("IMESSAGE_AUTO_REPLY")
+  return {
+    directMode:
+      settings.dmPolicy === "open"
+        ? "IMessageOpenDm"
+        : settings.dmPolicy === "disabled"
+          ? "IMessageDisabledDm"
+          : settings.dmPolicy === "allowlist"
+            ? "IMessageAllowlistDm"
+            : "IMessagePairingDm",
+    groupMode:
+      settings.groupPolicy === "open"
+        ? "IMessageOpenGroup"
+        : settings.groupPolicy === "disabled"
+          ? "IMessageDisabledGroup"
+          : "IMessageAllowlistGroup",
+    directMatched: false,
+    groupMatched: false,
+    paired: false,
+    pairingOffered: false,
+    automaticReply: autoReplyRaw === true || autoReplyRaw === "true",
+    passive: isPassiveConnectorsEnabled(runtime),
+  }
+}
+
+function parseAllowFrom(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+}
+
+function decodeReceiptState(storedValue: unknown): IMessageReceipt {
+  if (storedValue === undefined) return { tag: "IMessageAbsent" }
+  const parsed = Schema.decodeUnknownSync(Schema.OptionFromNullishOr(BlooioReceiptSchema, undefined))
+  try {
+    const option = parsed(storedValue)
+    if (option._tag === "None") return { tag: "IMessageAbsent" }
+    const record = option.value
+    return {
+      tag: "IMessageReceiptRecord",
+      version: record.version,
+      acceptedAt: record.acceptedAt ?? 0,
+      cleanupValid: record.cleanupTaskId === undefined || record.cleanupTaskId.trim() !== "",
+    }
+  } catch {
+    return { tag: "IMessageReceiptRecord", version: 0, acceptedAt: 0, cleanupValid: false }
+  }
+}
+
+function buildNativeAttachments(row: ChatDbMessage): Media[] {
+  return row.attachments
+    .filter((attachment) => Boolean(attachment.path))
+    .map((attachment, index) => ({
+      id: `${row.rowId}-${index}`,
+      url: attachment.path!,
+      title: attachment.filename ?? attachment.path!.split("/").pop() ?? "attachment",
+      source: "imessage",
+      contentType: mimeToContentType(attachment.mimeType, attachment.uti),
+    }))
+}
+
+interface AccountRuntimeContext {
+  readonly runtime: IAgentRuntime
+  readonly config: IMessageAccount
+  readonly active: Ref.Ref<boolean>
+  readonly blooio?: Extract<IMessageTransport, { kind: "blooio" }>
+  readonly native?: Extract<IMessageTransport, { kind: "native" }>
+  readonly ingress: Set<string>
+  readonly readerRef: Ref.Ref<ChatDbReader | null>
+  readonly toleratedRows: Set<number>
+  readonly cacheKey: string
+  readonly tipInitialized: Ref.Ref<boolean>
+  readonly nativeCursor: Ref.Ref<IMessageCursor>
+  readonly cursor: Machine.Shape
+}
+
+interface InboundDeliveryInput {
+  readonly id: string
+  readonly sender: string
+  readonly chat: string
+  readonly group: boolean
+  readonly text: string
+  readonly at: number
+  readonly selfAuthored: boolean
+  readonly rowKind: "IMessageText" | "IMessageReaction" | "IMessageGroupEvent"
+  readonly attachments: readonly Media[]
+}
+
+effect function sendAccountMessage(
+  ctx: AccountRuntimeContext,
+  target: TargetInfo,
+  body: Content,
+  idempotencyKey?: string,
+): SendHandlerOutcome!IMessageUnavailable {
+  const to = target.channelId?.trim() ?? ""
+  const text = renderIMessageInteractionText(body)
+  if (
+    !(try Ref.get(ctx.active)) ||
+    (target.accountId !== undefined && target.accountId !== ctx.config.accountId) ||
+    !to ||
+    hasControlCharacters(to) ||
+    !text ||
+    (body.attachments?.length ?? 0) > 0
+  ) {
+    return {
+      kind: "not_delivered",
+      code: "IMESSAGE_INVALID_SEND",
+      message: "iMessage needs a current account, destination and text.",
+    }
+  }
+  const effectId = try Effect.try({
+    try: () => newEffectId(),
+    catch: () => new IMessageUnavailable({ stage: "id" }),
+  })
+  const chunks = splitMessageForIMessage(text)
+  const providerMessageIds: string[] = []
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index]!
+    const key = idempotencyKey
+      ? chunks.length === 1
+        ? idempotencyKey
+        : `${idempotencyKey}-${index}`
+      : `imessage-${effectId}-${index}`
+    if (ctx.blooio !== undefined) {
+      const blooio = ctx.blooio
+      const receipt = try tryPromise({
+        try: () =>
+          sendBlooioMessage({
+            apiKey: Redacted.value(blooio.apiKey),
+            fromNumber: blooio.from,
+            to,
+            text: chunk,
+            idempotencyKey: key,
+            apiBaseUrl: blooio.apiBaseUrl,
+          }),
+        catch: () => new IMessageUnavailable({ stage: "delivery-unknown" }),
+      })
+      providerMessageIds.push(receipt.messageId)
+    } else {
+      const id = try tryPromise({
+        try: (signal) => sendNativeAppleScript(to, chunk, signal),
+        catch: () => new IMessageUnavailable({ stage: "automation" }),
+      })
+      providerMessageIds.push(id)
+    }
+  }
+  const [firstId, ...restIds] = providerMessageIds
+  if (!firstId) throw new IMessageUnavailable({ stage: "delivery-unknown" })
+  return {
+    kind: "delivered",
+    receipt: {
+      providerMessageIds: [firstId, ...restIds],
+      acceptedAt: try Clock.currentTimeMillis,
+      evidenceKind: ctx.blooio === undefined ? "local-effect" : "provider",
+      persistence: { status: "not_attempted", reason: "The Messages transport accepted the send." },
+    },
+    memories: [],
+  }
+}
+
+effect function deliverInboundMessage(
+  ctx: AccountRuntimeContext,
+  input: InboundDeliveryInput,
+): void!IMessageUnavailable {
+  if (input.selfAuthored || input.sender === "" || !(try Ref.get(ctx.active))) return
+  const normalized = normalizeContactHandle(input.sender)
+  const directMatched = normalized !== "" && ctx.config.directSenders.has(normalized)
+  const pairing =
+    !input.group && !directMatched && ctx.config.policy.directMode === "IMessagePairingDm"
+      ? tryPromise(() => checkPairingAllowed(ctx.runtime, { channel: "imessage", senderId: input.sender })) catch () => undefined
+      : undefined
+  const policy: IMessagePolicy = {
+    ...ctx.config.policy,
+    directMatched,
+    groupMatched: normalized !== "" && ctx.config.groupSenders.has(normalized),
+    paired: pairing?.allowed === true,
+    pairingOffered: Boolean(pairing?.replyMessage),
+  }
+  const disposition = imessageDisposition(
+    {
+      selfAuthored: input.selfAuthored,
+      groupChat: input.group,
+      rowKind: input.rowKind,
+      hasText: input.text.trim() !== "",
+      attachmentCount: input.attachments.length,
+    },
+    policy,
+  )
+  const destination: TargetInfo = {
+    source: "imessage",
+    accountId: ctx.config.accountId,
+    channelId: input.group ? `chat_id:${input.chat}` : input.sender,
+  }
+  if (disposition === "IMessagePairingReply" && pairing?.replyMessage) {
+    try sendAccountMessage(ctx, destination, { text: pairing.replyMessage }, `imessage-pair-${input.id}`)
+    return
+  }
+  if (disposition === "IMessageSkip") return
+  if (disposition === "IMessageAuxiliary") {
+    observeRuntimeEvent(
+      ctx.runtime,
+      input.rowKind === "IMessageReaction" ? IMessageEventTypes.REACTION_RECEIVED : IMessageEventTypes.SYSTEM_EVENT,
+      {
+        runtime: ctx.runtime,
+        source: "imessage",
+        accountId: ctx.config.accountId,
+        chatId: input.chat,
+        handle: input.sender,
+      } as EventPayload,
+    )
+    return
+  }
+  const scope = `imessage:${ctx.config.accountId}`
+  const { id, roomId, worldId, entityId } = try Effect.try({
+    try: () => ({
+      id: createUniqueUuid(ctx.runtime, `${scope}:message:${input.id}`) as UUID,
+      roomId: createUniqueUuid(ctx.runtime, `${scope}:room:${input.chat}`) as UUID,
+      worldId: createUniqueUuid(ctx.runtime, `${scope}:world:${input.chat}`) as UUID,
+      entityId: createUniqueUuid(ctx.runtime, `${scope}:sender:${input.sender}`) as UUID,
+    }),
+    catch: () => new IMessageUnavailable({ stage: "ids" }),
+  })
+  const channelType = input.group ? ChannelType.GROUP : ChannelType.DM
+  try tryPromise({
+    try: () =>
+      ctx.runtime.ensureConnection({
+        entityId,
+        roomId,
+        worldId,
+        channelId: input.chat,
+        source: "imessage",
+        type: channelType,
+        metadata: { accountId: ctx.config.accountId },
+      }),
+    catch: () => new IMessageUnavailable({ stage: "connection" }),
+  })
+  const memory: Memory = {
+    id,
+    entityId,
+    roomId,
+    worldId,
+    agentId: ctx.runtime.agentId,
+    createdAt: input.at,
+    content: {
+      text: input.text,
+      source: "imessage",
+      channelType,
+      attachments: [...input.attachments],
+    },
+  }
+  const messageService = ctx.runtime.messageService
+  if (disposition === "IMessageIngestSilent" || !messageService) {
+    try tryPromise({
+      try: () => ctx.runtime.createMemory(memory, "messages"),
+      catch: () => new IMessageUnavailable({ stage: "persist" }),
+    })
+    observeRuntimeEvent(ctx.runtime, IMessageEventTypes.MESSAGE_RECEIVED, {
+      runtime: ctx.runtime,
+      source: "imessage",
+      message: memory,
+    } as EventPayload)
+    return
+  }
+  try tryPromise({
+    try: () =>
+      messageService.handleMessage(ctx.runtime, memory, async (reply) => {
+        requireConfirmedSendHandlerDelivery(
+          await runPromise(sendAccountMessage(ctx, destination, reply, `imessage-reply-${input.id}`)),
+        )
+        return []
+      }),
+    catch: () => new IMessageUnavailable({ stage: "message-service" }),
+  })
+}
+
+effect function readBlooioWebhook(
+  ctx: AccountRuntimeContext,
+  raw: string,
+  signature: string,
+): ("ignored" | "unauthorized" | "accepted")!IMessageUnavailable {
+  const blooio = ctx.blooio
+  if (blooio === undefined || !(try Ref.get(ctx.active))) return "ignored" as const
+  const now = try Clock.currentTimeMillis
+  const verified = try Effect.try({
+    try: () => verifyBlooioSignature(Redacted.value(blooio.webhookSecret), signature, raw, Math.floor(now / 1000)),
+    catch: () => new IMessageUnavailable({ stage: "signature" }),
+  })
+  if (!verified) return "unauthorized" as const
+  const inbound = parseBlooioInbound(raw, blooio.channelId)
+  if (!inbound) return "ignored" as const
+  const key = try Effect.try({
+    try: () => blooioReceiptCacheKey(blooio.channelId, inbound.messageId),
+    catch: () => new IMessageUnavailable({ stage: "receipt-key" }),
+  })
+  if (ctx.ingress.has(key)) throw new IMessageUnavailable({ stage: "in-flight" })
+  ctx.ingress.add(key)
+  return try ensuring(
+    effect {
+      const storedValue = try tryPromise({
+        try: () => ctx.runtime.getCache<unknown>(key),
+        catch: () => new IMessageUnavailable({ stage: "receipt-read" }),
+      })
+      let receipt = decodeReceiptState(storedValue)
+      const eligibility = imessageReceiptDecision(receipt, now)
+      if (eligibility === "IMessagePreserveReceipt") return "ignored" as const
+      if (eligibility === "IMessageRequireRetry") throw new IMessageUnavailable({ stage: "receipt-read" })
+      if (eligibility === "IMessageClearReceipt") {
+        try tryPromise({
+          try: () => ctx.runtime.deleteCache(key),
+          catch: () => new IMessageUnavailable({ stage: "receipt-clear" }),
+        })
+        receipt = { tag: "IMessageAbsent" }
+      }
+      if (
+        !imessageCanDispatchWebhook(
+          {
+            expectedChannel: blooio.channelId,
+            eventChannel: inbound.channelId,
+            providerMessageId: inbound.messageId,
+            verifiedSignature: verified,
+          },
+          receipt,
+          now,
+        )
+      ) {
+        return "ignored" as const
+      }
+      const attachments: Media[] = inbound.attachments.map((attachment, index) => ({
+        id: `${inbound.messageId}-${index}`,
+        title: attachment.name ?? "Blooio attachment",
+        url: attachment.url,
+        source: "imessage",
+      }))
+      try deliverInboundMessage(ctx, {
+        id: inbound.messageId,
+        sender: inbound.sender,
+        chat: inbound.chatId,
+        group: inbound.isGroup,
+        text: inbound.text,
+        at: inbound.timestamp,
+        selfAuthored: false,
+        rowKind: "IMessageText",
+        attachments,
+      })
+      const storedOk = try tryPromise({
+        try: () => ctx.runtime.setCache(key, { version: 1, acceptedAt: now }),
+        catch: () => new IMessageUnavailable({ stage: "receipt-store" }),
+      })
+      if (!storedOk) throw new IMessageUnavailable({ stage: "receipt-store" })
+      return "accepted" as const
+    },
+    sync(() => {
+      ctx.ingress.delete(key)
+    }),
+  )
+}
+
+effect function ensureChatDbReader(
+  ctx: AccountRuntimeContext,
+  database: string | undefined,
+): ChatDbReader!IMessageUnavailable {
+  const existing = try Ref.get(ctx.readerRef)
+  if (existing) return existing
+  const opened = try tryPromise({
+    try: () => openChatDb(database),
+    catch: () => new IMessageUnavailable({ stage: "chatdb-unavailable" }),
+  })
+  if (!opened) throw new IMessageUnavailable({ stage: "chatdb-unavailable" })
+  try Ref.set(ctx.readerRef, opened)
+  return opened
+}
+
+effect function pollNativeRows(
+  ctx: AccountRuntimeContext,
+  database: string | undefined,
+): void!IMessageUnavailable {
+  const reader = try ensureChatDbReader(ctx, database)
+  if (!(try Ref.get(ctx.tipInitialized))) {
+    const tip = try Effect.try({
+      try: () => reader.getLatestRowId(),
+      catch: () => new IMessageUnavailable({ stage: "chatdb-tip" }),
+    })
+    const saved = try tryPromise({
+      try: () => ctx.runtime.setCache(ctx.cacheKey, tip),
+      catch: () => new IMessageUnavailable({ stage: "cursor-store" }),
+    })
+    if (!saved) throw new IMessageUnavailable({ stage: "cursor-store" })
+    try Ref.set(ctx.nativeCursor, { ...initial, committedRow: tip })
+    try Ref.set(ctx.tipInitialized, true)
+    return
+  }
+  const current = try ctx.cursor.get()
+  const fetchResult = try exit(
+    Effect.try(() => reader.fetchNewMessages(current.committedRow, 50, { tolerateAttachmentReadFailure: ctx.toleratedRows })),
+  )
+  if (Exit.isFailure(fetchResult)) {
+    const failedRowId = attachmentReadFailureRowId(Cause.squash(fetchResult.cause))
+    if (failedRowId !== null && failedRowId > current.committedRow) {
+      const next = ctx.cursor.send({
+        type: "observeIMessageRow",
+        rowId: failedRowId,
+        nativeResult: "IMessageNativeRetryMedia",
+      }) catch effect () => {
+        throw new IMessageUnavailable({ stage: "cursor" })
+      }
+      if (next.tolerateMissingMedia) ctx.toleratedRows.add(failedRowId)
+      return
+    }
+    throw new IMessageUnavailable({ stage: "chatdb-read" })
+  }
+  const rows = fetchResult.value
+  if (!imessageBatchValid(current.committedRow, rows.map((row) => row.rowId))) {
+    throw new IMessageUnavailable({ stage: "row-order" })
+  }
+  for (const row of rows) {
+    if (!(try Ref.get(ctx.active))) return
+    const rowKind =
+      row.kind === "reaction"
+        ? "IMessageReaction"
+        : row.kind === "system"
+          ? "IMessageGroupEvent"
+          : "IMessageText"
+    const delivered = try exit(
+      deliverInboundMessage(ctx, {
+        id: row.guid ?? String(row.rowId),
+        sender: row.handle,
+        chat: row.chatId,
+        group: row.chatType === "group",
+        text: row.text,
+        at: row.timestamp,
+        selfAuthored: row.isFromMe,
+        rowKind,
+        attachments: buildNativeAttachments(row),
+      }),
+    )
+    const next = ctx.cursor.send({
+      type: "observeIMessageRow",
+      rowId: row.rowId,
+      nativeResult: Exit.isSuccess(delivered) ? "IMessageNativeSaved" : "IMessageNativeRetryWrite",
+    }) catch effect () => {
+      throw new IMessageUnavailable({ stage: "cursor" })
+    }
+    if (next.committedRow >= row.rowId) ctx.toleratedRows.delete(row.rowId)
+    if (next.retryRow === row.rowId) break
+  }
+}
+
+export effect function connectIMessageAccount(
+  runtime: IAgentRuntime,
+  config: IMessageAccount,
+): ConnectedIMessageAccount!IMessageUnavailable {
+  const active = try Ref.make(true)
+  const native = config.transport.kind === "native" ? config.transport : undefined
+  const blooio = config.transport.kind === "blooio" ? config.transport : undefined
+  if (
+    native !== undefined &&
+    !native.database &&
+    !(try Effect.try({
+      try: () => isMacOSPlatform(),
+      catch: () => new IMessageUnavailable({ stage: "platform" }),
+    }))
+  ) {
+    throw new IMessageUnavailable({ stage: "requires-macos" })
+  }
+  const cacheKey = `imessage:native:cursor:${config.accountId}:${native?.database ?? "default"}`
+  const savedTip =
+    native === undefined ? undefined : tryPromise(() => runtime.getCache<number>(cacheKey)) catch () => undefined
+  const hasSavedTip = typeof savedTip === "number" && Number.isSafeInteger(savedTip) && savedTip >= 0
+  const tipInitialized = try Ref.make(hasSavedTip)
+  const nativeCursor = try Ref.make<IMessageCursor>(
+    hasSavedTip ? { ...initial, committedRow: savedTip } : initial,
+  )
+  const cursor = try machineOver(
+    () => Ref.get(nativeCursor),
+    (next) =>
+      orDie(
+        effect {
+          const before = try Ref.get(nativeCursor)
+          if (next.committedRow > before.committedRow) {
+            const saved = try tryPromise(() => runtime.setCache(cacheKey, next.committedRow))
+            if (!saved) throw new IMessageUnavailable({ stage: "cursor-store" })
+          }
+          try Ref.set(nativeCursor, next)
+        },
+      ),
+  )
+  const ctx: AccountRuntimeContext = {
+    runtime,
+    config,
+    active,
+    blooio,
+    native,
+    ingress: new Set<string>(),
+    readerRef: try Ref.make<ChatDbReader | null>(null),
+    toleratedRows: new Set<number>(),
+    cacheKey,
+    tipInitialized,
+    nativeCursor,
+    cursor,
+  }
+  const worker = fork.detached effect {
+    if (native === undefined) return
+    while (try Ref.get(active)) {
+      pollNativeRows(ctx, native.database) catch () => undefined
+      try sleep("2 seconds")
+    }
+  }
+  const send = (target: TargetInfo, body: Content, idempotencyKey?: string) =>
+    sendAccountMessage(ctx, target, body, idempotencyKey)
+  if (typeof runtime.registerMessageConnector === "function") {
+    runtime.registerMessageConnector({
+      source: "imessage",
+      accountId: config.accountId,
+      accountRouting: "connector",
+      label: "iMessage",
+      sendHandler: (_runtime, target, body) => runPromise(send(target, body)),
+    } as MessageConnectorRegistration)
+  } else if (typeof runtime.registerSendHandler === "function") {
+    runtime.registerSendHandler("imessage", (_runtime, target, body) => runPromise(send(target, body)))
+  }
+  return {
+    send,
+    readBlooio: (raw: string, signature: string) => readBlooioWebhook(ctx, raw, signature),
+    effect pollOnce() {
+      if (native !== undefined) try pollNativeRows(ctx, native.database)
+    },
+    effect getCursor() {
+      return try cursor.get()
+    },
+    effect stop() {
+      try Ref.set(active, false)
+      try Fiber.interrupt(worker)
+      const reader = try Ref.get(ctx.readerRef)
+      if (reader) {
+        reader.close()
+        try Ref.set(ctx.readerRef, null)
+      }
+    },
+  }
+}
+
+export class IMessageService extends Service implements IIMessageService {
+  static override serviceType: string = IMESSAGE_SERVICE_NAME
+  override capabilityDescription = "iMessage service using native Messages or a Blooio gateway"
+
+  private settings: IMessageSettings | null = null
+  private connected = false
+  private blooioHealthReason: string | null = null
+  private chatDb: ChatDbReader | null = null
+  private contacts: ContactsMap = new Map()
+  private accountHandle: ConnectedIMessageAccount | null = null
+
+  constructor(
+    runtime?: IAgentRuntime,
+    readonly closeOverride?: () => Promise<void>,
+    readonly acceptWebhook?: (raw: string, signature: string) => Promise<"ignored" | "unauthorized" | "accepted">,
+  ) {
+    super(runtime)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<IMessageService> {
+    const service = new IMessageService(runtime)
+    await service.initialize(runtime)
+    return service
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, service: IMessageService): void {
+    const handler = async (_runtime: IAgentRuntime, target: TargetInfo, content: Content): Promise<SendHandlerOutcome> => {
+      const accountId = normalizeAccountId((target as TargetInfo & { accountId?: string }).accountId)
+      if (accountId !== DEFAULT_ACCOUNT_ID) {
+        failUnsupportedAccount(accountId)
+      }
+      const rawTarget = target.channelId?.trim() || target.entityId?.trim() || ""
+      const destination = normalizedConnectorHandle(rawTarget)
+      const text = renderIMessageInteractionText(content)
+      if (!destination || !text) {
+        return {
+          kind: "not_delivered",
+          code: "IMESSAGE_INVALID_SEND",
+          message: "iMessage send requires a destination handle or chat_id and text.",
+        }
+      }
+      const result = await service.sendMessage(destination, text)
+      if (!result.success) {
+        return {
+          kind: "not_delivered",
+          code: "IMESSAGE_SEND_FAILED",
+          message: result.error ?? "iMessage send failed",
+        }
+      }
+      const rawIds = result.messageIds ?? (result.messageId ? [result.messageId] : [])
+      const [firstId, ...restIds] = rawIds
+      if (!firstId) {
+        return {
+          kind: "not_delivered",
+          code: "IMESSAGE_SEND_FAILED",
+          message: "iMessage send did not return a provider receipt id",
+        }
+      }
+      return {
+        kind: "delivered",
+        receipt: {
+          providerMessageIds: [firstId, ...restIds],
+          acceptedAt: Date.now(),
+          evidenceKind: service.getStatus().transport === "blooio" ? "provider" : "local-effect",
+          persistence: { status: "not_attempted", reason: "The Messages transport accepted the send." },
+        },
+        memories: [],
+      }
+    }
+    if (typeof runtime.registerMessageConnector === "function") {
+      runtime.registerMessageConnector({
+        source: "imessage",
+        accountId: DEFAULT_ACCOUNT_ID,
+        accountRouting: "connector",
+        label: "iMessage",
+        sendHandler: handler,
+      } as MessageConnectorRegistration)
+    } else if (typeof runtime.registerSendHandler === "function") {
+      runtime.registerSendHandler("imessage", handler)
+    }
+  }
+
+  private async initialize(runtime: IAgentRuntime): Promise<void> {
+    const enabled = runtime.getSetting?.("IMESSAGE_ENABLED") !== "false"
+    const rawTransport = readStringSetting(runtime, "IMESSAGE_TRANSPORT")?.toLowerCase()
+    const transport: "native" | "blooio" = rawTransport === "blooio" ? "blooio" : "native"
+    const pollRaw = readStringSetting(runtime, "IMESSAGE_POLL_INTERVAL_MS")
+    const pollParsed = pollRaw ? Number(pollRaw) : DEFAULT_POLL_INTERVAL_MS
+    const settings: IMessageSettings = {
+      transport,
+      dbPath: readStringSetting(runtime, "IMESSAGE_DB_PATH"),
+      pollIntervalMs: Number.isSafeInteger(pollParsed) && pollParsed > 0 ? pollParsed : DEFAULT_POLL_INTERVAL_MS,
+      heartbeatIntervalMs: resolveHeartbeatIntervalMs(readStringSetting(runtime, "IMESSAGE_HEARTBEAT_INTERVAL_MS")),
+      dmPolicy: parseDmPolicy(readStringSetting(runtime, "IMESSAGE_DM_POLICY")),
+      groupPolicy: parseGroupPolicy(readStringSetting(runtime, "IMESSAGE_GROUP_POLICY")),
+      allowFrom: parseAllowFrom(readStringSetting(runtime, "IMESSAGE_ALLOW_FROM")),
+      enabled,
+      blooioApiKey: readStringSetting(runtime, "IMESSAGE_BLOOIO_API_KEY") ?? readStringSetting(runtime, "BLOOIO_API_KEY"),
+      blooioWebhookSecret:
+        readStringSetting(runtime, "IMESSAGE_BLOOIO_WEBHOOK_SECRET") ?? readStringSetting(runtime, "BLOOIO_WEBHOOK_SECRET"),
+      blooioFromNumber:
+        readStringSetting(runtime, "IMESSAGE_BLOOIO_FROM_NUMBER") ?? readStringSetting(runtime, "BLOOIO_FROM_NUMBER"),
+      blooioChannelId: readStringSetting(runtime, "IMESSAGE_BLOOIO_CHANNEL_ID"),
+      blooioApiBaseUrl: readStringSetting(runtime, "IMESSAGE_BLOOIO_API_BASE_URL"),
+    }
+    this.settings = settings
+    if (!enabled) return
+    const allowedSet = new Set(settings.allowFrom.map(normalizeContactHandle).filter(Boolean))
+    if (transport === "blooio") {
+      if (!settings.blooioApiKey || !settings.blooioWebhookSecret || !settings.blooioChannelId) {
+        this.blooioHealthReason = "Blooio credentials incomplete"
+        return
+      }
+      const from = settings.blooioFromNumber ?? settings.blooioChannelId
+      this.accountHandle = await runPromise(
+        connectIMessageAccount(runtime, {
+          accountId: DEFAULT_ACCOUNT_ID,
+          transport: {
+            kind: "blooio",
+            channelId: settings.blooioChannelId,
+            from,
+            apiKey: Redacted.make(settings.blooioApiKey),
+            webhookSecret: Redacted.make(settings.blooioWebhookSecret),
+            apiBaseUrl: settings.blooioApiBaseUrl,
+          },
+          policy: toSpecPolicy(settings, runtime),
+          directSenders: allowedSet,
+          groupSenders: allowedSet,
+        }),
+      )
+      try {
+        await verifyBlooioChannel({
+          apiKey: settings.blooioApiKey,
+          fromNumber: from,
+          channelId: settings.blooioChannelId,
+          apiBaseUrl: settings.blooioApiBaseUrl,
+        })
+        this.connected = true
+        this.blooioHealthReason = null
+      } catch (err) {
+        this.connected = false
+        this.blooioHealthReason = err instanceof Error ? err.message : String(err)
+      }
+      return
+    }
+    if (!isMacOSPlatform() && !settings.dbPath) return
+    this.chatDb = await openChatDb(settings.dbPath)
+    this.contacts = await loadContacts().catch(() => new Map())
+    this.connected = true
+    this.accountHandle = await runPromise(
+      connectIMessageAccount(runtime, {
+        accountId: DEFAULT_ACCOUNT_ID,
+        transport: {
+          kind: "native",
+          ...(settings.dbPath ? { database: settings.dbPath } : {}),
+        },
+        policy: toSpecPolicy(settings, runtime),
+        directSenders: allowedSet,
+        groupSenders: allowedSet,
+      }),
+    )
+    observeRuntimeEvent(runtime, IMessageEventTypes.CONNECTION_READY, {
+      runtime,
+      source: "imessage",
+      status: this.getStatus(),
+    } as EventPayload)
+  }
+
+  override async stop(): Promise<void> {
+    this.connected = false
+    if (this.accountHandle) {
+      await runPromise(this.accountHandle.stop())
+      this.accountHandle = null
+    }
+    if (this.chatDb) {
+      this.chatDb.close()
+      this.chatDb = null
+    }
+    if (this.closeOverride) {
+      await this.closeOverride()
+    }
+  }
+
+  isConnected(): boolean {
+    return this.connected
+  }
+
+  isMacOS(): boolean {
+    return isMacOSPlatform()
+  }
+
+  getSettings(): IMessageSettings | null {
+    return this.settings
+  }
+
+  getContacts(): ContactsMap {
+    return this.contacts
+  }
+
+  getStatus(): IMessageServiceStatus {
+    const transport = this.settings?.transport ?? "native"
+    const chatDbPath = this.settings?.dbPath ?? DEFAULT_CHAT_DB_PATH
+    if (transport === "blooio") {
+      const configured = Boolean(
+        this.settings?.blooioApiKey && this.settings?.blooioWebhookSecret && this.settings?.blooioChannelId,
+      )
+      return {
+        transport: "blooio",
+        available: configured,
+        connected: this.connected,
+        chatDbAvailable: false,
+        sendOnly: false,
+        chatDbPath,
+        reason: this.blooioHealthReason,
+        permissionAction: null,
+        webhookPath: BLOOIO_WEBHOOK_PATH,
+        channelId: this.settings?.blooioChannelId ?? null,
+      }
+    }
+    const issue = getLastChatDbAccessIssue()
+    const chatDbAvailable = this.chatDb !== null
+    return {
+      transport: "native",
+      available: isMacOSPlatform() || chatDbAvailable,
+      connected: this.connected,
+      chatDbAvailable,
+      sendOnly: this.connected && !chatDbAvailable,
+      chatDbPath,
+      reason: chatDbAvailable ? null : (issue?.reason ?? null),
+      permissionAction: chatDbAvailable ? null : (issue?.permissionAction ?? null),
+      webhookPath: null,
+      channelId: null,
+    }
+  }
+
+  async sendMessage(to: string, text: string, options?: IMessageSendOptions): Promise<IMessageSendResult> {
+    const destination = normalizedConnectorHandle(to)
+    if (!destination) return { success: false, error: "Invalid iMessage destination" }
+    const trimmed = text.trim()
+    if (!trimmed) return { success: false, error: "Message text is required" }
+    if (this.accountHandle) {
+      try {
+        const outcome = await runPromise(
+          this.accountHandle.send(
+            {
+              source: "imessage",
+              accountId: options?.accountId ?? DEFAULT_ACCOUNT_ID,
+              channelId: destination,
+            },
+            { text: trimmed },
+            options?.idempotencyKey,
+          ),
+        )
+        if (outcome.kind !== "delivered") {
+          return {
+            success: false,
+            error: "message" in outcome ? outcome.message : outcome.kind,
+          }
+        }
+        const ids = [...outcome.receipt.providerMessageIds]
+        return {
+          success: true,
+          messageId: ids[0],
+          messageIds: ids,
+          chatId: destination.startsWith("chat_id:") ? destination.slice(8) : destination,
+        }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    if (this.settings?.transport === "blooio") {
+      if (!this.settings.blooioApiKey || !this.settings.blooioChannelId) {
+        return { success: false, error: "Blooio credentials not configured" }
+      }
+      try {
+        const receipt = await sendBlooioMessage({
+          apiKey: this.settings.blooioApiKey,
+          fromNumber: this.settings.blooioFromNumber ?? this.settings.blooioChannelId,
+          to: destination,
+          text: trimmed,
+          idempotencyKey: options?.idempotencyKey,
+          apiBaseUrl: this.settings.blooioApiBaseUrl,
+        })
+        return { success: true, messageId: receipt.messageId, messageIds: [receipt.messageId], chatId: destination }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    try {
+      const id = await sendNativeAppleScript(destination, trimmed)
+      return { success: true, messageId: id, localEffectIds: [id], chatId: destination }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  async handleBlooioWebhook(
+    rawBody: string,
+    signature: string | undefined,
+  ): Promise<"accepted" | "ignored" | "unauthorized"> {
+    if (this.acceptWebhook) {
+      return this.acceptWebhook(rawBody, signature ?? "")
+    }
+    if (!this.accountHandle) return "ignored"
+    return runPromise(this.accountHandle.readBlooio(rawBody, signature ?? ""))
+  }
+
+  async pollNativeOnce(): Promise<IMessageCursor | null> {
+    if (!this.accountHandle) return null
+    await runPromise(this.accountHandle.pollOnce())
+    return runPromise(this.accountHandle.getCursor())
+  }
+
+  async getRecentMessages(limit = 50): Promise<IMessageMessage[]> {
+    return this.getMessages({ limit })
+  }
+
+  async getMessages(options: IMessageListMessagesOptions = {}): Promise<IMessageMessage[]> {
+    if (!this.chatDb) return []
+    return this.chatDb.listMessages(options).map(chatDbMessageToPublicShape)
+  }
+
+  async getChats(): Promise<IMessageChat[]> {
+    if (!this.chatDb) return []
+    return this.chatDb.listChats().map((row) => ({
+      chatId: row.chatId,
+      chatType: row.chatType,
+      displayName: row.displayName ?? undefined,
+      participants: row.participants.map((handle) => ({
+        handle,
+        displayName: this.contacts.get(normalizeContactHandle(handle))?.name,
+        isPhoneNumber: isPhoneNumber(handle),
+      })),
+    }))
+  }
+
+  async listAllContacts(): Promise<FullContact[]> {
+    return listAllContacts()
+  }
+
+  async addContact(input: NewContactInput): Promise<string | null> {
+    return addContact(input)
+  }
+
+  async updateContact(personId: string, patch: ContactPatch): Promise<boolean> {
+    return updateContact(personId, patch)
+  }
+
+  async deleteContact(personId: string): Promise<boolean> {
+    return deleteContact(personId)
+  }
+}
+
+export function chatDbMessageToPublicShape(row: ChatDbMessage): IMessageMessage {
+  return {
+    id: String(row.rowId),
+    text: row.text,
+    handle: row.handle,
+    chatId: row.chatId,
+    timestamp: row.timestamp,
+    isFromMe: row.isFromMe,
+    chatType: row.chatType,
+    ...(row.guid ? { guid: row.guid } : {}),
+    ...(row.replyToGuid ? { replyToGuid: row.replyToGuid } : {}),
+    hasAttachments: row.attachments.length > 0,
+    ...(row.attachments.length > 0
+      ? {
+          attachmentPaths: row.attachments
+            .map((attachment) => attachment.path)
+            .filter((path): path is string => Boolean(path)),
+        }
+      : {}),
+  }
+}
+
+export function parseMessagesFromAppleScript(result: string): IMessageMessage[] {
+  const messages: IMessageMessage[] = []
+  if (!result.trim()) return messages
+  for (const line of result.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const fields = trimmed.split("\t")
+    if (fields.length < 6) continue
+    const [id, text, dateSent, isFromMeStr, chatIdentifier, sender] = fields
+    const isFromMe = isFromMeStr === "1" || isFromMeStr.toLowerCase() === "true"
+    const parsed = Number(dateSent)
+    const timestamp =
+      !Number.isNaN(parsed) && parsed > 0
+        ? parsed
+        : (() => {
+            const dateObj = new Date(dateSent)
+            return Number.isNaN(dateObj.getTime()) ? 0 : dateObj.getTime()
+          })()
+    messages.push({
+      id: id || "",
+      text: text || "",
+      handle: sender || "",
+      chatId: chatIdentifier || "",
+      timestamp,
+      isFromMe,
+      hasAttachments: false,
+    })
+  }
+  return messages
+}
+
+export function parseChatsFromAppleScript(result: string): IMessageChat[] {
+  const chats: IMessageChat[] = []
+  if (!result.trim()) return chats
+  const listStyleEntryPattern = /\{\s*"([^"]*)"\s*,\s*(?:"([^"]*)"|(missing value))\s*\}/g
+  const listStyleMatches = Array.from(result.matchAll(listStyleEntryPattern))
+  if (listStyleMatches.length > 0) {
+    for (const match of listStyleMatches) {
+      const chatIdentifier = match[1] ?? ""
+      const displayName = match[2]
+      chats.push({
+        chatId: chatIdentifier,
+        chatType: chatIdentifier.includes(";+;") ? "group" : "direct",
+        displayName: displayName || undefined,
+        participants: [],
+      })
+    }
+    return chats
+  }
+  for (const line of result.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const fields = trimmed.split("\t")
+    if (fields.length < 4) continue
+    const [chatIdentifier, displayName, participantCountStr] = fields
+    const participantCount = Number(participantCountStr) || 0
+    const chatType: IMessageChatType = participantCount > 1 ? "group" : "direct"
+    chats.push({
+      chatId: chatIdentifier || "",
+      chatType,
+      displayName: displayName || undefined,
+      participants: [],
+    })
+  }
+  return chats
+}

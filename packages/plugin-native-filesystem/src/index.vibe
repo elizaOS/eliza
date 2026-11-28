@@ -1,3 +1,295 @@
-// spec/nativeFilesystem/index.md, "Story: Work with device files inside the directory I granted"
+// spec/nativeFilesystem/index.md, "Story: Work with device files inside the directory I granted"; spec/nativeFilesystem/index.md, "A native request stays within the selected root and its operation grant"
+import { Service, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { deviceFileOutcome, mayUseDeviceFilesystem, type DeviceRootFence, type FilesystemOperation } from "../gen/nativeFilesystem.effect.vibe"
+
 export { filesClient, filesPlugin } from "@elizaos/os-bridges"
-export type { FilesCategory, FilesAccess, FilesStatus, FilesResult, StorageVolume, StorageEntry, CategoryFolder, TrashEntry, FileOutcomeStatus, FileOutcomeRow, FilesOpened, FilesSelected, FilesHandoff, FilesSelection, OnVolume, ElizaFilesPlugin } from "@elizaos/os-bridges"
+export type {
+  CategoryFolder,
+  ElizaFilesPlugin,
+  FileOutcomeRow,
+  FileOutcomeStatus,
+  FilesAccess,
+  FilesCategory,
+  FilesHandoff,
+  FilesOpened,
+  FilesResult,
+  FilesSelected,
+  FilesSelection,
+  FilesStatus,
+  OnVolume,
+  StorageEntry,
+  StorageVolume,
+  TrashEntry,
+} from "@elizaos/os-bridges"
+
+export const DEVICE_FILESYSTEM_SERVICE_TYPE = "device_filesystem"
+
+module node {
+  import { constants as fsConstants } from "node:fs"
+  import { lstat, mkdir, open, readFile, readdir, realpath, stat, type FileHandle } from "node:fs/promises"
+  import os from "node:os"
+  import path from "node:path"
+
+  export const DEVICE_FILESYSTEM_LOG_PREFIX = "[device-filesystem]"
+  export type FileEncoding = "utf8" | "base64"
+  export interface DirectoryEntry {
+    readonly name: string
+    readonly type: "file" | "directory"
+  }
+  export interface NormalizedPath {
+    readonly relative: string
+    readonly segments: readonly string[]
+  }
+  export interface NormalizeOptions {
+    readonly allowRoot?: boolean
+  }
+
+  const ABSOLUTE_WINDOWS = /^[a-zA-Z]:[\\/]/
+
+  export function normalizeDevicePath(input: string, options: NormalizeOptions = {}): NormalizedPath {
+    if (typeof input !== "string") throw new Error("path is required")
+    if (input.length === 0) {
+      if (options.allowRoot === true) return { relative: "", segments: [] }
+      throw new Error("path is required")
+    }
+    if (input.includes("\0")) throw new Error("path contains NUL byte")
+    const unified = input.replace(/\\/g, "/")
+    if (unified.startsWith("/") || ABSOLUTE_WINDOWS.test(unified)) {
+      throw new Error(`absolute paths are not allowed: ${input}`)
+    }
+    if (unified.split("/").some((seg) => seg === "..")) {
+      throw new Error(`path traversal is not allowed: ${input}`)
+    }
+    const normalized = unified.split("/").filter((segment) => segment !== "" && segment !== ".").join("/")
+    if (normalized === "." || normalized === "") {
+      if (options.allowRoot === true) return { relative: "", segments: [] }
+      throw new Error(`path resolves to the root: ${input}`)
+    }
+    const segments = normalized.split("/").filter((seg) => seg.length > 0)
+    return { relative: segments.join("/"), segments }
+  }
+
+  function isCode(error: unknown, code: string): boolean {
+    return typeof error === "object" && error !== null && (error as NodeJS.ErrnoException).code === code
+  }
+
+  export function defaultWorkspaceRoot(stateDir?: string): string {
+    const base = stateDir && stateDir.trim().length > 0 ? stateDir : path.join(os.tmpdir(), "eliza-device-fs")
+    return path.join(base, "workspace")
+  }
+
+  export async function ensureDir(dir: string): Promise<void> {
+    await mkdir(dir, { recursive: true })
+  }
+
+  function resolveWithinRoot(root: string, relative: string): string {
+    const absolute = path.resolve(root, relative)
+    const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep
+    if (absolute !== root && !absolute.startsWith(rootWithSep)) {
+      throw new Error(`${DEVICE_FILESYSTEM_LOG_PREFIX} resolved path escapes workspace root: ${absolute}`)
+    }
+    return absolute
+  }
+
+  async function assertRealPathWithinRoot(root: string, targetPath: string): Promise<void> {
+    const [rootReal, targetReal] = await Promise.all([realpath(root), realpath(targetPath)])
+    const rootWithSep = rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep
+    if (targetReal !== rootReal && !targetReal.startsWith(rootWithSep)) {
+      throw new Error(`${DEVICE_FILESYSTEM_LOG_PREFIX} resolved path escapes workspace root: ${targetReal}`)
+    }
+  }
+
+  async function materializeWritableParent(root: string, absolute: string): Promise<string> {
+    const parent = path.dirname(absolute)
+    const relativeParent = path.relative(root, parent)
+    const segments = relativeParent === "" || relativeParent === "." ? [] : relativeParent.split(path.sep).filter(Boolean)
+    let current = root
+    for (const segment of segments) {
+      const next = path.join(current, segment)
+      try {
+        const info = await lstat(next)
+        if (info.isSymbolicLink()) throw new Error(`${DEVICE_FILESYSTEM_LOG_PREFIX} symlinked parent is not permitted: ${next}`)
+        if (!info.isDirectory()) throw new Error(`${DEVICE_FILESYSTEM_LOG_PREFIX} parent is not a directory: ${next}`)
+      } catch (error) {
+        if (!isCode(error, "ENOENT")) throw error
+        try {
+          await mkdir(next)
+        } catch (mkdirError) {
+          if (!isCode(mkdirError, "EEXIST")) throw mkdirError
+          const raced = await lstat(next)
+          if (raced.isSymbolicLink() || !raced.isDirectory()) throw mkdirError
+        }
+      }
+      await assertRealPathWithinRoot(root, next)
+      current = await realpath(next)
+    }
+    await assertRealPathWithinRoot(root, current)
+    return realpath(current)
+  }
+
+  async function openWritableFile(target: string): Promise<FileHandle> {
+    const existingFlags = fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW
+    try {
+      return await open(target, existingFlags)
+    } catch (error) {
+      if (!isCode(error, "ENOENT")) throw error
+    }
+    try {
+      return await open(target, existingFlags | fsConstants.O_CREAT | fsConstants.O_EXCL)
+    } catch (error) {
+      if (!isCode(error, "EEXIST")) throw error
+      return open(target, existingFlags)
+    }
+  }
+
+  export async function readNodeFile(root: string, relative: string, encoding: FileEncoding): Promise<string> {
+    const absolute = resolveWithinRoot(root, relative)
+    await assertRealPathWithinRoot(root, absolute)
+    return readFile(absolute, encoding === "base64" ? "base64" : "utf8")
+  }
+
+  export async function writeNodeFile(root: string, relative: string, content: string, encoding: FileEncoding): Promise<void> {
+    const absolute = resolveWithinRoot(root, relative)
+    const canonicalParent = await materializeWritableParent(root, absolute)
+    const canonicalTarget = path.join(canonicalParent, path.basename(absolute))
+    const handle = await openWritableFile(canonicalTarget)
+    try {
+      await handle.truncate(0)
+      await handle.writeFile(content, encoding === "base64" ? "base64" : "utf8")
+    } finally {
+      await handle.close()
+    }
+  }
+
+  export async function listNodeDir(root: string, relative: string): Promise<DirectoryEntry[]> {
+    const absolute = resolveWithinRoot(root, relative)
+    await assertRealPathWithinRoot(root, absolute)
+    const entries = await readdir(absolute, { withFileTypes: true })
+    const out: DirectoryEntry[] = []
+    for (const entry of entries) {
+      if (entry.isDirectory()) out.push({ name: entry.name, type: "directory" })
+      else if (entry.isFile()) out.push({ name: entry.name, type: "file" })
+      else {
+        let type: DirectoryEntry["type"] = "file"
+        try {
+          const info = await stat(path.join(absolute, entry.name))
+          type = info.isDirectory() ? "directory" : "file"
+        } catch (error) {
+          if (!isCode(error, "ENOENT")) throw error
+        }
+        out.push({ name: entry.name, type })
+      }
+    }
+    return out
+  }
+
+  export function throwMissingBridge(message: string): never {
+    throw new Error(message)
+  }
+}
+import {
+  DEVICE_FILESYSTEM_LOG_PREFIX,
+  defaultWorkspaceRoot,
+  ensureDir,
+  listNodeDir,
+  normalizeDevicePath,
+  readNodeFile,
+  throwMissingBridge,
+  writeNodeFile,
+  type DirectoryEntry,
+  type FileEncoding,
+  type NormalizeOptions,
+  type NormalizedPath,
+} from node
+
+export {
+  DEVICE_FILESYSTEM_LOG_PREFIX,
+  normalizeDevicePath,
+  type DirectoryEntry,
+  type FileEncoding,
+  type NormalizeOptions,
+  type NormalizedPath,
+}
+
+export function evaluateDeviceFilesystemFence(
+  fence: DeviceRootFence,
+  operation: FilesystemOperation,
+): boolean {
+  return mayUseDeviceFilesystem(fence, operation) && deviceFileOutcome(fence, operation, "FileApplied") === "FileApplied"
+}
+
+export class DeviceFilesystemBridge extends Service {
+  static override readonly serviceType = DEVICE_FILESYSTEM_SERVICE_TYPE
+  override capabilityDescription = "Confined device filesystem bridge with path normalization and symlink-safe no-follow traversal."
+
+  private nodeRoot: string | null = null
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<DeviceFilesystemBridge> {
+    const service = new DeviceFilesystemBridge(runtime)
+    const stateDir = typeof runtime.getSetting("ELIZA_STATE_DIR") === "string" ? (runtime.getSetting("ELIZA_STATE_DIR") as string) : undefined
+    const root = defaultWorkspaceRoot(stateDir)
+    await ensureDir(root)
+    service.nodeRoot = root
+    return service
+  }
+
+  static forNodeRoot(root: string): DeviceFilesystemBridge {
+    const bridge = new DeviceFilesystemBridge()
+    bridge.nodeRoot = root
+    return bridge
+  }
+
+  override async stop(): Promise<void> {
+    return
+  }
+
+  private requireRoot(op: FilesystemOperation): string {
+    const openedRoot = Boolean(this.nodeRoot)
+    const fence: DeviceRootFence = { openedRoot, withinRoot: true, noFollowTraversal: true, readable: true, writable: true }
+    if (!openedRoot || !evaluateDeviceFilesystemFence(fence, op) || !this.nodeRoot) {
+      throwMissingBridge(`${DEVICE_FILESYSTEM_LOG_PREFIX} Node backend root not initialised.`)
+    }
+    return this.nodeRoot
+  }
+
+  async read(relativePath: string, encoding: FileEncoding = "utf8"): Promise<string> {
+    const { relative } = normalizeDevicePath(relativePath)
+    return readNodeFile(this.requireRoot("DeviceRead"), relative, encoding)
+  }
+
+  async write(relativePath: string, content: string, encoding: FileEncoding = "utf8"): Promise<void> {
+    const { relative } = normalizeDevicePath(relativePath)
+    await writeNodeFile(this.requireRoot("DeviceWrite"), relative, content, encoding)
+  }
+
+  async list(relativePath: string): Promise<DirectoryEntry[]> {
+    const { relative } = normalizeDevicePath(relativePath, { allowRoot: true })
+    return listNodeDir(this.requireRoot("DeviceList"), relative)
+  }
+}
+
+export function getDeviceFilesystemBridge(runtime: IAgentRuntime): DeviceFilesystemBridge {
+  const svc = runtime.getService<DeviceFilesystemBridge>(DEVICE_FILESYSTEM_SERVICE_TYPE)
+  if (!svc) {
+    throwMissingBridge(`${DEVICE_FILESYSTEM_LOG_PREFIX} DeviceFilesystemBridge is not registered.`)
+  }
+  return svc
+}
+
+export const deviceFilesystemPlugin: Plugin = {
+  name: "device-filesystem",
+  description: "Mobile-safe filesystem bridge for confined device file read/write/list operations.",
+  services: [DeviceFilesystemBridge],
+  actions: [],
+  async dispose(runtime) {
+    const svc = runtime.getService<DeviceFilesystemBridge>(DeviceFilesystemBridge.serviceType)
+    await svc?.stop()
+  },
+}
+
+const defaultDeviceFilesystemPlugin: Plugin = deviceFilesystemPlugin
+export default defaultDeviceFilesystemPlugin

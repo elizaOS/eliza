@@ -1,5 +1,16 @@
-// spec/meetings/index.md, "Story: Join a meeting as a disclosed transcription guest"
+// spec/meetings/index.md, "Story: Join a meeting as a disclosed transcription guest"; spec/meetings/urlAndDisclosure.md, "Story: Enforce HTTPS provider matching, fail-closed transcript disclosure, and clean segment admission"
+import type { IAgentRuntime, Plugin } from "@elizaos/core"
 import { Machine, stored, type MeetingProvider, type TranscriptSegment } from "../gen/meetings.effect.vibe"
+import {
+  activeMeetingsProvider,
+  getMeetingTranscriptAction,
+  joinMeetingAction,
+  leaveMeetingAction,
+  meetingsRoutes,
+  type MeetingsRouteDescriptor,
+} from "./actions.vibe"
+import { MeetingService, getMeetingService } from "./service.vibe"
+import { shouldEnableMeetings } from "./url-and-disclosure.vibe"
 
 export error MeetingProviderFailure { sessionKey: string; operation: string; reason: string }
 export error MeetingIdentityMissing
@@ -46,8 +57,10 @@ export effect function finishMeeting(request: MeetingRequest) {
     const meeting = try Machine
     const snapshot = try meeting.get()
     if (snapshot.capturePhase === "CompleteMeeting") return snapshot
-    const finalizing = snapshot.capturePhase === "Finalizing" ? snapshot :
-      try meeting.send({ type: "stopCapture", sessionKey: request.sessionKey })
+    const finalizing =
+      snapshot.capturePhase === "Finalizing"
+        ? snapshot
+        : try meeting.send({ type: "stopCapture", sessionKey: request.sessionKey })
     try transport.stop(request)
     try transport.saveTranscript(request, finalizing.transcript)
     return try meeting.send({ type: "finishTranscript", sessionKey: request.sessionKey, saved: true })
@@ -65,3 +78,38 @@ effect function meetingKey(ownerId: string, sessionKey: string) {
   if (ownerId === "" || sessionKey === "") throw new MeetingIdentityMissing()
   return "meeting:" + ownerId.length + ":" + ownerId + ":" + sessionKey
 }
+
+export type MeetingsPlugin = Plugin & {
+  readonly routes: readonly MeetingsRouteDescriptor[]
+  readonly dispose: (runtime: IAgentRuntime) => Promise<void>
+}
+
+export const meetingsPlugin: MeetingsPlugin = {
+  name: "@elizaos/plugin-meetings",
+  description: "Meeting transcription for Google Meet, Microsoft Teams, and Zoom with disclosed guest capture and Zoom cloud import",
+  services: [MeetingService],
+  actions: [joinMeetingAction, leaveMeetingAction, getMeetingTranscriptAction],
+  providers: [activeMeetingsProvider],
+  routes: meetingsRoutes,
+  autoEnable: {
+    shouldEnable: (env, config) =>
+      shouldEnableMeetings({
+        env,
+        config,
+        isNativePlatform: env.CAPACITOR_PLATFORM === "ios" || env.CAPACITOR_PLATFORM === "android",
+      }),
+  },
+  dispose: async (runtime: IAgentRuntime): Promise<void> => {
+    const svc = getMeetingService(runtime)
+    if (svc) await svc.stop()
+  },
+}
+
+export default meetingsPlugin
+
+export * from "./types.vibe"
+export * from "./url-and-disclosure.vibe"
+export * from "./pipeline.vibe"
+export * from "./transcript-writer.vibe"
+export * from "./service.vibe"
+export * from "./actions.vibe"

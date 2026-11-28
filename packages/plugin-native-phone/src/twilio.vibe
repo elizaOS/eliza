@@ -1,0 +1,283 @@
+// spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"
+export interface TwilioCredentials {
+  readonly accountSid: string
+  readonly authToken: string
+  readonly fromPhoneNumber: string
+}
+
+export interface TwilioSmsBillingBreakdown {
+  readonly segments: number
+  readonly rawCost: number
+  readonly markup: number
+  readonly billedCost: number
+  readonly markupRate: number
+  readonly costPerSegment: number
+}
+
+export interface TwilioDeliveryResult {
+  readonly ok: boolean
+  readonly status: number | null
+  readonly sid?: string
+  readonly sids?: readonly string[]
+  readonly error?: string
+  readonly retryCount?: number
+  readonly billing?: TwilioSmsBillingBreakdown
+  readonly deliveryUnknown?: boolean
+}
+
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+
+const TWILIO_SMS_MARKUP_RATE = 0.2
+const DEFAULT_SMS_COST_PER_SEGMENT_USD = 0.0075
+const MAX_RETRIES = 2
+const DEFAULT_BASE_DELAY_MS = 1_000
+const TWILIO_BODY_MAX_LENGTH = 1600
+const TWILIO_API_BASE_URL = "https://api.twilio.com"
+
+module node {
+  /** @throws {never} */
+  export function readTwilioEnv(): Readonly<Record<string, string | undefined>> {
+    return process.env
+  }
+
+  /** @throws {never} */
+  export function encodeTwilioBasicAuth(accountSid: string, authToken: string): string {
+    return Buffer.from(`${accountSid}:${authToken}`).toString("base64")
+  }
+}
+import { encodeTwilioBasicAuth, readTwilioEnv } from node
+
+export function splitTwilioSmsBody(body: string): string[] {
+  const parts: string[] = []
+  let rest = body
+  while (rest.length > TWILIO_BODY_MAX_LENGTH) {
+    const window = rest.slice(0, TWILIO_BODY_MAX_LENGTH)
+    let end = Math.max(window.lastIndexOf(" "), window.lastIndexOf("\n")) + 1
+    if (end <= 1) {
+      end = TWILIO_BODY_MAX_LENGTH
+      const last = rest.charCodeAt(end - 1)
+      if (last >= 0xd800 && last <= 0xdbff) end -= 1
+    }
+    parts.push(rest.slice(0, end))
+    rest = rest.slice(end)
+  }
+  parts.push(rest)
+  if (parts.length === 1) return parts
+  return parts.filter((part) => part.trim().length > 0)
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+export function calculateTwilioSmsBilling(
+  parts: readonly string[],
+  costPerSegmentUsd = DEFAULT_SMS_COST_PER_SEGMENT_USD,
+): TwilioSmsBillingBreakdown {
+  const segments = parts.reduce((total, part) => total + Math.max(1, Math.ceil(part.length / 160)), 0)
+  const rawCost = roundCurrency(segments * costPerSegmentUsd)
+  const markup = roundCurrency(rawCost * TWILIO_SMS_MARKUP_RATE)
+  return {
+    segments,
+    rawCost,
+    markup,
+    billedCost: roundCurrency(rawCost + markup),
+    markupRate: TWILIO_SMS_MARKUP_RATE,
+    costPerSegment: costPerSegmentUsd,
+  }
+}
+
+export function readTwilioCredentialsFromEnv(
+  env: Readonly<Record<string, string | undefined>> = readTwilioEnv(),
+): TwilioCredentials | null {
+  const accountSid = env.TWILIO_ACCOUNT_SID?.trim()
+  const authToken = env.TWILIO_AUTH_TOKEN?.trim()
+  const fromPhoneNumber = env.TWILIO_PHONE_NUMBER?.trim()
+  if (!accountSid || !authToken || !fromPhoneNumber) return null
+  return { accountSid, authToken, fromPhoneNumber }
+}
+
+function resolveSmsCostPerSegment(env: Readonly<Record<string, string | undefined>> = readTwilioEnv()): number {
+  const raw = env.TWILIO_SMS_COST_PER_SEGMENT_USD
+  if (!raw) return DEFAULT_SMS_COST_PER_SEGMENT_USD
+  const parsed = Number.parseFloat(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SMS_COST_PER_SEGMENT_USD
+}
+
+function nonEmptyField(value: string, field: string): string | null {
+  return value.trim().length === 0 ? `${field} must be a non-empty string` : null
+}
+
+function validateInputs(args: {
+  readonly credentials: TwilioCredentials
+  readonly to: string
+  readonly messageField: "body" | "message"
+  readonly message: string
+}): string | null {
+  return (
+    nonEmptyField(args.credentials.accountSid, "credentials.accountSid")
+    ?? nonEmptyField(args.credentials.authToken, "credentials.authToken")
+    ?? nonEmptyField(args.credentials.fromPhoneNumber, "credentials.fromPhoneNumber")
+    ?? nonEmptyField(args.to, "to")
+    ?? nonEmptyField(args.message, args.messageField)
+  )
+}
+
+async function sendTwilioRequest(args: {
+  readonly credentials: TwilioCredentials
+  readonly path: string
+  readonly payload: URLSearchParams
+  readonly apiBaseUrl?: string
+  readonly baseDelayMs?: number
+}): Promise<TwilioDeliveryResult> {
+  const baseUrl = (args.apiBaseUrl ?? TWILIO_API_BASE_URL).replace(/\/$/, "")
+  const url = `${baseUrl}/2010-04-01/Accounts/${encodeURIComponent(args.credentials.accountSid)}${args.path}`
+  const baseDelayMs = args.baseDelayMs ?? DEFAULT_BASE_DELAY_MS
+  let lastResult: TwilioDeliveryResult = { ok: false, status: null, error: "Twilio request did not run.", retryCount: 0 }
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delayMs = baseDelayMs * 2 ** (attempt - 1)
+      await Effect.runPromise(Effect.sleep(`${delayMs} millis`))
+    }
+    const httpProgram = effect {
+      const req = HttpClientRequest.post(url).pipe(
+        HttpClientRequest.setHeader("Authorization", `Basic ${encodeTwilioBasicAuth(args.credentials.accountSid, args.credentials.authToken)}`),
+        HttpClientRequest.setHeader("Content-Type", "application/x-www-form-urlencoded"),
+        HttpClientRequest.bodyText(args.payload.toString(), "application/x-www-form-urlencoded"),
+      )
+      const response = try HttpClient.execute(req)
+      const bodyJson = try Effect.result(response.json)
+      return { status: response.status, bodyJson }
+    }
+    const executed = await Effect.runPromise(
+      Effect.result(Effect.timeoutOption(Effect.provide(httpProgram, FetchHttpClient.layer), "12 seconds")),
+    )
+    if (executed._tag !== "Success" || Option.isNone(executed.success)) {
+      return {
+        ok: false,
+        status: null,
+        error: executed._tag === "Failure"
+          ? (executed.failure instanceof Error ? executed.failure.message : String(executed.failure))
+          : "Twilio request timed out",
+        retryCount: attempt,
+        deliveryUnknown: true,
+      }
+    }
+    const { status, bodyJson } = executed.success.value
+    const responseOk = status >= 200 && status < 300
+    const validObj = bodyJson._tag === "Success" && typeof bodyJson.success === "object" && bodyJson.success !== null && !Array.isArray(bodyJson.success)
+    if (responseOk && !validObj) {
+      return {
+        ok: false,
+        status,
+        error: "Twilio accepted the request without a valid receipt",
+        retryCount: attempt,
+        deliveryUnknown: true,
+      }
+    }
+    const data = (validObj ? bodyJson.success : {}) as { readonly sid?: unknown; readonly message?: unknown }
+    if (!responseOk) {
+      const errorMsg = typeof data.message === "string" && data.message !== "" ? data.message : `HTTP ${status}`
+      lastResult = {
+        ok: false,
+        status,
+        error: errorMsg,
+        retryCount: attempt,
+        deliveryUnknown: status >= 500 || status === 408,
+      }
+      if (status === 429 && attempt < MAX_RETRIES) continue
+      return lastResult
+    }
+    if (typeof data.sid !== "string" || data.sid.trim() === "") {
+      return {
+        ok: false,
+        status,
+        error: "Twilio accepted the request without a valid SID receipt",
+        retryCount: attempt,
+        deliveryUnknown: true,
+      }
+    }
+    return {
+      ok: true,
+      status,
+      sid: data.sid,
+      retryCount: attempt,
+    }
+  }
+  return lastResult
+}
+
+export async function sendTwilioSms(args: {
+  readonly credentials: TwilioCredentials
+  readonly to: string
+  readonly body: string
+  readonly apiBaseUrl?: string
+  readonly baseDelayMs?: number
+}): Promise<TwilioDeliveryResult> {
+  const validationError = validateInputs({ credentials: args.credentials, to: args.to, messageField: "body", message: args.body })
+  if (validationError !== null) return { ok: false, status: null, error: validationError, retryCount: 0 }
+
+  const parts = splitTwilioSmsBody(args.body)
+  const sids: string[] = []
+  let lastResult: TwilioDeliveryResult | undefined
+  for (const part of parts) {
+    const result = await sendTwilioRequest({
+      credentials: args.credentials,
+      path: "/Messages.json",
+      payload: new URLSearchParams({ To: args.to, From: args.credentials.fromPhoneNumber, Body: part }),
+      apiBaseUrl: args.apiBaseUrl,
+      baseDelayMs: args.baseDelayMs,
+    })
+    if (!result.ok) {
+      if (sids.length === 0) return result
+      return {
+        ...result,
+        status: null,
+        sid: sids[0],
+        sids,
+        error: `Twilio failed part ${sids.length + 1} of ${parts.length} after earlier parts were accepted: ${result.error ?? `status ${result.status}`}`,
+      }
+    }
+    if (result.sid !== undefined) sids.push(result.sid)
+    lastResult = result
+  }
+  return {
+    ...(lastResult ?? { ok: true, status: 200 }),
+    sid: sids[0],
+    sids,
+    billing: calculateTwilioSmsBilling(parts, resolveSmsCostPerSegment()),
+  }
+}
+
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;")
+}
+
+export async function sendTwilioVoiceCall(args: {
+  readonly credentials: TwilioCredentials
+  readonly to: string
+  readonly message: string
+  readonly apiBaseUrl?: string
+  readonly baseDelayMs?: number
+}): Promise<TwilioDeliveryResult> {
+  const validationError = validateInputs({ credentials: args.credentials, to: args.to, messageField: "message", message: args.message })
+  if (validationError !== null) return { ok: false, status: null, error: validationError, retryCount: 0 }
+
+  return sendTwilioRequest({
+    credentials: args.credentials,
+    path: "/Calls.json",
+    payload: new URLSearchParams({
+      To: args.to,
+      From: args.credentials.fromPhoneNumber,
+      Twiml: `<Response><Say>${escapeXml(args.message)}</Say></Response>`,
+    }),
+    apiBaseUrl: args.apiBaseUrl,
+    baseDelayMs: args.baseDelayMs,
+  })
+}

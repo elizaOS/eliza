@@ -1,14 +1,127 @@
 // spec/nativeActivityTracker/index.md, "Story: Observe my desktop activity while my collector is running"
 import * as ChildProcess from "effect/process/ChildProcess"
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
-import { initial, mayPublishCollectorLine, startCollector, type CollectorLine } from "../gen/nativeActivityTracker.effect.vibe"
+import {
+  apply,
+  canObserveCollectorExit,
+  canStartCollector,
+  canStopCollector,
+  initial,
+  mayPublishCollectorLine,
+  observeCollectorExit,
+  startCollector,
+  stopCollector,
+  type CollectorLine,
+  type CollectorPlatform,
+  type CollectorState,
+} from "../gen/nativeActivityTracker.effect.vibe"
 
-module nodePlatform {
-  import { platform } from "node:process"
+export type ActivityEventKind = "activate" | "deactivate"
 
-  export const isDarwin = platform === "darwin"
+export interface ActivityCollectorEvent {
+  ts: number
+  event: ActivityEventKind
+  bundleId: string
+  appName: string
+  windowTitle?: string
 }
-import { isDarwin } from nodePlatform
+
+export interface ActivityCollectorIdleSample {
+  ts: number
+  event: "hid_idle"
+  idleSeconds: number
+}
+
+export interface ActivityCollectorExit {
+  code: number | null
+  signal: NodeJS.Signals | null
+  clean: boolean
+  reason: string
+}
+
+export interface ActivityCollectorOptions {
+  binaryPath?: string
+  args?: readonly string[]
+  onEvent: (event: ActivityCollectorEvent) => void
+  onIdleSample?: (sample: ActivityCollectorIdleSample) => void
+  onExit?: (exit: ActivityCollectorExit) => void
+  onFatal?: (reason: string) => void
+}
+
+export interface ActivityCollectorHandle {
+  stop(): Promise<void>
+  readonly pid: number | null
+}
+
+type ParsedCollectorLine =
+  | { kind: "event"; value: ActivityCollectorEvent }
+  | { kind: "idle"; value: ActivityCollectorIdleSample }
+  | { kind: "ignored" }
+
+module nodeCollector {
+  import { spawn } from "node:child_process"
+  import { existsSync } from "node:fs"
+  import path from "node:path"
+  import { platform } from "node:process"
+  import { createInterface } from "node:readline"
+  import { fileURLToPath } from "node:url"
+
+  export const currentPlatform = platform
+  export const isDarwin = platform === "darwin"
+
+  export function defaultBinaryPath(metaUrl: string): string {
+    const here = path.dirname(fileURLToPath(metaUrl))
+    return path.resolve(here, "..", "native", "macos", "activity-collector")
+  }
+
+  export function raiseError(message: string): never {
+    throw new Error(message)
+  }
+
+  export function parseJsonUnknown(text: string): unknown {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+
+  export function spawnCollectorProcess(
+    binary: string,
+    args: readonly string[],
+    onLine: (line: string) => void,
+    onError: (message: string) => void,
+    onClose: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): { readonly pid: number | null; readonly stop: () => Promise<void> } {
+    if (!existsSync(binary)) {
+      throw new Error(`[activity-tracker] Collector binary not found at ${binary}.`)
+    }
+    const proc = spawn(binary, [...args], { stdio: ["ignore", "pipe", "pipe"] })
+    let stopped = false
+    const rl = createInterface({ input: proc.stdout })
+    rl.on("line", (line) => {
+      if (!stopped) onLine(line)
+    })
+    proc.on("error", (err) => {
+      if (!stopped) onError(err.message)
+    })
+    proc.on("close", (code, signal) => {
+      if (!stopped) onClose(code, signal)
+    })
+    return {
+      get pid() {
+        return proc.pid ?? null
+      },
+      async stop() {
+        if (stopped) return
+        stopped = true
+        rl.close()
+        if (!proc.killed) proc.kill("SIGTERM")
+      },
+    }
+  }
+}
+import { currentPlatform, defaultBinaryPath, isDarwin, parseJsonUnknown, raiseError, spawnCollectorProcess } from nodeCollector
 
 const At = Schema.Number.check(Schema.isFinite())
 const Focus = Schema.Struct({
@@ -46,8 +159,129 @@ function collectorLine(observation: ActivityObservation): CollectorLine {
   }
 }
 
+function parseCollectorLine(line: string): ParsedCollectorLine {
+  const trimmed = line.trim()
+  if (trimmed.length === 0) return { kind: "ignored" }
+  const parsed = parseJsonUnknown(trimmed)
+  if (parsed === null || typeof parsed !== "object") return { kind: "ignored" }
+  const p = parsed as Record<string, unknown>
+  const ts = typeof p.ts === "number" ? p.ts : Number.NaN
+  if (!Number.isFinite(ts)) return { kind: "ignored" }
+  if (p.event === "hid_idle") {
+    const idleSeconds = typeof p.idleSeconds === "number" && Number.isFinite(p.idleSeconds) ? p.idleSeconds : null
+    if (idleSeconds === null || idleSeconds < 0) return { kind: "ignored" }
+    return { kind: "idle", value: { ts, event: "hid_idle", idleSeconds } }
+  }
+  if (p.event !== "activate" && p.event !== "deactivate") return { kind: "ignored" }
+  const bundleId = typeof p.bundleId === "string" ? p.bundleId.trim() : null
+  const appName = typeof p.appName === "string" ? p.appName.trim() : null
+  if (bundleId === null || appName === null) return { kind: "ignored" }
+  const out: ActivityCollectorEvent = { ts, event: p.event, bundleId, appName }
+  if (typeof p.windowTitle === "string") out.windowTitle = p.windowTitle
+  return { kind: "event", value: out }
+}
+
+function parseEventLine(line: string): ActivityCollectorEvent | null {
+  const parsed = parseCollectorLine(line)
+  return parsed.kind === "event" ? parsed.value : null
+}
+
+function describeCollectorExit(code: number | null, signal: NodeJS.Signals | null): ActivityCollectorExit {
+  return {
+    code,
+    signal,
+    clean: code === 0 && signal === null,
+    reason: `collector exited (code=${code}, signal=${signal})`,
+  }
+}
+
 export function isSupportedPlatform(): boolean {
   return isDarwin
+}
+
+export interface CollectorSession {
+  readonly state: () => CollectorState
+  readonly start: (platform: CollectorPlatform, binaryPresent: boolean) => boolean
+  readonly stop: () => boolean
+  readonly observeExit: (generation: number) => boolean
+  readonly mayPublish: (generation: number, line: CollectorLine) => boolean
+}
+
+export function createCollectorSession(): CollectorSession {
+  let current: CollectorState = initial
+  return {
+    state: () => current,
+    start(platform, binaryPresent) {
+      if (!canStartCollector(current, platform, binaryPresent)) return false
+      current = startCollector(current, platform, binaryPresent)
+      return true
+    },
+    stop() {
+      if (!canStopCollector(current)) return false
+      current = stopCollector(current)
+      return true
+    },
+    observeExit(generation) {
+      if (!canObserveCollectorExit(current, generation)) return false
+      current = observeCollectorExit(current, generation)
+      return true
+    },
+    mayPublish: (generation, line) => mayPublishCollectorLine(current, generation, line),
+  }
+}
+
+export function startActivityCollector(options: ActivityCollectorOptions): ActivityCollectorHandle {
+  if (!isSupportedPlatform()) {
+    raiseError(`[activity-tracker] Native collector only runs on Darwin (current platform: ${currentPlatform}).`)
+  }
+  const binary = options.binaryPath ?? defaultBinaryPath(import.meta.url)
+  const session = createCollectorSession()
+  session.start("MacCollector", true)
+  const generation = session.state().generation
+
+  const spawned = spawnCollectorProcess(
+    binary,
+    options.args ?? [],
+    (line) => {
+      const parsed = parseCollectorLine(line)
+      if (parsed.kind === "event") {
+        if (session.mayPublish(generation, collectorLine(parsed.value))) options.onEvent(parsed.value)
+        return
+      }
+      if (parsed.kind === "idle") {
+        if (session.mayPublish(generation, collectorLine(parsed.value))) options.onIdleSample?.(parsed.value)
+      }
+    },
+    (message) => {
+      if (session.observeExit(generation)) options.onFatal?.(message)
+    },
+    (code, signal) => {
+      if (!session.observeExit(generation)) return
+      const exit = describeCollectorExit(code, signal)
+      if (exit.clean) {
+        options.onExit?.(exit)
+        return
+      }
+      options.onFatal?.(exit.reason)
+    },
+  )
+
+  return {
+    get pid() {
+      return spawned.pid
+    },
+    async stop() {
+      if (!session.stop()) return
+      await spawned.stop()
+    },
+  }
+}
+
+export const __internal = {
+  parseEventLine,
+  parseCollectorLine,
+  describeCollectorExit,
+  applyCollectorEvent: apply,
 }
 
 export effect function* observeActivity(binaryPath: string, args: readonly string[] = []) {

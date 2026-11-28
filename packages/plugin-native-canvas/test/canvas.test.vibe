@@ -1,0 +1,71 @@
+// spec/nativeCanvas/index.md, "Story: Render and interact with the current canvas only"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  CanvasWeb,
+  assertCanvasSize,
+  createCanvasLifecycleSession,
+  drawCanvasLayer,
+} from "../src/index.vibe"
+
+describe('plugin-native-canvas (spec/nativeCanvas/index.md, "Story: Render and interact with the current canvas only")', () => {
+  it('manages canvas layers, drawing, snapshot, deep links, and A2UI on CanvasWeb (spec/nativeCanvas/session.md, "Story: Manage canvas lifecycle, attachment, layers, and touch routing")', async () => {
+    const web = new CanvasWeb()
+    assert.deepStrictEqual(assertCanvasSize({ width: 640, height: 480 }), { width: 640, height: 480 })
+    assert.throws(() => assertCanvasSize({ width: 0, height: 100 }))
+
+    const { canvasId } = await web.create({ size: { width: 320, height: 240 }, backgroundColor: "#ffffff" })
+    const { layerId } = await web.createLayer({ canvasId, layer: { name: "Overlay", visible: true, opacity: 0.5, zIndex: 2 } })
+    const { layers } = await web.getLayers({ canvasId })
+    assert.strictEqual(layers.length, 2)
+    await web.updateLayer({ canvasId, layerId, layer: { opacity: 0.8 } })
+    await web.drawRect({ canvasId, rect: { x: 1, y: 2, width: 10, height: 20 }, drawOptions: { layerId } })
+    const img = await web.toImage({ canvasId, format: "png", quality: 90 })
+    assert.strictEqual(img.width, 320)
+    const snap = await web.snapshot({ maxWidth: 160, quality: 0.82 })
+    assert.strictEqual(snap.width, 160)
+    assert.strictEqual(snap.height, 120)
+
+    const deepLinks: string[] = []
+    const dlHandle = await web.addListener("deepLink", (e) => deepLinks.push(e.path))
+    await web.navigate({ url: "eliza://workspace/open?id=1" })
+    await dlHandle.remove()
+    assert.strictEqual(deepLinks.length, 1)
+
+    const actions: string[] = []
+    const a2Handle = await web.addListener("a2uiAction", (e) => actions.push(e.action))
+    await web.a2uiPush({ payload: { action: "confirm", data: { ok: true } } })
+    await a2Handle.remove()
+    assert.deepStrictEqual(actions, ["confirm"])
+    await web.a2uiReset()
+    assert.strictEqual(web.getA2UIState().payload, null)
+
+    await web.deleteLayer({ canvasId, layerId })
+    await web.destroy({ canvasId })
+
+    const session = createCanvasLifecycleSession()
+    assert.strictEqual(session.create(0, 100), false)
+    assert.strictEqual(session.create(320, 240), true)
+    assert.strictEqual(session.attach(), true)
+    assert.strictEqual(session.addLayer(), true)
+    assert.strictEqual(session.removeLayer(), true)
+    assert.strictEqual(session.destroy(), true)
+  })
+
+  it.effect('enforces live frame and target layer in drawCanvasLayer (spec/nativeCanvas/index.md, "Visual operations use live layers and input requires an attached canvas")', effect () => {
+    const web = new CanvasWeb()
+    const created = try Effect.promise(() => web.create({ size: { width: 200, height: 100 } }))
+    try drawCanvasLayer({
+      frame: { canvasId: created.canvasId, widthPx: 200, heightPx: 100, live: true, attached: true, touchEnabled: true },
+      canvasId: created.canvasId,
+      layerId: "default",
+      commands: [{ type: "clear", args: { layerId: "default" } }],
+    }, web)
+    const refused = try Effect.exit(drawCanvasLayer({
+      frame: { canvasId: created.canvasId, widthPx: 200, heightPx: 100, live: false, attached: true, touchEnabled: true },
+      canvasId: created.canvasId,
+      layerId: "default",
+      commands: [{ type: "clear", args: { layerId: "default" } }],
+    }, web))
+    try Effect.try(() => assert.strictEqual(refused._tag, "Failure"))
+  })
+})

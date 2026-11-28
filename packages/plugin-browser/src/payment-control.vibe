@@ -1,0 +1,64 @@
+// spec/browser/paymentControl.md, "Story: Distinguish a control that may pay from entry, navigation and other sends"; spec/browser/paymentControl.md, "Story: Ask before guiding the person to a payment control"
+import {
+  agentMayPressMoney,
+  hasMoneyHandoff,
+  moneyPointer,
+  paymentCommit,
+  personConsequence,
+  renderedConsequence,
+  replacementPersonConsequence,
+  reportsOptIn,
+  type GuidanceEvidence,
+  type GuideConsequence,
+  type OptInBox,
+  type PaymentEvidence,
+  type PaymentHandoff,
+  type PaymentReady,
+} from "../gen/browser__paymentControl.effect.vibe"
+
+export interface PaymentControlAssessment {
+  readonly isPaymentCommit: boolean
+  readonly rendered: GuideConsequence
+  readonly person: GuideConsequence
+  readonly agentMayPress: boolean
+}
+
+export function assessPaymentControl(
+  guide: GuidanceEvidence,
+  paymentFacts: PaymentEvidence,
+): PaymentControlAssessment {
+  const rendered = renderedConsequence(guide, paymentFacts)
+  const person = personConsequence(guide, paymentFacts)
+  return {
+    isPaymentCommit: paymentCommit(paymentFacts),
+    rendered,
+    person,
+    agentMayPress: agentMayPressMoney(rendered) && agentMayPressMoney(person),
+  }
+}
+
+export function assessReplacementPaymentControl(
+  guide: GuidanceEvidence,
+  paymentFacts: PaymentEvidence,
+  freshPaymentControl: boolean,
+): GuideConsequence {
+  return replacementPersonConsequence(guide, paymentFacts, freshPaymentControl)
+}
+
+export function isPaymentHandoffPresent(
+  fromAgent: boolean,
+  convertedToPerson: boolean,
+  pressOrFollow: boolean,
+  floorMoney: boolean,
+  sameControlRef: boolean,
+): boolean {
+  return hasMoneyHandoff(fromAgent, convertedToPerson, pressOrFollow, floorMoney, sameControlRef)
+}
+
+export function filterReportedOptInBoxes(boundForm: boolean, boxes: readonly OptInBox[]): OptInBox[] {
+  return boxes.filter((box) => reportsOptIn(boundForm, box))
+}
+
+export function resolvePaymentPointer(ready: PaymentReady): PaymentHandoff {
+  return moneyPointer(ready)
+}

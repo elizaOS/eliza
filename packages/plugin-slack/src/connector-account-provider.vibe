@@ -1,0 +1,404 @@
+// spec/slack/index.md, "Story: Answer one Slack message through its proper installation and thread"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import {
+  logger,
+  type ConnectorAccount,
+  type ConnectorAccountManager,
+  type ConnectorAccountPatch,
+  type ConnectorAccountProvider,
+  type ConnectorOAuthCallbackRequest,
+  type ConnectorOAuthCallbackResult,
+  type ConnectorOAuthStartRequest,
+  type ConnectorOAuthStartResult,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import {
+  DEFAULT_ACCOUNT_ID,
+  listEnabledSlackAccounts,
+  resolveDefaultSlackAccountId,
+  resolveSlackAccount,
+  type SlackAccountRole,
+} from "./accounts.vibe"
+import { persistConnectorCredentialRefs } from "./connector-credential-refs.vibe"
+import { SLACK_SERVICE_NAME } from "./types.vibe"
+
+const SLACK_OAUTH_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize"
+export const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access"
+export const SLACK_OAUTH_TIMEOUT_MS = 15_000
+
+const DEFAULT_BOT_SCOPES = [
+  "app_mentions:read",
+  "channels:history",
+  "channels:read",
+  "chat:write",
+  "groups:history",
+  "groups:read",
+  "im:history",
+  "im:read",
+  "im:write",
+  "mpim:history",
+  "mpim:read",
+  "reactions:read",
+  "reactions:write",
+  "users:read",
+]
+
+const DEFAULT_PURPOSES = ["messaging", "posting", "reading"]
+
+export interface SlackConnectorAccountProviderOptions {
+  fetchImpl?: typeof globalThis.fetch
+  oauthTimeoutMs?: number
+  tokenUrl?: string
+}
+
+export interface SlackOAuthV2Response {
+  ok: boolean
+  error?: string
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  token_type?: string
+  scope?: string
+  bot_user_id?: string
+  app_id?: string
+  team?: { id: string; name?: string }
+  enterprise?: { id: string; name?: string } | null
+  authed_user?: {
+    id: string
+    scope?: string
+    access_token?: string
+    refresh_token?: string
+    expires_in?: number
+    token_type?: string
+  }
+}
+
+module guard {
+  export function failSlackOAuth(message: string): never {
+    throw new Error(message)
+  }
+
+  export async function postFormWithCustomFetch(
+    fetchImpl: typeof globalThis.fetch,
+    url: string,
+    body: string,
+    timeoutMs: number,
+  ): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<unknown> }> {
+    return fetchImpl(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  }
+}
+import { failSlackOAuth, postFormWithCustomFetch } from guard
+
+export async function exchangeSlackOAuthTokenWithFetch(
+  body: string,
+  fetchImpl?: typeof globalThis.fetch,
+  timeoutMs: number = SLACK_OAUTH_TIMEOUT_MS,
+  tokenUrl: string = SLACK_OAUTH_TOKEN_URL,
+): Promise<SlackOAuthV2Response> {
+  if (fetchImpl) {
+    const response = await postFormWithCustomFetch(fetchImpl, tokenUrl, body, timeoutMs)
+    if (!response.ok) {
+      const text = await response.text()
+      failSlackOAuth(`Slack token exchange failed with ${response.status}: ${text}`)
+    }
+    const parsed = (await response.json()) as SlackOAuthV2Response
+    if (!parsed.ok || !parsed.access_token) {
+      failSlackOAuth(`Slack token exchange returned an error: ${parsed.error ?? "unknown"}`)
+    }
+    return parsed
+  }
+  const request = HttpClientRequest.post(tokenUrl).pipe(
+    HttpClientRequest.bodyText(body, "application/x-www-form-urlencoded"),
+  )
+  const outcome = await runPromise(
+    effect {
+      const response = timeout(
+        Effect.provide(
+          Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, {
+            redirect: "error",
+          }),
+          FetchHttpClient.layer,
+        ),
+        `${timeoutMs} millis`,
+      ) catch effect (cause) => ({ kind: "error" as const, cause })
+      if ("kind" in response) return response
+      if (response.status < 200 || response.status >= 300) {
+        const text = response.text catch () => ""
+        return { kind: "status" as const, status: response.status, text }
+      }
+      const parsed = response.json catch () => undefined
+      return { kind: "ok" as const, parsed }
+    },
+  )
+  if (outcome.kind === "error") {
+    failSlackOAuth(`Slack token exchange failed: ${String(outcome.cause)}`)
+  }
+  if (outcome.kind === "status") {
+    failSlackOAuth(`Slack token exchange failed with ${outcome.status}: ${outcome.text}`)
+  }
+  const parsed = outcome.parsed as SlackOAuthV2Response | undefined
+  if (!parsed?.ok || !parsed.access_token) {
+    failSlackOAuth(`Slack token exchange returned an error: ${parsed?.error ?? "unknown"}`)
+  }
+  return parsed
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function roleFromMetadata(metadata: unknown): SlackAccountRole {
+  const record =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {}
+  const raw = nonEmptyString(
+    record.connectionRole ?? record.role ?? record.accountRole ?? record.requestedRole,
+  )
+  if (!raw) return "AGENT"
+  const normalized = raw.toUpperCase()
+  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") return normalized
+  return "AGENT"
+}
+
+function readClientConfig(runtime: IAgentRuntime): {
+  clientId: string
+  clientSecret: string
+  redirectUri: string
+} {
+  const clientId = nonEmptyString(runtime.getSetting("SLACK_CLIENT_ID"))
+  const clientSecret = nonEmptyString(runtime.getSetting("SLACK_CLIENT_SECRET"))
+  const redirectUri = nonEmptyString(runtime.getSetting("SLACK_REDIRECT_URI"))
+  if (!clientId || !clientSecret || !redirectUri) {
+    failSlackOAuth("Slack OAuth requires SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, and SLACK_REDIRECT_URI.")
+  }
+  return { clientId, clientSecret, redirectUri }
+}
+
+function synthesizeAccount(
+  accountId: string,
+  name: string | undefined,
+  isDefault: boolean,
+  source: string,
+): ConnectorAccount {
+  const now = Date.now()
+  return {
+    id: accountId,
+    provider: SLACK_SERVICE_NAME,
+    label: name ?? `Slack (${accountId})`,
+    role: "OWNER",
+    purpose: [...DEFAULT_PURPOSES],
+    accessGate: "open",
+    status: "connected",
+    createdAt: now,
+    updatedAt: now,
+    metadata: { synthesized: true, source, isDefault },
+  }
+}
+
+function mergeStoredAccountPatch(
+  account: ConnectorAccount,
+  patch: ConnectorAccountPatch,
+): ConnectorAccount {
+  const purpose = Array.isArray(patch.purpose)
+    ? patch.purpose
+    : typeof patch.purpose === "string" && patch.purpose.trim()
+      ? [patch.purpose]
+      : account.purpose
+  return {
+    ...account,
+    ...patch,
+    provider: SLACK_SERVICE_NAME,
+    id: account.id,
+    purpose,
+    externalId: patch.externalId === undefined ? account.externalId : (patch.externalId ?? undefined),
+    displayHandle:
+      patch.displayHandle === undefined ? account.displayHandle : (patch.displayHandle ?? undefined),
+    ownerBindingId:
+      patch.ownerBindingId === undefined ? account.ownerBindingId : (patch.ownerBindingId ?? undefined),
+    ownerIdentityId:
+      patch.ownerIdentityId === undefined ? account.ownerIdentityId : (patch.ownerIdentityId ?? undefined),
+    metadata: patch.metadata ?? account.metadata,
+    createdAt: account.createdAt,
+  }
+}
+
+export function createSlackConnectorAccountProvider(
+  runtime: IAgentRuntime,
+  options: SlackConnectorAccountProviderOptions = {},
+): ConnectorAccountProvider {
+  const fetchImpl = options.fetchImpl
+  const oauthTimeoutMs = options.oauthTimeoutMs ?? SLACK_OAUTH_TIMEOUT_MS
+  const tokenUrl = options.tokenUrl ?? SLACK_OAUTH_TOKEN_URL
+  return {
+    provider: SLACK_SERVICE_NAME,
+    label: "Slack",
+    listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
+      const persisted = await manager.getStorage().listAccounts(SLACK_SERVICE_NAME)
+      const persistedById = new Map(persisted.map((account) => [account.id, account]))
+      const enabled = listEnabledSlackAccounts(runtime)
+      const defaultAccountId = resolveDefaultSlackAccountId(runtime)
+      const synthesized: ConnectorAccount[] = enabled
+        .filter((account) => !persistedById.has(account.accountId))
+        .map((account) =>
+          synthesizeAccount(
+            account.accountId,
+            account.name,
+            account.accountId === defaultAccountId,
+            account.botTokenSource,
+          ),
+        )
+      if (synthesized.length === 0 && persisted.length === 0) {
+        const fallback = resolveSlackAccount(runtime, DEFAULT_ACCOUNT_ID)
+        if (fallback.botToken) {
+          synthesized.push(synthesizeAccount(DEFAULT_ACCOUNT_ID, fallback.name, true, fallback.botTokenSource))
+        }
+      }
+      return [...persisted, ...synthesized]
+    },
+    createAccount: async (input: ConnectorAccountPatch) => ({
+      ...input,
+      provider: SLACK_SERVICE_NAME,
+      role: input.role ?? "OWNER",
+      purpose: input.purpose ?? [...DEFAULT_PURPOSES],
+      accessGate: input.accessGate ?? "open",
+      status: input.status ?? "pending",
+    }),
+    patchAccount: async (
+      accountId: string,
+      patch: ConnectorAccountPatch,
+      manager: ConnectorAccountManager,
+    ) => {
+      const existing = await manager.getStorage().getAccount(SLACK_SERVICE_NAME, accountId)
+      return existing ? mergeStoredAccountPatch(existing, patch) : { ...patch, provider: SLACK_SERVICE_NAME }
+    },
+    deleteAccount: async (): Promise<void> => undefined,
+    startOAuth: async (request: ConnectorOAuthStartRequest): Promise<ConnectorOAuthStartResult> => {
+      const config = readClientConfig(runtime)
+      const redirectUri = request.redirectUri ?? config.redirectUri
+      const requestedScopes =
+        request.scopes && request.scopes.length > 0 ? request.scopes : DEFAULT_BOT_SCOPES
+      const params = new URLSearchParams({
+        client_id: config.clientId,
+        redirect_uri: redirectUri,
+        scope: requestedScopes.join(","),
+        state: request.flow.state,
+      })
+      return {
+        authUrl: `${SLACK_OAUTH_AUTHORIZE_URL}?${params.toString()}`,
+        metadata: { ...request.metadata, requestedScopes, redirectUri },
+      }
+    },
+    completeOAuth: async (
+      request: ConnectorOAuthCallbackRequest,
+      manager: ConnectorAccountManager,
+    ): Promise<ConnectorOAuthCallbackResult> => {
+      const code = nonEmptyString(request.code)
+      if (!code) failSlackOAuth("Slack OAuth callback is missing an authorization code.")
+      const config = readClientConfig(runtime)
+      const redirectUri =
+        nonEmptyString(request.flow.redirectUri) ??
+        nonEmptyString((request.flow.metadata as Record<string, unknown> | undefined)?.redirectUri) ??
+        config.redirectUri
+      const tokenParams = new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        code,
+        redirect_uri: redirectUri,
+      })
+      const parsed = await exchangeSlackOAuthTokenWithFetch(
+        tokenParams.toString(),
+        fetchImpl,
+        oauthTimeoutMs,
+        tokenUrl,
+      )
+      const teamId = parsed.team?.id
+      if (!teamId) failSlackOAuth("Slack token exchange did not include a team id.")
+      const teamName = parsed.team?.name
+      const grantedScopes = parsed.scope ? parsed.scope.split(",") : []
+      const expiresAt = typeof parsed.expires_in === "number" ? Date.now() + parsed.expires_in * 1000 : undefined
+      const accountMetadata = {
+        teamId,
+        teamName: teamName ?? null,
+        appId: parsed.app_id ?? null,
+        botUserId: parsed.bot_user_id ?? null,
+        enterpriseId: parsed.enterprise?.id ?? null,
+        authedUserId: parsed.authed_user?.id ?? null,
+        tokenType: parsed.token_type ?? "bot",
+        grantedScopes,
+        hasRefreshToken: Boolean(parsed.refresh_token ?? parsed.authed_user?.refresh_token),
+        expiresAt,
+        oauthCredentialVersion: String(Date.now()),
+      }
+      const resolvedAccountId = nonEmptyString(request.flow.accountId) ?? teamId
+      const pendingAccount = await manager.upsertAccount(
+        SLACK_SERVICE_NAME,
+        {
+          id: resolvedAccountId,
+          provider: SLACK_SERVICE_NAME,
+          role: roleFromMetadata(request.flow.metadata),
+          purpose: [...DEFAULT_PURPOSES],
+          accessGate: "open",
+          status: "pending",
+          externalId: teamId,
+          displayHandle: teamName,
+          label: teamName ?? `Slack workspace ${teamId}`,
+          metadata: accountMetadata,
+        },
+        resolvedAccountId,
+      )
+      const credentialPersist = await persistConnectorCredentialRefs({
+        runtime,
+        manager,
+        provider: SLACK_SERVICE_NAME,
+        accountIdForRef: pendingAccount.id,
+        storageAccountId: pendingAccount.id,
+        caller: "plugin-slack",
+        credentials: [
+          {
+            credentialType: "oauth.tokens",
+            value: JSON.stringify({
+              access_token: parsed.access_token,
+              ...(parsed.refresh_token ? { refresh_token: parsed.refresh_token } : {}),
+              token_type: parsed.token_type ?? "bot",
+              scope: parsed.scope ?? grantedScopes.join(","),
+              ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
+              ...(parsed.authed_user?.access_token ? { authed_user: parsed.authed_user } : {}),
+            }),
+            ...(expiresAt !== undefined ? { expiresAt } : {}),
+            metadata: {
+              provider: SLACK_SERVICE_NAME,
+              hasRefreshToken: Boolean(parsed.refresh_token ?? parsed.authed_user?.refresh_token),
+              hasAuthedUserToken: Boolean(parsed.authed_user?.access_token),
+            },
+          },
+        ],
+      })
+      logger.info({ src: "plugin:slack:connector", teamId, teamName }, "Slack OAuth completed")
+      return {
+        account: {
+          ...pendingAccount,
+          id: pendingAccount.id,
+          provider: SLACK_SERVICE_NAME,
+          status: "connected",
+          metadata: {
+            ...accountMetadata,
+            credentialRefs: credentialPersist.refs,
+            credentialRefStorage: {
+              vaultAvailable: credentialPersist.vaultAvailable,
+              storageAvailable: credentialPersist.storageAvailable,
+            },
+          },
+        },
+        flow: { status: "completed" },
+      }
+    },
+  }
+}

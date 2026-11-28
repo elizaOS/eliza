@@ -1,29 +1,122 @@
-// spec/blocker/index.md, "Story: Block distractions for a chosen interval"; spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case"
+// spec/blocker/index.md, "Story: Block distractions for a chosen interval"; spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case"; spec/blocker/index.md, "Only the owner can request a block for an explicit set of targets and a future deadline"; spec/blocker/index.md, "Observations and expiry callbacks only affect the matching generation"
 import { assert, it } from "@effect/vitest"
 import type { AppBlockerPlugin, AppBlockerStatus, BlockAppsOptions, InstalledApp } from "@elizaos/capacitor-appblocker"
 import type { WebsiteBlockerPlugin } from "@elizaos/capacitor-websiteblocker"
+import type { IAgentRuntime, Memory, State, Task, TaskWorker, UUID } from "@elizaos/core"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { FocusBackend, clearFocus, createNativeFocusBackend, enableFocus } from "../src/index.vibe"
+import {
+  APP_BLOCKER_ACCESS_ERROR,
+  AppBlockerService,
+  BLOCKER_SCHEMA_TABLES,
+  FocusBackend,
+  InMemoryBlockerStore,
+  SELFCONTROL_ACCESS_ERROR,
+  WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
+  WebsiteBlockerService,
+  appBlockerProvider,
+  blockerPlugin,
+  buildSelfControlBlockPolicy,
+  clearFocus,
+  clearWebsiteBlockerExpiryTasks,
+  createNativeFocusBackend,
+  enableFocus,
+  executeWebsiteBlockerExpiryTask,
+  formatWebsiteList,
+  getAppBlockerAccess,
+  getCachedAppBlockerStatus,
+  getSelfControlAccess,
+  getSelfControlPermissionState,
+  getSelfControlStatus,
+  isWebsiteBlockSinkholeAddress,
+  isWebsiteBlockedByPolicy,
+  parseResolvedAddressesFromDscacheutilOutput,
+  parseSelfControlBlockRequest,
+  reconcileFocus,
+  reconcileSelfControlBlockState,
+  registerNativeAppBlockerBackend,
+  registerNativeWebsiteBlockerBackend,
+  setSelfControlPluginConfig,
+  startAppBlock,
+  startSelfControlBlock,
+  stopAppBlock,
+  stopSelfControlBlock,
+  syncWebsiteBlockerExpiryTask,
+  websiteBlockerProvider,
+} from "../src/index.vibe"
+
+module node {
+  import fs from "node:fs"
+  import os from "node:os"
+  import path from "node:path"
+
+  export function createTempHostsFile(initialContent: string): { readonly dir: string; readonly filePath: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-blocker-hosts-"))
+    const filePath = path.join(dir, "hosts")
+    fs.writeFileSync(filePath, initialContent, "utf8")
+    return { dir, filePath }
+  }
+
+  export function readTempHostsFile(filePath: string): string {
+    return fs.readFileSync(filePath, "utf8")
+  }
+
+  export function removeTempDir(dir: string): void {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+import { createTempHostsFile, readTempHostsFile, removeTempDir } from node
 
 interface Device {
   installed: readonly InstalledApp[] | undefined
   readonly blocked: string[][]
+  active: boolean
   listings: number
 }
 
-const device = (installed: readonly InstalledApp[] | undefined): Device => ({ installed, blocked: [], listings: 0 })
+const device = (installed: readonly InstalledApp[] | undefined): Device => ({ installed, blocked: [], active: false, listings: 0 })
 const app = (packageName: string): InstalledApp => ({ packageName, displayName: packageName })
 const equal = <A>(actual: A, expected: A) => Effect.try(() => assert.deepStrictEqual(actual, expected))
 
 function appPort(seen: Device): AppBlockerPlugin {
   const status = (): AppBlockerStatus => ({
-    status: seen.blocked.length > 0 ? "active" : "inactive", available: true, active: seen.blocked.length > 0, platform: "android",
-    engine: "usage-stats-overlay", capabilities: { canSelectApps: true, canBlockApps: true, canScheduleTimedBlocks: true, canUnblockEarly: true, requiresFamilyControls: false, requiresUsageAccess: true, requiresOverlay: true }, blockedCount: seen.blocked.at(-1)?.length ?? 0,
-    blockedPackageNames: seen.blocked.at(-1) ?? [], endsAt: null, permissionStatus: "granted", canRequest: false, canOpenSettings: false, settingsTarget: null,
+    status: seen.active ? "active" : "inactive", available: true, active: seen.active, platform: "android",
+    engine: "usage-stats-overlay", capabilities: { canSelectApps: true, canBlockApps: true, canScheduleTimedBlocks: true, canUnblockEarly: true, requiresFamilyControls: false, requiresUsageAccess: true, requiresOverlay: true }, blockedCount: seen.active ? (seen.blocked.at(-1)?.length ?? 0) : 0,
+    blockedPackageNames: seen.active ? (seen.blocked.at(-1) ?? []) : [], endsAt: null, permissionStatus: "granted", canRequest: false, canOpenSettings: false, settingsTarget: null,
   })
   return {
-    checkPermissions: async () => { throw new Error("not used") },
-    requestPermissions: async () => { throw new Error("not used") },
+    checkPermissions: async () => ({
+      status: "granted",
+      canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      engine: "usage-stats-overlay",
+      capabilities: {
+        canSelectApps: true,
+        canBlockApps: true,
+        canScheduleTimedBlocks: true,
+        canUnblockEarly: true,
+        requiresFamilyControls: false,
+        requiresUsageAccess: true,
+        requiresOverlay: true,
+      },
+    }),
+    requestPermissions: async () => ({
+      status: "granted",
+      canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      engine: "usage-stats-overlay",
+      capabilities: {
+        canSelectApps: true,
+        canBlockApps: true,
+        canScheduleTimedBlocks: true,
+        canUnblockEarly: true,
+        requiresFamilyControls: false,
+        requiresUsageAccess: true,
+        requiresOverlay: true,
+      },
+    }),
     getInstalledApps: async () => {
       seen.listings += 1
       if (seen.installed === undefined) throw new Error("installed apps are unavailable")
@@ -32,14 +125,70 @@ function appPort(seen: Device): AppBlockerPlugin {
     selectApps: async () => ({ apps: [], cancelled: true }),
     blockApps: async (options: BlockAppsOptions) => {
       seen.blocked.push([...(options.packageNames ?? [])])
+      seen.active = true
       return { success: true, endsAt: null, blockedCount: options.packageNames?.length ?? 0 }
     },
-    unblockApps: async () => ({ success: true }),
+    unblockApps: async () => {
+      seen.active = false
+      return { success: true }
+    },
     getStatus: async () => status(),
   }
 }
 
 const noWebsites = {} as WebsiteBlockerPlugin
+
+function createMockRuntime(ownerId: UUID): {
+  readonly runtime: IAgentRuntime
+  readonly tasks: Map<UUID, Task>
+  readonly workers: Map<string, TaskWorker>
+  readonly notifications: Array<{ readonly title: string; readonly body: string }>
+} {
+  const tasks = new Map<UUID, Task>()
+  const workers = new Map<string, TaskWorker>()
+  const notifications: Array<{ readonly title: string; readonly body: string }> = []
+  let seq = 0
+  const agentId = "00000000-0000-0000-0000-000000000001" as UUID
+  const runtime = {
+    agentId,
+    getSetting: (key: string) => (key === "OWNER_ID" || key === "ELIZA_OWNER_ID" ? ownerId : undefined),
+    getRoom: async () => ({ id: "00000000-0000-0000-0000-000000000002" as UUID, worldId: "00000000-0000-0000-0000-000000000003" as UUID }),
+    getWorld: async () => ({
+      id: "00000000-0000-0000-0000-000000000003" as UUID,
+      metadata: { roles: { [ownerId]: "OWNER" }, ownership: { ownerId } },
+    }),
+    getTasks: async () => [...tasks.values()],
+    createTask: async (task: Omit<Task, "id">) => {
+      seq += 1
+      const id = `00000000-0000-0000-0000-00000000010${seq}` as UUID
+      tasks.set(id, { ...task, id })
+      return id
+    },
+    updateTask: async (id: UUID, update: Partial<Task>) => {
+      const existing = tasks.get(id)
+      if (existing !== undefined) {
+        tasks.set(id, { ...existing, ...update })
+      }
+    },
+    deleteTask: async (id: UUID) => {
+      tasks.delete(id)
+    },
+    registerTaskWorker: (worker: TaskWorker) => {
+      workers.set(worker.name, worker)
+    },
+    getService: (serviceType: string) => {
+      if (serviceType === "notification") {
+        return {
+          notify: async (input: { readonly title: string; readonly body: string }) => {
+            notifications.push({ title: input.title, body: input.body })
+          },
+        }
+      }
+      return null
+    },
+  } as unknown as IAgentRuntime
+  return { runtime, tasks, workers, notifications }
+}
 
 it.effect('A requested app is blocked under the id its device installed: a case-only difference takes the one installed id, which the device then reports back so the block can be cleared, and an unknown id, an id two installed apps share apart from case, or an unreadable app list keeps the id as given (spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case")', effect () => {
   const request = (ownerId: string, targets: readonly string[]) => ({ ownerId, blockKind: "ApplicationBlock" as const, targets, deadline: 30 * 60_000 })
@@ -48,10 +197,12 @@ it.effect('A requested app is blocked under the id its device installed: a case-
   provide KeyValueStore.layerMemory {
     provide Layer.succeed(FocusBackend, createNativeFocusBackend(appPort(listed), noWebsites)) {
       const blocked = try enableFocus(request("owner-1", ["com.slack", " com.whatsapp ", "com.Slack"]))
+      const reconciled = try reconcileFocus("owner-1", "ApplicationBlock")
       const cleared = try clearFocus("owner-1", "ApplicationBlock", blocked.generation, false)
       const kept = try enableFocus(request("owner-2", ["COM.EXAMPLE", "org.unknown.App"]))
-      try equal({ blocked: [blocked.phase, blocked.targets], cleared: cleared.phase, kept: [kept.phase, kept.targets], sent: listed.blocked, listings: listed.listings }, {
+      try equal({ blocked: [blocked.phase, blocked.targets], reconciled: reconciled.phase, cleared: cleared.phase, kept: [kept.phase, kept.targets], sent: listed.blocked, listings: listed.listings }, {
         blocked: ["Blocking", ["com.Slack", "com.whatsapp"]],
+        reconciled: "Blocking",
         cleared: "BlockIdle",
         kept: ["Blocking", ["COM.EXAMPLE", "org.unknown.App"]],
         sent: [["com.Slack", "com.whatsapp"], ["COM.EXAMPLE", "org.unknown.App"]],
@@ -77,4 +228,128 @@ it.effect('A website block lowercases its domains and never reads the installed 
     const block = try enableFocus({ ownerId: "owner-1", blockKind: "WebsiteBlock", targets: [" Social.Example ", "social.example"], deadline: 30 * 60_000 })
     try equal({ phase: block.phase, targets: block.targets, asked }, { phase: "Blocking", targets: ["social.example"], asked: ["apply:social.example"] })
   }
+})
+
+it.effect('SelfControl hosts-file engine, policy groups, expiry task worker, and WebsiteBlockerService work end to end (spec/blocker/index.md, "Observations and expiry callbacks only affect the matching generation")', effect () => {
+  const temp = try Effect.try(() => createTempHostsFile("127.0.0.1 localhost\n"))
+  const ownerId = "00000000-0000-0000-0000-000000000099" as UUID
+  const { runtime, tasks, workers } = createMockRuntime(ownerId)
+  try promise(async () => {
+    try {
+      registerNativeWebsiteBlockerBackend(null)
+      setSelfControlPluginConfig({ hostsFilePath: temp.filePath })
+
+      const policy = buildSelfControlBlockPolicy(["https://X.COM/home", "news.google.com"])
+      assert.strictEqual(isWebsiteBlockedByPolicy(policy, "twitter.com"), true)
+      assert.strictEqual(isWebsiteBlockedByPolicy(policy, "api.x.com"), false)
+      assert.strictEqual(isWebsiteBlockedByPolicy(policy, "accounts.google.com"), false)
+      assert.strictEqual(isWebsiteBlockedByPolicy(policy, "news.google.com"), true)
+      assert.strictEqual(formatWebsiteList(["b.com", "a.com", "c.com"]), "a.com, b.com, and c.com")
+      assert.strictEqual(isWebsiteBlockSinkholeAddress("0.0.0.0"), true)
+      assert.deepStrictEqual(
+        parseResolvedAddressesFromDscacheutilOutput("name: x.com\nip_address: 0.0.0.0\nipv6_address: ::\n"),
+        ["0.0.0.0", "::"],
+      )
+
+      const parsed = parseSelfControlBlockRequest({ parameters: { websites: ["reddit.com", "x.com"], durationMinutes: 30 } })
+      assert.strictEqual(parsed.ok, true)
+      if (!parsed.ok) return
+
+      const started = await startSelfControlBlock(parsed.request)
+      assert.strictEqual(started.success, true)
+      const hostsAfterStart = readTempHostsFile(temp.filePath)
+      assert.ok(hostsAfterStart.includes("0.0.0.0 reddit.com"))
+      assert.ok(hostsAfterStart.includes("0.0.0.0 x.com"))
+
+      const status = await getSelfControlStatus()
+      assert.strictEqual(status.active, true)
+      assert.strictEqual(status.available, true)
+      assert.strictEqual((await getSelfControlPermissionState()).status, "granted")
+
+      const service = await WebsiteBlockerService.start(runtime)
+      const taskId = await syncWebsiteBlockerExpiryTask(runtime, status)
+      assert.ok(taskId !== null)
+      assert.strictEqual(workers.has(WEBSITE_BLOCKER_UNBLOCK_TASK_NAME), true)
+
+      const scheduledTask = taskId !== null ? tasks.get(taskId) : undefined
+      assert.ok(scheduledTask !== undefined)
+      if (scheduledTask !== undefined) {
+        await executeWebsiteBlockerExpiryTask(runtime, scheduledTask)
+      }
+      assert.strictEqual((await reconcileSelfControlBlockState()).active, false)
+
+      await clearWebsiteBlockerExpiryTasks(runtime)
+      assert.strictEqual(tasks.size, 0)
+      const stopResult = await stopSelfControlBlock()
+      assert.strictEqual(stopResult.success, true)
+      await service.stop()
+    } finally {
+      setSelfControlPluginConfig({})
+      registerNativeWebsiteBlockerBackend(null)
+      removeTempDir(temp.dir)
+    }
+  })
+})
+
+it.effect('Providers enforce OWNER role access, AppBlockerService caches & invalidates status, and blockerPlugin + store expose full parity (spec/blocker/index.md, "Only the owner can request a block for an explicit set of targets and a future deadline")', effect () => {
+  const temp = try Effect.try(() => createTempHostsFile("127.0.0.1 localhost\n"))
+  const ownerId = "00000000-0000-0000-0000-000000000099" as UUID
+  const guestId = "00000000-0000-0000-0000-000000000088" as UUID
+  const { runtime } = createMockRuntime(ownerId)
+  const ownerMessage = { entityId: ownerId, roomId: "00000000-0000-0000-0000-000000000002" as UUID, content: { text: "status" } } as Memory
+  const guestMessage = { entityId: guestId, roomId: "00000000-0000-0000-0000-000000000002" as UUID, content: { text: "status" } } as Memory
+  const state = {} as State
+
+  try promise(async () => {
+    try {
+      setSelfControlPluginConfig({ hostsFilePath: temp.filePath })
+      const seen = device([app("com.Slack")])
+      registerNativeAppBlockerBackend(appPort(seen))
+
+      const guestWebAccess = await getSelfControlAccess(runtime, guestMessage)
+      assert.strictEqual(guestWebAccess.allowed, false)
+      assert.strictEqual(guestWebAccess.reason, SELFCONTROL_ACCESS_ERROR)
+
+      const guestAppAccess = await getAppBlockerAccess(runtime, guestMessage)
+      assert.strictEqual(guestAppAccess.allowed, false)
+      assert.strictEqual(guestAppAccess.reason, APP_BLOCKER_ACCESS_ERROR)
+
+      const guestWebProvider = await websiteBlockerProvider.get(runtime, guestMessage, state)
+      assert.strictEqual(guestWebProvider.values?.websiteBlockerAuthorized, false)
+
+      const ownerWebProvider = await websiteBlockerProvider.get(runtime, ownerMessage, state)
+      assert.strictEqual(ownerWebProvider.values?.websiteBlockerAuthorized, true)
+      assert.strictEqual(ownerWebProvider.values?.websiteBlockerAvailable, true)
+
+      const appService = await AppBlockerService.start(runtime)
+      const initialAppStatus = await getCachedAppBlockerStatus()
+      assert.strictEqual(initialAppStatus.active, false)
+      await startAppBlock({ packageNames: ["com.Slack"], durationMinutes: 15 })
+      const activeAppProvider = await appBlockerProvider.get(runtime, ownerMessage, state)
+      assert.strictEqual(activeAppProvider.values?.appBlockerActive, true)
+      await stopAppBlock()
+      assert.strictEqual((await appService.getStatus()).active, false)
+      await appService.stop()
+
+      const store = new InMemoryBlockerStore()
+      const rule = store.addRule({ agentId: runtime.agentId, entityId: ownerId, target: "website", pattern: "x.com" })
+      const session = store.startSession({ agentId: runtime.agentId, entityId: ownerId, target: "website", rules: [rule.pattern] })
+      const allow = store.addAllowListEntry({ agentId: runtime.agentId, entityId: ownerId, target: "website", pattern: "api.x.com" })
+      assert.strictEqual(store.listRules({ entityId: ownerId }).length, 1)
+      assert.strictEqual(store.listSessions({ status: "active" }).length, 1)
+      assert.strictEqual(store.listAllowList({ entityId: ownerId }).length, 1)
+      store.endSession(session.id, "released")
+      assert.strictEqual(store.listSessions({ status: "released" }).length, 1)
+      assert.strictEqual(store.removeAllowListEntry(allow.id), true)
+      assert.strictEqual(store.removeRule(rule.id), true)
+      assert.strictEqual(BLOCKER_SCHEMA_TABLES.length, 3)
+
+      await blockerPlugin.init?.({ hostsFilePath: temp.filePath }, runtime)
+      await blockerPlugin.dispose?.(runtime)
+    } finally {
+      registerNativeAppBlockerBackend(null)
+      setSelfControlPluginConfig({})
+      removeTempDir(temp.dir)
+    }
+  })
 })

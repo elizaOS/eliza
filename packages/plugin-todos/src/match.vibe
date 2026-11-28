@@ -1,0 +1,164 @@
+// spec/todos/store.md, "List limits must be positive integers and exact matches outrank paraphrases"
+import { winningStage } from "../gen/todos__store.effect.vibe"
+import type { Todo } from "./types.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function computeTodoRef(id: string): string {
+    const digest = createHash("sha256").update(`todo-ref:v1:${id}`).digest("hex")
+    return `t-${digest.slice(0, 8)}`
+  }
+}
+import { computeTodoRef } from node
+
+const FILLER_TOKENS = new Set([
+  "a",
+  "an",
+  "the",
+  "my",
+  "our",
+  "your",
+  "this",
+  "that",
+  "todo",
+  "task",
+  "item",
+])
+
+const PARAPHRASE_THRESHOLD = 0.6
+const PARAPHRASE_TIE_MARGIN = 0.15
+
+export function normalizeTodoContent(content: string): string {
+  return content
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/(?<![\p{L}\p{N}])[-\u2212](?=\d)/gu, "negative ")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+}
+
+function singularize(token: string): string {
+  if (token.length > 4 && /(?:[sxz]|ch|sh|o)es$/u.test(token)) {
+    return token.slice(0, -2)
+  }
+  if (token === "news") return token
+  if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
+    return token.slice(0, -1)
+  }
+  return token
+}
+
+function stem(token: string): string {
+  const singular = singularize(token)
+  let reduced = singular
+  if (singular.length > 5 && singular.endsWith("ing")) {
+    reduced = singular.slice(0, -3)
+  } else if (singular.length > 4 && singular.endsWith("ed")) {
+    reduced = singular.slice(0, -2)
+  }
+  const stripped = reduced !== singular
+  if (stripped && reduced.length > 3 && /([bcdghjkmnpqrtvwx])\1$/u.test(reduced)) {
+    reduced = reduced.slice(0, -1)
+  }
+  if (reduced.length > 2 && reduced.endsWith("ie")) {
+    return `${reduced.slice(0, -2)}i`
+  }
+  if (reduced.length > 2 && /[^aeiou]y$/u.test(reduced)) {
+    return `${reduced.slice(0, -1)}i`
+  }
+  return reduced
+}
+
+function contentTokens(content: string): string[] {
+  const tokens = normalizeTodoContent(content).split(" ").filter(Boolean)
+  const meaningful = tokens.filter((token) => !FILLER_TOKENS.has(token))
+  return (meaningful.length > 0 ? meaningful : tokens).map(stem)
+}
+
+function tokenKey(content: string): string {
+  const tokens = contentTokens(content)
+  return JSON.stringify([[...new Set(tokens)].sort(), tokens.filter((token) => /\p{N}/u.test(token))])
+}
+
+function paraphraseScore(query: string, content: string): number {
+  const left = new Set(contentTokens(query))
+  const right = new Set(contentTokens(content))
+  if (left.size === 0 || right.size === 0) return 0
+  let shared = 0
+  for (const token of left) {
+    if (right.has(token)) shared += 1
+  }
+  return (2 * shared) / (left.size + right.size)
+}
+
+export function swapsWords(query: string, content: string): boolean {
+  const left = new Set(contentTokens(query))
+  const right = new Set(contentTokens(content))
+  return [...left].some((token) => !right.has(token)) && [...right].some((token) => !left.has(token))
+}
+
+export function sameTodoContent(left: string, right: string): boolean {
+  const a = normalizeTodoContent(left)
+  const b = normalizeTodoContent(right)
+  return a === b || (a.length > 0 && tokenKey(left) === tokenKey(right))
+}
+
+export function isOpenTodo(todo: Pick<Todo, "status">): boolean {
+  return todo.status === "pending" || todo.status === "in_progress"
+}
+
+function matchExact<T extends Pick<Todo, "content">>(query: string, pool: readonly T[]): T[] {
+  const normalized = normalizeTodoContent(query)
+  return pool.filter((todo) => normalizeTodoContent(todo.content) === normalized)
+}
+
+function matchSameTokens<T extends Pick<Todo, "content">>(query: string, pool: readonly T[]): T[] {
+  const key = tokenKey(query)
+  return pool.filter((todo) => tokenKey(todo.content) === key)
+}
+
+function matchParaphrase<T extends Pick<Todo, "content">>(query: string, pool: readonly T[]): T[] {
+  const scored = pool
+    .map((todo) => ({ todo, score: paraphraseScore(query, todo.content) }))
+    .filter((entry) => entry.score >= PARAPHRASE_THRESHOLD)
+    .sort((left, right) => right.score - left.score)
+  const best = scored[0]?.score
+  if (best === undefined) return []
+  return scored.filter((entry) => best - entry.score < PARAPHRASE_TIE_MARGIN).map((entry) => entry.todo)
+}
+
+export function matchTodosByContent<T extends Pick<Todo, "content" | "status">>(
+  query: string,
+  todos: readonly T[],
+): T[] {
+  const open = todos.filter(isOpenTodo)
+  const closed = todos.filter((todo) => !isOpenTodo(todo))
+
+  const openExact = matchExact(query, open)
+  const closedExact = matchExact(query, closed)
+  const openTokens = matchSameTokens(query, open)
+  const closedTokens = matchSameTokens(query, closed)
+  const openPara = matchParaphrase(query, open)
+  const closedPara = matchParaphrase(query, closed)
+
+  const stage = winningStage(
+    openExact.length + closedExact.length,
+    openTokens.length + closedTokens.length,
+    openPara.length + closedPara.length,
+  )
+  if (stage === "StageExact") return openExact.length > 0 ? openExact : closedExact
+  if (stage === "StageSameTokens") return openTokens.length > 0 ? openTokens : closedTokens
+  if (stage === "StageParaphrase") return openPara.length > 0 ? openPara : closedPara
+  return []
+}
+
+export function todoRefSync(id: string): string {
+  return computeTodoRef(id)
+}
+
+export async function todoRef(id: string): Promise<string> {
+  return computeTodoRef(id)
+}

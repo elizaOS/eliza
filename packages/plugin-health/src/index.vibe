@@ -1,4 +1,5 @@
-// spec/health/index.md, "Story: Review recorded sleep and device activity"
+// spec/health/index.md, "Story: Review recorded sleep and device activity"; spec/health/lifecycle.md, "Story: Sync health connectors only with owner consent and gate exports and sleep alerts safely"
+import type { IAgentRuntime, Plugin } from "@elizaos/core"
 import {
   countsAsScreenUse,
   intervalCoverage,
@@ -9,6 +10,121 @@ import {
   type ObservationKind,
   type ScreenSignal,
 } from "../gen/health.effect.vibe"
+import {
+  healthAction,
+  healthActionName,
+  healthContext,
+  healthProvider,
+  healthProviderName,
+  healthRoutes,
+  healthServiceOf,
+  runHealthAction,
+  runScreenTimeAction,
+  screenTimeAction,
+  screenTimeActionName,
+  type HealthRoute,
+  type HealthRouteInput,
+  type HealthRouteReply,
+} from "./actions.vibe"
+import { HealthService } from "./store.vibe"
+import { HEALTH_PLUGIN_NAME } from "./types.vibe"
+
+export {
+  healthAction,
+  healthActionName,
+  healthContext,
+  healthProvider,
+  healthProviderName,
+  healthRoutes,
+  healthServiceOf,
+  runHealthAction,
+  runScreenTimeAction,
+  screenTimeAction,
+  screenTimeActionName,
+  type HealthRoute,
+  type HealthRouteInput,
+  type HealthRouteReply,
+}
+export {
+  decryptTokenEnvelope,
+  encryptTokenPayload,
+  generatePkcePair,
+  isEncryptedTokenEnvelope,
+  randomStateToken,
+  resolveTokenEncryptionKey,
+  type EncryptedTokenEnvelope,
+} from "./crypto.vibe"
+export {
+  HEALTH_CONNECTOR_CAPABILITY_MAP,
+  HEALTH_CONNECTOR_LABELS,
+  HealthOAuthError,
+  HealthOAuthManager,
+  deleteHealthProviderSpec,
+  getHealthProviderSpec,
+  listHealthProviderSpecs,
+  normalizeProviderSyncPayload,
+  resetHealthProviderRegistry,
+  setHealthProviderSpec,
+  type HealthOAuthSpec,
+  type HealthProviderSpec,
+  type NormalizedProviderPayload,
+  type PendingOAuthSession,
+  type StoredHealthConnectorToken,
+} from "./providers-registry.vibe"
+export {
+  classifyScreenTimeTarget,
+  isSystemInactivityApp,
+  resolveScreenSignal,
+  summarizeScreenTime,
+  type ActivityAppIdentity,
+  type ScreenTimeClassification,
+  type ScreenTimeEntry,
+  type ScreenTimeSummary,
+} from "./screen-time.vibe"
+export {
+  HEALTH_DEFAULT_PACKS,
+  buildSleepRecapText,
+  computeAwakeProbability,
+  computePersonalBaseline,
+  computeSleepRegularity,
+  type ActivitySignalSample,
+  type AwakeProbabilityReport,
+  type CircadianInsight,
+  type PersonalBaselineReport,
+  type SleepRegularityClass,
+  type SleepRegularityReport,
+} from "./sleep.vibe"
+export { HEALTH_SQLITE_DDL, HealthService, HealthSqliteStore, type HealthServiceOptions } from "./store.vibe"
+export {
+  HEALTH_ANCHORS,
+  HEALTH_BUS_FAMILIES,
+  HEALTH_CONNECTOR_CAPABILITIES,
+  HEALTH_CONNECTOR_KINDS,
+  HEALTH_METRICS,
+  HEALTH_OAUTH_PROVIDERS,
+  HEALTH_PLUGIN_NAME,
+  HEALTH_SERVICE_TYPE,
+  HEALTH_SLEEP_STAGES,
+  type HealthAnchor,
+  type HealthAnomaly,
+  type HealthBusFamily,
+  type HealthConnectorCapability,
+  type HealthConnectorKind,
+  type HealthConnectorOverview,
+  type HealthDailySummary,
+  type HealthDefaultPack,
+  type HealthHabitCategory,
+  type HealthHabitDevice,
+  type HealthMetric,
+  type HealthMetricSample,
+  type HealthOAuthProvider,
+  type HealthSleepCycleType,
+  type HealthSleepEpisode,
+  type HealthSleepStage,
+  type HealthSleepStageSample,
+  type HealthSummaryResponse,
+  type HealthWorkout,
+} from "./types.vibe"
 
 export error HealthReadFailed { reason: string }
 export error InvalidHealthWindow
@@ -22,7 +138,11 @@ export interface IntervalSummary {
   readonly coveredMs: number
 }
 
-export effect function summarizeIntervals(ownerId: string, window: HealthWindow, kind: ObservationKind): IntervalSummary!(HealthReadFailed | InvalidHealthWindow)!HealthConnector {
+export effect function summarizeIntervals(
+  ownerId: string,
+  window: HealthWindow,
+  kind: ObservationKind,
+): IntervalSummary!(HealthReadFailed | InvalidHealthWindow)!HealthConnector {
   if (!Number.isSafeInteger(window.fromMs) || !Number.isSafeInteger(window.untilMs) || !validHealthWindow(window)) {
     throw new InvalidHealthWindow()
   }
@@ -36,3 +156,32 @@ export effect function summarizeIntervals(ownerId: string, window: HealthWindow,
 export function screenSignalIsActive(signal: ScreenSignal) {
   return countsAsScreenUse(signal)
 }
+
+export type HealthPlugin = Plugin & { readonly routes: readonly HealthRoute[] }
+
+export function createHealthPlugin(): HealthPlugin {
+  let startedRuntime: IAgentRuntime | undefined
+  const activeService = () => (startedRuntime === undefined ? undefined : healthServiceOf(startedRuntime))
+  return {
+    name: HEALTH_PLUGIN_NAME,
+    description: "Owner health metrics, wearable connector OAuth/sync, sleep regularity, circadian insights, and screen-time summaries.",
+    services: [HealthService],
+    actions: [healthAction, screenTimeAction],
+    providers: [healthProvider],
+    routes: healthRoutes(activeService),
+    init: async (_config, runtime) => {
+      startedRuntime = runtime
+      if (runtime.contexts && typeof runtime.contexts.tryRegister === "function") {
+        runtime.contexts.tryRegister(healthContext)
+      }
+    },
+    dispose: async () => {
+      const svc = activeService()
+      startedRuntime = undefined
+      if (svc !== undefined) await svc.stop()
+    },
+  }
+}
+
+export const healthPlugin: HealthPlugin = createHealthPlugin()
+export default healthPlugin

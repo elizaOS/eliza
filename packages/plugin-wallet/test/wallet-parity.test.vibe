@@ -1,0 +1,266 @@
+// spec/wallet/policy.md, "Story: Enforce spend policy, slippage limits, and a tamper-evident audit chain"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Enforce exact spend limits when making a payment"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
+import { assert, describe, it } from "@effect/vitest"
+import { validateToolArgs } from "@elizaos/core"
+import {
+  AerodromeLpService,
+  AuditLogStore,
+  BirdeyeService,
+  BridgeModule,
+  DexInteractionService,
+  DexScreenerService,
+  KaminoService,
+  MutualStakeEscrow,
+  NewsDataService,
+  PaymentRouter,
+  SpendingPolicy,
+  SteerLiquidityService,
+  StewardTradingService,
+  TokenInfoService,
+  TxService,
+  UptoBillingPolicy,
+  VaultService,
+  WalletBackendService,
+  YieldOptimizationService,
+  _resetForTesting,
+  buildWalletBalanceDeltaTaskInput,
+  checkBudget,
+  createGovernanceAction,
+  createLiquidityAction,
+  createTokenInfoAction,
+  createTradeIdempotencyKey,
+  createTradeRouterAction,
+  createX402Client,
+  evaluateWalletBalanceDelta,
+  formatBalance,
+  formatPrivateKeyPreview,
+  getGlobalRegistry,
+  getWalletExportAuditLog,
+  handleWalletMarketOverviewRoute,
+  lpManagerPlugin,
+  parseAmount,
+  requireTradeOrderConfirmation,
+  resolveWalletExportRejection,
+  toHuman,
+  toRaw,
+  verifyAuditLogChain,
+  walletIdentityKey,
+  type WalletBalanceBaseline,
+} from "../src/index.vibe"
+
+module host {
+  import { Buffer } from "node:buffer"
+  import { once } from "node:events"
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+
+  export async function startMockWalletVenues() {
+    let x402PaidCount = 0
+    const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+      const chunks: Uint8Array[] = []
+      for await (const chunk of req) chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
+      const rawBody = Buffer.concat(chunks).toString("utf8")
+      const fullUrl = new URL(req.url ?? "/", "http://127.0.0.1")
+      const path = fullUrl.pathname
+      const send = (status: number, body: unknown, headers: Record<string, string> = {}) => {
+        res.writeHead(status, { "content-type": "application/json", ...headers })
+        res.end(JSON.stringify(body))
+      }
+
+      if (path === "/v1/trade/quote" && req.method === "POST") {
+        const body = JSON.parse(rawBody) as { amount: string }
+        return send(200, { quoteId: "q-101", venueId: "jupiter", outputAmount: String(Number(body.amount) * 150), priceImpactBps: 12 })
+      }
+      if (path === "/v1/trade/execute" && req.method === "POST") {
+        return send(200, { txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", outputAmount: "150", status: "confirmed" })
+      }
+      if (path === "/rpc" && req.method === "POST") {
+        return send(200, { jsonrpc: "2.0", id: 1, result: "0x2105" })
+      }
+      if (path === "/defi/token_overview") {
+        return send(200, { data: { symbol: "SOL", name: "Solana", price: 150.25, priceChange24hPercent: 4.2, liquidity: 50_000_000, v24hUSD: 900_000_000, mc: 70_000_000_000 } })
+      }
+      if (path === "/defi/token_trending") {
+        return send(200, { data: { tokens: [{ address: "So111", symbol: "SOL", name: "Solana", price: 150.25, volume24hUSD: 900_000_000, rank: 1 }] } })
+      }
+      if (path === "/v1/wallet/token_list") {
+        return send(200, { data: { totalUsd: 300.5, items: [{ address: "So111", symbol: "SOL", valueUsd: 300.5 }] } })
+      }
+      if (path === "/latest/dex/search") {
+        return send(200, { pairs: [{ chainId: "solana", dexId: "raydium", pairAddress: "pair-1", baseToken: { symbol: "SOL", address: "So111" }, quoteToken: { symbol: "USDC" }, priceUsd: "150.25", liquidity: { usd: 25_000_000 }, volume: { h24: 100_000_000 } }] })
+      }
+      if (path === "/global") {
+        return send(200, {
+          data: { total_market_cap: { usd: 2_500_000_000_000 }, market_cap_percentage: { btc: 54.1, eth: 17.2 }, total_volume: { usd: 95_000_000_000 } },
+          articles: [{ title: "DeFi TVL rises", link: "https://example.com/news/1", publishedAt: "2026-11-28T00:00:00Z", source: "bnc" }],
+        })
+      }
+      if (path === "/strategies") {
+        return send(200, { pools: [{ address: "kam-1", tokenA: "SOL", tokenB: "USDC", tvlUsd: 12_000_000, aprPct: 24.5 }] })
+      }
+      if (path === "/vaults") {
+        return send(200, { vaults: [{ address: "steer-1", chain: "base", tokenA: "WETH", tokenB: "USDC", tvlUsd: 5_000_000, aprPct: 18.2, feeTierBps: 5 }] })
+      }
+      if (path.startsWith("/v1/attestations/")) {
+        return send(200, { status: "complete", attestation: "0xdeadbeef" })
+      }
+      if (path === "/paid-api") {
+        if (!req.headers["x-payment"]) {
+          return send(402, { asset: "USDC", amountAtomic: "500000", recipient: "0xmerchant" })
+        }
+        x402PaidCount += 1
+        return send(200, { ok: true, paidCalls: x402PaidCount })
+      }
+      return send(404, { error: "not_found" })
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address()
+    if (address === null || typeof address === "string") throw new Error("Failed to bind mock wallet server")
+    const origin = `http://127.0.0.1:${address.port}`
+    const close = () => new Promise<void>((resolve) => server.close(() => resolve()))
+    return { origin, close }
+  }
+}
+import { startMockWalletVenues } from host
+
+describe("Wallet v3 parity journeys", () => {
+  it(`Enforce spend policy, slippage limits, audit chain, and key-export refusal (spec/wallet/policy.md, "Story: Enforce spend policy, slippage limits, and a tamper-evident audit chain")`, () => {
+    const policy = new SpendingPolicy({ dailyLimit: 500, perTxLimit: 200, maxDailyTxs: 5, maxSlippageBps: 100 })
+    const now = Date.now()
+    const ok = policy.evaluateAndRecord({ actor: "owner", actionName: "TRADE", amount: 150, slippageBps: 50, quoteObservedAt: now, wallTime: now })
+    assert.strictEqual(ok.allowed, true)
+    assert.strictEqual(ok.state.dailySpent, 150)
+
+    const badSlippage = policy.evaluateAndRecord({ actor: "owner", actionName: "TRADE", amount: 50, slippageBps: 250, quoteObservedAt: now, wallTime: now })
+    assert.strictEqual(badSlippage.allowed, false)
+
+    const stale = policy.evaluateAndRecord({ actor: "owner", actionName: "TRADE", amount: 50, slippageBps: 50, quoteObservedAt: now - 120_000, wallTime: now })
+    assert.strictEqual(stale.allowed, false)
+
+    policy.pause("owner")
+    const paused = policy.evaluateAndRecord({ actor: "owner", actionName: "TRADE", amount: 10, slippageBps: 10, quoteObservedAt: now, wallTime: now })
+    assert.strictEqual(paused.allowed, false)
+    policy.resume("owner")
+    policy.resetDaily("owner")
+    assert.strictEqual(policy.status().dailySpent, 0)
+
+    assert.strictEqual(policy.audit.verify(), true)
+    assert.strictEqual(verifyAuditLogChain(policy.audit.list()), true)
+    const tampered = policy.audit.list().map((row, idx) => idx === 0 ? { ...row, outcome: "failed" as const } : row)
+    assert.strictEqual(verifyAuditLogChain(tampered), false)
+
+    const upto = new UptoBillingPolicy()
+    upto.authorize("u1", "svc-a", "1000")
+    assert.strictEqual(upto.settle("u1", "750").status, "settled")
+    assert.throws(() => upto.settle("u1", "10"))
+
+    _resetForTesting()
+    const rejected = resolveWalletExportRejection("agent")
+    assert.strictEqual(rejected.code, "WALLET_KEY_EXPORT_FORBIDDEN")
+    assert.strictEqual(getWalletExportAuditLog().length, 1)
+    assert.strictEqual(formatPrivateKeyPreview("0xsecret"), "[REDACTED_SEALED_KEY]")
+    assert.strictEqual(requireTradeOrderConfirmation({ orderId: "o1", ownerConfirmed: false, quoteObservedAt: now, wallTime: now }).confirmed, false)
+    assert.strictEqual(requireTradeOrderConfirmation({ orderId: "o1", ownerConfirmed: true, quoteObservedAt: now, wallTime: now }).confirmed, true)
+    assert.ok(createTradeIdempotencyKey({ accountId: "a", chain: "base", inputToken: "ETH", outputToken: "USDC", amount: "1" }).startsWith("trade_"))
+
+    const auditStore = new AuditLogStore()
+    auditStore.append({ actor: "owner", kind: "transfer", scope: "evm", actionName: "WALLET", paramsHash: "abc", outcome: "executed" })
+    assert.strictEqual(auditStore.verify(), true)
+  })
+
+  it(`Execute trading, analytics, LP management, x402, CCTP bridge, escrow, watcher, and strict tool actions over loopback HTTP (spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Enforce exact spend limits when making a payment"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes")`, async () => {
+    const mock = await startMockWalletVenues()
+    try {
+      const birdeye = new BirdeyeService(undefined, { baseUrl: mock.origin, apiKey: "test-key" })
+      const dexscreener = new DexScreenerService(undefined, { baseUrl: mock.origin })
+      const tokenInfo = new TokenInfoService(undefined, { birdeye, dexscreener })
+      const news = new NewsDataService(undefined, { baseUrl: mock.origin })
+      const kamino = new KaminoService(undefined, { baseUrl: mock.origin })
+      const steer = new SteerLiquidityService(undefined, { baseUrl: mock.origin })
+      const trading = new StewardTradingService(undefined, { baseUrl: mock.origin, apiKey: "st-key" })
+      const dex = new DexInteractionService()
+      const optimizer = new YieldOptimizationService()
+      const bridge = new BridgeModule({ attestationBaseUrl: mock.origin })
+
+      const quote = await trading.quoteSwap({ chain: "solana", inputToken: "SOL", outputToken: "USDC", amount: "1", slippageBps: 50, account: "So111" })
+      assert.strictEqual(quote.quoteId, "q-101")
+      const executed = await trading.executeQuotedSwap({ quote, intent: quote.intent, amountUsd: 150, ownerConfirmed: true })
+      assert.strictEqual(executed.status, "confirmed")
+      assert.strictEqual(trading.history().length, 1)
+
+      const backend = new WalletBackendService(undefined, "local")
+      assert.strictEqual(backend.activeBackend(), "LocalSigner")
+      const probe = await new TxService().probe(`${mock.origin}/rpc`)
+      assert.strictEqual(probe.reachable, true)
+      assert.strictEqual(probe.chainId, "0x2105")
+
+      const overview = await tokenInfo.resolveTokenInfo("So111", "solana")
+      assert.strictEqual(overview?.symbol, "SOL")
+      const portfolio = await birdeye.getWalletPortfolio("So111", "solana")
+      assert.strictEqual(portfolio.totalUsd, 300.5)
+      const pairs = await dexscreener.searchPairs("SOL")
+      assert.strictEqual(pairs[0]?.dexId, "raydium")
+      const marketRoute = await handleWalletMarketOverviewRoute({ birdeye, news })
+      assert.strictEqual(marketRoute.status, 200)
+
+      const prev: WalletBalanceBaseline = { identityKey: walletIdentityKey({ evm: "0xA1", solana: "So1" }), totalUsd: 1000, legs: [{ chain: "solana", assetId: "SOL", symbol: "SOL", balanceUsd: 1000, priced: true }], observedAt: 1 }
+      const next: WalletBalanceBaseline = { ...prev, totalUsd: 1200, legs: [{ chain: "solana", assetId: "SOL", symbol: "SOL", balanceUsd: 1200, priced: true }], observedAt: 2 }
+      const delta = evaluateWalletBalanceDelta(prev, next)
+      assert.strictEqual(delta.significant, true)
+      assert.strictEqual(buildWalletBalanceDeltaTaskInput("agent-1").intervalMs, 300_000)
+
+      const lpPos = dex.adapter("uniswap-v3").openPosition({ poolId: "pool-eth-usdc", tokenA: "ETH", tokenB: "USDC", liquidityUsd: 500, lowerTick: -100, upperTick: 100 })
+      assert.strictEqual(dex.allPositions().length, 1)
+      assert.strictEqual(dex.adapter("uniswap-v3").reposition(lpPos.id, -50, 50)?.lowerTick, -50)
+      assert.strictEqual(new AerodromeLpService().protocol, "aerodrome")
+      assert.strictEqual(lpManagerPlugin.services?.length, 11)
+      const vault = new VaultService()
+      assert.strictEqual(vault.deposit("v1", 200), 200)
+      assert.strictEqual(vault.withdraw("v1", 50), 150)
+
+      const x402 = createX402Client({
+        budget: { globalPerRequestAtomic: "1000000", servicePerRequestAtomic: "1000000", globalDailyAtomic: "5000000", serviceDailyAtomic: "2000000" },
+        pay: async () => "proof-sig-1",
+      })
+      const paid = await x402.fetchPaid(`${mock.origin}/paid-api`, "research-api")
+      assert.strictEqual(paid.status, 200)
+      assert.strictEqual(paid.paymentProof, "proof-sig-1")
+      assert.strictEqual(x402.tracker.history()[0]?.status, "settled")
+
+      const att = await bridge.fetchAttestation("0xhash1")
+      assert.strictEqual(att.status, "complete")
+      assert.strictEqual(new PaymentRouter().route({ sourceChain: "base", destinationChain: "arbitrum" }).rail, "cctp-bridge")
+      const escrow = new MutualStakeEscrow()
+      escrow.open({ id: "e1", depositor: "0x1", beneficiary: "0x2", amountAtomic: "100", secretPreimage: "open-sesame" })
+      assert.strictEqual(escrow.release("e1", "open-sesame").status, "released")
+      assert.strictEqual(parseAmount("1.5", 6), 1_500_000n)
+      assert.strictEqual(toHuman(toRaw("2.25", 6), 6), "2.25")
+      assert.strictEqual(formatBalance("1000000", 6, "USDC"), "1 USDC")
+      assert.strictEqual(checkBudget("500", "1000"), true)
+      assert.ok(getGlobalRegistry().find(8453, "USDC") !== undefined)
+
+      const tradeAct = createTradeRouterAction({ trading, bridge })
+      const liqAct = createLiquidityAction({ dex, kamino, steer, yieldOptimizer: optimizer })
+      const govAct = createGovernanceAction()
+      const infoAct = createTokenInfoAction({ tokenInfo, news })
+      for (const action of [tradeAct, liqAct, govAct, infoAct]) {
+        assert.strictEqual(action.toolSchemaStrict, true)
+        assert.strictEqual(action.cacheStable, true)
+        const names = (action.parameters ?? []).map((p) => p.name)
+        assert.deepStrictEqual(names, [...names].sort())
+      }
+      assert.strictEqual(validateToolArgs(tradeAct, { subaction: "quote", chain: "solana", inputToken: "SOL", outputToken: "USDC", amount: "1" }).valid, true)
+      assert.strictEqual(validateToolArgs(tradeAct, { subaction: "bogus" }).valid, false)
+
+      const tradeRes = await tradeAct.handler({} as never, {} as never, undefined, { parameters: { subaction: "quote", chain: "solana", inputToken: "SOL", outputToken: "USDC", amount: "1" } })
+      assert.strictEqual(tradeRes?.success, true)
+      const liqRes = await liqAct.handler({} as never, {} as never, undefined, { parameters: { subaction: "pools", protocol: "kamino" } })
+      assert.strictEqual(liqRes?.success, true)
+      const govRes = await govAct.handler({} as never, {} as never, undefined, { parameters: { subaction: "vote", dao: "eliza", proposalId: "p1", support: "for" } })
+      assert.strictEqual(govRes?.success, true)
+      const infoRes = await infoAct.handler({} as never, {} as never, undefined, { parameters: { subaction: "trending", chain: "solana" } })
+      assert.strictEqual(infoRes?.success, true)
+    } finally {
+      await mock.close()
+    }
+  })
+})

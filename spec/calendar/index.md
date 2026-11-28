@@ -10,6 +10,6 @@ independent edit. Provider access for managed accounts is the Cloud's
 | Area | Specifications |
 | --- | --- |
 | Reading | [Reviewed reads](./reviewedReads.md), [availability](./availability.md), [read clock](./readClock.md), [occurrence grouping](./aggregateMerge.md) |
-| Agent | [Calendar actions](./actions.md) |
+| Agent | [Calendar actions](./actions.md), [Meeting auto-join and conflicts](./autoJoin.md) |
 | Changing | [Event and series scope](./seriesScope.md), [mutation ledger](./mutationLedger.md), [resident store](./residentStore.md) |
 | Linked sync | [Sync control](./linkedSync.md), [reconciliation](./linkedReconcile.md), [sync settlement](./syncSettlement.md), [managed feed](./managedFeed.md) |

@@ -1,10 +1,174 @@
-// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "Provider schema projections retain the meaning of omitted constraints in the prompt"
-import type { Action, ActionParameter, ActionParameterSchema, ActionResult } from "@elizaos/core"
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "Provider schema projections retain the meaning of omitted constraints in the prompt"; spec/mcp/workerLifecycle.md, "Story: Isolate untrusted MCP schema compilation and validation"
+import {
+  logger,
+  promoteSubactionsToActions,
+  type Action,
+  type ActionParameter,
+  type ActionParameterSchema,
+  type ActionResult,
+  type IAgentRuntime,
+  type Plugin,
+} from "@elizaos/core"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { Ajv } from "ajv"
-import { anyValueNestsArray, connectionAllowed, Machine, machine, type McpServer, projectShape, type ShapeFacet } from "../gen/mcp.effect.vibe"
+import {
+  Machine,
+  anyValueNestsArray,
+  connectionAllowed,
+  machine,
+  projectShape,
+  type Event as McpInvocationEvent,
+  type McpInvocation,
+  type McpServer,
+  type ShapeFacet,
+} from "../gen/mcp.effect.vibe"
+import {
+  MCP_ACTION_CONTEXT,
+  getDirectToolSelection,
+  getMcpRouteForTest,
+  mcpAction,
+  mcpProvider,
+  processResourceResult,
+  processToolResult,
+  type DirectToolSelection,
+  type McpOp,
+} from "./action.vibe"
+import {
+  AnthropicMcpCompatibility,
+  GoogleMcpCompatibility,
+  McpToolCompatibility,
+  OpenAIMcpCompatibility,
+  OpenAIReasoningMcpCompatibility,
+  convertJsonSchemaToActionParams,
+  createMcpToolCompatibilitySync,
+  createSchemaWorkerHandle,
+  detectModelProvider,
+  evaluateSchemaWithWorkerLifecycle,
+  transformMcpToolSchema,
+  validateParamsAgainstSchema,
+  wrapMcpMachineHandle,
+  type McpActionParameter,
+  type McpInputSchema,
+  type McpJsonSchema,
+  type McpMachineHandle,
+  type McpSchemaCompatibilityPolicy,
+  type ModelInfo,
+  type ModelProvider,
+  type SchemaConstraints,
+  type SchemaWorkerMachineHandle,
+} from "./compatibility.vibe"
+import {
+  DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES,
+  DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS,
+  McpMarketplaceError,
+  getMcpServerDetails,
+  handleMcpRoutes,
+  searchMcpMarketplace,
+  type McpMarketplaceErrorCode,
+  type McpMarketplaceRequestOptions,
+  type McpMarketplaceSearchItem,
+  type McpRegistryPackage,
+  type McpRegistryPackageTransport,
+  type McpRegistryRemote,
+  type McpRegistryServer,
+  type McpRouteConfig,
+  type McpRouteContext,
+} from "./marketplace.vibe"
+import {
+  ERROR_ANALYSIS_TEMPLATE,
+  FEEDBACK_TEMPLATE,
+  MAX_MCP_SCHEMA_DEPTH,
+  MAX_MCP_SCHEMA_JSON_BYTES,
+  MAX_MCP_SCHEMA_NODES,
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+  RESOURCE_ANALYSIS_TEMPLATE,
+  RESOURCE_SELECTION_TEMPLATE,
+  TOOL_REASONING_TEMPLATE,
+  TOOL_SELECTION_ARGUMENT_TEMPLATE,
+  TOOL_SELECTION_NAME_TEMPLATE,
+  actionNamesCollide,
+  assertJsonObject,
+  assertMcpJsonSchemaBudget,
+  buildMcpProviderProjection,
+  createMcpResourceSelectionFeedback,
+  describeMcpResources,
+  detectMcpModelProvider,
+  errorAnalysisTemplate,
+  feedbackTemplate,
+  formatMcpProviderForPrompt,
+  generateSimiles,
+  getMcpJsonSchemaBudgetError,
+  makeUniqueActionName,
+  parseActionName,
+  parseJSON,
+  parseStructuredModelOutput,
+  renderMcpTemplate,
+  resourceAnalysisTemplate,
+  resourceSelectionTemplate,
+  stringifyJSON,
+  toActionName,
+  toolReasoningTemplate,
+  toolSelectionArgumentTemplate,
+  toolSelectionNameTemplate,
+  validateJsonSchema,
+  validateMcpResourceSelection,
+  type McpKernelProviderData,
+  type McpKernelProviderProjection,
+  type McpKernelResource,
+  type McpKernelServer,
+  type McpKernelTool,
+  type McpModelInfo,
+  type McpModelProvider,
+  type McpResourceSelection,
+  type McpRuntimeModelProjection,
+  type McpSelectionValidation,
+} from "./protocol.vibe"
+import { McpService, buildMcpProviderData, validateMcpServerConfigSecurity } from "./service.vibe"
+import {
+  BACKOFF_MULTIPLIER,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_MCP_TIMEOUT_MS,
+  DEFAULT_PING_CONFIG,
+  INITIAL_RETRY_DELAY,
+  MAX_RECONNECT_ATTEMPTS,
+  MCP_SERVICE_NAME,
+  MIN_MCP_TIMEOUT_MS,
+  McpError,
+  ResourceSelectionSchema,
+  ToolSelectionSchema,
+  isMcpSettings,
+  type ConnectionState,
+  type ConnectionStatus,
+  type HttpMcpServerConfig,
+  type JsonSchemaArray,
+  type JsonSchemaObject,
+  type JsonSchemaPrimitive,
+  type JsonSchemaProperty,
+  type JsonSchemaValue,
+  type McpClientConnection,
+  type McpProvider,
+  type McpProviderData,
+  type McpProviderValues,
+  type McpResourceContent,
+  type McpResourceInfo,
+  type McpResourceResponse,
+  type McpServerConfig,
+  type McpServerInfo,
+  type McpServerRecord,
+  type McpServerStatus,
+  type McpSettings,
+  type McpToolInfo,
+  type McpToolInputSchema,
+  type McpToolResult,
+  type PingConfig,
+  type ResourceSelection,
+  type StdioMcpServerConfig,
+  type ToolSelectionArgument,
+  type ToolSelectionName,
+  type ValidationResult,
+} from "./types.vibe"
 
 export error McpUnavailable { serverId: string; operation: string }
 export error McpRefused { serverId: string; reason: string }
@@ -20,8 +184,7 @@ export service McpConnectionPolicy {
 effect function withClient<A, E, R>(server: McpServer, run: (client: Client) => A!E!R) {
   const policy = try McpConnectionPolicy
   const connection = try policy.admit(server)
-  if (connection === undefined || !connectionAllowed(server, true) ||
-    ((server.transport === "HttpTransport") !== (connection.kind === "http"))) {
+  if (connection === undefined || !connectionAllowed(server, true) || ((server.transport === "HttpTransport") !== (connection.kind === "http"))) {
     throw new McpRefused({ serverId: server.serverId, reason: "connection not authorized" })
   }
   const session = try Effect.try({
@@ -46,7 +209,8 @@ effect function withClient<A, E, R>(server: McpServer, run: (client: Client) => 
 
 export effect function listMcpTools(server: McpServer) {
   return try withClient(server, effect (client) =>
-    try tryPromise({ try: () => client.listTools(), catch: () => new McpUnavailable({ serverId: server.serverId, operation: "list tools" }) }))
+    try tryPromise({ try: () => client.listTools(), catch: () => new McpUnavailable({ serverId: server.serverId, operation: "list tools" }) }),
+  )
 }
 
 export effect function callMcpTool(server: McpServer, toolName: string, argumentsToTry: readonly Readonly<Record<string, unknown>>[]) {
@@ -84,7 +248,6 @@ export effect function callMcpTool(server: McpServer, toolName: string, argument
 }
 
 type SchemaNode = Readonly<Record<string, unknown>>
-
 const VALUE_TYPES = ["string", "number", "integer", "boolean", "object", "array"] as const
 const WIRE_KEYWORDS = new Set(["type", "nullable", "properties", "required", "additionalProperties", "items", "description", "title"])
 
@@ -135,8 +298,7 @@ function declaredFacets(node: SchemaNode): ShapeFacet[] {
 
 function parameterShape(node: unknown, depth: number, inUnion = false): ActionParameterSchema {
   if (!isSchemaNode(node)) return anyValue(depth)
-  const typed = isTypedSchema(node)
-  const shape = projectShape(declaredFacets(node), typed, depth)
+  const shape = projectShape(declaredFacets(node), isTypedSchema(node), depth)
   if (shape.anyValue) return anyValue(depth)
   const description = (depth > 0 || inUnion) && typeof node.description === "string" ? { description: node.description } : {}
   const union = unionBranches(node)
@@ -180,21 +342,17 @@ function omitsConstraints(node: unknown): boolean {
   return Object.entries(node).some(([keyword, value]) =>
     !WIRE_KEYWORDS.has(keyword) ||
     (keyword === "properties" && isSchemaNode(value) && Object.values(value).some(omitsConstraints)) ||
-    ((keyword === "items" || keyword === "additionalProperties") && omitsConstraints(value)))
+    ((keyword === "items" || keyword === "additionalProperties") && omitsConstraints(value)),
+  )
 }
 
 function parameterDescription(node: unknown): string {
   const stated = isSchemaNode(node) && typeof node.description === "string" ? node.description : ""
   if (!omitsConstraints(node)) return stated
-  const original = serialized(node)
-  return original === undefined ? stated : `${stated} JSON schema: ${original}`.trim()
-}
-
-function serialized(node: unknown): string | undefined {
   try {
-    return JSON.stringify(node)
+    return `${stated} JSON schema: ${JSON.stringify(node)}`.trim()
   } catch {
-    return undefined
+    return stated
   }
 }
 
@@ -212,7 +370,7 @@ export function mcpToolParameters(inputSchema: SchemaNode): ActionParameter[] {
 function actionName(serverId: string, toolName: string, taken: Set<string>): string {
   const base = `MCP_${serverId}_${toolName}`.toUpperCase().replace(/[^A-Z0-9_]+/g, "_")
   let name = base
-  for (let suffix = 2; taken.has(name); suffix++) name = `${base}_${suffix}`
+  for (let suffix = 2; taken.has(name); suffix += 1) name = `${base}_${suffix}`
   taken.add(name)
   return name
 }
@@ -249,4 +407,181 @@ export effect function mcpToolActions(server: McpServer) {
       }
     }),
   }))
+}
+
+export type McpInvocationMachineHandle = McpMachineHandle<McpInvocation, McpInvocationEvent>
+
+export function createMcpInvocationHandle(): McpInvocationMachineHandle {
+  const created = runSync(effect {
+    provide machine() {
+      const m = try Machine
+      return m
+    }
+  })
+  return wrapMcpMachineHandle(created)
+}
+
+function withMcpContext(action: Action): Action {
+  return {
+    ...action,
+    contexts: [...new Set([...(action.contexts ?? []), "general", "automation", "knowledge", MCP_ACTION_CONTEXT])],
+  }
+}
+
+export const mcpPlugin: Plugin = {
+  name: "@elizaos/plugin-mcp",
+  description: "Plugin for connecting to MCP (Model Context Protocol) servers",
+  init: async (_config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
+    logger.info("Initializing MCP plugin...")
+  },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<McpService>(McpService.serviceType)
+    await svc?.stop()
+  },
+  services: [McpService],
+  actions: [...promoteSubactionsToActions(withMcpContext(mcpAction))],
+  providers: [mcpProvider],
+}
+
+export const plugin: Plugin = mcpPlugin
+const defaultMcpPlugin: Plugin = mcpPlugin
+export default defaultMcpPlugin
+
+export {
+  AnthropicMcpCompatibility,
+  BACKOFF_MULTIPLIER,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES,
+  DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS,
+  DEFAULT_MCP_TIMEOUT_MS,
+  DEFAULT_PING_CONFIG,
+  ERROR_ANALYSIS_TEMPLATE,
+  FEEDBACK_TEMPLATE,
+  GoogleMcpCompatibility,
+  INITIAL_RETRY_DELAY,
+  MAX_MCP_SCHEMA_DEPTH,
+  MAX_MCP_SCHEMA_JSON_BYTES,
+  MAX_MCP_SCHEMA_NODES,
+  MAX_RECONNECT_ATTEMPTS,
+  MCP_ACTION_CONTEXT,
+  MCP_SERVICE_NAME,
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+  MIN_MCP_TIMEOUT_MS,
+  McpError,
+  McpMarketplaceError,
+  McpService,
+  McpToolCompatibility,
+  OpenAIMcpCompatibility,
+  OpenAIReasoningMcpCompatibility,
+  RESOURCE_ANALYSIS_TEMPLATE,
+  RESOURCE_SELECTION_TEMPLATE,
+  ResourceSelectionSchema,
+  TOOL_REASONING_TEMPLATE,
+  TOOL_SELECTION_ARGUMENT_TEMPLATE,
+  TOOL_SELECTION_NAME_TEMPLATE,
+  ToolSelectionSchema,
+  actionNamesCollide,
+  assertJsonObject,
+  assertMcpJsonSchemaBudget,
+  buildMcpProviderData,
+  buildMcpProviderProjection,
+  convertJsonSchemaToActionParams,
+  createMcpResourceSelectionFeedback,
+  createMcpToolCompatibilitySync,
+  createSchemaWorkerHandle,
+  describeMcpResources,
+  detectMcpModelProvider,
+  detectModelProvider,
+  errorAnalysisTemplate,
+  evaluateSchemaWithWorkerLifecycle,
+  feedbackTemplate,
+  formatMcpProviderForPrompt,
+  generateSimiles,
+  getDirectToolSelection,
+  getMcpJsonSchemaBudgetError,
+  getMcpRouteForTest,
+  getMcpServerDetails,
+  handleMcpRoutes,
+  isMcpSettings,
+  makeUniqueActionName,
+  mcpAction,
+  mcpProvider,
+  mcpProvider as provider,
+  parseActionName,
+  parseJSON,
+  parseStructuredModelOutput,
+  processResourceResult,
+  processToolResult,
+  renderMcpTemplate,
+  resourceAnalysisTemplate,
+  resourceSelectionTemplate,
+  searchMcpMarketplace,
+  stringifyJSON,
+  toActionName,
+  toolReasoningTemplate,
+  toolSelectionArgumentTemplate,
+  toolSelectionNameTemplate,
+  transformMcpToolSchema,
+  validateJsonSchema,
+  validateMcpResourceSelection,
+  validateMcpServerConfigSecurity,
+  validateParamsAgainstSchema,
+  type ConnectionState,
+  type ConnectionStatus,
+  type DirectToolSelection,
+  type HttpMcpServerConfig,
+  type JsonSchemaArray,
+  type JsonSchemaObject,
+  type JsonSchemaPrimitive,
+  type JsonSchemaProperty,
+  type JsonSchemaValue,
+  type McpActionParameter,
+  type McpClientConnection,
+  type McpInputSchema,
+  type McpJsonSchema,
+  type McpKernelProviderData,
+  type McpKernelProviderProjection,
+  type McpKernelResource,
+  type McpKernelServer,
+  type McpKernelTool,
+  type McpMarketplaceErrorCode,
+  type McpMarketplaceRequestOptions,
+  type McpMarketplaceSearchItem,
+  type McpModelInfo,
+  type McpModelProvider,
+  type McpOp,
+  type McpProvider,
+  type McpProviderData,
+  type McpProviderValues,
+  type McpRegistryPackage,
+  type McpRegistryPackageTransport,
+  type McpRegistryRemote,
+  type McpRegistryServer,
+  type McpResourceContent,
+  type McpResourceInfo,
+  type McpResourceResponse,
+  type McpResourceSelection,
+  type McpRouteConfig,
+  type McpRouteContext,
+  type McpRuntimeModelProjection,
+  type McpSchemaCompatibilityPolicy,
+  type McpSelectionValidation,
+  type McpServerConfig,
+  type McpServerInfo,
+  type McpServerRecord,
+  type McpServerStatus,
+  type McpSettings,
+  type McpToolInfo,
+  type McpToolInputSchema,
+  type McpToolResult,
+  type ModelInfo,
+  type ModelProvider,
+  type PingConfig,
+  type ResourceSelection,
+  type SchemaConstraints,
+  type SchemaWorkerMachineHandle,
+  type StdioMcpServerConfig,
+  type ToolSelectionArgument,
+  type ToolSelectionName,
+  type ValidationResult,
 }

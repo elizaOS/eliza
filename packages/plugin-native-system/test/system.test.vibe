@@ -1,0 +1,82 @@
+// spec/nativeSystem/index.md, "Story: Follow the device's authority for system controls"; spec/nativeSystem/index.md, "Native availability and approval belong to the requested system surface"
+import { assert, it } from "@effect/vitest"
+import {
+  DATA_RESET_UNCONFIRMED,
+  DataReset,
+  Sense,
+  SystemWeb,
+  androidRoleLabel,
+  defaultShadeFallbackCopy,
+  emptyHomePullEligible,
+  emptyHomeShadePull,
+  homeFits,
+  overflowPullDecision,
+  parseRoleStatuses,
+  parseSystemFacts,
+  reviewDataReset,
+  settingsHandoffFallback,
+  settingsPageRows,
+  shadeFallback,
+  shadeSurface,
+  tileFactsFromSystemFacts,
+  tileStateText,
+  webLocaleInfo,
+} from "../src/index.vibe"
+
+it.effect(`Enforce shade gestures, truthful system settings facts/roles, SystemWeb fallback, and Sense/DataReset re-exports (spec/nativeSystem/index.md, "Story: Follow the device's authority for system controls"; spec/nativeSystem/index.md, "Native availability and approval belong to the requested system surface")`, effect () => {
+  const web = new SystemWeb()
+  const apps = try tryPromise(() => web.listLauncherApps())
+  const buildInfo = try tryPromise(() => web.getBuildInfo())
+  const factsWeb = try tryPromise(() => web.getSystemFacts())
+  const shadeOut = try tryPromise(() => web.openNotificationShade())
+  const badRole = try Effect.result(Effect.tryPromise(() => web.requestRole({ role: "home" })))
+  const badBrightness = try Effect.result(Effect.tryPromise(() => web.setScreenBrightness({ brightness: 2 })))
+  const resetNotice = try tryPromise(() => reviewDataReset({ review: async () => ({ status: "unavailable", message: "" }) }))
+
+  const homeCtx = { launcher: true, assistant: false, screen: "home", view: null, chat: "collapsed", voice: "off", drawer: false, secure: false, shade: false }
+  const pullStart = { home: true, editable: false, keyboard: false, scrolled: false }
+  const copy = defaultShadeFallbackCopy("Eliza")
+  const parsedFacts = parseSystemFacts({ wifiActive: true, bluetoothEnabled: false, interruptionFilter: "priority", batteryPercent: 84, charging: true })
+  const tileFacts = tileFactsFromSystemFacts(parsedFacts, false)
+  const rows = settingsPageRows(parsedFacts)
+  const roles = parseRoleStatuses({
+    roles: [
+      { role: "home", androidRole: "android.app.role.HOME", held: true, available: true, holders: ["ai.eliza"] },
+      { role: "sms", androidRole: "android.app.role.SMS", held: false, available: true, holders: ["com.other.sms"] },
+      { role: "invalid", held: true, available: true, holders: [] },
+    ],
+  })
+
+  try Effect.try(() => {
+    assert.isDefined(Sense)
+    assert.isDefined(DataReset)
+    assert.strictEqual(resetNotice.message, DATA_RESET_UNCONFIRMED)
+    assert.deepStrictEqual(apps, { apps: [] })
+    assert.deepStrictEqual(buildInfo, { launcher: false, version: "web" })
+    assert.deepStrictEqual(factsWeb, {})
+    assert.deepStrictEqual(shadeOut, { status: "unsupported" })
+    assert.strictEqual(badRole._tag, "Failure")
+    assert.strictEqual(badBrightness._tag, "Failure")
+    assert.deepStrictEqual(webLocaleInfo(() => ({ locale: "en-GB", hourCycle: "h23" } as Intl.ResolvedDateTimeFormatOptions)), { locale: "en-GB", hour24: true })
+    assert.strictEqual(shadeSurface({ native: true, simulated: false }), "android")
+    assert.strictEqual(shadeSurface({ native: false, simulated: true }), "simulated")
+    assert.strictEqual(shadeFallback("opened", copy), "")
+    assert.strictEqual(shadeFallback("not-in-front", copy), copy.notInFront)
+    assert.isTrue(emptyHomePullEligible(homeCtx))
+    assert.isTrue(emptyHomeShadePull(homeCtx, pullStart, 60, 0, 80))
+    assert.isFalse(emptyHomeShadePull(homeCtx, pullStart, 20, 0, 80))
+    assert.strictEqual(overflowPullDecision(true, 0, 12), "claim")
+    assert.strictEqual(overflowPullDecision(true, 1, 2), "wait")
+    assert.strictEqual(overflowPullDecision(false, 0, 12), "release")
+    assert.isTrue(homeFits({ scrollHeight: 800, clientHeight: 800 }))
+    assert.deepStrictEqual(tileFacts, { wifi: true, bt: false, dnd: true, torch: false })
+    assert.strictEqual(tileStateText("wifi", tileFacts.wifi), "On")
+    assert.strictEqual(tileStateText("mic", undefined), "Open settings")
+    assert.strictEqual(rows.find((r) => r.page === "battery")?.value, "84% · charging")
+    assert.strictEqual(roles.length, 2)
+    assert.strictEqual(androidRoleLabel(roles[0], { packageName: "ai.eliza", appName: "Eliza" }), "Eliza")
+    assert.strictEqual(androidRoleLabel(roles[1], { packageName: "ai.eliza", appName: "Eliza" }), "Another app")
+    assert.strictEqual(settingsHandoffFallback({ status: "opened", page: "wifi", specific: true }, "Wi-Fi"), "")
+    assert.strictEqual(settingsHandoffFallback(undefined, "Wi-Fi"), "Open Android Settings for Wi-Fi.")
+  })
+})

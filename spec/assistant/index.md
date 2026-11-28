@@ -34,3 +34,6 @@ services belong to their domain owners.
 | Evidence for bills the owner submits | [Guided bill evidence](./billEvidence.md) |
 | What the owner hears about the assistant's work | [Replies](./replies.md) |
 | Evaluating finished turns in batches | [Evaluator runner](./evaluatorRunner.md), [durable progress](./evaluatorProgress.md), [evidence pages](./evaluatorEvidencePages.md) |
+| Autonomous thinking and global pause | [Autonomy](./autonomy.md) |
+| Household agreements and account handoff reviews | [Agreements and handoffs](./agreements.md) |
+| Long-term memory consolidation and first-run onboarding | [Advanced memory and first-run](./advancedMemory.md) |

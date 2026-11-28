@@ -1,0 +1,104 @@
+// spec/nativeDesktop/index.md, "Story: Manage desktop tray, shortcuts, window state, and notifications safely"
+export type * from "./native-contract.vibe"
+export { DesktopWeb, assertSafeExternalUrl } from "./web.vibe"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { DesktopPlugin } from "./native-contract.vibe"
+  import { DesktopWeb } from "./web.vibe"
+
+  export const native = registerPlugin<DesktopPlugin>("Desktop", {
+    web: () => Promise.resolve(new DesktopWeb()),
+  })
+}
+import { native } from capacitor
+
+export const Desktop = native
+
+import {
+  canCloseNotification,
+  canCreateTray,
+  canDestroyTray,
+  canRegisterShortcut,
+  canSetFullscreen,
+  canSetWindowOpacity,
+  canSetWindowVisibility,
+  canShowNotification,
+  canUnregisterShortcut,
+  closeNotification,
+  createTray,
+  destroyTray,
+  initial,
+  registerShortcut,
+  setFullscreen,
+  setWindowOpacity,
+  setWindowVisibility,
+  showNotification,
+  unregisterShortcut,
+  type DesktopState,
+} from "../gen/nativeDesktop.effect.vibe"
+
+export interface DesktopSession {
+  readonly state: () => DesktopState
+  readonly createTray: () => boolean
+  readonly destroyTray: () => boolean
+  readonly registerShortcut: () => boolean
+  readonly unregisterShortcut: () => boolean
+  readonly setWindowVisibility: (visible: boolean) => boolean
+  readonly setWindowOpacity: (opacityHundredths: number) => boolean
+  readonly setFullscreen: (flag: boolean) => boolean
+  readonly showNotification: () => boolean
+  readonly closeNotification: () => boolean
+}
+
+export function createDesktopSession(): DesktopSession {
+  let current: DesktopState = initial
+  return {
+    state: () => current,
+    createTray() {
+      if (!canCreateTray(current)) return false
+      current = createTray(current)
+      return true
+    },
+    destroyTray() {
+      if (!canDestroyTray(current)) return false
+      current = destroyTray(current)
+      return true
+    },
+    registerShortcut() {
+      if (!canRegisterShortcut(current)) return false
+      current = registerShortcut(current)
+      return true
+    },
+    unregisterShortcut() {
+      if (!canUnregisterShortcut(current)) return false
+      current = unregisterShortcut(current)
+      return true
+    },
+    setWindowVisibility(visible) {
+      if (!canSetWindowVisibility(current, visible)) return false
+      current = setWindowVisibility(current, visible)
+      return true
+    },
+    setWindowOpacity(opacityHundredths) {
+      if (!canSetWindowOpacity(current, opacityHundredths)) return false
+      current = setWindowOpacity(current, opacityHundredths)
+      return true
+    },
+    setFullscreen(flag) {
+      if (!canSetFullscreen(current, flag)) return false
+      current = setFullscreen(current, flag)
+      return true
+    },
+    showNotification() {
+      if (!canShowNotification(current)) return false
+      current = showNotification(current)
+      return true
+    },
+    closeNotification() {
+      if (!canCloseNotification(current)) return false
+      current = closeNotification(current)
+      return true
+    },
+  }
+}

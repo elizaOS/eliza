@@ -1,0 +1,251 @@
+// spec/network/index.md, "Availability uses the member's own evidence and calendar window"
+import type {
+  Evaluator,
+  EvaluatorProcessor,
+  ResponseHandlerFieldEvaluator,
+} from "@elizaos/core"
+import { authorizeSetState, ownWords } from "./authz.vibe"
+import type {
+  NetworkMemberState,
+  NetworkSignal,
+  NetworkStore,
+} from "./types.vibe"
+
+const anyCase = (words: string) =>
+  words.replace(/[a-z]/gu, (c) => `[${c}${c.toUpperCase()}]`)
+
+const SIGNAL_PATTERNS: ReadonlyArray<{ readonly kind: NetworkSignal["kind"]; readonly re: RegExp }> = [
+  {
+    kind: "opt_out",
+    re: /\b(stop texting|unsubscribe|leave (?:the )?network|remove me)\b/giu,
+  },
+  {
+    kind: "travel",
+    re: new RegExp(
+      `\\b(?:${anyCase("i'?m|i am|will be")}) (?:${anyCase("in|visiting|traveling to|flying to")}) ([A-Z][\\w .'-]{1,40})`,
+      "gu",
+    ),
+  },
+  {
+    kind: "safety_concern",
+    re: /\b(made me uncomfortable|felt unsafe|harass\w*|creep(?:y|ed))\b/giu,
+  },
+]
+
+const SIGNAL_NEGATED =
+  /\b(?:not|never|don'?t|do not|didn'?t|won'?t|wasn'?t|isn'?t|no)\s+(?:\w+\s+)?$/iu
+
+export function detectNetworkSignals(text: string): NetworkSignal[] {
+  const own = ownWords(text)
+  const out: NetworkSignal[] = []
+  for (const { kind, re } of SIGNAL_PATTERNS) {
+    for (const m of own.matchAll(re)) {
+      if (SIGNAL_NEGATED.test(own.slice(0, m.index))) continue
+      out.push({ kind, evidence: m[0] })
+      break
+    }
+  }
+  return out
+}
+
+interface SignalsOutput {
+  readonly signals: NetworkSignal[]
+}
+
+export interface NetworkSignalsEvaluatorOptions {
+  readonly store: NetworkStore
+  readonly authority: { readonly memberId: string }
+}
+
+export function createNetworkSignalsEvaluator(
+  options: NetworkSignalsEvaluatorOptions,
+): Evaluator<SignalsOutput, { readonly text: string }> {
+  const recordProcessor: EvaluatorProcessor<SignalsOutput, { readonly text: string }> = {
+    name: "recordNetworkSignals",
+    async process({ output, message }) {
+      if (output.signals.length === 0) return undefined
+      const { recorded } = await options.store.recordSignals({
+        memberId: options.authority.memberId,
+        messageId: String(message.id ?? ""),
+        signals: output.signals,
+      })
+      return {
+        success: true,
+        values: { networkSignals: recorded },
+        data: { actionName: "NETWORK_SIGNALS", recorded },
+      }
+    },
+  }
+
+  return {
+    name: "NETWORK_SIGNALS",
+    description: "Records opt-out, travel and safety signals for Network review.",
+    inputScope: "current_message",
+    schema: {
+      type: "object",
+      properties: {
+        signals: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["opt_out", "travel", "safety_concern"] },
+              evidence: { type: "string" },
+            },
+            required: ["kind", "evidence"],
+          },
+        },
+      },
+      required: ["signals"],
+    },
+    async shouldRun({ message }) {
+      const text = typeof message.content?.text === "string" ? message.content.text : ""
+      return detectNetworkSignals(text).length > 0
+    },
+    async prepare({ message }) {
+      return { text: typeof message.content?.text === "string" ? message.content.text : "" }
+    },
+    resolveOutput({ prepared }) {
+      return { signals: detectNetworkSignals(prepared.text) }
+    },
+    prompt() {
+      return ""
+    },
+    parse(output) {
+      const o = output as SignalsOutput | null
+      return o !== null && typeof o === "object" && Array.isArray(o.signals) ? o : null
+    },
+    processors: [recordProcessor],
+  }
+}
+
+export const NETWORK_ACTION_FIELD = "networkAction" as const
+export const NETWORK_STATE_CLARIFICATION =
+  "I want to make sure I set your Network availability right — what status and dates should I use?"
+
+export interface ParsedNetworkActionProposal {
+  readonly state: unknown
+  readonly from: unknown
+  readonly until: unknown
+  readonly evidence: unknown
+  readonly note: string | null
+}
+
+export function parseNetworkActionProposal(raw: unknown): ParsedNetworkActionProposal | null {
+  if (raw === null || raw === undefined) return null
+  let value: unknown = raw
+  if (typeof raw === "string") {
+    const trimmed = raw.trim()
+    if (!trimmed || trimmed === "null" || trimmed === "none") return null
+    try {
+      value = JSON.parse(trimmed) as unknown
+    } catch {
+      return null
+    }
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null
+  const rec = value as Readonly<Record<string, unknown>>
+  return {
+    state: rec.state,
+    from: rec.from ?? null,
+    until: rec.until ?? null,
+    evidence: rec.evidence,
+    note: typeof rec.note === "string" ? rec.note.slice(0, 280) : null,
+  }
+}
+
+export function clarificationFor(reason: string): string {
+  if (reason === "missing until" || reason === "date mismatch" || reason === "until is in the past") {
+    return "Just to make sure I get the dates right — when should I resume Network introductions?"
+  }
+  return NETWORK_STATE_CLARIFICATION
+}
+
+export function confirmationFor(
+  state: NetworkMemberState,
+  from: string | null,
+  until: string | null,
+): string {
+  const formatDay = (iso: string) => iso.slice(0, 10)
+  const window =
+    from !== null && until !== null
+      ? ` from ${formatDay(from)} until ${formatDay(until)}`
+      : until !== null
+        ? ` until ${formatDay(until)}`
+        : from !== null
+          ? ` starting ${formatDay(from)}`
+          : ""
+  if (state === "open") return "Got it — you're back open for Network introductions."
+  if (state === "paused") return `Got it — I've paused your Network introductions${window}.`
+  if (state === "traveling") return `Got it — I've marked you as traveling${window}.`
+  return `Got it — I've marked you as busy${window}.`
+}
+
+export interface NetworkActionFieldEvaluatorOptions {
+  readonly store: NetworkStore
+  readonly authority: {
+    readonly memberId: string
+    readonly messageId: string
+    readonly timeZone?: string | null
+  }
+  readonly now?: () => Date
+}
+
+export function createNetworkActionFieldEvaluator(
+  options: NetworkActionFieldEvaluatorOptions,
+): ResponseHandlerFieldEvaluator<ParsedNetworkActionProposal> {
+  return {
+    name: NETWORK_ACTION_FIELD,
+    description:
+      'Optional JSON object proposing a Network availability change when the member directly asks for one: {"state":"open|busy|traveling|paused","from":null,"until":null,"evidence":"verbatim quote","note":null}. Omit or null when no availability change is requested.',
+    descriptionCompressed: "Network availability proposal JSON or null.",
+    schema: {
+      type: ["object", "null"],
+      properties: {
+        state: { type: "string", enum: ["open", "busy", "traveling", "paused"] },
+        from: { type: ["string", "null"] },
+        until: { type: ["string", "null"] },
+        evidence: { type: "string" },
+        note: { type: ["string", "null"] },
+      },
+      required: ["state", "evidence"],
+    },
+    directReplyValue: (value) => parseNetworkActionProposal(value) !== null,
+    parse: (value) => parseNetworkActionProposal(value),
+    handle: async ({ value, message }) => {
+      const memberText = typeof message.content?.text === "string" ? message.content.text : ""
+      const decision = authorizeSetState(
+        value,
+        memberText,
+        options.now ? options.now() : new Date(),
+        { timeZone: options.authority.timeZone ?? null },
+      )
+      if (!decision.allowed) {
+        const reply = clarificationFor(decision.reason)
+        return {
+          mutateResult: (result) => {
+            result.replyText = reply
+          },
+          preempt: { mode: "direct-reply", reason: `network:${decision.reason}` },
+        }
+      }
+      const messageId = options.authority.messageId || String(message.id ?? "")
+      const receipt = await options.store.setState({
+        memberId: options.authority.memberId,
+        messageId,
+        idempotencyKey: `state:${options.authority.memberId}:${messageId}`,
+        state: decision.state,
+        from: decision.from,
+        until: decision.until,
+        note: value.note,
+      })
+      const reply = confirmationFor(receipt.current, receipt.from, receipt.until)
+      return {
+        mutateResult: (result) => {
+          result.replyText = reply
+        },
+        preempt: { mode: "direct-reply", reason: `network:set-state:${receipt.current}` },
+      }
+    },
+  }
+}

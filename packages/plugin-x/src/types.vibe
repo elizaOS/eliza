@@ -1,0 +1,626 @@
+// spec/x/index.md, "Direct requests, discovered items and autonomous actions use their own policy gates"
+import type {
+  EntityPayload,
+  EventPayload,
+  HandlerCallback,
+  Memory,
+  MessagePayload,
+  UUID,
+  WorldPayload,
+} from "@elizaos/core"
+
+export const TWITTER_SERVICE_NAME = "twitter"
+export const X_SERVICE_NAME = "x"
+export const DEFAULT_X_ACCOUNT_ID = "default"
+export const TWEET_CHAR_LIMIT = 280
+export const TWEET_MAX_LENGTH = 280
+export const THREAD_TWEET_MAX_LENGTH = 4000
+export const X_MAX_DM_LENGTH = 10_000
+export const X_MAX_RESULTS_PER_PAGE = 100
+export const X_RECENT_SEARCH_MIN_RESULTS = 10
+export const X_USER_TWEETS_MIN_RESULTS = 5
+
+export type TwitterAuthMode = "env" | "oauth" | "broker"
+export type TwitterDmPolicy = "open" | "pairing" | "allowlist" | "disabled"
+
+export const TwitterEventTypes = {
+  MESSAGE_RECEIVED: "TWITTER_MESSAGE_RECEIVED",
+  MESSAGE_SENT: "TWITTER_MESSAGE_SENT",
+  REACTION_RECEIVED: "TWITTER_REACTION_RECEIVED",
+  LIKE_RECEIVED: "TWITTER_LIKE_RECEIVED",
+  RETWEET_RECEIVED: "TWITTER_RETWEET_RECEIVED",
+  QUOTE_RECEIVED: "TWITTER_QUOTE_RECEIVED",
+  WORLD_JOINED: "TWITTER_WORLD_JOINED",
+  ENTITY_JOINED: "TWITTER_USER_JOINED",
+  ENTITY_LEFT: "TWITTER_USER_LEFT",
+  USER_FOLLOWED: "TWITTER_USER_FOLLOWED",
+  USER_UNFOLLOWED: "TWITTER_USER_UNFOLLOWED",
+  THREAD_CREATED: "TWITTER_THREAD_CREATED",
+  THREAD_UPDATED: "TWITTER_THREAD_UPDATED",
+  MENTION_RECEIVED: "TWITTER_MENTION_RECEIVED",
+} as const
+
+export type TwitterEventType = (typeof TwitterEventTypes)[keyof typeof TwitterEventTypes]
+
+export const TwitterErrorType = {
+  AUTH: "AUTH",
+  RATE_LIMIT: "RATE_LIMIT",
+  API: "API",
+  NETWORK: "NETWORK",
+  MEDIA: "MEDIA",
+  VALIDATION: "VALIDATION",
+  UNKNOWN: "UNKNOWN",
+} as const
+
+export type TwitterErrorTypeValue = (typeof TwitterErrorType)[keyof typeof TwitterErrorType]
+
+export const MessageType = {
+  POST: "post",
+  DIRECT_MESSAGE: "dm",
+  MENTION: "mention",
+  REPLY: "reply",
+  QUOTE: "quote",
+} as const
+
+export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType]
+
+export interface TwitterConfig {
+  TWITTER_AUTH_MODE: TwitterAuthMode
+  TWITTER_ACCOUNT_ID: string
+  TWITTER_DEFAULT_ACCOUNT_ID: string
+  TWITTER_ACCOUNTS: string
+  TWITTER_API_KEY: string
+  TWITTER_API_SECRET_KEY: string
+  TWITTER_ACCESS_TOKEN: string
+  TWITTER_ACCESS_TOKEN_SECRET: string
+  TWITTER_CLIENT_ID: string
+  TWITTER_REDIRECT_URI: string
+  TWITTER_SCOPES: string
+  TWITTER_BROKER_URL: string
+  TWITTER_BROKER_TOKEN: string
+  TWITTER_PERSONAL_DM_ROUTER_URL: string
+  TWITTER_DRY_RUN: string
+  TWITTER_TARGET_USERS: string
+  TWITTER_ENABLE_POST: string
+  TWITTER_ENABLE_REPLIES: string
+  TWITTER_ENABLE_DMS: string
+  TWITTER_DM_POLICY: string
+  TWITTER_DM_POLL_INTERVAL_SECONDS: string
+  TWITTER_ENABLE_ACTIONS: string
+  TWITTER_POST_INTERVAL: string
+  TWITTER_POST_INTERVAL_MIN: string
+  TWITTER_POST_INTERVAL_MAX: string
+  TWITTER_ENGAGEMENT_INTERVAL: string
+  TWITTER_ENGAGEMENT_INTERVAL_MIN: string
+  TWITTER_ENGAGEMENT_INTERVAL_MAX: string
+  TWITTER_DISCOVERY_INTERVAL_MIN: string
+  TWITTER_DISCOVERY_INTERVAL_MAX: string
+  TWITTER_MAX_ENGAGEMENTS_PER_RUN: string
+  TWITTER_MAX_TWEET_LENGTH: string
+  TWITTER_RETRY_LIMIT: string
+}
+
+export type TwitterClientState = Partial<TwitterConfig> & {
+  accountId?: string
+}
+
+export interface TwitterProfile {
+  id: string
+  username: string
+  screenName: string
+  bio: string
+  nicknames: string[]
+}
+
+export interface MediaData {
+  data: Buffer
+  mediaType: string
+}
+
+export interface ActionResponse {
+  like: boolean
+  retweet: boolean
+  quote?: boolean
+  reply?: boolean
+}
+
+export interface SentTweet {
+  id: string
+  text?: string
+  edit_history_tweet_ids?: string[]
+  readonly [extra: string]: unknown
+}
+
+export interface TweetThreadReceipt {
+  id: string
+  text: string
+}
+
+export interface ClientTweet {
+  id?: string
+  text?: string
+  userId?: string
+  username?: string
+  name?: string
+  conversationId?: string
+  inReplyToStatusId?: string
+  timestamp?: number
+  photos?: Array<{ url: string }>
+  mentions?: Array<{ id?: string; username?: string; name?: string }>
+  hashtags?: Array<{ text?: string } | string>
+  urls?: Array<{ expanded_url?: string } | string>
+  videos?: Array<{ id?: string; url?: string; preview?: string }>
+  thread?: ClientTweet[]
+  permanentUrl?: string
+}
+
+export interface Tweet {
+  id: string
+  text: string
+  userId: string
+  username: string
+  name: string
+  conversationId: string
+  inReplyToStatusId?: string
+  timestamp: number
+  photos: Array<{ url: string }>
+  mentions: string[]
+  hashtags: string[]
+  urls: string[]
+  videos: Array<{ id?: string; url?: string; preview?: string }>
+  thread: ClientTweet[]
+  permanentUrl: string
+}
+
+export interface QueryTweetsResponse {
+  tweets: Tweet[]
+  cursor?: string
+}
+
+export interface TwitterMemory extends Memory {
+  content: Memory["content"] & {
+    source: "twitter"
+    text?: string
+    type?: string
+    targetId?: string
+  }
+  roomId: UUID
+}
+
+export interface TwitterUserRef {
+  id: string
+  username: string
+  name?: string
+  readonly [extra: string]: unknown
+}
+
+export interface TwitterMessageReceivedPayload extends Omit<MessagePayload, "message"> {
+  message: TwitterMemory
+  tweet: Tweet
+  user: TwitterUserRef
+}
+
+export interface TwitterMessageSentPayload extends MessagePayload {
+  inReplyToTweetId: string
+  tweetResult: unknown
+}
+
+export interface TwitterReactionReceivedPayload extends MessagePayload {
+  tweet: Tweet
+  reactionType: "like" | "retweet"
+  user: TwitterUserRef
+}
+
+export interface TwitterQuoteReceivedPayload extends Omit<MessagePayload, "message" | "reaction"> {
+  quotedTweet: Tweet
+  quoteTweet: Tweet
+  user: TwitterUserRef
+  message: TwitterMemory
+  callback: HandlerCallback
+  reaction: { type: "quote"; entityId: UUID }
+}
+
+export interface TwitterMentionReceivedPayload extends Omit<MessagePayload, "message"> {
+  tweet: Tweet
+  user: TwitterUserRef
+  message: TwitterMemory
+  callback: HandlerCallback
+  source: "twitter"
+}
+
+export interface TwitterServerPayload extends WorldPayload {
+  profile: { id: string; username: string; screenName: string }
+}
+
+export interface TwitterUserJoinedPayload extends EntityPayload {
+  twitterUser: { id: string; username: string; name: string }
+}
+
+export interface TwitterUserFollowedPayload extends EntityPayload {
+  follower: TwitterUserRef
+}
+
+export interface TwitterUserUnfollowedPayload extends EntityPayload {
+  unfollower: TwitterUserRef
+}
+
+export interface TwitterThreadCreatedPayload extends EventPayload {
+  tweets: Tweet[]
+  user: TwitterUserRef
+}
+
+export interface TwitterThreadUpdatedPayload extends EventPayload {
+  tweets: Tweet[]
+  user: TwitterUserRef
+  newTweet: Tweet
+}
+
+export interface TwitterLikeReceivedPayload extends EventPayload {
+  tweet: Tweet
+  user: { id: string; username: string; name: string }
+  source: "twitter"
+}
+
+export interface TwitterRetweetReceivedPayload extends EventPayload {
+  tweet: Tweet
+  retweetId: string
+  user: { id: string; username: string; name: string }
+  source: "twitter"
+}
+
+export interface TwitterEventPayloadMap {
+  [TwitterEventTypes.MESSAGE_RECEIVED]: TwitterMessageReceivedPayload
+  [TwitterEventTypes.MESSAGE_SENT]: TwitterMessageSentPayload
+  [TwitterEventTypes.REACTION_RECEIVED]: TwitterReactionReceivedPayload
+  [TwitterEventTypes.LIKE_RECEIVED]: TwitterLikeReceivedPayload
+  [TwitterEventTypes.RETWEET_RECEIVED]: TwitterRetweetReceivedPayload
+  [TwitterEventTypes.QUOTE_RECEIVED]: TwitterQuoteReceivedPayload
+  [TwitterEventTypes.WORLD_JOINED]: TwitterServerPayload
+  [TwitterEventTypes.ENTITY_JOINED]: TwitterUserJoinedPayload
+  [TwitterEventTypes.ENTITY_LEFT]: EntityPayload
+  [TwitterEventTypes.USER_FOLLOWED]: TwitterUserFollowedPayload
+  [TwitterEventTypes.USER_UNFOLLOWED]: TwitterUserUnfollowedPayload
+  [TwitterEventTypes.THREAD_CREATED]: TwitterThreadCreatedPayload
+  [TwitterEventTypes.THREAD_UPDATED]: TwitterThreadUpdatedPayload
+  [TwitterEventTypes.MENTION_RECEIVED]: TwitterMentionReceivedPayload
+}
+
+export interface Message {
+  id: string
+  agentId: UUID
+  roomId: UUID
+  userId: string
+  username: string
+  text: string
+  type: MessageTypeValue
+  timestamp: number
+  inReplyTo?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface GetMessagesOptions {
+  agentId: UUID
+  roomId?: UUID
+  type?: MessageTypeValue
+  limit?: number
+  before?: string
+  after?: string
+  includeReplies?: boolean
+}
+
+export interface SendMessageOptions {
+  agentId: UUID
+  roomId: UUID
+  text: string
+  type: MessageTypeValue
+  replyToId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface IMessageService {
+  getMessages(options: GetMessagesOptions): Promise<Message[]>
+  sendMessage(options: SendMessageOptions): Promise<Message>
+  deleteMessage(messageId: string, agentId: UUID): Promise<void>
+  getMessage(messageId: string, agentId: UUID): Promise<Message | null>
+  markAsRead(messageIds: string[], agentId: UUID): Promise<void>
+}
+
+export interface PostMetrics {
+  likes: number
+  reposts: number
+  replies: number
+  quotes: number
+  views?: number
+}
+
+export interface MediaAttachment {
+  type: "image" | "video" | "gif"
+  url: string
+  thumbnailUrl?: string
+  altText?: string
+}
+
+export interface Post {
+  id: string
+  agentId: UUID
+  roomId: UUID
+  userId: string
+  username: string
+  text: string
+  timestamp: number
+  inReplyTo?: string
+  quotedPostId?: string
+  metrics?: PostMetrics
+  media?: MediaAttachment[]
+  metadata?: Record<string, unknown>
+}
+
+export interface CreatePostOptions {
+  agentId: UUID
+  roomId: UUID
+  text: string
+  inReplyTo?: string
+  media?: Array<{ data: Buffer; type: string; altText?: string }>
+  quotedPostId?: string
+}
+
+export interface GetPostsOptions {
+  agentId: UUID
+  roomId?: UUID
+  userId?: string
+  limit?: number
+  before?: string
+  after?: string
+  includeReplies?: boolean
+  includeReposts?: boolean
+}
+
+export interface IPostService {
+  createPost(options: CreatePostOptions): Promise<Post>
+  deletePost(postId: string, agentId: UUID): Promise<void>
+  getPost(postId: string, agentId: UUID): Promise<Post | null>
+  getPosts(options: GetPostsOptions): Promise<Post[]>
+  likePost(postId: string, agentId: UUID): Promise<void>
+  unlikePost(postId: string, agentId: UUID): Promise<void>
+  repost(postId: string, agentId: UUID): Promise<void>
+  unrepost(postId: string, agentId: UUID): Promise<void>
+  getMentions(agentId: UUID, options?: Partial<GetPostsOptions>): Promise<Post[]>
+}
+
+module guard {
+  export class TwitterError extends Error {
+    readonly type: string
+    readonly originalError?: unknown
+    readonly details?: Record<string, unknown>
+    readonly code?: string
+    constructor(
+      type: string,
+      message: string,
+      originalError?: unknown,
+      details?: Record<string, unknown>,
+      code?: string,
+    ) {
+      super(message, originalError !== undefined ? { cause: originalError } : undefined)
+      this.name = "TwitterError"
+      this.type = type
+      this.originalError = originalError
+      this.details = details
+      this.code = code
+    }
+  }
+
+  export class ApiError extends Error {
+    readonly response: globalThis.Response
+    readonly data: unknown
+    constructor(response: globalThis.Response, data: unknown, message: string) {
+      super(message)
+      this.name = "ApiError"
+      this.response = response
+      this.data = data
+    }
+
+    static async fromResponse(response: globalThis.Response): Promise<ApiError> {
+      let data: string | object | undefined
+      try {
+        data = (await response.json()) as object
+      } catch {
+        try {
+          data = await response.text()
+        } catch {
+          data = undefined
+        }
+      }
+      return new ApiError(response, data, `Response status: ${response.status}`)
+    }
+  }
+
+  export function failTwitter(
+    type: string,
+    message: string,
+    code?: string,
+    details?: Record<string, unknown>,
+    originalError?: unknown,
+  ): never {
+    throw new TwitterError(type, message, originalError, details, code)
+  }
+}
+import { ApiError, TwitterError, failTwitter } from guard
+export { ApiError, TwitterError, failTwitter }
+
+export function maxResultsFor(limit: number | undefined, min: number): number {
+  if (limit === undefined) return X_MAX_RESULTS_PER_PAGE
+  return Math.min(Math.max(limit, min), X_MAX_RESULTS_PER_PAGE)
+}
+
+export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
+  const mentions = Array.isArray(tweet.mentions)
+    ? tweet.mentions
+        .filter((mention): mention is { username: string } => typeof mention?.username === "string")
+        .map((mention) => mention.username)
+    : []
+  const hashtags = Array.isArray(tweet.hashtags)
+    ? tweet.hashtags
+        .map((tag) => (typeof tag === "string" ? tag : typeof tag?.text === "string" ? tag.text : ""))
+        .filter((value) => value !== "")
+    : []
+  const urls = Array.isArray(tweet.urls)
+    ? tweet.urls
+        .map((url) => (typeof url === "string" ? url : typeof url?.expanded_url === "string" ? url.expanded_url : ""))
+        .filter((value) => value !== "")
+    : []
+  return {
+    id: tweet.id || "",
+    text: tweet.text || "",
+    userId: tweet.userId || "",
+    username: tweet.username || "",
+    name: tweet.name || "",
+    conversationId: tweet.conversationId || "",
+    inReplyToStatusId: tweet.inReplyToStatusId,
+    timestamp: tweet.timestamp || 0,
+    photos: tweet.photos || [],
+    mentions,
+    hashtags,
+    urls,
+    videos: tweet.videos || [],
+    thread: tweet.thread || [],
+    permanentUrl: tweet.permanentUrl || "",
+  }
+}
+
+interface ProbableErrorShape {
+  message?: unknown
+  code?: unknown
+  status?: unknown
+  data?: { status?: unknown; type?: unknown; title?: unknown; detail?: unknown; errors?: unknown }
+  response?: { status?: unknown }
+}
+
+const RETRYABLE_NETWORK_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+])
+
+const APP_LEVEL_PROBLEM_PATTERN =
+  /client-forbidden|client-not-enrolled|unsupported-authentication|usage-capped|credits?[- ](?:depleted|exhausted)/i
+
+const ITEM_LEVEL_ERROR_CODES = new Set([136, 150, 349, 385, 433])
+
+const ITEM_LEVEL_REFUSAL_PATTERN =
+  /reply to this conversation is not allowed|restricted who can reply|deleted or not visible to you|(?:cannot|can't|not (?:allowed|permitted) to) (?:send )?(?:a )?(?:direct )?messages? to (?:this user|users who)/i
+
+function probeError(error: unknown): ProbableErrorShape {
+  return typeof error === "object" && error !== null ? (error as ProbableErrorShape) : {}
+}
+
+function nestedProviderError(error: unknown): unknown {
+  if (error instanceof TwitterError && error.originalError !== undefined) return error.originalError
+  if (typeof error !== "object" || error === null || !("cause" in error)) return undefined
+  return (error as { cause?: unknown }).cause
+}
+
+function directProviderStatus(error: unknown): number | undefined {
+  const probed = probeError(error)
+  const candidate = probed.data?.status ?? probed.response?.status ?? probed.status ?? probed.code
+  if (typeof candidate === "number" && Number.isInteger(candidate)) return candidate
+  if (typeof candidate === "string" && /^[1-5]\d\d$/.test(candidate)) return Number(candidate)
+  return undefined
+}
+
+export function getTwitterProviderStatus(error: unknown): number | undefined {
+  const seen = new Set<unknown>()
+  let current: unknown = error
+  while (current !== undefined && !seen.has(current)) {
+    seen.add(current)
+    const status = directProviderStatus(current)
+    if (status !== undefined) return status
+    current = nestedProviderError(current)
+  }
+  return undefined
+}
+
+function structuredProviderErrorType(error: unknown): TwitterErrorTypeValue | undefined {
+  const status = directProviderStatus(error)
+  if (status === 401 || status === 403) return TwitterErrorType.AUTH
+  if (status === 429) return TwitterErrorType.RATE_LIMIT
+  if (status === 400 || status === 422) return TwitterErrorType.VALIDATION
+  if (status !== undefined && status >= 400 && status < 500) return TwitterErrorType.API
+  if (status !== undefined && status >= 500 && status < 600) return TwitterErrorType.NETWORK
+  const code = probeError(error).code
+  if (typeof code === "string" && RETRYABLE_NETWORK_CODES.has(code.toUpperCase())) {
+    return TwitterErrorType.NETWORK
+  }
+  return undefined
+}
+
+export function normalizeTwitterProviderError(error: unknown): TwitterError | null {
+  const seen = new Set<unknown>()
+  let current: unknown = error
+  while (current !== undefined && !seen.has(current)) {
+    seen.add(current)
+    if (current instanceof TwitterError && current.type !== TwitterErrorType.UNKNOWN) return current
+    const type = structuredProviderErrorType(current)
+    if (type !== undefined) {
+      const message =
+        current instanceof Error && current.message.trim().length > 0
+          ? current.message
+          : `X provider request failed (${type})`
+      return new TwitterError(type, message, current)
+    }
+    current = nestedProviderError(current)
+  }
+  return null
+}
+
+export function isExplicitTwitterRejection(error: unknown): boolean {
+  const status = getTwitterProviderStatus(error)
+  return status !== undefined && status >= 400 && status < 500
+}
+
+function providerProblemEvidence(error: unknown): { texts: string[]; codes: number[] } {
+  const texts: string[] = []
+  const codes: number[] = []
+  const pushText = (value: unknown) => {
+    if (typeof value === "string") texts.push(value)
+  }
+  const probed = probeError(error)
+  pushText(probed.message)
+  const data = probed.data
+  if (data && typeof data === "object") {
+    pushText(data.type)
+    pushText(data.title)
+    pushText(data.detail)
+    if (Array.isArray(data.errors)) {
+      for (const entry of data.errors) {
+        if (!entry || typeof entry !== "object") continue
+        const item = entry as Record<string, unknown>
+        if (typeof item.code === "number") codes.push(item.code)
+        pushText(item.type)
+        pushText(item.title)
+        pushText(item.detail)
+        pushText(item.message)
+      }
+    }
+  }
+  return { texts, codes }
+}
+
+export function isPermanentTwitterRejection(error: unknown): boolean {
+  if (!isExplicitTwitterRejection(error)) return false
+  const status = getTwitterProviderStatus(error)
+  if (status === 401 || status === 402 || status === 408 || status === 429) return false
+  const { texts, codes } = providerProblemEvidence(error)
+  if (texts.some((text) => APP_LEVEL_PROBLEM_PATTERN.test(text))) return false
+  if (status !== 403) return true
+  return (
+    codes.some((code) => ITEM_LEVEL_ERROR_CODES.has(code)) ||
+    texts.some((text) => ITEM_LEVEL_REFUSAL_PATTERN.test(text))
+  )
+}

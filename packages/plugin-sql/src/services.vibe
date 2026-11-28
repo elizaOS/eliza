@@ -1,0 +1,486 @@
+// spec/sql/index.md, "A scoped read or mutation must name the active tenant and agent"
+import { Service, type IAgentRuntime, type UUID } from "@elizaos/core"
+import { asNumberList, asRecord, asStringList } from "./adapter-helpers.vibe"
+import { cosineSimilarity } from "./schema.vibe"
+import type { SqlExecutor } from "./types.vibe"
+
+module sqlServiceCrypto {
+  import { randomUUID } from "node:crypto"
+  import type { UUID } from "@elizaos/core"
+
+  export const nextUuid = (): UUID => randomUUID() as UUID
+}
+import { nextUuid } from sqlServiceCrypto
+
+function resolveRuntimeExecutor(runtime: IAgentRuntime | undefined, explicit: SqlExecutor | null): SqlExecutor | null {
+  if (explicit) return explicit
+  const adapter = (runtime as unknown as { databaseAdapter?: { sqlExecutor?: SqlExecutor } } | undefined)
+    ?.databaseAdapter
+  return adapter?.sqlExecutor ?? null
+}
+
+export interface SessionSummaryRecord {
+  id: UUID
+  agentId: UUID
+  roomId: UUID
+  entityId?: UUID
+  summary: string
+  messageCount: number
+  lastMessageOffset: number
+  startTime: number
+  endTime: number
+  topics: string[]
+  metadata: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface LongTermMemoryRecord {
+  id: UUID
+  agentId: UUID
+  entityId: UUID
+  category: string
+  content: string
+  metadata: Record<string, unknown>
+  embedding?: number[]
+  confidence: number
+  source?: string
+  createdAt: number
+  updatedAt: number
+  lastAccessedAt?: number
+  accessCount: number
+  similarity?: number
+}
+
+export interface PrincipalRecord {
+  id: UUID
+  agentId: UUID
+  canonicalId: UUID
+  status: string
+  metadata: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface IdentityClaimRecord {
+  id: UUID
+  agentId: UUID
+  principalId: UUID
+  connectorId: string
+  externalId: string
+  verified: boolean
+  metadata: Record<string, unknown>
+  createdAt: number
+}
+
+export interface MembershipScopeKey {
+  agentId: UUID
+  connectorId: string
+  connectorAccountId: string
+  externalWorldId: string
+  externalRoomId: string
+}
+
+export interface MembershipStateRecord extends MembershipScopeKey {
+  id: UUID
+  principalId: UUID
+  status: string
+  roles: string[]
+  permissionSnapshot: Record<string, unknown>
+  observedAt: number
+  expiresAt?: number
+}
+
+export class AdvancedMemoryStorageService extends Service {
+  static override serviceType = "advanced_memory_storage"
+  override capabilityDescription =
+    "SQL storage for session summaries and long-term episodic/semantic memories."
+
+  private readonly executor: SqlExecutor | null
+
+  constructor(runtime?: IAgentRuntime, executor?: SqlExecutor) {
+    super(runtime)
+    this.executor = executor ?? null
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<AdvancedMemoryStorageService> {
+    return Promise.resolve(new AdvancedMemoryStorageService(runtime))
+  }
+
+  private requireExecutor(): Promise<SqlExecutor> {
+    const found = resolveRuntimeExecutor(this.runtime, this.executor)
+    return found
+      ? Promise.resolve(found)
+      : Promise.reject(new Error("AdvancedMemoryStorageService requires a SQL executor"))
+  }
+
+  async upsertSessionSummary(
+    input: Omit<SessionSummaryRecord, "id" | "createdAt" | "updatedAt"> & { id?: UUID },
+  ): Promise<SessionSummaryRecord> {
+    const exec = await this.requireExecutor()
+    const now = Date.now()
+    const id = input.id ?? nextUuid()
+    await exec.query(
+      `INSERT INTO session_summaries
+        (id, agent_id, room_id, entity_id, summary, message_count, last_message_offset, start_time, end_time, topics, metadata, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13)
+       ON CONFLICT (id) DO UPDATE SET
+         summary = EXCLUDED.summary,
+         message_count = EXCLUDED.message_count,
+         last_message_offset = EXCLUDED.last_message_offset,
+         end_time = EXCLUDED.end_time,
+         topics = EXCLUDED.topics,
+         metadata = EXCLUDED.metadata,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        id,
+        input.agentId,
+        input.roomId,
+        input.entityId ?? null,
+        input.summary,
+        input.messageCount,
+        input.lastMessageOffset,
+        input.startTime,
+        input.endTime,
+        JSON.stringify(input.topics),
+        JSON.stringify(input.metadata),
+        now,
+        now,
+      ],
+    )
+    return { ...input, id, createdAt: now, updatedAt: now }
+  }
+
+  async getSessionSummaries(agentId: UUID, roomId: UUID, limit = 10): Promise<SessionSummaryRecord[]> {
+    const exec = await this.requireExecutor()
+    const res = await exec.query(
+      `SELECT * FROM session_summaries WHERE agent_id = $1 AND room_id = $2 ORDER BY updated_at DESC LIMIT $3`,
+      [agentId, roomId, limit],
+    )
+    return res.rows.map((row) => ({
+      id: String(row.id) as UUID,
+      agentId: String(row.agent_id) as UUID,
+      roomId: String(row.room_id) as UUID,
+      entityId: row.entity_id ? (String(row.entity_id) as UUID) : undefined,
+      summary: String(row.summary),
+      messageCount: Number(row.message_count),
+      lastMessageOffset: Number(row.last_message_offset),
+      startTime: Number(row.start_time),
+      endTime: Number(row.end_time),
+      topics: asStringList(row.topics),
+      metadata: asRecord(row.metadata),
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    }))
+  }
+
+  async storeLongTermMemory(
+    input: Omit<LongTermMemoryRecord, "id" | "createdAt" | "updatedAt" | "accessCount"> & {
+      id?: UUID
+    },
+  ): Promise<LongTermMemoryRecord> {
+    const exec = await this.requireExecutor()
+    const now = Date.now()
+    const id = input.id ?? nextUuid()
+    await exec.query(
+      `INSERT INTO long_term_memories
+        (id, agent_id, entity_id, category, content, metadata, embedding, confidence, source, created_at, updated_at, last_accessed_at, access_count)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,0)
+       ON CONFLICT (id) DO UPDATE SET
+         category = EXCLUDED.category,
+         content = EXCLUDED.content,
+         metadata = EXCLUDED.metadata,
+         embedding = EXCLUDED.embedding,
+         confidence = EXCLUDED.confidence,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        id,
+        input.agentId,
+        input.entityId,
+        input.category,
+        input.content,
+        JSON.stringify(input.metadata),
+        input.embedding ? JSON.stringify(input.embedding) : null,
+        input.confidence,
+        input.source ?? null,
+        now,
+        now,
+        now,
+      ],
+    )
+    return { ...input, id, createdAt: now, updatedAt: now, lastAccessedAt: now, accessCount: 0 }
+  }
+
+  async searchLongTermMemories(params: {
+    agentId: UUID
+    entityId?: UUID
+    category?: string
+    embedding?: number[]
+    limit?: number
+  }): Promise<LongTermMemoryRecord[]> {
+    const exec = await this.requireExecutor()
+    const res = await exec.query(
+      `SELECT * FROM long_term_memories
+       WHERE agent_id = $1
+         AND ($2::uuid IS NULL OR entity_id = $2::uuid)
+         AND ($3::text IS NULL OR category = $3::text)
+       ORDER BY updated_at DESC`,
+      [params.agentId, params.entityId ?? null, params.category ?? null],
+    )
+    const mapped: LongTermMemoryRecord[] = res.rows.map((row) => {
+      const emb = asNumberList(row.embedding)
+      const similarity =
+        params.embedding && emb ? cosineSimilarity(params.embedding, emb) : undefined
+      return {
+        id: String(row.id) as UUID,
+        agentId: String(row.agent_id) as UUID,
+        entityId: String(row.entity_id) as UUID,
+        category: String(row.category),
+        content: String(row.content),
+        metadata: asRecord(row.metadata),
+        embedding: emb,
+        confidence: Number(row.confidence),
+        source: row.source ? String(row.source) : undefined,
+        createdAt: Number(row.created_at),
+        updatedAt: Number(row.updated_at),
+        lastAccessedAt: row.last_accessed_at ? Number(row.last_accessed_at) : undefined,
+        accessCount: Number(row.access_count),
+        similarity,
+      }
+    })
+    if (params.embedding) {
+      mapped.sort((a, b) => (b.similarity ?? -1) - (a.similarity ?? -1))
+    }
+    return mapped.slice(0, params.limit ?? 20)
+  }
+
+  stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export class SqlPrincipalService extends Service {
+  static override serviceType = "principal"
+  override capabilityDescription =
+    "SQL identity authority mapping connector claims to canonical principals."
+
+  private readonly executor: SqlExecutor | null
+
+  constructor(runtime?: IAgentRuntime, executor?: SqlExecutor) {
+    super(runtime)
+    this.executor = executor ?? null
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<SqlPrincipalService> {
+    return Promise.resolve(new SqlPrincipalService(runtime))
+  }
+
+  private requireExecutor(): Promise<SqlExecutor> {
+    const found = resolveRuntimeExecutor(this.runtime, this.executor)
+    return found
+      ? Promise.resolve(found)
+      : Promise.reject(new Error("SqlPrincipalService requires a SQL executor"))
+  }
+
+  async ensurePrincipal(agentId: UUID, id?: UUID, metadata: Record<string, unknown> = {}): Promise<PrincipalRecord> {
+    const exec = await this.requireExecutor()
+    const now = Date.now()
+    const principalId = id ?? nextUuid()
+    await exec.query(
+      `INSERT INTO identity_principals (id, agent_id, canonical_id, status, metadata, created_at, updated_at)
+       VALUES ($1,$2,$1,'active',$3::jsonb,$4,$4)
+       ON CONFLICT (id) DO UPDATE SET metadata = EXCLUDED.metadata, updated_at = EXCLUDED.updated_at`,
+      [principalId, agentId, JSON.stringify(metadata), now],
+    )
+    return {
+      id: principalId,
+      agentId,
+      canonicalId: principalId,
+      status: "active",
+      metadata,
+      createdAt: now,
+      updatedAt: now,
+    }
+  }
+
+  async bindClaim(params: {
+    agentId: UUID
+    principalId: UUID
+    connectorId: string
+    externalId: string
+    verified?: boolean
+    metadata?: Record<string, unknown>
+  }): Promise<IdentityClaimRecord> {
+    const exec = await this.requireExecutor()
+    const now = Date.now()
+    const id = nextUuid()
+    await exec.query(
+      `INSERT INTO identity_claims (id, agent_id, principal_id, connector_id, external_id, verified, metadata, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+       ON CONFLICT (agent_id, connector_id, external_id) DO UPDATE SET
+         principal_id = EXCLUDED.principal_id,
+         verified = EXCLUDED.verified,
+         metadata = EXCLUDED.metadata`,
+      [
+        id,
+        params.agentId,
+        params.principalId,
+        params.connectorId,
+        params.externalId,
+        params.verified === true,
+        JSON.stringify(params.metadata ?? {}),
+        now,
+      ],
+    )
+    return {
+      id,
+      agentId: params.agentId,
+      principalId: params.principalId,
+      connectorId: params.connectorId,
+      externalId: params.externalId,
+      verified: params.verified === true,
+      metadata: params.metadata ?? {},
+      createdAt: now,
+    }
+  }
+
+  async resolvePrincipalByClaim(
+    agentId: UUID,
+    connectorId: string,
+    externalId: string,
+  ): Promise<UUID | null> {
+    const exec = await this.requireExecutor()
+    const res = await exec.query(
+      `SELECT p.canonical_id
+       FROM identity_claims c
+       JOIN identity_principals p ON p.id = c.principal_id
+       WHERE c.agent_id = $1 AND c.connector_id = $2 AND c.external_id = $3
+       LIMIT 1`,
+      [agentId, connectorId, externalId],
+    )
+    return res.rows[0]?.canonical_id ? (String(res.rows[0].canonical_id) as UUID) : null
+  }
+
+  async mergePrincipals(agentId: UUID, sourceId: UUID, targetId: UUID): Promise<void> {
+    const exec = await this.requireExecutor()
+    const now = Date.now()
+    await exec.transaction(async (tx) => {
+      await tx.query(
+        `UPDATE identity_principals SET canonical_id = $1, status = 'merged', updated_at = $2
+         WHERE agent_id = $3 AND (id = $4 OR canonical_id = $4)`,
+        [targetId, now, agentId, sourceId],
+      )
+    })
+  }
+
+  stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export class SqlMembershipService extends Service {
+  static override serviceType = "membership"
+  override capabilityDescription =
+    "SQL membership authority tracking room/world roles and permission snapshots."
+
+  private readonly executor: SqlExecutor | null
+
+  constructor(runtime?: IAgentRuntime, executor?: SqlExecutor) {
+    super(runtime)
+    this.executor = executor ?? null
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<SqlMembershipService> {
+    return Promise.resolve(new SqlMembershipService(runtime))
+  }
+
+  private requireExecutor(): Promise<SqlExecutor> {
+    const found = resolveRuntimeExecutor(this.runtime, this.executor)
+    return found
+      ? Promise.resolve(found)
+      : Promise.reject(new Error("SqlMembershipService requires a SQL executor"))
+  }
+
+  async upsertMembership(
+    scope: MembershipScopeKey,
+    principalId: UUID,
+    status: string,
+    roles: readonly string[],
+    permissionSnapshot: Record<string, unknown> = {},
+    expiresAt?: number,
+  ): Promise<MembershipStateRecord> {
+    const exec = await this.requireExecutor()
+    const now = Date.now()
+    const id = nextUuid()
+    await exec.query(
+      `INSERT INTO membership_records
+        (id, agent_id, connector_id, connector_account_id, external_world_id, external_room_id, principal_id, status, roles, permission_snapshot, observed_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12)
+       ON CONFLICT (agent_id, connector_id, connector_account_id, external_world_id, external_room_id, principal_id)
+       DO UPDATE SET
+         status = EXCLUDED.status,
+         roles = EXCLUDED.roles,
+         permission_snapshot = EXCLUDED.permission_snapshot,
+         observed_at = EXCLUDED.observed_at,
+         expires_at = EXCLUDED.expires_at`,
+      [
+        id,
+        scope.agentId,
+        scope.connectorId,
+        scope.connectorAccountId,
+        scope.externalWorldId,
+        scope.externalRoomId,
+        principalId,
+        status,
+        JSON.stringify([...roles]),
+        JSON.stringify(permissionSnapshot),
+        now,
+        expiresAt ?? null,
+      ],
+    )
+    return {
+      ...scope,
+      id,
+      principalId,
+      status,
+      roles: [...roles],
+      permissionSnapshot,
+      observedAt: now,
+      expiresAt,
+    }
+  }
+
+  async getMembershipsForScope(scope: MembershipScopeKey): Promise<MembershipStateRecord[]> {
+    const exec = await this.requireExecutor()
+    const res = await exec.query(
+      `SELECT * FROM membership_records
+       WHERE agent_id = $1 AND connector_id = $2 AND connector_account_id = $3
+         AND external_world_id = $4 AND external_room_id = $5`,
+      [
+        scope.agentId,
+        scope.connectorId,
+        scope.connectorAccountId,
+        scope.externalWorldId,
+        scope.externalRoomId,
+      ],
+    )
+    return res.rows.map((row) => ({
+      id: String(row.id) as UUID,
+      agentId: String(row.agent_id) as UUID,
+      connectorId: String(row.connector_id),
+      connectorAccountId: String(row.connector_account_id),
+      externalWorldId: String(row.external_world_id),
+      externalRoomId: String(row.external_room_id),
+      principalId: String(row.principal_id) as UUID,
+      status: String(row.status),
+      roles: asStringList(row.roles),
+      permissionSnapshot: asRecord(row.permission_snapshot),
+      observedAt: Number(row.observed_at),
+      expiresAt: row.expires_at ? Number(row.expires_at) : undefined,
+    }))
+  }
+
+  stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}

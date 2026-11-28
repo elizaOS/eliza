@@ -1,0 +1,72 @@
+// spec/browser/clipboardLease.md, "Story: A copied credential is erased by the command that wrote it"; spec/browser/clipboardLease.md, "A lease keeps the command it was admitted with until it is cleaned up"; spec/browser/clipboardLease.md, "An active lease is always cleaned up"
+import {
+  Machine,
+  machine,
+  valueAt,
+  type ClipboardLease,
+  type ClipValue,
+  type Event,
+} from "../gen/browser__clipboardLease.effect.vibe"
+
+import { openMachineSession } from "./machine-session.vibe"
+
+export error ClipboardLeaseError { reason: string }
+
+export service ClipboardPort {
+  currentPort(): number!ClipboardLeaseError
+  writeSecret(port: number, secret: string): void!ClipboardLeaseError
+  readText(port: number): string!ClipboardLeaseError
+  clear(port: number): void!ClipboardLeaseError
+}
+
+export interface ClipboardLeaseSession {
+  dispatch(event: Event): Promise<boolean>
+  admitLease(): Promise<boolean>
+  switchBackend(port: number): Promise<boolean>
+  copyNewer(): Promise<boolean>
+  removeExecutable(): Promise<boolean>
+  finishLease(): Promise<boolean>
+  valueAtPort(port: number): Promise<ClipValue>
+  snapshot(): Promise<ClipboardLease>
+}
+
+export function createClipboardLeaseSession(): ClipboardLeaseSession {
+  const session = openMachineSession(Effect.runSync(Effect.provide(Machine, machine())))
+  return {
+    ...session,
+    admitLease: () => session.dispatch({ type: "admitLease" }),
+    switchBackend: (port) => session.dispatch({ type: "switchBackend", port }),
+    copyNewer: () => session.dispatch({ type: "copyNewer" }),
+    removeExecutable: () => session.dispatch({ type: "removeExecutable" }),
+    finishLease: () => session.dispatch({ type: "finishLease" }),
+    valueAtPort: async (port) => valueAt(await session.snapshot(), port),
+  }
+}
+
+export effect function withCredentialClipboardLease<A, E>(
+  secret: string,
+  useCredential: (boundPort: number) => A!E!never,
+) {
+  const clipboard = try ClipboardPort
+  const boundPort = try clipboard.currentPort()
+  provide machine() {
+    const lease = try Machine
+    if (boundPort === 1) {
+      try lease.send({ type: "switchBackend", port: 1 })
+    }
+    try lease.send({ type: "admitLease" })
+    try clipboard.writeSecret(boundPort, secret)
+    const cleanup = effect {
+      const currentValue = clipboard.readText(boundPort) catch effect () => ""
+      if (currentValue !== secret && currentValue !== "") {
+        lease.send({ type: "copyNewer" }) catch effect () => {}
+      } else {
+        clipboard.clear(boundPort) catch effect () => {
+          lease.send({ type: "removeExecutable" }) catch effect () => {}
+        }
+      }
+      lease.send({ type: "finishLease" }) catch effect () => {}
+    }
+    return try ensuring(useCredential(boundPort), cleanup)
+  }
+}

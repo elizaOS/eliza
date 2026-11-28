@@ -1,0 +1,705 @@
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"; spec/todos/store.md, "Batch writes reject duplicate identifiers and missing room scope"; spec/todos/store.md, "List limits must be positive integers and exact matches outrank paraphrases"
+import {
+  isAffirmativeConfirmationReply,
+  validateUuid,
+  type Action,
+  type ActionResult,
+  type EffectReceipt,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core"
+import { roomScopeValid, type TodoBatchOp } from "../gen/todos__store.effect.vibe"
+import { todoRef } from "./match.vibe"
+import { findDuplicateTodoId, isTodoStore, isValidTodoListLimit } from "./store.vibe"
+import {
+  TODO_ACTIONS,
+  TODO_FAILURE_TEXT_PREFIX,
+  TODO_STATUSES,
+  TODOS_CONTEXTS,
+  TODOS_SERVICE_TYPE,
+  type CreateTodoInput,
+  type RuntimeTodoStore,
+  type Todo,
+  type TodoActionName,
+  type TodoInput,
+  type TodoLocator,
+  type TodoMutationExecution,
+  type TodoReplyClassification,
+  type TodoStatus,
+  type TodoTargetMiss,
+  type UpdateTodoInput,
+} from "./types.vibe"
+
+const PARENT_TRAJECTORY_STEP_ENV_KEY = "ELIZA_PARENT_TRAJECTORY_STEP_ID"
+const CONFIRMATION_SUFFIX = "Reply yes to confirm or no to cancel."
+
+interface TodoActionParameters {
+  action?: unknown
+  activeForm?: unknown
+  content?: unknown
+  detachParent?: unknown
+  id?: unknown
+  includeCompleted?: unknown
+  limit?: unknown
+  op?: unknown
+  parentTodoId?: unknown
+  ref?: unknown
+  status?: unknown
+  subaction?: unknown
+  target?: unknown
+  todos?: unknown
+}
+
+function checkboxFor(status: TodoStatus): string {
+  if (status === "completed") return "[x]"
+  if (status === "in_progress") return "[→]"
+  if (status === "cancelled") return "[-]"
+  return "[ ]"
+}
+
+function renderMarkdown(todos: readonly Todo[]): string {
+  if (todos.length === 0) return "(no todos)"
+  return todos.map((t) => `- ${checkboxFor(t.status)} ${t.content}`).join("\n")
+}
+
+function statePhrase(status: TodoStatus): string {
+  if (status === "completed") return "done"
+  if (status === "in_progress") return "in progress"
+  if (status === "cancelled") return "cancelled"
+  return "to do"
+}
+
+function quotedContent(content: string): string {
+  return JSON.stringify(content).replace(
+    /[\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
+    (control) => `\\u${control.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  )
+}
+
+function failure(reason: string, message: string): ActionResult {
+  const text = `${TODO_FAILURE_TEXT_PREFIX} ${reason}: ${message}`
+  return { success: false, text, error: text }
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase()
+    if (v === "true" || v === "1" || v === "yes") return true
+    if (v === "false" || v === "0" || v === "no") return false
+  }
+  return undefined
+}
+
+function readStatus(value: unknown): TodoStatus | undefined {
+  const s = readString(value)?.toLowerCase()
+  return s && (TODO_STATUSES as readonly string[]).includes(s) ? (s as TodoStatus) : undefined
+}
+
+function readAction(value: unknown): TodoActionName | undefined {
+  const s = readString(value)?.toLowerCase()
+  return s && (TODO_ACTIONS as readonly string[]).includes(s) ? (s as TodoActionName) : undefined
+}
+
+function parseTodoList(raw: unknown): { ok: true; items: TodoInput[] } | { ok: false; message: string } {
+  if (!Array.isArray(raw)) return { ok: false, message: "todos must be an array" }
+  const items: TodoInput[] = []
+  for (let i = 0; i < raw.length; i += 1) {
+    const entry = raw[i]
+    if (!entry || typeof entry !== "object") return { ok: false, message: `todos[${i}] is not an object` }
+    const e = entry as Record<string, unknown>
+    const content = readString(e.content)
+    if (!content) return { ok: false, message: `todos[${i}].content must be a non-empty string` }
+    const status = readStatus(e.status)
+    if (!status) return { ok: false, message: `todos[${i}].status must be one of ${TODO_STATUSES.join(", ")}` }
+    const id = readString(e.id)
+    const activeForm = readString(e.activeForm)
+    const parentTodoId = Object.hasOwn(e, "parentTodoId") ? (readString(e.parentTodoId) ?? null) : undefined
+    items.push({
+      ...(id ? { id } : {}),
+      content,
+      status,
+      ...(activeForm ? { activeForm } : {}),
+      ...(parentTodoId !== undefined ? { parentTodoId } : {}),
+    })
+  }
+  const dup = findDuplicateTodoId(items)
+  if (dup !== null) return { ok: false, message: `todos contains duplicate id ${dup}` }
+  return { ok: true, items }
+}
+
+function toBatchOp(action: TodoActionName): TodoBatchOp {
+  if (action === "write") return "BatchWrite"
+  if (action === "clear") return "BatchClear"
+  if (action === "list") return "BatchList"
+  return "BatchCreate"
+}
+
+function readLocator(
+  params: TodoActionParameters,
+  action: "update" | "complete" | "cancel" | "delete",
+): TodoLocator | null {
+  const id = readString(params.id)
+  if (id) return { id }
+  const ref = readString(params.ref)
+  if (ref) return { ref }
+  const target = readString(params.target) ?? (action === "update" ? undefined : readString(params.content))
+  return target ? { match: target } : null
+}
+
+function mutationIdempotencyKey(message: Memory, options: HandlerOptions | undefined): string | null {
+  const content =
+    message.content && typeof message.content === "object"
+      ? (message.content as Record<string, unknown>)
+      : undefined
+  const marker =
+    content?.chatIdempotency && typeof content.chatIdempotency === "object"
+      ? (content.chatIdempotency as Record<string, unknown>)
+      : undefined
+  const originId = readString(marker?.clientMessageId) ?? readString(message.id)
+  if (!originId) return null
+  const prev = options?.actionContext?.previousResults ?? []
+  const ordinal = prev.filter((r) => {
+    const data = r.data && typeof r.data === "object" ? (r.data as Record<string, unknown>) : undefined
+    if (data?.actionName !== "TODO") return false
+    const a = readAction(data.action ?? data.op)
+    return a !== undefined && a !== "list"
+  }).length
+  return `todos:v1:${originId}:${ordinal}`
+}
+
+function buildReceipt(
+  action: Exclude<TodoActionName, "list">,
+  resource: { kind: string; id: string; version?: string },
+  execution: TodoMutationExecution,
+): EffectReceipt {
+  const observedAt = execution.committedAt.toISOString()
+  const receiptId = `todos:mutation:${execution.mutationId}`
+  if (execution.replayed) {
+    return {
+      receiptId,
+      operation: `todos.${action}`,
+      resource,
+      artifacts: [],
+      idempotency: { key: execution.idempotencyKey, replayed: true },
+      observedAt,
+      outcome: "noop",
+      reason: "Reused the previously committed Todo mutation",
+    }
+  }
+  return {
+    receiptId,
+    operation: `todos.${action}`,
+    resource,
+    artifacts: [],
+    idempotency: { key: execution.idempotencyKey, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: { kind: "durable", id: execution.mutationId, committedAt: observedAt },
+  }
+}
+
+async function missActionResult(
+  action: Exclude<TodoActionName, "list">,
+  locator: TodoLocator,
+  miss: TodoTargetMiss | undefined,
+  entityId: string,
+): Promise<ActionResult> {
+  if (miss?.kind !== "ambiguous") {
+    const detail =
+      locator.id !== undefined
+        ? `todo ${locator.id} not found for this user`
+        : locator.ref !== undefined
+          ? `todo ${locator.ref} not found for this user`
+          : `no todo matching ${quotedContent(locator.match)} found for this user`
+    return {
+      ...failure("not_found", detail),
+      modelReplyRequired: true,
+      data: { actionName: "TODO", action, op: action, entityId, notFound: true },
+    }
+  }
+  const candidates = await Promise.all(
+    miss.candidates.map(async (todo) => ({
+      ref: await todoRef(todo.id),
+      content: todo.content,
+      status: todo.status,
+      createdAt: todo.createdAt.toISOString(),
+    })),
+  )
+  const lines = candidates.map(
+    (c) => `- ${quotedContent(c.content)} (${statePhrase(c.status)}, added ${c.createdAt.slice(0, 10)}) ref ${c.ref}`,
+  )
+  const asked = quotedContent(locator.match ?? locator.ref ?? "")
+  const header =
+    candidates.length === 1
+      ? `No todo matches ${asked} exactly, so nothing was changed. Did you mean this one?`
+      : `${candidates.length} todos match ${asked}, so nothing was changed. Which one did you mean?`
+  return {
+    success: true,
+    text: [header, ...lines].join("\n"),
+    modelReplyRequired: true,
+    data: {
+      actionName: "TODO",
+      action,
+      op: action,
+      entityId,
+      clarificationRequired: true,
+      awaitingUserInput: true,
+      candidates,
+    },
+  }
+}
+
+export interface CreateTodoActionOptions {
+  readonly resolveStore?: (runtime: IAgentRuntime) => RuntimeTodoStore | null
+  readonly roleGate?: Action["roleGate"]
+}
+
+function runtimeTodoStore(runtime: IAgentRuntime): RuntimeTodoStore | null {
+  const svc = runtime.getService(TODOS_SERVICE_TYPE)
+  return isTodoStore(svc) ? svc : null
+}
+
+const TODO_ACTION_PARAMETERS: Action["parameters"] = [
+  {
+    name: "action",
+    description: "Todo operation: write, create, update, complete, cancel, delete, list, or clear.",
+    descriptionCompressed: "Op.",
+    required: true,
+    schema: { type: "string", enum: [...TODO_ACTIONS] },
+  },
+  {
+    name: "activeForm",
+    description: "Optional active progress phrasing for create/update.",
+    descriptionCompressed: "Active form.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "content",
+    description: "Todo text for create/update, or visible target text for status/delete.",
+    descriptionCompressed: "Content.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "detachParent",
+    description: "Detach parentTodoId during update.",
+    descriptionCompressed: "Detach parent.",
+    required: false,
+    schema: { type: "boolean" },
+  },
+  {
+    name: "id",
+    description: "Exact todo UUID when known.",
+    descriptionCompressed: "Todo ID.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "includeCompleted",
+    description: "Include completed and cancelled todos in list.",
+    descriptionCompressed: "Include done.",
+    required: false,
+    schema: { type: "boolean" },
+  },
+  {
+    name: "limit",
+    description: "Positive max number of items returned by list.",
+    descriptionCompressed: "Limit.",
+    required: false,
+    schema: { type: "integer", minimum: 1 },
+  },
+  {
+    name: "parentTodoId",
+    description: "Optional parent todo ID.",
+    descriptionCompressed: "Parent ID.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "ref",
+    description: "Stable t-<hex> reference from a prior clarification.",
+    descriptionCompressed: "Ref.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "status",
+    description: "Status for create/update: pending, in_progress, completed, cancelled.",
+    descriptionCompressed: "Status.",
+    required: false,
+    schema: { type: "string", enum: [...TODO_STATUSES] },
+  },
+  {
+    name: "target",
+    description: "Visible todo text to locate for update/complete/cancel/delete.",
+    descriptionCompressed: "Target text.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "todos",
+    description: "Replacement batch of todos for action=write.",
+    descriptionCompressed: "Batch items.",
+    required: false,
+    schema: { type: "array", items: { type: "object" } },
+  },
+]
+
+interface TodoMutationContext {
+  readonly service: RuntimeTodoStore
+  readonly entityId: string
+  readonly agentId: string
+  readonly roomId: string | null
+  readonly worldId: string | null
+  readonly parentStep: string | null
+  readonly idempotencyKey: string
+  readonly reply: TodoReplyClassification
+  readonly params: TodoActionParameters
+}
+
+async function handleCreateTodo(ctx: TodoMutationContext): Promise<ActionResult> {
+  const content = readString(ctx.params.content)
+  if (!content) return failure("missing_param", "content is required for action=create")
+  const status = ctx.params.status === undefined || ctx.params.status === null ? "pending" : readStatus(ctx.params.status)
+  if (!status) return failure("invalid_param", `status must be one of: ${TODO_STATUSES.join(", ")}`)
+  const activeForm = readString(ctx.params.activeForm)
+  const parentTodoId = readString(ctx.params.parentTodoId)
+  const input: Omit<CreateTodoInput, "entityId" | "agentId"> = {
+    roomId: ctx.roomId,
+    worldId: ctx.worldId,
+    content,
+    status,
+    parentTrajectoryStepId: ctx.parentStep,
+    ...(activeForm !== undefined ? { activeForm } : {}),
+    ...(parentTodoId !== undefined ? { parentTodoId } : {}),
+  }
+  const exec = await ctx.service.applyMutation({
+    scope: { entityId: ctx.entityId, agentId: ctx.agentId },
+    idempotencyKey: ctx.idempotencyKey,
+    mutation: { action: "create", input, reply: ctx.reply },
+  })
+  if (exec.result.action !== "create") return failure("persistence_error", "unexpected create result")
+  const todo = exec.result.todo
+  if (exec.result.duplicate) {
+    return {
+      success: true,
+      text: `${quotedContent(todo.content)} is already on your list (${statePhrase(todo.status)}), so nothing was added. Add another copy anyway? ${CONFIRMATION_SUFFIX}`,
+      modelReplyRequired: true,
+      data: {
+        actionName: "TODO",
+        action: "create",
+        op: "create",
+        entityId: ctx.entityId,
+        duplicate: true,
+        existing: todo,
+        requiresConfirmation: true,
+        awaitingUserInput: true,
+      },
+    }
+  }
+  const text =
+    todo.status === "pending"
+      ? `Added ${quotedContent(todo.content)} to your list.`
+      : `Added ${quotedContent(todo.content)} to your list, marked ${statePhrase(todo.status)}.`
+  return {
+    success: true,
+    text,
+    modelReplyRequired: true,
+    data: { actionName: "TODO", action: "create", op: "create", entityId: ctx.entityId, todo },
+    effectReceipts: [
+      buildReceipt("create", { kind: "todos.todo", id: todo.id, version: todo.updatedAt.toISOString() }, exec),
+    ],
+  }
+}
+
+async function handleUpdateTodo(ctx: TodoMutationContext): Promise<ActionResult> {
+  const locator = readLocator(ctx.params, "update")
+  if (!locator) return failure("missing_param", "target is required for action=update")
+  const content = readString(ctx.params.content)
+  const activeForm = readString(ctx.params.activeForm)
+  const detachParent = readBoolean(ctx.params.detachParent) ?? false
+  if (detachParent && Object.hasOwn(ctx.params, "parentTodoId")) {
+    return failure("invalid_param", "detachParent and parentTodoId cannot be used together")
+  }
+  const status =
+    ctx.params.status !== undefined && ctx.params.status !== null ? readStatus(ctx.params.status) : undefined
+  if (ctx.params.status !== undefined && ctx.params.status !== null && !status) {
+    return failure("invalid_param", `status must be one of: ${TODO_STATUSES.join(", ")}`)
+  }
+  const patch: UpdateTodoInput = {
+    ...(content !== undefined ? { content } : {}),
+    ...(activeForm !== undefined ? { activeForm } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(detachParent
+      ? { parentTodoId: null }
+      : Object.hasOwn(ctx.params, "parentTodoId")
+        ? { parentTodoId: readString(ctx.params.parentTodoId) ?? null }
+        : {}),
+  }
+  if (Object.keys(patch).length === 0) {
+    return failure("missing_param", "update requires at least one field to change")
+  }
+  const exec = await ctx.service.applyMutation({
+    scope: { entityId: ctx.entityId, agentId: ctx.agentId },
+    idempotencyKey: ctx.idempotencyKey,
+    mutation: { action: "update", locator, patch },
+  })
+  if (exec.result.action !== "update") return failure("persistence_error", "unexpected update result")
+  if (!exec.result.todo) return missActionResult("update", locator, exec.result.miss, ctx.entityId)
+  const todo = exec.result.todo
+  return {
+    success: true,
+    text: `Updated ${quotedContent(todo.content)} on your list, marked ${statePhrase(todo.status)}.`,
+    modelReplyRequired: true,
+    data: {
+      actionName: "TODO",
+      action: "update",
+      op: "update",
+      entityId: ctx.entityId,
+      todo,
+      alreadySet: Boolean(exec.result.alreadySet),
+    },
+    ...(exec.applied
+      ? {
+          effectReceipts: [
+            buildReceipt("update", { kind: "todos.todo", id: todo.id, version: todo.updatedAt.toISOString() }, exec),
+          ],
+        }
+      : {}),
+  }
+}
+
+async function handleStatusOrDeleteTodo(
+  ctx: TodoMutationContext,
+  action: "complete" | "cancel" | "delete",
+): Promise<ActionResult> {
+  const locator = readLocator(ctx.params, action)
+  if (!locator) return failure("missing_param", `target is required for action=${action}`)
+  const exec = await ctx.service.applyMutation({
+    scope: { entityId: ctx.entityId, agentId: ctx.agentId },
+    idempotencyKey: ctx.idempotencyKey,
+    mutation: { action, locator },
+  })
+  if (action === "delete") {
+    if (exec.result.action !== "delete") return failure("persistence_error", "unexpected delete result")
+    if (!exec.result.deleted) return missActionResult("delete", locator, exec.result.miss, ctx.entityId)
+    const deleted = exec.result.deleted
+    return {
+      success: true,
+      text: `Removed ${quotedContent(deleted.content)} from your list.`,
+      modelReplyRequired: true,
+      data: { actionName: "TODO", action: "delete", op: "delete", entityId: ctx.entityId, deleted },
+      effectReceipts: [buildReceipt("delete", { kind: "todos.todo", id: deleted.id }, exec)],
+    }
+  }
+  if (exec.result.action !== action) return failure("persistence_error", `unexpected ${action} result`)
+  if (!exec.result.todo) return missActionResult(action, locator, exec.result.miss, ctx.entityId)
+  const todo = exec.result.todo
+  const text =
+    action === "complete"
+      ? `Marked ${quotedContent(todo.content)} done.`
+      : `Cancelled ${quotedContent(todo.content)}.`
+  return {
+    success: true,
+    text,
+    modelReplyRequired: true,
+    data: {
+      actionName: "TODO",
+      action,
+      op: action,
+      entityId: ctx.entityId,
+      todo,
+      alreadySet: Boolean(exec.result.alreadySet),
+    },
+    ...(exec.applied
+      ? {
+          effectReceipts: [
+            buildReceipt(action, { kind: "todos.todo", id: todo.id, version: todo.updatedAt.toISOString() }, exec),
+          ],
+        }
+      : {}),
+  }
+}
+
+async function handleWriteOrClearTodo(
+  ctx: TodoMutationContext,
+  action: "write" | "clear",
+): Promise<ActionResult> {
+  const scope = { entityId: ctx.entityId, agentId: ctx.agentId }
+  if (action === "write") {
+    const parsed = parseTodoList(ctx.params.todos)
+    if (!parsed.ok) return failure("invalid_param", parsed.message)
+    const exec = await ctx.service.applyMutation({
+      scope,
+      idempotencyKey: ctx.idempotencyKey,
+      mutation: {
+        action: "write",
+        input: {
+          roomId: ctx.roomId,
+          worldId: ctx.worldId,
+          parentTrajectoryStepId: ctx.parentStep,
+          todos: parsed.items,
+        },
+      },
+    })
+    if (exec.result.action !== "write") return failure("persistence_error", "unexpected write result")
+    return {
+      success: true,
+      text: renderMarkdown(exec.result.after),
+      modelReplyRequired: true,
+      data: {
+        actionName: "TODO",
+        action: "write",
+        op: "write",
+        entityId: ctx.entityId,
+        todos: exec.result.after,
+        oldTodos: exec.result.before,
+      },
+      effectReceipts: [buildReceipt("write", { kind: "todos.list", id: `${ctx.agentId}:${ctx.entityId}` }, exec)],
+    }
+  }
+  const exec = await ctx.service.applyMutation({
+    scope,
+    idempotencyKey: ctx.idempotencyKey,
+    mutation: { action: "clear", roomId: ctx.roomId, reply: ctx.reply },
+  })
+  if (exec.result.action !== "clear") return failure("persistence_error", "unexpected clear result")
+  if (exec.result.previewed) {
+    return {
+      success: true,
+      text: `This will clear ${exec.result.previewCount ?? 0} todo(s). ${CONFIRMATION_SUFFIX}`,
+      modelReplyRequired: true,
+      data: {
+        actionName: "TODO",
+        action: "clear",
+        op: "clear",
+        entityId: ctx.entityId,
+        previewed: true,
+        previewCount: exec.result.previewCount ?? 0,
+        requiresConfirmation: true,
+        awaitingUserInput: true,
+      },
+    }
+  }
+  if (exec.result.cancelled) {
+    return {
+      success: true,
+      text: "Cancelled clearing your todo list.",
+      modelReplyRequired: true,
+      data: { actionName: "TODO", action: "clear", op: "clear", entityId: ctx.entityId, cancelled: true },
+    }
+  }
+  return {
+    success: true,
+    text: `Cleared ${exec.result.clearedCount} todo(s) from your list.`,
+    modelReplyRequired: true,
+    data: {
+      actionName: "TODO",
+      action: "clear",
+      op: "clear",
+      entityId: ctx.entityId,
+      clearedCount: exec.result.clearedCount,
+    },
+    effectReceipts: [buildReceipt("clear", { kind: "todos.list", id: `${ctx.agentId}:${ctx.entityId}` }, exec)],
+  }
+}
+
+export function createTodoAction(options: CreateTodoActionOptions = {}): Action {
+  const resolveStore = options.resolveStore ?? runtimeTodoStore
+  return {
+    name: "TODO",
+    description:
+      "Manage the user's persistent todo list: list, create, update, complete, cancel, delete, write (replace batch), or clear (two-step preview + confirmation).",
+    descriptionCompressed: "Manage todos: list, create, update, complete, cancel, delete, write, clear.",
+    tags: ["resource:todos", "capability:read", "capability:write", "capability:delete"],
+    contexts: [...TODOS_CONTEXTS],
+    contextGate: { anyOf: [...TODOS_CONTEXTS] },
+    roleGate: options.roleGate ?? { minRole: "USER" },
+    toolSchemaStrict: true,
+    cacheStable: true,
+    cacheScope: "agent",
+    modelClass: "TEXT_SMALL",
+    parameters: TODO_ACTION_PARAMETERS,
+    validate: async (runtime: IAgentRuntime) => Boolean(resolveStore(runtime)),
+    handler: async (
+      runtime: IAgentRuntime,
+      message: Memory,
+      _state?: State,
+      handlerOptions?: HandlerOptions,
+      _callback?: HandlerCallback,
+    ): Promise<ActionResult> => {
+      const params = (handlerOptions?.parameters ?? {}) as TodoActionParameters
+      const action = readAction(params.action ?? params.subaction ?? params.op)
+      if (!action) return failure("missing_param", `action is required (one of: ${TODO_ACTIONS.join(", ")})`)
+      const entityId = readString(message.entityId)
+      const agentId = readString(runtime.agentId)
+      if (!entityId) return failure("missing_param", "message has no entityId")
+      if (!agentId) return failure("missing_param", "runtime has no agentId")
+      const roomId = readString(message.roomId) ?? null
+      const worldId = readString(message.worldId) ?? null
+      const parentStep = readString(runtime.getSetting(PARENT_TRAJECTORY_STEP_ENV_KEY)) ?? null
+      if (!roomScopeValid(toBatchOp(action), validateUuid(roomId) !== null)) {
+        return failure("invalid_scope", `a valid roomId is required for action=${action}`)
+      }
+      const service = resolveStore(runtime)
+      if (!service) return failure("service_unavailable", "Todo storage is not available for this runtime.")
+      try {
+        if (action === "list") {
+          const includeCompleted = readBoolean(params.includeCompleted) ?? false
+          const limit = params.limit
+          if (limit !== undefined && !isValidTodoListLimit(limit)) {
+            return failure("invalid_param", "limit must be a positive integer")
+          }
+          const todos = await service.list({
+            entityId,
+            agentId,
+            includeCompleted,
+            ...(limit !== undefined ? { limit } : {}),
+          })
+          return {
+            success: true,
+            text: renderMarkdown(todos),
+            data: { actionName: "TODO", action: "list", op: "list", entityId, todos, count: todos.length },
+          }
+        }
+        const idempotencyKey = mutationIdempotencyKey(message, handlerOptions)
+        if (!idempotencyKey) {
+          return {
+            ...failure("missing_idempotency", "message has no stable client or memory id"),
+            continueChain: false,
+          }
+        }
+        const ctx: TodoMutationContext = {
+          service,
+          entityId,
+          agentId,
+          roomId,
+          worldId,
+          parentStep,
+          idempotencyKey,
+          reply: isAffirmativeConfirmationReply(message) ? "affirmative" : "other",
+          params,
+        }
+        if (action === "create") return await handleCreateTodo(ctx)
+        if (action === "update") return await handleUpdateTodo(ctx)
+        if (action === "write" || action === "clear") return await handleWriteOrClearTodo(ctx, action)
+        return await handleStatusOrDeleteTodo(ctx, action)
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "todo persistence failed"
+        const res = failure("persistence_error", detail)
+        return action === "list" ? res : { ...res, continueChain: false }
+      }
+    },
+  }
+}
+
+export const todoAction = createTodoAction()

@@ -1,0 +1,216 @@
+// spec/github/deviceFlow.md, "Story: Sign in to GitHub from the account setup screen"
+import type { IAgentRuntime } from "@elizaos/core"
+
+export interface GitHubRouteContext {
+  readonly runtime: IAgentRuntime
+  readonly body?: unknown
+  readonly signal: AbortSignal
+}
+
+export interface GitHubRouteResult {
+  readonly status: number
+  readonly body: unknown
+}
+
+export interface GitHubRoute {
+  readonly type: "GET" | "POST" | "DELETE"
+  readonly path: string
+  readonly rawPath: true
+  readonly maxBodyBytes: number
+  readonly routeHandler: (ctx: GitHubRouteContext) => Promise<GitHubRouteResult>
+}
+
+module node {
+  import { logger } from "@elizaos/core"
+  import {
+    buildCredentialsFromUserResponse,
+    clearCredentials,
+    clearSavedTokenFromEnv,
+    loadMetadata,
+    saveCredentials,
+    type GitHubCredentialMetadata,
+  } from "./credentials.vibe"
+  import { DeviceFlowError, pollDeviceFlow, startDeviceFlow } from "./device-flow.vibe"
+  import { formatRateLimitMessage, inspectRateLimit } from "./rate-limit.vibe"
+  import { GITHUB_SERVICE_TYPE } from "./types.vibe"
+  import type { GitHubRoute, GitHubRouteContext, GitHubRouteResult } from "./routes.vibe"
+
+  const GITHUB_USER_URL = "https://api.github.com/user"
+  const VALIDATION_TIMEOUT_MS = 10_000
+  const MAX_BODY_BYTES = 8 * 1024
+
+  interface TokenStatusResponse {
+    readonly connected: boolean
+    readonly deviceFlowAvailable: boolean
+    readonly username?: string
+    readonly scopes?: readonly string[]
+    readonly savedAt?: number
+  }
+
+  class TokenValidationError extends Error {
+    readonly status: number
+
+    constructor(message: string, status: number, options?: { readonly cause?: unknown }) {
+      super(message, options)
+      this.name = "TokenValidationError"
+      this.status = status
+    }
+  }
+
+  function resolveOauthClientId(ctx: GitHubRouteContext): string {
+    const value = ctx.runtime.getSetting("GITHUB_OAUTH_CLIENT_ID")
+    return typeof value === "string" ? value.trim() : ""
+  }
+
+  function readBodyField(body: unknown, key: string): string {
+    const value = body && typeof body === "object" && !Array.isArray(body) ? Reflect.get(body, key) : undefined
+    return typeof value === "string" ? value.trim() : ""
+  }
+
+  function metadataToStatus(metadata: GitHubCredentialMetadata | null, deviceFlowAvailable: boolean): TokenStatusResponse {
+    if (!metadata) return { connected: false, deviceFlowAvailable }
+    return {
+      connected: true,
+      deviceFlowAvailable,
+      username: metadata.username,
+      scopes: metadata.scopes,
+      savedAt: metadata.savedAt,
+    }
+  }
+
+  function routeFailure(ctx: GitHubRouteContext, error: unknown): GitHubRouteResult {
+    ctx.signal.throwIfAborted()
+    const status = error instanceof TokenValidationError || error instanceof DeviceFlowError ? error.status : 500
+    const message = error instanceof Error ? error.message : String(error)
+    const runtimeWithReport = ctx.runtime as { reportError?: (tag: string, err: unknown) => void }
+    runtimeWithReport.reportError?.("github.credentialRoute", error)
+    return { status, body: { error: message } }
+  }
+
+  async function validateToken(token: string, signal: AbortSignal): Promise<{ readonly user: { readonly login: string }; readonly scopes: string[] }> {
+    const combinedSignal = AbortSignal.any([signal, AbortSignal.timeout(VALIDATION_TIMEOUT_MS)])
+    let response: Response
+    try {
+      response = await globalThis.fetch(GITHUB_USER_URL, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": "eliza-github-connection",
+        },
+        signal: combinedSignal,
+      })
+    } catch (err) {
+      throw new TokenValidationError("Could not reach GitHub to validate the token. Try again.", 502, { cause: err })
+    }
+    const rateLimit = inspectRateLimit({
+      status: response.status,
+      response: {
+        headers: {
+          "x-ratelimit-remaining": response.headers.get("x-ratelimit-remaining") ?? undefined,
+          "x-ratelimit-reset": response.headers.get("x-ratelimit-reset") ?? undefined,
+        },
+      },
+    })
+    if (rateLimit.isRateLimited) throw new TokenValidationError(formatRateLimitMessage(rateLimit), 502)
+    if (response.status === 401) throw new TokenValidationError("Token rejected by GitHub: bad credentials.", 400)
+    if (response.status === 403) {
+      throw new TokenValidationError("Token rejected by GitHub: forbidden. Check the token has at least `read:user` scope.", 400)
+    }
+    if (!response.ok) {
+      throw new TokenValidationError(`GitHub returned ${response.status} validating the token. Try again or generate a new token.`, 502)
+    }
+    let body: { login?: unknown }
+    try {
+      body = (await response.json()) as { login?: unknown }
+    } catch (err) {
+      throw new TokenValidationError("GitHub /user response was not valid JSON.", 502, { cause: err })
+    }
+    if (typeof body?.login !== "string" || body.login.length === 0) {
+      throw new TokenValidationError("GitHub /user response was missing the login field.", 502)
+    }
+    const scopes = (response.headers.get("x-oauth-scopes") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+    return { user: { login: body.login }, scopes }
+  }
+
+  async function reloadGitHubService(ctx: GitHubRouteContext): Promise<void> {
+    const service = ctx.runtime.getService?.(GITHUB_SERVICE_TYPE) as { reloadAccounts?: () => Promise<void> } | null
+    await service?.reloadAccounts?.()
+  }
+
+  async function persistToken(ctx: GitHubRouteContext, token: string): Promise<TokenStatusResponse> {
+    const validated = await validateToken(token, ctx.signal)
+    ctx.signal.throwIfAborted()
+    const credentials = buildCredentialsFromUserResponse(token, validated.user, validated.scopes)
+    await saveCredentials(credentials)
+    ctx.runtime.setSetting("GITHUB_TOKEN", token, true)
+    await reloadGitHubService(ctx)
+    logger.info({ src: "github-routes", username: validated.user.login }, "Saved GitHub credential")
+    return metadataToStatus(credentials, resolveOauthClientId(ctx).length > 0)
+  }
+
+  function makeRoute(
+    type: "GET" | "POST" | "DELETE",
+    suffix: string,
+    handler: (ctx: GitHubRouteContext) => Promise<GitHubRouteResult>,
+  ): GitHubRoute {
+    return {
+      type,
+      path: `/api/github/${suffix}`,
+      rawPath: true,
+      maxBodyBytes: MAX_BODY_BYTES,
+      routeHandler: async (ctx) => {
+        ctx.signal.throwIfAborted()
+        try {
+          return await handler(ctx)
+        } catch (error) {
+          return routeFailure(ctx, error)
+        }
+      },
+    }
+  }
+
+  export const githubRoutes: GitHubRoute[] = [
+    makeRoute("GET", "token", async (ctx) => ({
+      status: 200,
+      body: metadataToStatus(await loadMetadata(), resolveOauthClientId(ctx).length > 0),
+    })),
+    makeRoute("POST", "token", async (ctx) => {
+      const token = readBodyField(ctx.body, "token")
+      if (!token) return { status: 400, body: { error: "Missing `token` in request body." } }
+      return { status: 200, body: await persistToken(ctx, token) }
+    }),
+    makeRoute("DELETE", "token", async (ctx) => {
+      await clearCredentials()
+      clearSavedTokenFromEnv()
+      ctx.runtime.setSetting("GITHUB_TOKEN", null, true)
+      await reloadGitHubService(ctx)
+      return { status: 200, body: { connected: false, deviceFlowAvailable: resolveOauthClientId(ctx).length > 0 } }
+    }),
+    makeRoute("POST", "device/start", async (ctx) => {
+      const clientId = resolveOauthClientId(ctx)
+      if (!clientId) {
+        return {
+          status: 409,
+          body: {
+            error: "GitHub device sign-in needs owner setup: no GITHUB_OAUTH_CLIENT_ID setting is configured (register a GitHub OAuth app with device flow enabled). You can still connect by pasting a personal access token.",
+          },
+        }
+      }
+      const started = await startDeviceFlow({ clientId, agentKey: String(ctx.runtime.agentId), signal: ctx.signal })
+      return { status: 200, body: { status: "started", ...started } }
+    }),
+    makeRoute("POST", "device/poll", async (ctx) => {
+      const flowId = readBodyField(ctx.body, "flowId")
+      if (!flowId) return { status: 400, body: { error: "Missing `flowId` in request body." } }
+      const result = await pollDeviceFlow({ flowId, agentKey: String(ctx.runtime.agentId), signal: ctx.signal })
+      if (result.status !== "complete") return { status: 200, body: result }
+      return { status: 200, body: { status: "complete", ...(await persistToken(ctx, result.token)) } }
+    }),
+  ]
+}
+
+import { githubRoutes } from node
+export { githubRoutes }

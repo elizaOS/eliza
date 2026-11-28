@@ -5163,7 +5163,7 @@ it.live('Two scrub items drained together keep both people\'s pseudonyms, and a 
 }), 60_000)
 
 // spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella's summarize and model class unless it sets its own"
-it.effect('Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella\'s summarize and model class unless it sets its own")', () => effect {
+it.effect(`Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella's summarize and model class unless it sets its own")`, () => effect {
   const seen: Record<string, unknown>[] = []
   const parentSummarize = (result: { text?: string } | undefined) => `parent:${result?.text ?? ""}`
   const listSummarize = (result: { text?: string } | undefined) => `list:${result?.text ?? ""}`

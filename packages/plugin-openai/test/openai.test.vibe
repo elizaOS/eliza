@@ -27,6 +27,9 @@ import {
   normalizeAudioMimeType,
   normalizeSchemaForCerebras,
   OpenAiFailure,
+  OpenAIImageProvider,
+  OpenAIVideoProvider,
+  OpenAIVisionProvider,
   openaiPlugin,
   parseImageDescriptionResponse,
   plugin,
@@ -38,6 +41,7 @@ import {
   resolveTokenizerEncodingName,
   resolveWireProviderExtraFields,
   shouldEnable,
+  StructuredOutputProgressGuard,
 } from "../src/index.vibe"
 
 module node {
@@ -828,6 +832,87 @@ it('Embeddings, images, audio transcription/TTS, deep research, and lazy BPE tok
     assert.ok(tokens.length > 0)
     assert.strictEqual(await decode(rt, { tokens, modelType: ModelType.TEXT_SMALL }), "Hello tokenizer!")
     assert.ok(loadedEncodingNames().includes("o200k_base"))
+  } finally {
+    await srv.stop()
+  }
+})
+
+it('Direct media providers (image, Sora video, vision), StructuredOutputProgressGuard, and autoEnable work end to end (spec/openai/index.md, "Story: Use an OpenAI-compatible model for the requested capability")', async () => {
+  let visionFinishReason = "stop"
+  const srv = await startOpenAiTestServer((req, res) => {
+    if (req.url === "/v1/images/generations") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ data: [{ url: "https://cdn.example/img.png", revised_prompt: "refined prompt" }] }))
+      return
+    }
+    if (req.url === "/v1/videos/generations") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ data: [{ url: "https://cdn.example/video.mp4", duration: 8 }] }))
+      return
+    }
+    if (req.url === "/v1/chat/completions") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({
+        choices: [{ finish_reason: visionFinishReason, message: { content: "A sailboat in fog." } }],
+      }))
+      return
+    }
+    res.writeHead(404)
+    res.end()
+  })
+  try {
+    assert.strictEqual(shouldEnable({ OPENAI_API_KEY: "sk-test" }), true)
+    assert.strictEqual(shouldEnable({ CEREBRAS_API_KEY: "csk-test" }), true)
+    assert.strictEqual(shouldEnable({ EVOLINK_API_KEY: "evo-test" }), true)
+    assert.strictEqual(shouldEnable({ OPENAI_API_KEY: "   " }), false)
+    assert.strictEqual(plugin.autoEnable?.shouldEnable?.({ OPENAI_API_KEY: "sk-test" }, {}), true)
+
+    assert.throws(() => new OpenAIImageProvider({ apiKey: "" }), /API key is required/)
+    assert.throws(() => new OpenAIVideoProvider({ apiKey: "" }), /API key is required/)
+    assert.throws(() => new OpenAIVisionProvider({ apiKey: "" }), /API key is required/)
+
+    const imageProvider = new OpenAIImageProvider({ apiKey: "direct-key", baseUrl: srv.endpoint, quality: "hd", style: "natural" })
+    const imageOut = await imageProvider.generate({ prompt: "mountain sunrise", size: "1024x1792" })
+    assert.deepStrictEqual(imageOut, {
+      success: true,
+      data: { imageUrl: "https://cdn.example/img.png", revisedPrompt: "refined prompt" },
+    })
+
+    const videoProvider = new OpenAIVideoProvider({ apiKey: "direct-key", baseUrl: srv.endpoint })
+    const videoOut = await videoProvider.generate({
+      prompt: "ocean waves",
+      duration: 8,
+      aspectRatio: "9:16",
+      imageUrl: "https://cdn.example/ref.png",
+    })
+    assert.deepStrictEqual(videoOut, {
+      success: true,
+      data: { videoUrl: "https://cdn.example/video.mp4", duration: 8 },
+    })
+    assert.strictEqual(srv.requests[1]?.json?.image, "https://cdn.example/ref.png")
+    assert.strictEqual(srv.requests[1]?.json?.aspect_ratio, "9:16")
+
+    const visionProvider = new OpenAIVisionProvider({ apiKey: "direct-key", baseUrl: srv.endpoint, maxTokens: 512 })
+    const missingImg = await visionProvider.analyze({})
+    assert.strictEqual(missingImg.success, false)
+    const visionOk = await visionProvider.analyze({ imageBase64: "AQID", mediaType: "image/png" })
+    assert.deepStrictEqual(visionOk, { success: true, data: { description: "A sailboat in fog." } })
+    visionFinishReason = "length"
+    const visionTrunc = await visionProvider.analyze({ imageUrl: "https://cdn.example/pic.png" })
+    assert.strictEqual(visionTrunc.success, false)
+
+    const guardController = new AbortController()
+    const guard = new StructuredOutputProgressGuard(guardController)
+    guard.observe(`{"long":"${" ".repeat(5000)}"}`)
+    assert.strictEqual(guardController.signal.aborted, false)
+    let stallErr: unknown
+    try {
+      guard.observe(" ".repeat(4097))
+    } catch (err) {
+      stallErr = err
+    }
+    assert.ok(stallErr instanceof ElizaError && stallErr.code === "STRUCTURED_OUTPUT_STALLED")
+    assert.strictEqual(guardController.signal.aborted, true)
   } finally {
     await srv.stop()
   }

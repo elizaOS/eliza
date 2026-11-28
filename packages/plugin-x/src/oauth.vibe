@@ -1,0 +1,589 @@
+// spec/x/index.md, "X cursors compare complete decimal provider IDs and stay with the selected session"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import {
+  CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+  getConnectorAccountManager,
+  logger,
+  type ConnectorAccount,
+  type ConnectorAccountManager,
+  type ConnectorAccountPatch,
+  type ConnectorAccountProvider,
+  type ConnectorOAuthCallbackRequest,
+  type ConnectorOAuthCallbackResult,
+  type ConnectorOAuthStartRequest,
+  type ConnectorOAuthStartResult,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import {
+  getXSetting,
+  normalizeXAccountId,
+  resolveRequestedXAccountId,
+} from "./environment.vibe"
+import { DEFAULT_X_ACCOUNT_ID, X_SERVICE_NAME, type TwitterClientState } from "./types.vibe"
+
+export const X_OAUTH_AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize"
+export const X_OAUTH_TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
+export const X_OAUTH_USERS_ME_URL = "https://api.twitter.com/2/users/me?user.fields=id,name,username"
+export const OAUTH2_DEFAULT_SCOPES = "tweet.read tweet.write users.read dm.read dm.write offline.access"
+
+const DEFAULT_OAUTH_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"]
+const DEFAULT_PURPOSES = ["posting", "reading", "messaging"]
+
+module node {
+  import { createHash, randomBytes } from "node:crypto"
+
+  export function base64UrlEncode(input: Buffer): string {
+    return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
+  }
+
+  export function createCodeVerifier(byteLength = 32): string {
+    return base64UrlEncode(randomBytes(byteLength))
+  }
+
+  export function createCodeChallenge(verifier: string): string {
+    return base64UrlEncode(createHash("sha256").update(verifier).digest())
+  }
+
+  export function createState(byteLength = 16): string {
+    return base64UrlEncode(randomBytes(byteLength))
+  }
+
+  export function failXOAuth(message: string): never {
+    throw new Error(message)
+  }
+
+  export async function executeCustomFetch(
+    fetchImpl: typeof globalThis.fetch,
+    url: string,
+    init: RequestInit,
+  ): Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }> {
+    return fetchImpl(url, init)
+  }
+}
+import {
+  base64UrlEncode,
+  createCodeChallenge,
+  createCodeVerifier,
+  createState,
+  executeCustomFetch,
+  failXOAuth,
+} from node
+export { base64UrlEncode, createCodeChallenge, createCodeVerifier, createState }
+
+export interface StoredOAuth2Tokens {
+  access_token: string
+  refresh_token?: string
+  expires_at: number
+  scope?: string
+  token_type?: string
+}
+
+export interface TokenStore {
+  load(): Promise<StoredOAuth2Tokens | null>
+  save(tokens: StoredOAuth2Tokens): Promise<void>
+  clear(): Promise<void>
+}
+
+export interface XConnectorCredentialRefMetadata {
+  credentialType: string
+  vaultRef: string
+  expiresAt?: number
+  metadata?: Record<string, unknown>
+}
+
+export interface XConnectorAccountProviderOptions {
+  fetchImpl?: typeof globalThis.fetch
+  tokenUrl?: string
+  usersMeUrl?: string
+  timeoutMs?: number
+}
+
+interface TwitterTokenResponse {
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  scope?: string
+  token_type?: string
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+function normalizeSegment(value: string): string {
+  const slug = value.trim().replace(/[^a-zA-Z0-9_-]+/g, "_")
+  let start = 0
+  let end = slug.length
+  while (start < end && slug.charCodeAt(start) === 95) start += 1
+  while (end > start && slug.charCodeAt(end - 1) === 95) end -= 1
+  return (slug.slice(start, end) || "unknown").slice(0, 64)
+}
+
+function buildVaultRef(agentId: string, accountId: string, credentialType: string): string {
+  return ["connector", normalizeSegment(agentId), X_SERVICE_NAME, normalizeSegment(accountId), normalizeSegment(credentialType)].join(".")
+}
+
+function formEncode(params: Record<string, string>): string {
+  return Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&")
+}
+
+async function httpJsonRequest(
+  url: string,
+  options: {
+    method: "GET" | "POST"
+    headers?: Record<string, string>
+    body?: string
+    fetchImpl?: typeof globalThis.fetch
+    timeoutMs?: number
+  },
+): Promise<{ ok: boolean; status: number; body: unknown }> {
+  if (options.fetchImpl) {
+    const res = await executeCustomFetch(options.fetchImpl, url, {
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+    })
+    const body = await res.json().catch(() => ({}))
+    return { ok: res.ok, status: res.status, body }
+  }
+  const timeoutMs = options.timeoutMs ?? 15_000
+  let request =
+    options.method === "POST"
+      ? HttpClientRequest.post(url)
+      : HttpClientRequest.get(url)
+  if (options.headers) request = HttpClientRequest.setHeaders(request, options.headers)
+  if (options.body !== undefined) {
+    request = HttpClientRequest.bodyText(
+      request,
+      options.body,
+      options.headers?.["content-type"] ?? "application/x-www-form-urlencoded",
+    )
+  }
+  return runPromise(
+    effect {
+      const response = try timeout(
+        Effect.provide(
+          Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }),
+          FetchHttpClient.layer,
+        ),
+        `${timeoutMs} millis`,
+      )
+      const body = response.json catch () => ({})
+      return { ok: response.status >= 200 && response.status < 300, status: response.status, body }
+    },
+  )
+}
+
+export class RuntimeCacheTokenStore implements TokenStore {
+  private readonly key: string
+  constructor(
+    private readonly runtime: Pick<IAgentRuntime, "agentId" | "getCache" | "setCache">,
+    accountId: string = DEFAULT_X_ACCOUNT_ID,
+    key?: string,
+  ) {
+    this.key = key ?? `twitter/oauth2/tokens/${runtime.agentId}/${normalizeXAccountId(accountId)}`
+  }
+
+  async load(): Promise<StoredOAuth2Tokens | null> {
+    const value = await this.runtime.getCache<StoredOAuth2Tokens>(this.key)
+    return value ?? null
+  }
+
+  async save(tokens: StoredOAuth2Tokens): Promise<void> {
+    await this.runtime.setCache(this.key, tokens)
+  }
+
+  async clear(): Promise<void> {
+    await this.runtime.setCache<StoredOAuth2Tokens | undefined>(this.key, undefined)
+  }
+}
+
+export function chooseDefaultTokenStore(
+  runtime: IAgentRuntime | undefined,
+  accountId: string = DEFAULT_X_ACCOUNT_ID,
+): TokenStore {
+  if (runtime && typeof runtime.getCache === "function" && typeof runtime.setCache === "function") {
+    return new RuntimeCacheTokenStore(runtime, normalizeXAccountId(accountId))
+  }
+  failXOAuth("Twitter OAuth token persistence requires runtime cache APIs.")
+}
+
+function isTokenExpired(tokens: StoredOAuth2Tokens, skewMs = 30_000): boolean {
+  return Date.now() >= tokens.expires_at - skewMs
+}
+
+export class OAuth2PKCEAuthProvider {
+  readonly mode = "oauth" as const
+  private tokens: StoredOAuth2Tokens | null = null
+  private authInFlight: Promise<StoredOAuth2Tokens> | null = null
+  private readonly accountId: string
+
+  constructor(
+    private readonly runtime: IAgentRuntime,
+    private readonly state?: TwitterClientState,
+    private readonly tokenStore: TokenStore = chooseDefaultTokenStore(
+      runtime,
+      resolveRequestedXAccountId(runtime, state, state?.accountId),
+    ),
+    private readonly fetchImpl?: typeof globalThis.fetch,
+    private readonly interactiveLoginFn?: () => Promise<StoredOAuth2Tokens>,
+    private readonly tokenUrl: string = X_OAUTH_TOKEN_URL,
+  ) {
+    this.accountId = resolveRequestedXAccountId(runtime, state, state?.accountId)
+  }
+
+  private get clientId(): string {
+    const value = this.state?.TWITTER_CLIENT_ID ?? getXSetting(this.runtime, "TWITTER_CLIENT_ID")
+    if (!value) failXOAuth(`TWITTER_CLIENT_ID is required for TWITTER_AUTH_MODE=oauth (accountId=${this.accountId})`)
+    return value
+  }
+
+  private get redirectUri(): string {
+    const value = this.state?.TWITTER_REDIRECT_URI ?? getXSetting(this.runtime, "TWITTER_REDIRECT_URI")
+    if (!value) failXOAuth(`TWITTER_REDIRECT_URI is required for TWITTER_AUTH_MODE=oauth (accountId=${this.accountId})`)
+    return value
+  }
+
+  private get scopes(): string {
+    return this.state?.TWITTER_SCOPES ?? getXSetting(this.runtime, "TWITTER_SCOPES") ?? OAUTH2_DEFAULT_SCOPES
+  }
+
+  buildAuthorizeUrl(opts: { state: string; codeChallenge: string }): string {
+    const url = new URL(X_OAUTH_AUTHORIZE_URL)
+    url.searchParams.set("response_type", "code")
+    url.searchParams.set("client_id", this.clientId)
+    url.searchParams.set("redirect_uri", this.redirectUri)
+    url.searchParams.set("scope", this.scopes)
+    url.searchParams.set("state", opts.state)
+    url.searchParams.set("code_challenge", opts.codeChallenge)
+    url.searchParams.set("code_challenge_method", "S256")
+    return url.toString()
+  }
+
+  private async requestTokenPayload(
+    form: Record<string, string>,
+    operation: string,
+    fallbackRefreshToken?: string,
+  ): Promise<StoredOAuth2Tokens> {
+    const res = await httpJsonRequest(this.tokenUrl, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formEncode(form),
+      fetchImpl: this.fetchImpl,
+    })
+    const json = (res.body && typeof res.body === "object" ? res.body : {}) as TwitterTokenResponse
+    if (!res.ok || !json.access_token || typeof json.expires_in !== "number") {
+      failXOAuth(`Twitter token ${operation} failed (${res.status})`)
+    }
+    return {
+      access_token: json.access_token,
+      refresh_token: json.refresh_token ?? fallbackRefreshToken,
+      expires_at: Date.now() + json.expires_in * 1000,
+      scope: json.scope,
+      token_type: json.token_type,
+    }
+  }
+
+  async exchangeCodeForToken(params: { code: string; codeVerifier: string }): Promise<StoredOAuth2Tokens> {
+    return this.requestTokenPayload(
+      {
+        grant_type: "authorization_code",
+        client_id: this.clientId,
+        redirect_uri: this.redirectUri,
+        code: params.code,
+        code_verifier: params.codeVerifier,
+      },
+      "exchange",
+    )
+  }
+
+  private async refreshAccessToken(refreshToken: string): Promise<StoredOAuth2Tokens> {
+    return this.requestTokenPayload(
+      {
+        grant_type: "refresh_token",
+        client_id: this.clientId,
+        refresh_token: refreshToken,
+      },
+      "refresh",
+      refreshToken,
+    )
+  }
+
+  private async obtainTokens(produce: () => Promise<StoredOAuth2Tokens>): Promise<StoredOAuth2Tokens> {
+    if (this.authInFlight) {
+      const shared = await this.authInFlight
+      if (!isTokenExpired(shared)) return shared
+    }
+    if (!this.authInFlight) {
+      this.authInFlight = (async () => {
+        const produced = await produce()
+        this.tokens = produced
+        await this.tokenStore.save(produced)
+        return produced
+      })().finally(() => {
+        this.authInFlight = null
+      })
+    }
+    return this.authInFlight
+  }
+
+  async getAccessToken(): Promise<string> {
+    if (!this.tokens) {
+      const loaded = await this.tokenStore.load()
+      if (!this.tokens) this.tokens = loaded
+    }
+    if (this.tokens && !isTokenExpired(this.tokens)) return this.tokens.access_token
+    if (!this.tokens) {
+      if (!this.interactiveLoginFn) failXOAuth("No stored X OAuth tokens available")
+      const created = await this.obtainTokens(() => this.interactiveLoginFn!())
+      return created.access_token
+    }
+    if (!this.tokens.refresh_token) {
+      if (!this.interactiveLoginFn) failXOAuth("Expired X OAuth token has no refresh_token")
+      const created = await this.obtainTokens(async () => {
+        await this.tokenStore.clear()
+        this.tokens = null
+        return this.interactiveLoginFn!()
+      })
+      return created.access_token
+    }
+    const fallbackRefresh = this.tokens.refresh_token
+    const refreshed = await this.obtainTokens(() =>
+      this.refreshAccessToken(this.tokens?.refresh_token ?? fallbackRefresh),
+    )
+    return refreshed.access_token
+  }
+}
+
+export async function persistXConnectorCredentialRefs(params: {
+  runtime: IAgentRuntime
+  manager?: ConnectorAccountManager
+  accountId: string
+  value: string
+  expiresAt?: number
+  metadata?: Record<string, unknown>
+}): Promise<{ refs: XConnectorCredentialRefMetadata[]; vaultAvailable: boolean; storageAvailable: boolean }> {
+  const vault = (params.runtime.getService("vault") ?? params.runtime.getService("VAULT")) as {
+    set?: (key: string, value: string, options?: { sensitive?: boolean; caller?: string }) => Promise<void> | void
+  } | null
+  if (typeof vault?.set !== "function") {
+    failXOAuth(`No durable vault writer is available for X account ${params.accountId}.`)
+  }
+  const candidates = [
+    params.manager?.getStorage?.(),
+    params.runtime.getService(CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE),
+    (params.runtime as IAgentRuntime & { adapter?: unknown }).adapter,
+  ].filter(Boolean)
+  let storageWriter: {
+    setConnectorAccountCredentialRef?: (input: Record<string, unknown>) => Promise<unknown> | unknown
+    setCredentialRef?: (input: Record<string, unknown>) => Promise<unknown> | unknown
+  } | null = null
+  let writeRef: ((input: Record<string, unknown>) => Promise<unknown> | unknown) | undefined
+  for (const candidate of candidates) {
+    const record = candidate as {
+      setConnectorAccountCredentialRef?: (input: Record<string, unknown>) => Promise<unknown> | unknown
+      setCredentialRef?: (input: Record<string, unknown>) => Promise<unknown> | unknown
+    }
+    const fn = record.setConnectorAccountCredentialRef ?? record.setCredentialRef
+    if (typeof fn === "function") {
+      storageWriter = record
+      writeRef = fn
+      break
+    }
+  }
+  if (!storageWriter || !writeRef) {
+    failXOAuth(`No durable connector credential ref writer is available for X account ${params.accountId}.`)
+  }
+  const vaultRef = buildVaultRef(nonEmptyString(params.runtime.agentId) ?? "agent", params.accountId, "oauth.tokens")
+  await vault.set(vaultRef, params.value, { sensitive: true, caller: "plugin-x" })
+  const ref: XConnectorCredentialRefMetadata = {
+    credentialType: "oauth.tokens",
+    vaultRef,
+    ...(params.expiresAt !== undefined ? { expiresAt: params.expiresAt } : {}),
+    ...(params.metadata ? { metadata: params.metadata } : {}),
+  }
+  await writeRef.call(storageWriter, { accountId: params.accountId, ...ref })
+  return { refs: [ref], vaultAvailable: true, storageAvailable: true }
+}
+
+function readOAuthClientConfig(runtime: IAgentRuntime): { clientId: string; redirectUri: string } {
+  const clientId = getXSetting(runtime, "TWITTER_CLIENT_ID")
+  const redirectUri = getXSetting(runtime, "TWITTER_REDIRECT_URI")
+  if (!clientId || !redirectUri) {
+    failXOAuth("X OAuth requires TWITTER_CLIENT_ID and TWITTER_REDIRECT_URI to be configured.")
+  }
+  return { clientId, redirectUri }
+}
+
+function roleFromOAuthMetadata(metadata: unknown): "OWNER" | "AGENT" | "TEAM" {
+  const record = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>) : {}
+  const raw = nonEmptyString(record.role ?? record.accountRole)?.toUpperCase()
+  return raw === "OWNER" || raw === "AGENT" || raw === "TEAM" ? raw : "OWNER"
+}
+
+export function createXConnectorAccountProvider(
+  runtime: IAgentRuntime,
+  options: XConnectorAccountProviderOptions = {},
+): ConnectorAccountProvider {
+  const tokenUrl = options.tokenUrl ?? X_OAUTH_TOKEN_URL
+  const usersMeUrl = options.usersMeUrl ?? X_OAUTH_USERS_ME_URL
+  return {
+    provider: X_SERVICE_NAME,
+    label: "X (Twitter)",
+    async startOAuth(request: ConnectorOAuthStartRequest): Promise<ConnectorOAuthStartResult> {
+      const { clientId, redirectUri } = readOAuthClientConfig(runtime)
+      const scopes =
+        request.scopes && request.scopes.length > 0
+          ? request.scopes
+          : (getXSetting(runtime, "TWITTER_SCOPES")?.split(/\s+/).filter(Boolean) ?? [...DEFAULT_OAUTH_SCOPES])
+      const resolvedRedirectUri = request.redirectUri ?? redirectUri
+      const codeVerifier = createCodeVerifier()
+      const codeChallenge = createCodeChallenge(codeVerifier)
+      const url = new URL(X_OAUTH_AUTHORIZE_URL)
+      url.searchParams.set("response_type", "code")
+      url.searchParams.set("client_id", clientId)
+      url.searchParams.set("redirect_uri", resolvedRedirectUri)
+      url.searchParams.set("scope", scopes.join(" "))
+      url.searchParams.set("state", request.flow.state)
+      url.searchParams.set("code_challenge", codeChallenge)
+      url.searchParams.set("code_challenge_method", "S256")
+      return {
+        authUrl: url.toString(),
+        codeVerifier,
+        metadata: { ...request.metadata, scopes, redirectUri: resolvedRedirectUri },
+      }
+    },
+    async completeOAuth(
+      request: ConnectorOAuthCallbackRequest,
+      manager?: ConnectorAccountManager,
+    ): Promise<ConnectorOAuthCallbackResult> {
+      if (!manager) failXOAuth("X OAuth callback requires a ConnectorAccountManager.")
+      const config = readOAuthClientConfig(runtime)
+      const redirectUri =
+        request.flow.redirectUri ??
+        nonEmptyString((request.flow.metadata as Record<string, unknown> | undefined)?.redirectUri) ??
+        config.redirectUri
+      const code = request.code ?? (typeof request.query.code === "string" ? request.query.code : undefined)
+      if (!code) failXOAuth("Twitter OAuth callback is missing authorization code")
+      const codeVerifier = request.flow.codeVerifier
+      if (!codeVerifier) failXOAuth("Twitter OAuth flow is missing code verifier")
+      const tokenRes = await httpJsonRequest(tokenUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formEncode({
+          grant_type: "authorization_code",
+          client_id: config.clientId,
+          redirect_uri: redirectUri,
+          code,
+          code_verifier: codeVerifier,
+        }),
+        fetchImpl: options.fetchImpl,
+        timeoutMs: options.timeoutMs,
+      })
+      const token = (tokenRes.body && typeof tokenRes.body === "object" ? tokenRes.body : {}) as TwitterTokenResponse
+      if (!tokenRes.ok || !token.access_token) {
+        failXOAuth(`Twitter token exchange failed (${tokenRes.status})`)
+      }
+      const meRes = await httpJsonRequest(usersMeUrl, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token.access_token}` },
+        fetchImpl: options.fetchImpl,
+        timeoutMs: options.timeoutMs,
+      })
+      const meData = ((meRes.body as { data?: { id?: string; username?: string; name?: string } })?.data) ?? {}
+      if (!meRes.ok || !meData.id) failXOAuth(`Twitter users/me failed (${meRes.status})`)
+      const expiresAt = typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1000 : undefined
+      const accountId = nonEmptyString(request.flow.accountId) ?? meData.id
+      const accountMetadata: Record<string, string | number | boolean> = {
+        authMethod: "oauth",
+        ...(meData.username ? { username: meData.username } : {}),
+        ...(meData.name ? { name: meData.name } : {}),
+        ...(token.scope ? { scope: token.scope } : {}),
+        ...(token.token_type ? { tokenType: token.token_type } : {}),
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+        hasRefreshToken: Boolean(token.refresh_token),
+        oauthCredentialVersion: String(Date.now()),
+      }
+      const pendingAccount = await manager.upsertAccount(
+        X_SERVICE_NAME,
+        {
+          id: accountId,
+          provider: X_SERVICE_NAME,
+          externalId: meData.id,
+          displayHandle: meData.username ?? meData.id,
+          label: meData.name ?? meData.username ?? meData.id,
+          role: roleFromOAuthMetadata(request.flow.metadata),
+          purpose: [...DEFAULT_PURPOSES],
+          accessGate: "open",
+          status: "pending",
+          metadata: accountMetadata,
+        },
+        accountId,
+      )
+      const persisted = await persistXConnectorCredentialRefs({
+        runtime,
+        manager,
+        accountId: pendingAccount.id,
+        value: JSON.stringify({
+          access_token: token.access_token,
+          ...(token.refresh_token ? { refresh_token: token.refresh_token } : {}),
+          ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
+          ...(token.scope ? { scope: token.scope } : {}),
+          ...(token.token_type ? { token_type: token.token_type } : {}),
+        }),
+        expiresAt,
+        metadata: { provider: X_SERVICE_NAME, hasRefreshToken: Boolean(token.refresh_token) },
+      })
+      const serializedRefs = persisted.refs.map((ref) => ({
+        credentialType: ref.credentialType,
+        vaultRef: ref.vaultRef,
+        ...(ref.expiresAt !== undefined ? { expiresAt: ref.expiresAt } : {}),
+      }))
+      const updatedAccount: ConnectorAccountPatch & { id: string } = {
+        ...pendingAccount,
+        id: pendingAccount.id,
+        status: "connected",
+        metadata: {
+          ...accountMetadata,
+          credentialRefs: serializedRefs,
+          credentialRefStorage: {
+            vaultAvailable: persisted.vaultAvailable,
+            storageAvailable: persisted.storageAvailable,
+          },
+        },
+      }
+      return {
+        account: updatedAccount,
+        flow: { status: "completed" },
+      }
+    },
+  }
+}
+
+export async function materializeEnvAccountIfMissing(runtime: IAgentRuntime): Promise<void> {
+  const apiKey = getXSetting(runtime, "TWITTER_API_KEY")
+  const apiSecret = getXSetting(runtime, "TWITTER_API_SECRET_KEY")
+  const accessToken = getXSetting(runtime, "TWITTER_ACCESS_TOKEN")
+  const accessSecret = getXSetting(runtime, "TWITTER_ACCESS_TOKEN_SECRET")
+  if (!apiKey || !apiSecret || !accessToken || !accessSecret) return
+  const manager = getConnectorAccountManager(runtime)
+  const existing = await manager.getAccount(X_SERVICE_NAME, DEFAULT_X_ACCOUNT_ID).catch(() => null)
+  if (existing) return
+  const account: ConnectorAccount = {
+    id: DEFAULT_X_ACCOUNT_ID,
+    provider: X_SERVICE_NAME,
+    label: "Imported from environment",
+    role: "OWNER",
+    purpose: [...DEFAULT_PURPOSES],
+    accessGate: "open",
+    status: "connected",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    metadata: { source: "env" },
+  }
+  await manager.upsertAccount(X_SERVICE_NAME, account).catch((err) => {
+    logger.warn({ src: "plugin:x", err: String(err) }, "Failed to materialize synthetic X env account")
+  })
+}

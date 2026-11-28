@@ -1,0 +1,319 @@
+// spec/telegram/index.md, "The effective Telegram allowlist can deny all chats, and DMs default to pairing when no list is set"; spec/telegram/index.md, "An admitted command keeps its sender and a reply stays in its account, chat and topic"; spec/telegram/delivery.md, "Owner pairing fails closed on rate limit or missing backend, arbitrary senders never own a world, and history rejects cursors"
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  ElizaError,
+  createUniqueUuid,
+  hasRoleAccess,
+  recordOwnerGrant,
+  recordRoleGrant,
+  selectDefaultConnectorAccountId,
+  type IAgentRuntime,
+  type Memory,
+  type RolesWorldMetadata,
+  type UUID,
+} from "@elizaos/core"
+import type { Context } from "telegraf"
+import {
+  telegramChatAdmission,
+  telegramCommandAllowed,
+  telegramMessageDisposition,
+  telegramReplyAddress,
+  type TelegramAddress,
+  type TelegramAdmission,
+  type TelegramChatList,
+  type TelegramChatPolicy,
+  type TelegramChatScope,
+  type TelegramDmPolicy,
+  type TelegramInbound,
+  type TelegramReplyMode,
+  type TelegramRole,
+} from "../gen/telegram.effect.vibe"
+import { worldOwnerGranted } from "../gen/telegram__delivery.effect.vibe"
+import {
+  TELEGRAM_DEFAULT_API_ROOT,
+  type ResolvedTelegramAccount,
+  type TelegramAccountConfig,
+  type TelegramMultiAccountConfig,
+  type TelegramWorldOwnership,
+} from "./types.vibe"
+
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID
+
+module node {
+  /** @throws {never} */
+  export function readProcessEnv(): Readonly<Record<string, string | undefined>> {
+    return process.env
+  }
+}
+import { readProcessEnv } from node
+
+const DEFAULT_TELEGRAM_APP_ID = 2040
+const DEFAULT_TELEGRAM_APP_HASH = "b18441a1ff607e10a989891a5462e627"
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+export function normalizeTelegramAccountId(accountId?: string | null): string {
+  return readNonEmptyString(accountId) ?? DEFAULT_ACCOUNT_ID
+}
+
+export function getTelegramMultiAccountConfig(runtime: IAgentRuntime): TelegramMultiAccountConfig {
+  const settings = asObject(runtime.character?.settings)
+  const raw = asObject(settings?.telegram)
+  if (raw === undefined) return {}
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : undefined,
+    botToken: readNonEmptyString(raw.botToken),
+    apiRoot: readNonEmptyString(raw.apiRoot),
+    accounts: asObject(raw.accounts) as Readonly<Record<string, TelegramAccountConfig>> | undefined,
+  }
+}
+
+export function listTelegramAccountIds(runtime: IAgentRuntime): string[] {
+  const accounts = getTelegramMultiAccountConfig(runtime).accounts
+  if (accounts === undefined) return [DEFAULT_ACCOUNT_ID]
+  const ids = Object.keys(accounts).filter((id) => id.trim() !== "")
+  return ids.length > 0 ? ids.toSorted((a, b) => a.localeCompare(b)) : [DEFAULT_ACCOUNT_ID]
+}
+
+export function resolveDefaultTelegramAccountId(runtime: IAgentRuntime): string {
+  return selectDefaultConnectorAccountId(listTelegramAccountIds(runtime))
+}
+
+export function telegramPersonalEnabled(config: TelegramAccountConfig | undefined): boolean {
+  const personal = config?.personal
+  if (personal === undefined || personal.enabled === false) return false
+  return readNonEmptyString(personal.phone) !== undefined || readNonEmptyString(personal.session) !== undefined
+}
+
+export function resolveTelegramAccount(runtime: IAgentRuntime, accountId?: string | null): ResolvedTelegramAccount {
+  const normalized = normalizeTelegramAccountId(accountId)
+  const multi = getTelegramMultiAccountConfig(runtime)
+  const accountCfg = multi.accounts?.[normalized] ?? {}
+  const isDefault = normalized === DEFAULT_ACCOUNT_ID
+  const configToken = readNonEmptyString(accountCfg.botToken) ?? (isDefault ? multi.botToken : undefined)
+  const envToken = isDefault
+    ? readNonEmptyString(runtime.getSetting("TELEGRAM_BOT_TOKEN")) ?? readNonEmptyString(readProcessEnv().TELEGRAM_BOT_TOKEN)
+    : undefined
+  const botToken = configToken ?? envToken
+  const apiRoot =
+    readNonEmptyString(accountCfg.apiRoot)
+    ?? (isDefault ? multi.apiRoot ?? readNonEmptyString(runtime.getSetting("TELEGRAM_API_ROOT")) : undefined)
+    ?? TELEGRAM_DEFAULT_API_ROOT
+  const enabled = multi.enabled !== false && accountCfg.enabled !== false && (botToken !== undefined || telegramPersonalEnabled(accountCfg))
+  return {
+    accountId: normalized,
+    enabled,
+    name: readNonEmptyString(accountCfg.name),
+    botToken,
+    apiRoot,
+    config: accountCfg,
+  }
+}
+
+export function listEnabledTelegramAccounts(runtime: IAgentRuntime): ResolvedTelegramAccount[] {
+  return listTelegramAccountIds(runtime)
+    .map((id) => resolveTelegramAccount(runtime, id))
+    .filter((account) => account.enabled && account.botToken !== undefined)
+}
+
+export function listPersonalTelegramAccounts(runtime: IAgentRuntime): ResolvedTelegramAccount[] {
+  return listTelegramAccountIds(runtime)
+    .map((id) => resolveTelegramAccount(runtime, id))
+    .filter((account) => account.enabled && telegramPersonalEnabled(account.config))
+}
+
+export function parseTelegramChatList(input: unknown): TelegramChatList {
+  if (input === undefined || input === null || input === "") return { tag: "TelegramNoList" }
+  const parsed = typeof input === "string"
+    ? Effect.runSync(Effect.result(Effect.try(() => JSON.parse(input) as unknown)))
+    : { _tag: "Success" as const, success: input }
+  if (parsed._tag !== "Success") return { tag: "TelegramInvalidList" }
+  const value = parsed.success
+  if (!Schema.is(Schema.Array(Schema.String))(value) || !value.every((chat) => /^-?\d+$/.test(chat))) {
+    return { tag: "TelegramInvalidList" }
+  }
+  return { tag: "TelegramConfigured", chats: [...new Set(value)] }
+}
+
+export function parseTelegramDmPolicy(value: unknown): TelegramDmPolicy {
+  if (value === "open") return "TelegramOpen"
+  if (value === "disabled") return "TelegramDisabled"
+  if (value === "allowlist") return "TelegramAllowlist"
+  return "TelegramPairing"
+}
+
+export function evaluateTelegramChatPolicy(
+  scope: TelegramChatScope,
+  chatId: string,
+  policy: TelegramChatPolicy,
+): TelegramAdmission {
+  return telegramChatAdmission(scope, chatId, policy)
+}
+
+export function evaluateTelegramDisposition(
+  inbound: TelegramInbound,
+  policy: TelegramChatPolicy,
+  role: TelegramRole,
+  autoReply: boolean,
+  passive: boolean,
+): { readonly mode: TelegramReplyMode; readonly replyAddress: TelegramAddress; readonly commandPermitted: boolean } {
+  return {
+    mode: telegramMessageDisposition(inbound, policy, role, autoReply, passive),
+    replyAddress: telegramReplyAddress(inbound),
+    commandPermitted: telegramCommandAllowed(inbound.command, role),
+  }
+}
+
+function isExplicitTrue(value: unknown): boolean {
+  if (value === true) return true
+  if (typeof value !== "string") return false
+  const normalized = value.trim().toLowerCase()
+  return normalized === "1" || normalized === "true" || normalized === "yes"
+}
+
+export function shouldStartTelegramStandaloneBot(
+  env: Readonly<Record<string, string | undefined>> = readProcessEnv(),
+  runtime?: Pick<IAgentRuntime, "getSetting">,
+): boolean {
+  const passiveSetting = runtime?.getSetting("ELIZA_LIFEOPS_PASSIVE_CONNECTORS")
+  if (isExplicitTrue(passiveSetting) || isExplicitTrue(env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS)) {
+    return false
+  }
+  return isExplicitTrue(env.ELIZA_TELEGRAM_STANDALONE_BOT) || isExplicitTrue(runtime?.getSetting("ELIZA_TELEGRAM_STANDALONE_BOT"))
+}
+
+export function buildTelegramWorldOwnership(
+  canonicalOwnerId: string | null | undefined,
+  chatCreatorEntityId: string | null | undefined,
+): TelegramWorldOwnership {
+  const metadata: TelegramWorldOwnership = { roles: {} }
+  const grants = metadata as RolesWorldMetadata
+  const hasCanonical = readNonEmptyString(canonicalOwnerId) !== undefined
+  if (hasCanonical && worldOwnerGranted(true, true)) {
+    const ownerId = readNonEmptyString(canonicalOwnerId) as string
+    metadata.ownership = { ownerId }
+    recordOwnerGrant(grants, ownerId)
+  }
+  const creatorId = readNonEmptyString(chatCreatorEntityId)
+  if (creatorId !== undefined && creatorId !== canonicalOwnerId && !worldOwnerGranted(hasCanonical, false)) {
+    recordRoleGrant(grants, creatorId, "ADMIN", "connector_admin")
+  }
+  return metadata
+}
+
+export function scopedTelegramKey(rawId: string, accountId?: string | null): string {
+  const normalized = normalizeTelegramAccountId(accountId)
+  return normalized === DEFAULT_ACCOUNT_ID ? rawId : `telegram:${normalized}:${rawId}`
+}
+
+export function resolveTelegramRuntimeEntityId(
+  runtime: IAgentRuntime,
+  accountId: string,
+  telegramUserId: string,
+): UUID {
+  const namespace = `telegram:${normalizeTelegramAccountId(accountId)}`
+  return createUniqueUuid(runtime, `${namespace}:sender:${telegramUserId}`)
+}
+
+export interface TelegramSenderAuth {
+  readonly isAuthorized: boolean
+  readonly isElevated: boolean
+  readonly entityId?: UUID
+  readonly senderName?: string
+}
+
+export async function resolveTelegramSenderAuth(
+  ctx: Pick<Context, "from" | "chat">,
+  runtime: IAgentRuntime,
+  accountId: string,
+): Promise<TelegramSenderAuth> {
+  const fromId = ctx.from?.id
+  const chatId = ctx.chat?.id
+  if (fromId === undefined || chatId === undefined) {
+    return { isAuthorized: false, isElevated: false }
+  }
+  const entityId = resolveTelegramRuntimeEntityId(runtime, accountId, String(fromId))
+  const roomId = createUniqueUuid(runtime, scopedTelegramKey(String(chatId), accountId))
+  const probe: Memory = {
+    id: createUniqueUuid(runtime, `${chatId}-${fromId}-cmd`),
+    entityId,
+    agentId: runtime.agentId,
+    roomId,
+    content: { text: "/whoami", source: "telegram" },
+    createdAt: Date.now(),
+  }
+  const [isOwner, isAdmin] = await Promise.all([
+    hasRoleAccess(runtime, probe, "OWNER"),
+    hasRoleAccess(runtime, probe, "ADMIN"),
+  ])
+  const senderName = ctx.from?.username ?? ctx.from?.first_name ?? String(fromId)
+  return { isAuthorized: isOwner, isElevated: isAdmin, entityId, senderName }
+}
+
+export type ProvisioningParseResult =
+  | { readonly ok: true; readonly data: unknown }
+  | { readonly ok: false; readonly error: ElizaError }
+
+export function parseProvisioningBody(text: string): ProvisioningParseResult {
+  if (text.includes("Sorry, too many tries")) {
+    return {
+      ok: false,
+      error: new ElizaError("Telegram provisioning is rate limited right now", {
+        code: "TELEGRAM_PROVISIONING_RATE_LIMITED",
+      }),
+    }
+  }
+  const parsed = Effect.runSync(Effect.result(Effect.try(() => JSON.parse(text) as unknown)))
+  if (parsed._tag !== "Success") {
+    return {
+      ok: false,
+      error: new ElizaError("Telegram provisioning returned a non-JSON response", {
+        code: "TELEGRAM_PROVISIONING_RESPONSE_INVALID",
+      }),
+    }
+  }
+  return { ok: true, data: parsed.success }
+}
+
+function isVaultReference(value: unknown): boolean {
+  return typeof value === "string" && value.trim().startsWith("vault://")
+}
+
+export type TelegramAppCredentialsResult =
+  | { readonly ok: true; readonly apiId: number; readonly apiHash: string }
+  | { readonly ok: false; readonly error: ElizaError }
+
+export function resolveTelegramAppCredentials(
+  runtime: IAgentRuntime,
+  connConfig: Readonly<Record<string, unknown>> = {},
+  requireVaultProjection = false,
+): TelegramAppCredentialsResult {
+  const rawId = connConfig.appId
+  const parsedId = typeof rawId === "number" || typeof rawId === "string" ? Number(rawId) : Number.NaN
+  const rawHash = readNonEmptyString(connConfig.appHash)
+  if (Number.isInteger(parsedId) && parsedId > 0 && rawHash !== undefined && !isVaultReference(rawHash)) {
+    return { ok: true, apiId: parsedId, apiHash: rawHash }
+  }
+  const canonicalId = Number(runtime.getSetting("TELEGRAM_ACCOUNT_APP_ID") ?? "")
+  const canonicalHash = readNonEmptyString(runtime.getSetting("TELEGRAM_ACCOUNT_APP_HASH"))
+  if (Number.isInteger(canonicalId) && canonicalId > 0 && canonicalHash !== undefined && !isVaultReference(canonicalHash)) {
+    return { ok: true, apiId: canonicalId, apiHash: canonicalHash }
+  }
+  if (requireVaultProjection && isVaultReference(connConfig.appHash)) {
+    return {
+      ok: false,
+      error: new ElizaError("Resolve this account's Telegram application credentials before connecting history.", {
+        code: "TELEGRAM_ACCOUNT_CREDENTIALS_UNRESOLVED",
+      }),
+    }
+  }
+  return { ok: true, apiId: DEFAULT_TELEGRAM_APP_ID, apiHash: DEFAULT_TELEGRAM_APP_HASH }
+}

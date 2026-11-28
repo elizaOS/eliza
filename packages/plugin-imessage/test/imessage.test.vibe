@@ -1,0 +1,590 @@
+// spec/imessage/index.md, "Story: Store incoming iMessages without sending unsolicited replies"; spec/imessage/index.md, "Story: Resume native Messages polling after a recoverable row failure"; spec/imessage/index.md, "Story: Ignore already processed Blooio deliveries and preserve signed-channel isolation"
+import { assert, describe, expect, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core"
+import * as imessageOracle from "../gen/imessage.ts"
+import {
+  DEFAULT_ACCOUNT_ID,
+  IMessageConfigurationError,
+  IMessageService,
+  appleDateToJsMs,
+  chatDbMessageToPublicShape,
+  createIMessageConnectorAccountProvider,
+  decodeAttributedBody,
+  handleBlooioRequest,
+  handleIMessageRoute,
+  imessageDataRoutes,
+  imessageDmSensitiveRequestAdapter,
+  imessagePlugin,
+  imessageSetupRoutes,
+  isIMessageMentionRequired,
+  isMultiAccountEnabled,
+  listEnabledIMessageAccounts,
+  listIMessageAccountIds,
+  normalizeAccountId,
+  normalizeContactHandle,
+  openChatDb,
+  parseBlooioInbound,
+  parseChatsFromAppleScript,
+  parseContactsOutput,
+  parseIMessageContactId,
+  parseMessagesFromAppleScript,
+  registerIMessageDmSensitiveRequestAdapter,
+  resolveBackfillRows,
+  resolveHeartbeatIntervalMs,
+  resolveIMessageAccount,
+  sendBlooioMessage,
+  setNativeContactsPort,
+  splitMessageForIMessage,
+  verifyBlooioChannel,
+  verifyBlooioSignature,
+  type FullContact,
+  type IMessageRouteHelpers,
+  type IMessageRouteRequest,
+  type IMessageRouteResponse,
+} from "../src/index.vibe"
+import { driver } from "./drivers/imessage.ts"
+
+module node {
+  import { createHmac } from "node:crypto"
+  import { mkdtempSync, rmSync } from "node:fs"
+  import http from "node:http"
+  import { tmpdir } from "node:os"
+  import { join } from "node:path"
+  import { DatabaseSync } from "node:sqlite"
+  import { Buffer } from "node:buffer"
+
+  export function makeWebRequest(url: string, init: RequestInit): globalThis.Request {
+    return new globalThis.Request(url, init)
+  }
+
+  export function signBlooio(secret: string, rawBody: string, timestamp: number): string {
+    const mac = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex")
+    return `t=${timestamp},v1=${mac}`
+  }
+
+  export function buildTypedStreamBlob(text: string): Uint8Array {
+    const textBytes = Buffer.from(text, "utf8")
+    const prefix = Buffer.from("streamtyped\x00NSAttributedString\x00NSString\x01+", "latin1")
+    const lenBuf =
+      textBytes.length < 0x80
+        ? Buffer.from([textBytes.length])
+        : Buffer.from([0x81, textBytes.length & 0xff, (textBytes.length >> 8) & 0xff])
+    return new Uint8Array(Buffer.concat([prefix, lenBuf, textBytes, Buffer.from([0x86, 0x84])]))
+  }
+
+  export function createTempChatDb(): { dir: string; dbPath: string; cleanup: () => void } {
+    const dir = mkdtempSync(join(tmpdir(), "eliza-imessage-test-"))
+    const dbPath = join(dir, "chat.db")
+    const db = new DatabaseSync(dbPath)
+    db.exec(`
+      CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT, service TEXT DEFAULT 'iMessage');
+      CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT, chat_identifier TEXT, display_name TEXT, style INTEGER, service_name TEXT, last_read_message_timestamp INTEGER DEFAULT 0);
+      CREATE TABLE message (
+        ROWID INTEGER PRIMARY KEY,
+        guid TEXT,
+        text TEXT,
+        attributedBody BLOB,
+        date INTEGER,
+        date_read INTEGER DEFAULT 0,
+        date_edited INTEGER DEFAULT 0,
+        date_retracted INTEGER DEFAULT 0,
+        is_from_me INTEGER,
+        is_read INTEGER DEFAULT 1,
+        is_sent INTEGER DEFAULT 1,
+        is_delivered INTEGER DEFAULT 1,
+        service TEXT,
+        handle_id INTEGER,
+        associated_message_type INTEGER DEFAULT 0,
+        associated_message_guid TEXT,
+        associated_message_emoji TEXT,
+        item_type INTEGER DEFAULT 0,
+        reply_to_guid TEXT,
+        cache_has_attachments INTEGER DEFAULT 0
+      );
+      CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
+      CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
+      CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY, guid TEXT, filename TEXT, mime_type TEXT, uti TEXT, transfer_name TEXT, total_bytes INTEGER, is_sticker INTEGER DEFAULT 0);
+      CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER);
+    `)
+    db.prepare("INSERT INTO handle (ROWID, id, service) VALUES (1, '+15551234567', 'iMessage'), (2, 'alice@example.com', 'iMessage')").run()
+    db.prepare("INSERT INTO chat (ROWID, guid, chat_identifier, display_name, style, service_name, last_read_message_timestamp) VALUES (1, 'iMessage;-;+15551234567', '+15551234567', NULL, 45, 'iMessage', 700000000000000000), (2, 'iMessage;+;chat999', 'chat999', 'Design Team', 43, 'iMessage', 700000002000000000)").run()
+    db.prepare("INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (1, 1), (2, 1), (2, 2)").run()
+
+    const appleNs = 700_000_000_000_000_000
+    const blob = buildTypedStreamBlob("Hello from attributedBody")
+    db.prepare("INSERT INTO message (ROWID, guid, text, attributedBody, date, is_from_me, service, handle_id, cache_has_attachments) VALUES (1, 'guid-1', NULL, ?, ?, 0, 'iMessage', 1, 1)").run(blob, appleNs)
+    db.prepare("INSERT INTO attachment (ROWID, guid, filename, mime_type, uti, transfer_name, total_bytes, is_sticker) VALUES (10, 'att-guid-10', '~/Library/Messages/Attachments/photo.png', 'image/png', 'public.png', 'photo.png', 2048, 0)").run()
+    db.prepare("INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (1, 10)").run()
+    db.prepare("INSERT INTO message (ROWID, guid, text, date, is_from_me, service, handle_id, associated_message_type, associated_message_guid) VALUES (2, 'guid-2', 'Loved', ?, 0, 'iMessage', 2, 2000, 'p:0/guid-1')").run(appleNs + 1_000_000_000)
+    db.prepare("INSERT INTO message (ROWID, guid, text, date, is_from_me, service, handle_id, reply_to_guid) VALUES (3, 'guid-3', 'Group hello', ?, 0, 'iMessage', 2, 'guid-1')").run(appleNs + 2_000_000_000)
+    db.prepare("INSERT INTO message (ROWID, guid, text, date, is_from_me, service, handle_id) VALUES (4, 'guid-4', 'My own reply', ?, 1, 'iMessage', 1)").run(appleNs + 3_000_000_000)
+    db.prepare("INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (2, 3), (1, 4)").run()
+    db.close()
+
+    return {
+      dir,
+      dbPath,
+      cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    }
+  }
+
+  export async function startMockBlooioServer(): Promise<{
+    baseUrl: string
+    sentPayloads: Array<{ path: string; body: Record<string, unknown>; auth?: string; idempotencyKey?: string }>
+    close: () => Promise<void>
+  }> {
+    const sentPayloads: Array<{ path: string; body: Record<string, unknown>; auth?: string; idempotencyKey?: string }> = []
+    const server = http.createServer((req, res) => {
+      const url = req.url ?? "/"
+      if (req.method === "GET" && url.includes("/v4/channels/") && url.endsWith("/settings")) {
+        if (req.headers.authorization !== "Bearer test-api-key") {
+          res.writeHead(401, { "content-type": "application/json" })
+          res.end(JSON.stringify({ error: "unauthorized" }))
+          return
+        }
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({ data: { channel_id: "chan-test-1", type: "blooio" } }))
+        return
+      }
+      if (req.method === "POST" && (url === "/v4/messages" || url.startsWith("/v4/chats/"))) {
+        let raw = ""
+        req.on("data", (chunk: Buffer) => {
+          raw += chunk.toString("utf8")
+        })
+        req.on("end", () => {
+          sentPayloads.push({
+            path: url,
+            body: JSON.parse(raw) as Record<string, unknown>,
+            auth: req.headers.authorization,
+            idempotencyKey: typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"] : undefined,
+          })
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({ id: `blooio-msg-${sentPayloads.length}`, success: true }))
+        })
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    const address = server.address() as { port: number }
+    return {
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      sentPayloads,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+}
+import { buildTypedStreamBlob, createTempChatDb, makeWebRequest, signBlooio, startMockBlooioServer } from node
+
+function makeTestRuntime(settings: Record<string, unknown> = {}) {
+  const cache = new Map<string, unknown>()
+  const memories: Memory[] = []
+  const services = new Map<string, unknown>()
+  const events: Array<{ name: string; payload: unknown }> = []
+  const connectors: unknown[] = []
+  const configStore: Record<string, unknown> = {}
+  services.set("connector-setup", {
+    getConfig: () => configStore,
+    updateConfig: (updater: (cfg: Record<string, unknown>) => void) => updater(configStore),
+  })
+  const registeredAdapters: unknown[] = []
+  services.set("SensitiveRequestDispatchRegistry", {
+    register: (adapter: unknown) => registeredAdapters.push(adapter),
+  })
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    character: { settings: {} },
+    getSetting: (key: string) => settings[key],
+    getService: <T>(name: string) => (services.get(name) as T | undefined) ?? null,
+    getCache: async <T>(key: string) => cache.get(key) as T | undefined,
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value)
+      return true
+    },
+    deleteCache: async (key: string) => cache.delete(key),
+    ensureConnection: async () => undefined,
+    createMemory: async (memory: Memory) => {
+      memories.push(memory)
+      return memory.id ?? ("mem-1" as UUID)
+    },
+    emitEvent: async (name: string, payload: unknown) => {
+      events.push({ name, payload })
+    },
+    registerMessageConnector: (reg: unknown) => {
+      connectors.push(reg)
+    },
+    registerSendHandler: () => undefined,
+  } as unknown as IAgentRuntime
+  return { runtime, cache, memories, services, events, connectors, configStore, registeredAdapters }
+}
+
+function makeResponseRecorder() {
+  let statusCode = 200
+  let body: unknown = undefined
+  const res: IMessageRouteResponse = {
+    status(code: number) {
+      statusCode = code
+      return res
+    },
+    json(payload: unknown) {
+      body = payload
+      return res
+    },
+  }
+  return {
+    res,
+    get statusCode() {
+      return statusCode
+    },
+    get body() {
+      return body
+    },
+  }
+}
+
+describe(`iMessage plugin E2E & parity (spec/imessage/index.md, "Story: Store incoming iMessages without sending unsolicited replies")`, () => {
+  it(`Reads real SQLite chat.db with attributedBody, tapbacks, attachments, chats, and cursor polling (spec/imessage/index.md, "The native cursor commits rows in order, with bounded persistence and attachment retries")`, async () => {
+    const temp = createTempChatDb()
+    try {
+      const reader = await openChatDb(temp.dbPath)
+      assert.ok(reader)
+      assert.strictEqual(reader.getLatestRowId(), 4)
+      assert.ok(reader.getLatestOwnMessageTimestamp() !== null)
+      assert.strictEqual(decodeAttributedBody(buildTypedStreamBlob("Typed text")), "Typed text")
+      assert.ok(appleDateToJsMs(700_000_000_000_000_000) > 1_600_000_000_000)
+
+      const fetched = reader.fetchNewMessages(0, 50)
+      assert.strictEqual(fetched.length, 4)
+      assert.strictEqual(fetched[0]!.text, "Hello from attributedBody")
+      assert.strictEqual(fetched[0]!.attachments.length, 1)
+      assert.strictEqual(fetched[0]!.attachments[0]!.filename, "photo.png")
+      assert.strictEqual(fetched[1]!.kind, "reaction")
+      assert.strictEqual(fetched[1]!.reaction?.kind, "love")
+      assert.strictEqual(fetched[1]!.reaction?.targetGuid, "guid-1")
+      assert.strictEqual(fetched[2]!.chatType, "group")
+      assert.strictEqual(fetched[2]!.replyToGuid, "guid-1")
+      assert.strictEqual(fetched[3]!.isFromMe, true)
+
+      const publicMsg = chatDbMessageToPublicShape(fetched[0]!)
+      assert.strictEqual(publicMsg.hasAttachments, true)
+      assert.strictEqual(publicMsg.guid, "guid-1")
+
+      const chats = reader.listChats()
+      assert.strictEqual(chats.length, 2)
+      assert.strictEqual(chats.find((chat) => chat.chatId === "chat999")?.chatType, "group")
+      reader.close()
+
+      const env = makeTestRuntime({
+        IMESSAGE_TRANSPORT: "native",
+        IMESSAGE_DB_PATH: temp.dbPath,
+        IMESSAGE_DM_POLICY: "open",
+        IMESSAGE_GROUP_POLICY: "open",
+        IMESSAGE_AUTO_REPLY: "false",
+      })
+      env.cache.set(`imessage:native:cursor:${DEFAULT_ACCOUNT_ID}:${temp.dbPath}`, 0)
+      const service = await IMessageService.start(env.runtime)
+      try {
+        const cursor = await service.pollNativeOnce()
+        assert.strictEqual(cursor?.committedRow, 4)
+        assert.strictEqual(env.memories.length, 2)
+        assert.ok(env.events.some((event) => event.name === "IMESSAGE_REACTION_RECEIVED"))
+        const recent = await service.getRecentMessages(10)
+        assert.strictEqual(recent.length, 4)
+      } finally {
+        await service.stop()
+      }
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  it(`Verifies Blooio channel, sends over real local HTTP, authenticates signed webhooks, enforces channel isolation and 7-day receipt dedupe (spec/imessage/index.md, "Blooio needs the signed raw body, exact configured channel and a dispatchable receipt state")`, async () => {
+    const mock = await startMockBlooioServer()
+    try {
+      await verifyBlooioChannel({
+        apiKey: "test-api-key",
+        fromNumber: "+15550009999",
+        channelId: "chan-test-1",
+        apiBaseUrl: mock.baseUrl,
+      })
+      const sendReceipt = await sendBlooioMessage({
+        apiKey: "test-api-key",
+        fromNumber: "+15550009999",
+        to: "+15551234567",
+        text: "Hello via Blooio",
+        idempotencyKey: "idem-1",
+        apiBaseUrl: mock.baseUrl,
+      })
+      assert.strictEqual(sendReceipt.messageId, "blooio-msg-1")
+      assert.strictEqual(mock.sentPayloads.length, 1)
+      assert.strictEqual(mock.sentPayloads[0]!.idempotencyKey, "idem-1")
+
+      const env = makeTestRuntime({
+        IMESSAGE_TRANSPORT: "blooio",
+        IMESSAGE_BLOOIO_API_KEY: "test-api-key",
+        IMESSAGE_BLOOIO_WEBHOOK_SECRET: "whsec-test",
+        IMESSAGE_BLOOIO_CHANNEL_ID: "chan-test-1",
+        IMESSAGE_BLOOIO_FROM_NUMBER: "+15550009999",
+        IMESSAGE_BLOOIO_API_BASE_URL: mock.baseUrl,
+        IMESSAGE_DM_POLICY: "open",
+        IMESSAGE_AUTO_REPLY: "false",
+      })
+      const service = await IMessageService.start(env.runtime)
+      env.services.set("imessage", service)
+      try {
+        assert.strictEqual(service.isConnected(), true)
+        const nowSec = Math.floor(Date.now() / 1000)
+        const rawBody = JSON.stringify({
+          id: "evt-1",
+          type: "message.received",
+          created_at: nowSec,
+          data: {
+            message_id: "bmsg-1",
+            channel_id: "chan-test-1",
+            sender: "+15551234567",
+            text: "Incoming Blooio message",
+            attachments: [
+              { url: "https://media.blooio.com/a.jpg", name: "a.jpg" },
+              { url: "https://evil.example.com/b.jpg", name: "b.jpg" },
+            ],
+          },
+        })
+        const signature = signBlooio("whsec-test", rawBody, nowSec)
+        assert.strictEqual(verifyBlooioSignature("whsec-test", signature, rawBody, nowSec), true)
+        assert.strictEqual(verifyBlooioSignature("whsec-test", "t=1,v1=00", rawBody, nowSec), false)
+        const parsed = parseBlooioInbound(rawBody, "chan-test-1")
+        assert.strictEqual(parsed?.attachments.length, 1)
+        assert.strictEqual(parseBlooioInbound(rawBody, "other-channel"), null)
+
+        const first = await service.handleBlooioWebhook(rawBody, signature)
+        assert.strictEqual(first, "accepted")
+        assert.strictEqual(env.memories.length, 1)
+        const duplicate = await service.handleBlooioWebhook(rawBody, signature)
+        assert.strictEqual(duplicate, "ignored")
+        assert.strictEqual(env.memories.length, 1)
+
+        const badSig = await service.handleBlooioWebhook(rawBody, "t=123,v1=deadbeef")
+        assert.strictEqual(badSig, "unauthorized")
+
+        const foreignBody = JSON.stringify({
+          id: "evt-2",
+          type: "message.received",
+          created_at: nowSec,
+          data: { message_id: "bmsg-2", channel_id: "chan-foreign", sender: "+15551234567", text: "nope" },
+        })
+        const foreignSig = signBlooio("whsec-test", foreignBody, nowSec)
+        assert.strictEqual(await service.handleBlooioWebhook(foreignBody, foreignSig), "ignored")
+
+        const fetchRes = await handleBlooioRequest(
+          env.runtime,
+          makeWebRequest("http://localhost/api/imessage/webhook/blooio", {
+            method: "POST",
+            headers: { "x-blooio-signature": signature },
+            body: rawBody,
+          }),
+        )
+        assert.strictEqual(fetchRes.status, 200)
+        const fetchJson = (await fetchRes.json()) as { outcome: string }
+        assert.strictEqual(fetchJson.outcome, "ignored")
+
+        const sentViaService = await service.sendMessage("+15551234567", "Reply via service")
+        assert.strictEqual(sentViaService.success, true)
+        assert.strictEqual(mock.sentPayloads.length, 2)
+      } finally {
+        await service.stop()
+      }
+    } finally {
+      await mock.close()
+    }
+  })
+
+  it(`Supports multi-account resolution, contacts CRUD, setup/data/legacy routes, sensitive-request delivery, and AppleScript parsers (spec/imessage/index.md, "iMessage direct and group access differ, and passive connectors send no automatic reply")`, async () => {
+    const env = makeTestRuntime({
+      IMESSAGE_DM_POLICY: "allowlist",
+      IMESSAGE_ALLOW_FROM: "+15551234567",
+    })
+    ;(env.runtime.character as { settings: Record<string, unknown> }).settings = {
+      imessage: {
+        accounts: {
+          default: { enabled: true, name: "Personal Mac" },
+          work: { enabled: true, name: "Work Mac", dmPolicy: "open", groups: { "*": { requireMention: true } } },
+        },
+      },
+    }
+    assert.strictEqual(normalizeAccountId(" Work "), "work")
+    assert.strictEqual(isMultiAccountEnabled(env.runtime), true)
+    assert.ok(listIMessageAccountIds(env.runtime).includes("work"))
+    assert.strictEqual(listEnabledIMessageAccounts(env.runtime).length >= 1, true)
+    const workAccount = resolveIMessageAccount(env.runtime, "work")
+    assert.strictEqual(
+      isIMessageMentionRequired({ accountConfig: workAccount.config, groupConfig: workAccount.config.groups?.["*"] }),
+      true,
+    )
+
+    const contactsStore: FullContact[] = [
+      { id: "c-1", name: "Ada Lovelace", firstName: "Ada", lastName: "Lovelace", phones: [{ label: "mobile", value: "+15551234567" }], emails: [] },
+    ]
+    setNativeContactsPort({
+      loadContacts: async () => new Map([["+15551234567", { name: "Ada Lovelace" }]]),
+      listAllContacts: async () => [...contactsStore],
+      addContact: async (input) => {
+        const id = `c-${contactsStore.length + 1}`
+        contactsStore.push({
+          id,
+          name: `${input.firstName ?? ""} ${input.lastName ?? ""}`.trim(),
+          firstName: input.firstName ?? null,
+          lastName: input.lastName ?? null,
+          phones: (input.phones ?? []).map((p) => ({ label: p.label ?? null, value: p.value })),
+          emails: (input.emails ?? []).map((e) => ({ label: e.label ?? null, value: e.value })),
+        })
+        return id
+      },
+      updateContact: async (id, patch) => {
+        const target = contactsStore.find((c) => c.id === id)
+        if (!target) return false
+        if (patch.firstName !== undefined) target.firstName = patch.firstName
+        return true
+      },
+      deleteContact: async (id) => {
+        const idx = contactsStore.findIndex((c) => c.id === id)
+        if (idx < 0) return false
+        contactsStore.splice(idx, 1)
+        return true
+      },
+    })
+    try {
+      const parsedContacts = parseContactsOutput("phone\t+1 (555) 123-4567\tAda Lovelace\n")
+      assert.strictEqual(parsedContacts.get(normalizeContactHandle("+15551234567"))?.name, "Ada Lovelace")
+      assert.deepStrictEqual(parseIMessageContactId("/api/imessage/contacts/c%2D1"), { ok: true, id: "c-1" })
+      assert.strictEqual(parseIMessageContactId("/api/imessage/contacts/%E0%A4%A").ok, false)
+
+      const service = new IMessageService(env.runtime)
+      env.services.set("imessage", service)
+      const provider = createIMessageConnectorAccountProvider(env.runtime)
+      const accounts = await provider.listAccounts!({} as never)
+      assert.ok(accounts.length >= 1)
+
+      assert.strictEqual(registerIMessageDmSensitiveRequestAdapter(env.runtime), true)
+      assert.strictEqual(imessageDmSensitiveRequestAdapter.supportsChannel(undefined, env.runtime), true)
+      const missingTarget = await imessageDmSensitiveRequestAdapter.deliver({
+        request: {},
+        runtime: env.runtime,
+      })
+      assert.strictEqual(missingTarget.delivered, false)
+
+      const statusRoute = imessageSetupRoutes.find((r) => r.path === "/api/setup/imessage/status")!
+      const startRoute = imessageSetupRoutes.find((r) => r.path === "/api/setup/imessage/start")!
+      const cancelRoute = imessageSetupRoutes.find((r) => r.path === "/api/setup/imessage/cancel")!
+      const contactsGetRoute = imessageDataRoutes.find((r) => r.path === "/api/imessage/contacts" && r.type === "GET")!
+      const contactsPostRoute = imessageDataRoutes.find((r) => r.path === "/api/imessage/contacts" && r.type === "POST")!
+      const contactsPatchRoute = imessageDataRoutes.find((r) => r.path === "/api/imessage/contacts/:id" && r.type === "PATCH")!
+      const contactsDeleteRoute = imessageDataRoutes.find((r) => r.path === "/api/imessage/contacts/:id" && r.type === "DELETE")!
+
+      const rec1 = makeResponseRecorder()
+      await (statusRoute.handler as (req: IMessageRouteRequest, res: IMessageRouteResponse, rt: IAgentRuntime) => Promise<void>)({}, rec1.res, env.runtime)
+      assert.strictEqual(rec1.statusCode, 200)
+
+      const rec2 = makeResponseRecorder()
+      await (startRoute.handler as (req: IMessageRouteRequest, res: IMessageRouteResponse, rt: IAgentRuntime) => Promise<void>)({}, rec2.res, env.runtime)
+      assert.strictEqual(((env.configStore.connectors as Record<string, { enabled?: boolean }>).imessage)?.enabled, true)
+
+      const rec3 = makeResponseRecorder()
+      await (cancelRoute.handler as (req: IMessageRouteRequest, res: IMessageRouteResponse, rt: IAgentRuntime) => Promise<void>)({}, rec3.res, env.runtime)
+      assert.strictEqual((env.configStore.connectors as Record<string, unknown>).imessage, undefined)
+
+      const rec4 = makeResponseRecorder()
+      await (contactsPostRoute.handler as (req: IMessageRouteRequest, res: IMessageRouteResponse, rt: IAgentRuntime) => Promise<void>)({ body: { firstName: "Grace", lastName: "Hopper" } }, rec4.res, env.runtime)
+      assert.strictEqual(rec4.statusCode, 201)
+      const createdId = (rec4.body as { id: string }).id
+
+      const rec5 = makeResponseRecorder()
+      await (contactsGetRoute.handler as (req: IMessageRouteRequest, res: IMessageRouteResponse, rt: IAgentRuntime) => Promise<void>)({}, rec5.res, env.runtime)
+      assert.strictEqual((rec5.body as { count: number }).count, 2)
+
+      const rec6 = makeResponseRecorder()
+      await (contactsPatchRoute.handler as (req: IMessageRouteRequest, res: IMessageRouteResponse, rt: IAgentRuntime) => Promise<void>)({ url: `/api/imessage/contacts/${createdId}`, body: { firstName: "Rear Admiral Grace" } }, rec6.res, env.runtime)
+      assert.strictEqual(rec6.statusCode, 200)
+
+      const rec7 = makeResponseRecorder()
+      await (contactsDeleteRoute.handler as (req: IMessageRouteRequest, res: IMessageRouteResponse, rt: IAgentRuntime) => Promise<void>)({ url: `/api/imessage/contacts/${createdId}` }, rec7.res, env.runtime)
+      assert.strictEqual(rec7.statusCode, 200)
+
+      let legacyStatus = 200
+      let legacyPayload: unknown = undefined
+      const legacyHelpers: IMessageRouteHelpers = {
+        json(_res, data, status = 200) {
+          legacyStatus = status
+          legacyPayload = data
+        },
+        error(_res, message, status = 500) {
+          legacyStatus = status
+          legacyPayload = { error: message }
+        },
+        readJsonBody: async () => null,
+      }
+      const matched = await handleIMessageRoute(
+        { url: "/api/imessage/status" } as never,
+        {} as never,
+        "/api/imessage/status",
+        "GET",
+        { runtime: env.runtime },
+        legacyHelpers,
+      )
+      assert.strictEqual(matched, true)
+      assert.strictEqual(legacyStatus, 200)
+      assert.strictEqual((legacyPayload as { available: boolean }).available, true)
+
+      const chunks = splitMessageForIMessage("👨‍👩‍👧‍👦".repeat(20), 25)
+      assert.ok(chunks.length > 1)
+      assert.strictEqual(chunks.join(""), "👨‍👩‍👧‍👦".repeat(20))
+
+      assert.strictEqual(resolveHeartbeatIntervalMs(undefined), 60_000)
+      expect(() => resolveHeartbeatIntervalMs("abc")).toThrow(IMessageConfigurationError)
+      assert.strictEqual(resolveBackfillRows("12"), 12)
+      expect(() => resolveBackfillRows("-1")).toThrow(IMessageConfigurationError)
+
+      const parsedMsgs = parseMessagesFromAppleScript("1\thello\t1700000000000\t0\tchat-1\t+15551234567\n")
+      assert.strictEqual(parsedMsgs.length, 1)
+      assert.strictEqual(parsedMsgs[0]!.text, "hello")
+      const parsedChats = parseChatsFromAppleScript(`{{"iMessage;+;chat123", "Team Chat"}}`)
+      assert.strictEqual(parsedChats.length, 1)
+      assert.strictEqual(parsedChats[0]!.chatType, "group")
+      assert.strictEqual(imessagePlugin.name, "@elizaos/plugin-imessage")
+    } finally {
+      setNativeContactsPort(null)
+    }
+  })
+
+  it(`Conformance driver matches the Quint oracle across retry and cursor advancement events (spec/imessage/index.md, "The native cursor commits rows in order, with bounded persistence and attachment retries")`, async () => {
+    await driver.reset()
+    let expected = imessageOracle.initial
+    assert.deepStrictEqual(await driver.observe("a"), expected)
+
+    const sequence = [
+      { type: "observeIMessageRow" as const, rowId: 1, nativeResult: "IMessageNativeRetryWrite" as const },
+      { type: "observeIMessageRow" as const, rowId: 1, nativeResult: "IMessageNativeRetryWrite" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeSaved" as const },
+      { type: "observeIMessageRow" as const, rowId: 1, nativeResult: "IMessageNativeSaved" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeRetryMedia" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeRetryMedia" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeRetryMedia" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeRetryMedia" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeRetryMedia" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeRetryMedia" as const },
+      { type: "observeIMessageRow" as const, rowId: 2, nativeResult: "IMessageNativeSaved" as const },
+      { type: "observeIMessageRow" as const, rowId: 3, nativeResult: "IMessageNativePermanentFailure" as const },
+    ]
+
+    for (const event of sequence) {
+      const shouldAccept = imessageOracle.enabled(expected, event)
+      const outcome = await driver.dispatch("a", event)
+      assert.strictEqual(outcome, shouldAccept ? "accepted" : "refused")
+      if (shouldAccept) {
+        expected = imessageOracle.step(expected, event)
+      }
+      assert.deepStrictEqual(await driver.observe("a"), expected)
+    }
+    assert.strictEqual(expected.committedRow, 3)
+  })
+})

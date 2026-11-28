@@ -1,0 +1,443 @@
+// spec/slack/index.md, "Story: Answer one Slack message through its proper installation and thread"
+import type {
+  Character,
+  EntityPayload,
+  EventPayload,
+  MessagePayload,
+  WorldPayload,
+} from "@elizaos/core"
+import type { App as BoltApp } from "@slack/bolt"
+
+type WebClient = BoltApp["client"]
+
+export const SLACK_SERVICE_NAME = "slack"
+export const MAX_SLACK_MESSAGE_LENGTH = 40_000
+export const MAX_SLACK_BLOCKS = 50
+export const MAX_SLACK_FILE_SIZE = 1024 * 1024 * 1024
+
+export const SlackEventTypes = {
+  MESSAGE_RECEIVED: "SLACK_MESSAGE_RECEIVED",
+  MESSAGE_SENT: "SLACK_MESSAGE_SENT",
+  REACTION_ADDED: "SLACK_REACTION_ADDED",
+  REACTION_REMOVED: "SLACK_REACTION_REMOVED",
+  CHANNEL_JOINED: "SLACK_CHANNEL_JOINED",
+  CHANNEL_LEFT: "SLACK_CHANNEL_LEFT",
+  MEMBER_JOINED_CHANNEL: "SLACK_MEMBER_JOINED_CHANNEL",
+  MEMBER_LEFT_CHANNEL: "SLACK_MEMBER_LEFT_CHANNEL",
+  APP_MENTION: "SLACK_APP_MENTION",
+  SLASH_COMMAND: "SLACK_SLASH_COMMAND",
+  FILE_SHARED: "SLACK_FILE_SHARED",
+  THREAD_REPLY: "SLACK_THREAD_REPLY",
+} as const
+
+export type SlackEventType = (typeof SlackEventTypes)[keyof typeof SlackEventTypes]
+export type SlackChannelType = "channel" | "group" | "im" | "mpim"
+
+export interface SlackFile {
+  id: string
+  name: string
+  title: string
+  mimetype: string
+  filetype: string
+  size: number
+  urlPrivate: string
+  urlPrivateDownload: string | undefined
+  permalink: string
+  thumb64: string | undefined
+  thumb80: string | undefined
+  thumb360: string | undefined
+}
+
+export interface SlackMessageReceivedPayload extends MessagePayload {
+  channelId: string
+  threadTs: string | undefined
+  userId: string
+  teamId: string | undefined
+  isThreadReply: boolean
+  files: SlackFile[]
+}
+
+export interface SlackMessageSentPayload extends MessagePayload {
+  channelId: string
+  threadTs: string | undefined
+  messageTs: string
+}
+
+export interface SlackReactionPayload extends MessagePayload {
+  reaction: string
+  userId: string
+  channelId: string
+  messageTs: string
+  itemUser: string | undefined
+}
+
+interface SlackChannelPayload extends WorldPayload {
+  channelId: string
+  channelName: string
+  channelType: SlackChannelType
+}
+
+interface SlackMemberPayload extends EntityPayload {
+  userId: string
+  channelId: string
+}
+
+interface SlackAppMentionPayload extends MessagePayload {
+  channelId: string
+  userId: string
+  threadTs: string | undefined
+}
+
+interface SlackSlashCommandPayload extends EventPayload {
+  command: string
+  text: string
+  userId: string
+  channelId: string
+  teamId: string
+  responseUrl: string
+  triggerId: string
+}
+
+export interface SlackEventPayloadMap {
+  [SlackEventTypes.MESSAGE_RECEIVED]: SlackMessageReceivedPayload
+  [SlackEventTypes.MESSAGE_SENT]: SlackMessageSentPayload
+  [SlackEventTypes.REACTION_ADDED]: SlackReactionPayload
+  [SlackEventTypes.REACTION_REMOVED]: SlackReactionPayload
+  [SlackEventTypes.CHANNEL_JOINED]: SlackChannelPayload
+  [SlackEventTypes.CHANNEL_LEFT]: SlackChannelPayload
+  [SlackEventTypes.MEMBER_JOINED_CHANNEL]: SlackMemberPayload
+  [SlackEventTypes.MEMBER_LEFT_CHANNEL]: SlackMemberPayload
+  [SlackEventTypes.APP_MENTION]: SlackAppMentionPayload
+  [SlackEventTypes.SLASH_COMMAND]: SlackSlashCommandPayload
+  [SlackEventTypes.FILE_SHARED]: SlackMessageReceivedPayload
+  [SlackEventTypes.THREAD_REPLY]: SlackMessageReceivedPayload
+}
+
+export interface SlackUserProfile {
+  title: string | undefined
+  phone: string | undefined
+  skype: string | undefined
+  realName: string | undefined
+  realNameNormalized: string | undefined
+  displayName: string | undefined
+  displayNameNormalized: string | undefined
+  statusText: string | undefined
+  statusEmoji: string | undefined
+  statusExpiration: number | undefined
+  avatarHash: string | undefined
+  email: string | undefined
+  image24: string | undefined
+  image32: string | undefined
+  image48: string | undefined
+  image72: string | undefined
+  image192: string | undefined
+  image512: string | undefined
+  image1024: string | undefined
+  imageOriginal: string | undefined
+  team: string | undefined
+}
+
+export interface SlackUser {
+  id: string
+  teamId: string | undefined
+  name: string
+  deleted: boolean
+  realName: string | undefined
+  tz: string | undefined
+  tzLabel: string | undefined
+  tzOffset: number | undefined
+  profile: SlackUserProfile
+  isAdmin: boolean
+  isOwner: boolean
+  isPrimaryOwner: boolean
+  isRestricted: boolean
+  isUltraRestricted: boolean
+  isBot: boolean
+  isAppUser: boolean
+  updated: number
+}
+
+interface SlackChannelTopic {
+  value: string
+  creator: string
+  lastSet: number
+}
+
+interface SlackChannelPurpose {
+  value: string
+  creator: string
+  lastSet: number
+}
+
+export interface SlackChannel {
+  id: string
+  name: string
+  isChannel: boolean
+  isGroup: boolean
+  isIm: boolean
+  isMpim: boolean
+  isPrivate: boolean
+  isArchived: boolean
+  isGeneral: boolean
+  isShared: boolean
+  isOrgShared: boolean
+  isMember: boolean
+  topic: SlackChannelTopic | undefined
+  purpose: SlackChannelPurpose | undefined
+  numMembers: number | undefined
+  created: number
+  creator: string
+}
+
+export interface SlackReaction {
+  name: string
+  count: number
+  users: string[]
+}
+
+interface SlackAttachmentField {
+  title: string
+  value: string
+  short: boolean
+}
+
+export interface SlackAttachment {
+  id: number
+  fallback: string | undefined
+  color: string | undefined
+  pretext: string | undefined
+  authorName: string | undefined
+  authorLink: string | undefined
+  authorIcon: string | undefined
+  title: string | undefined
+  titleLink: string | undefined
+  text: string | undefined
+  fields: SlackAttachmentField[] | undefined
+  imageUrl: string | undefined
+  thumbUrl: string | undefined
+  footer: string | undefined
+  footerIcon: string | undefined
+  ts: string | undefined
+}
+
+interface SlackBlockText {
+  type: string
+  text: string
+  emoji: boolean | undefined
+  verbatim: boolean | undefined
+}
+
+interface SlackBlockElement {
+  type: string
+  text: SlackBlockText | undefined
+  actionId: string | undefined
+  url: string | undefined
+  value: string | undefined
+  style: string | undefined
+}
+
+export interface SlackBlock {
+  type: string
+  blockId: string | undefined
+  elements: SlackBlockElement[] | undefined
+  text: SlackBlockText | undefined
+}
+
+export interface SlackMessage {
+  type: string
+  subtype: string | undefined
+  ts: string
+  user: string | undefined
+  botId?: string
+  text: string
+  threadTs: string | undefined
+  replyCount: number | undefined
+  replyUsersCount: number | undefined
+  latestReply: string | undefined
+  reactions: SlackReaction[] | undefined
+  files: SlackFile[] | undefined
+  attachments: SlackAttachment[] | undefined
+  blocks: SlackBlock[] | undefined
+}
+
+interface SlackTeamIcon {
+  image34: string | undefined
+  image44: string | undefined
+  image68: string | undefined
+  image88: string | undefined
+  image102: string | undefined
+  image132: string | undefined
+  image230: string | undefined
+  imageDefault: boolean
+}
+
+export interface SlackTeam {
+  id: string
+  name: string
+  domain: string
+  emailDomain: string | undefined
+  icon: SlackTeamIcon
+}
+
+export interface ISlackService {
+  app: BoltApp | null
+  client: WebClient | null
+  character: Character
+  botUserId: string | null
+  teamId: string | null
+}
+
+export interface SlackSettings {
+  allowedChannelIds: string[] | undefined
+  shouldIgnoreBotMessages: boolean
+  shouldRespondOnlyToMentions: boolean
+}
+
+export interface SlackMessageSendOptions {
+  threadTs: string | undefined
+  replyBroadcast: boolean | undefined
+  unfurlLinks: boolean | undefined
+  unfurlMedia: boolean | undefined
+  mrkdwn: boolean | undefined
+  attachments: SlackAttachment[] | undefined
+  blocks: SlackBlock[] | undefined
+}
+
+module guard {
+  export class SlackPluginError extends Error {
+    readonly code: string
+    constructor(message: string, code: string) {
+      super(message)
+      this.name = "SlackPluginError"
+      this.code = code
+    }
+  }
+
+  export class SlackServiceNotInitializedError extends SlackPluginError {
+    constructor() {
+      super("Slack service is not initialized", "SERVICE_NOT_INITIALIZED")
+      this.name = "SlackServiceNotInitializedError"
+    }
+  }
+
+  export class SlackClientNotAvailableError extends SlackPluginError {
+    constructor() {
+      super("Slack client is not available", "CLIENT_NOT_AVAILABLE")
+      this.name = "SlackClientNotAvailableError"
+    }
+  }
+
+  export class SlackConfigurationError extends SlackPluginError {
+    constructor(missingConfig: string) {
+      super(`Missing required configuration: ${missingConfig}`, "MISSING_CONFIG")
+      this.name = "SlackConfigurationError"
+    }
+  }
+
+  export class SlackApiError extends SlackPluginError {
+    readonly apiErrorCode: string | undefined
+    constructor(message: string, apiErrorCode: string | undefined) {
+      super(message, "API_ERROR")
+      this.name = "SlackApiError"
+      this.apiErrorCode = apiErrorCode
+    }
+  }
+}
+import {
+  SlackApiError,
+  SlackClientNotAvailableError,
+  SlackConfigurationError,
+  SlackPluginError,
+  SlackServiceNotInitializedError,
+} from guard
+export {
+  SlackApiError,
+  SlackClientNotAvailableError,
+  SlackConfigurationError,
+  SlackPluginError,
+  SlackServiceNotInitializedError,
+}
+
+function isValidSlackOpaqueId(id: string): boolean {
+  if (id.length === 0 || id.length > 255 || /\s/u.test(id)) return false
+  for (const character of id) {
+    const codePoint = character.codePointAt(0)
+    if (codePoint !== undefined && (codePoint < 32 || codePoint === 127)) return false
+  }
+  return true
+}
+
+export function isValidChannelId(id: string): boolean {
+  return isValidSlackOpaqueId(id)
+}
+
+export function isValidUserId(id: string): boolean {
+  return isValidSlackOpaqueId(id)
+}
+
+export function isValidTeamId(id: string): boolean {
+  return isValidSlackOpaqueId(id)
+}
+
+export function isValidMessageTs(ts: string): boolean {
+  return /^\d+\.\d{6}$/.test(ts)
+}
+
+export function normalizeSlackPermalinkTimestamp(digits: string): string | null {
+  if (!/^(?:\d{16}|\d{15}|\d{10})$/.test(digits)) return null
+  return `${digits.slice(0, 10)}.${digits.slice(10).padStart(6, "0")}`
+}
+
+const SLACK_WORKSPACE_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+
+export function parseSlackArchivesUrl(link: string): {
+  workspaceDomain: string
+  channelId: string
+  messageTs: string
+} | null {
+  let url: URL
+  try {
+    url = new URL(link)
+  } catch {
+    return null
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null
+  if (url.username !== "" || url.password !== "" || url.port !== "") return null
+  const host = url.hostname
+  const suffix = ".slack.com"
+  if (!host.endsWith(suffix)) return null
+  const workspaceDomain = host.slice(0, -suffix.length)
+  if (!SLACK_WORKSPACE_LABEL_RE.test(workspaceDomain)) return null
+  const segments = url.pathname.split("/")
+  if (segments[segments.length - 1] === "") segments.pop()
+  if (segments.length !== 4 || segments[0] !== "" || segments[1] !== "archives") return null
+  const channelId = segments[2]!
+  if (!/^[A-Z0-9]+$/i.test(channelId)) return null
+  const tsMatch = /^p(\d+)$/.exec(segments[3]!)
+  if (!tsMatch) return null
+  const messageTs = normalizeSlackPermalinkTimestamp(tsMatch[1]!)
+  if (!messageTs) return null
+  return { workspaceDomain, channelId, messageTs }
+}
+
+export function parseSlackMessageLink(link: string): { channelId: string; messageTs: string } | null {
+  const parsed = parseSlackArchivesUrl(link)
+  if (!parsed) return null
+  if (!/^[CGD][A-Z0-9]+$/i.test(parsed.channelId)) return null
+  return { channelId: parsed.channelId, messageTs: parsed.messageTs }
+}
+
+export function formatMessageTsForLink(ts: string): string {
+  return `p${ts.replace(".", "")}`
+}
+
+export function getSlackUserDisplayName(user: SlackUser): string {
+  return user.profile.displayName || user.profile.realName || user.name
+}
+
+export function getSlackChannelType(channel: SlackChannel): SlackChannelType {
+  if (channel.isIm) return "im"
+  if (channel.isMpim) return "mpim"
+  if (channel.isGroup || channel.isPrivate) return "group"
+  return "channel"
+}

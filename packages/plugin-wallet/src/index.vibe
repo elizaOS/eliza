@@ -1,19 +1,52 @@
-// spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"
+// spec/wallet/custody.md, "Story: Hold my own keys on my device"; spec/wallet/requests.md, "Story: Let the agent ask, and decide myself"; spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Recover the real outcome of an on-chain operation"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"; spec/wallet/policy.md, "Story: Enforce spend policy, slippage limits, and a tamper-evident audit chain"
 import type { AgentModule, AgentPlugin, ModuleFactory } from "@elizaos/agent-host"
 import { walletPaths, type WalletStatus } from "@elizaos/plugin-wallet-client"
 import type { IAgentRuntime } from "@elizaos/core"
+import { governanceAction, liquidityAction, tokenInfoAction, tradeRouterAction } from "./actions.vibe"
 import { walletAction, walletProvider } from "./agent.vibe"
+import {
+  BirdeyeService,
+  DexScreenerService,
+  KaminoService,
+  NewsDataService,
+  SteerLiquidityService,
+  TokenInfoService,
+  birdeyeMarketProvider,
+  defiNewsProvider,
+} from "./analytics.vibe"
 import { storageKeyBytes } from "./keystore.vibe"
 import { walletRoutes } from "./routes.vibe"
+import {
+  AerodromeLpService,
+  ConcentratedLiquidityService,
+  DexInteractionService,
+  MeteoraLpService,
+  OrcaService,
+  PancakeSwapV3LpService,
+  RaydiumService,
+  StewardTradingService,
+  TxService,
+  UniswapV3LpService,
+  UserLpProfileService,
+  VaultService,
+  WalletBackendService,
+  YieldOptimizationService,
+  stewardTradingProvider,
+} from "./trading.vibe"
 import { openWallet, type Wallet, type WalletHost } from "./wallet.vibe"
 
 export const walletModuleName = "@elizaos/plugin-wallet"
 
+export * from "./actions.vibe"
 export { walletActionName } from "./agent.vibe"
-export { walletRoutes, type WalletRoute } from "./routes.vibe"
+export * from "./analytics.vibe"
+export * from "./policy.vibe"
+export { evmSignRoutes, handleWalletMarketOverviewRoute, solanaSignRoutes, walletRoutes, type WalletMarketOverviewOptions, type WalletRoute } from "./routes.vibe"
+export * from "./sdk.vibe"
+export * from "./trading.vibe"
 export { WalletRefused, WalletUnreachable, openWallet, type Wallet, type WalletContext, type WalletHost, type WalletTransferInput } from "./wallet.vibe"
 
-const description = "The owner's wallet: one EVM and one Solana account with keys sealed on the device, holdings, exact transfer quotes, transfers the owner reviews and approves, and their reconciled outcomes."
+const description = "The owner's wallet: EVM & Solana sealed-key custody, exact transfer quotes, owner-reviewed execution, trading, LP management, x402/CCTP SDK, analytics, spend policies, and tamper-evident audit log."
 
 const unopenedPlugin: AgentPlugin = {
   name: walletModuleName,
@@ -28,9 +61,42 @@ export function walletPlugin(wallet: Wallet, ownerId: string): AgentPlugin {
   return {
     name: walletModuleName,
     description,
-    contexts: ["wallet"],
-    actions: [walletAction(wallet, ownerId)],
-    providers: [walletProvider(wallet, ownerId)],
+    contexts: ["wallet", "finance", "crypto"],
+    services: [
+      WalletBackendService,
+      StewardTradingService,
+      TxService,
+      BirdeyeService,
+      DexScreenerService,
+      TokenInfoService,
+      NewsDataService,
+      KaminoService,
+      SteerLiquidityService,
+      UniswapV3LpService,
+      AerodromeLpService,
+      PancakeSwapV3LpService,
+      RaydiumService,
+      OrcaService,
+      MeteoraLpService,
+      DexInteractionService,
+      ConcentratedLiquidityService,
+      YieldOptimizationService,
+      UserLpProfileService,
+      VaultService,
+    ],
+    actions: [
+      walletAction(wallet, ownerId),
+      tradeRouterAction,
+      liquidityAction,
+      governanceAction,
+      tokenInfoAction,
+    ],
+    providers: [
+      walletProvider(wallet, ownerId),
+      stewardTradingProvider,
+      birdeyeMarketProvider,
+      defiNewsProvider,
+    ],
     routes: walletRoutes(wallet),
   }
 }

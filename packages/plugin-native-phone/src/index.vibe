@@ -1,3 +1,26 @@
 // spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"
+import { appPhonePlugin } from "./plugin.vibe"
 export { phoneClient, telephonyPlugin, TELEPHONY_CALL_LOG_MAX } from "@elizaos/os-bridges"
+export { appPhonePlugin } from "./plugin.vibe"
+export { createPhoneCallLogProvider, phoneCallLogProvider, type PhoneCallLogItem } from "./call-log.vibe"
+export {
+  calculateTwilioSmsBilling,
+  readTwilioCredentialsFromEnv,
+  sendTwilioSms,
+  sendTwilioVoiceCall,
+  splitTwilioSmsBody,
+  type TwilioCredentials,
+  type TwilioDeliveryResult,
+  type TwilioSmsBillingBreakdown,
+} from "./twilio.vibe"
+export {
+  PhoneWeb,
+  type ListRecentCallsWebOptions,
+  type PhoneWebPermissionStatus,
+  type PhoneWebPlugin,
+  type PhoneWebStatus,
+  type PlaceCallWebOptions,
+  type SaveCallTranscriptWebOptions,
+} from "./web.vibe"
 export type { PhoneNumber, VoicemailId, TelephonyPermissionState, TelephonyRole, TelephonyAccessKind, TelephonyRoleState, TelephonySubscription, TelephonyStatus, ImageCapability, TelephonyCallType, TelephonyCallLogEntry, RecentCallsAsk, RecentCallsPage, RecentCallsRefusal, TelephonyHandoffStatus, TelephonyHandoffResult, DialReport, PlaceCallStatus, PlaceCallResult, PlaceReport, PhoneNetworkType, PhoneLine, PhoneInfo, VoicemailCarrierState, VoicemailStatus, VoicemailEntry, VoicemailList, ListedVoicemail, VoicemailListing, VoicemailFetchStatus, VoicemailAudio, VoicemailPcm, VoicemailWriteStatus, VoicemailDeletionReport, VoicemailWriteReport, VoicemailRefusalReason, PhoneNativePlugin, PhoneClient } from "@elizaos/os-bridges"
+export default appPhonePlugin

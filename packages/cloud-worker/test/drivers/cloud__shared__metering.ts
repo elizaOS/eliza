@@ -4,17 +4,18 @@ import type { Driver, Options } from "../../gen/cloud__shared__metering.conforma
 import type { Event, FundingLane, Hold } from "../../gen/cloud__shared__metering.ts";
 import type { HoldKey } from "../../gen/cloud__shared__types.ts";
 import { addCredits, readFunds, stepFunds } from "../../src/billing/funds.vibe";
-import { holdRows, markDispatched, periodRows, renderHoldKey, reserve, settle, sweepHolds, type Settlement } from "../../src/shared/metering.vibe";
+import { holdRows, markDispatched, periodRows, reserve, settle, sweepHolds, type Settlement } from "../../src/shared/metering.vibe";
 import { loadRow, stepRow } from "../../src/store/rows.vibe";
 import { ledger, within, type Settled } from "../support/ledger.ts";
 
 const cloud = ledger();
 const periodEnd = 10 ** 13;
+const organizations = new Map<string, string>();
 const holds = new Map<string, { readonly key: HoldKey; readonly rendered: string }>();
 let requests = 0;
 
-const owner = (key: string) => ({ organizationId: `org-${key}`, userId: `user-${key}` });
-const rendered = (key: string) => holds.get(key)?.rendered ?? `org-${key}/no-hold`;
+const owner = (key: string) => ({ organizationId: organizations.get(key) ?? `org-${key}`, userId: `user-${key}` });
+const rendered = (key: string) => holds.get(key)?.rendered ?? `${owner(key).organizationId}/no-hold`;
 
 const must = <A>(what: string, done: Settled<A>): A => {
   if (done.kind === "failed") throw new Error(`${what} failed with ${done.tag}`, { cause: done.error });
@@ -75,11 +76,16 @@ async function dispatch(key: string, event: Event) {
   switch (event.type) {
     case "reserve": {
       const known = holds.get(key);
-      if (known === undefined) await fundOrganization(key, event.lane, event.allowanceAvailable, event.creditAvailable);
+      if (known === undefined) {
+        const organizationId = event.key.caller || `org-${key}`;
+        organizations.set(key, organizationId);
+        await cloud.sql("INSERT INTO organizations (id, name, created_at) VALUES ($1, $1, 0) ON CONFLICT (id) DO NOTHING", [organizationId]);
+        await fundOrganization(key, event.lane, event.allowanceAvailable, event.creditAvailable);
+      }
       cloud.at(event.now);
       const done = await cloud.run(reserve(owner(key), known?.key ?? event.key, event.quote));
       if (done.kind === "failed") return refusedWhen(done, ["Refused", "Rejected"]);
-      holds.set(key, { key: known?.key ?? event.key, rendered: renderHoldKey(owner(key), known?.key ?? event.key) });
+      holds.set(key, { key: known?.key ?? event.key, rendered: done.value.key });
       return done.value.replayed ? "refused" : "accepted";
     }
     case "markDispatched": {
@@ -110,8 +116,9 @@ async function dispatch(key: string, event: Event) {
 
 export const driver: Driver & AsyncDisposable = {
   reset: async () => {
+    organizations.clear();
     holds.clear();
-    await cloud.reset(options.keys?.map((key) => owner(key).organizationId) ?? []);
+    await cloud.reset(options.keys?.map((key) => `org-${key}`) ?? []);
   },
   dispatch,
   observe: observeHold,

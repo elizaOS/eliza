@@ -1,0 +1,495 @@
+// spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows"; spec/localInference/models.md, "Story: Run a model of my choice on my device"
+import {
+  ServiceType,
+  hasRoleAccess,
+  logger,
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type Service,
+} from "@elizaos/core"
+import { classifyDeviceTier, detectEmbeddingPreset } from "./hardware-policy.vibe"
+import type { LocalModelsApi } from "./models.vibe"
+import { detectTranscriptPiiTerms } from "./pii.vibe"
+import {
+  InMemoryTranscriptPrivacyStore,
+  type AudioRedactionPort,
+  type Requester,
+  type ShareMode,
+  type TranscriptRecord,
+} from "./transcript-privacy.vibe"
+import { VoiceProfileStore, extractSpeakerName } from "./voice-profiles.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  export function nextRunId(): string {
+    return randomUUID()
+  }
+}
+
+import { nextRunId } from node
+
+export const VOICE_CONTROL_STREAM = "voice-control" as const
+export type VoiceControlCommand = "start" | "stop"
+
+export interface VoiceControlEvent {
+  readonly type: "voice-control"
+  readonly command: VoiceControlCommand
+}
+
+interface AgentEventBus extends Service {
+  emit(event: {
+    readonly runId: string
+    readonly stream: string
+    readonly data: unknown
+    readonly agentId?: string
+  }): void
+}
+
+export function emitVoiceControl(
+  runtime: IAgentRuntime,
+  command: VoiceControlCommand,
+): boolean {
+  const bus = runtime.getService<AgentEventBus>(ServiceType.AGENT_EVENT)
+  if (bus === null) return false
+  const data: VoiceControlEvent = { type: "voice-control", command }
+  bus.emit({
+    runId: nextRunId(),
+    stream: VOICE_CONTROL_STREAM,
+    data,
+    agentId: runtime.agentId,
+  })
+  return true
+}
+
+function makeVoiceControlAction(config: {
+  readonly name: string
+  readonly similes: readonly string[]
+  readonly description: string
+  readonly descriptionCompressed: string
+  readonly command: VoiceControlCommand
+  readonly okText: string
+  readonly failText: string
+}): Action {
+  return {
+    name: config.name,
+    similes: [...config.similes],
+    description: config.description,
+    descriptionCompressed: config.descriptionCompressed,
+    toolSchemaStrict: true,
+    cacheStable: true,
+    parameters: [],
+    validate: async (runtime) => runtime.getService(ServiceType.AGENT_EVENT) !== null,
+    handler: async (
+      runtime: IAgentRuntime,
+      _message: Memory,
+      _state?: unknown,
+      _options?: unknown,
+      callback?: HandlerCallback,
+    ): Promise<ActionResult> => {
+      const delivered = emitVoiceControl(runtime, config.command)
+      const text = delivered ? config.okText : config.failText
+      if (!delivered) {
+        logger.warn({ command: config.command }, "[transcription-control] no event bus")
+      }
+      await callback?.({ text, actions: [config.name] })
+      return { success: delivered, text }
+    },
+    summarize: (result) =>
+      result?.success ? `${config.name}: ${config.command} dispatched` : `${config.name}: unavailable`,
+  }
+}
+
+export const startTranscriptionAction: Action = makeVoiceControlAction({
+  name: "START_TRANSCRIPTION",
+  similes: ["BEGIN_TRANSCRIPTION", "START_RECORDING", "RECORD_TRANSCRIPT"],
+  description: "Start long-form voice transcription on the user's device.",
+  descriptionCompressed: "Start on-device voice transcription.",
+  command: "start",
+  okText: "Starting transcription.",
+  failText: "Could not reach the voice client to start transcription.",
+})
+
+export const stopTranscriptionAction: Action = makeVoiceControlAction({
+  name: "STOP_TRANSCRIPTION",
+  similes: ["END_TRANSCRIPTION", "STOP_RECORDING", "FINISH_TRANSCRIPT"],
+  description: "Stop the long-form voice transcription running on the user's device.",
+  descriptionCompressed: "Stop on-device voice transcription.",
+  command: "stop",
+  okText: "Stopping transcription.",
+  failText: "Could not reach the voice client to stop transcription.",
+})
+
+function readParams(options: unknown): Readonly<Record<string, unknown>> {
+  if (typeof options !== "object" || options === null) return {}
+  const rec = options as Readonly<Record<string, unknown>>
+  const nested = rec.parameters
+  return typeof nested === "object" && nested !== null
+    ? (nested as Readonly<Record<string, unknown>>)
+    : rec
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+}
+
+let sharedVoiceProfileStore = new VoiceProfileStore()
+let sharedTranscriptStore = new InMemoryTranscriptPrivacyStore()
+let sharedAudioRedactionPort: AudioRedactionPort | undefined
+
+export function setVoiceProfileStore(store: VoiceProfileStore): void {
+  sharedVoiceProfileStore = store
+}
+
+export function getVoiceProfileStore(): VoiceProfileStore {
+  return sharedVoiceProfileStore
+}
+
+export function setTranscriptPrivacyStore(
+  store: InMemoryTranscriptPrivacyStore,
+  audioPort?: AudioRedactionPort,
+): void {
+  sharedTranscriptStore = store
+  sharedAudioRedactionPort = audioPort
+}
+
+export function getTranscriptPrivacyStore(): InMemoryTranscriptPrivacyStore {
+  return sharedTranscriptStore
+}
+
+export const identifySpeakerAction: Action = {
+  name: "IDENTIFY_SPEAKER",
+  similes: ["NAME_SPEAKER", "LABEL_VOICE"],
+  description: "Bind the most recently observed unidentified speaker voice profile to a person's name.",
+  descriptionCompressed: "Bind recent voice profile to speaker name.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  parameters: [
+    { name: "name", description: "Speaker display name", required: true, schema: { type: "string" } },
+    { name: "profileId", description: "Optional voice profile ID", schema: { type: "string" } },
+  ],
+  validate: async (runtime, message) => hasRoleAccess(runtime, message, "OWNER"),
+  handler: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+    _state?: unknown,
+    options?: unknown,
+  ): Promise<ActionResult> => {
+    const params = readParams(options)
+    const messageText = typeof message.content?.text === "string" ? message.content.text : ""
+    const name = nonEmptyString(params.name) ?? extractSpeakerName(messageText)
+    if (name === null) {
+      return { success: false, text: "Specify the speaker name to bind." }
+    }
+    const explicitId = nonEmptyString(params.profileId)
+    const target =
+      explicitId !== null
+        ? sharedVoiceProfileStore.get(explicitId)
+        : sharedVoiceProfileStore.mostRecentUnbound()
+    if (target === null) {
+      return { success: false, text: "No matching unidentified voice profile found." }
+    }
+    const bound = sharedVoiceProfileStore.bindEntity(target.profileId, `speaker:${name.toLowerCase()}`, name)
+    return {
+      success: bound !== null,
+      text: bound !== null ? `Identified speaker ${name} (${bound.profileId}).` : "Could not bind voice profile.",
+      data: bound !== null ? { profileId: bound.profileId, name } : {},
+    }
+  },
+  summarize: (result) => result?.text ?? "IDENTIFY_SPEAKER completed",
+}
+
+function runOutcome<A, E>(work: A!E): Promise<{ readonly ok: true; readonly value: A } | { readonly ok: false; readonly error: E }> {
+  return runPromise(
+    Effect.match(work, {
+      onFailure: (error) => ({ ok: false as const, error }),
+      onSuccess: (value) => ({ ok: true as const, value }),
+    }),
+  )
+}
+
+async function resolveRequester(
+  runtime: IAgentRuntime,
+  message: Memory,
+  transcript: TranscriptRecord,
+): Promise<Requester> {
+  if (await hasRoleAccess(runtime, message, "ADMIN")) return "AdminRequester"
+  if (typeof message.entityId === "string" && message.entityId === transcript.ownerId) {
+    return "OwnerRequester"
+  }
+  return "OtherRequester"
+}
+
+async function resolveTranscriptActionInput(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: unknown,
+): Promise<
+  | { readonly ok: false; readonly failure: ActionResult }
+  | {
+      readonly ok: true
+      readonly params: Readonly<Record<string, unknown>>
+      readonly transcriptId: string
+      readonly requester: Requester
+      readonly piiTerms: readonly string[]
+    }
+> {
+  const params = readParams(options)
+  const transcriptId = nonEmptyString(params.transcriptId)
+  if (transcriptId === null) {
+    return { ok: false, failure: { success: false, text: "transcriptId is required." } }
+  }
+  const existing = sharedTranscriptStore.get(transcriptId)
+  if (existing === null) {
+    return { ok: false, failure: { success: false, text: `Transcript ${transcriptId} not found.` } }
+  }
+  const requester = await resolveRequester(runtime, message, existing)
+  const piiTerms = await detectTranscriptPiiTerms(existing.segments)
+  return { ok: true, params, transcriptId, requester, piiTerms }
+}
+
+const TRANSCRIPT_ID_PARAM = {
+  name: "transcriptId",
+  description: "Transcript identifier",
+  required: true,
+  schema: { type: "string" },
+} as const
+
+export const redactTranscriptAction: Action = {
+  name: "REDACT_TRANSCRIPT",
+  description: "Create a PII-redacted variant of a recorded transcript without altering the original.",
+  descriptionCompressed: "Create PII-redacted transcript variant.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [TRANSCRIPT_ID_PARAM],
+  validate: async () => true,
+  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+    const resolved = await resolveTranscriptActionInput(runtime, message, options)
+    if (!resolved.ok) return resolved.failure
+    const outcome = await runOutcome(
+      sharedTranscriptStore.redact(
+        resolved.transcriptId,
+        resolved.requester,
+        resolved.piiTerms,
+        sharedAudioRedactionPort,
+      ),
+    )
+    if (!outcome.ok) {
+      return { success: false, text: "Redaction was refused by transcript privacy rules." }
+    }
+    return {
+      success: true,
+      text: `Created redacted variant (${outcome.value.privacy.variant}) for transcript ${resolved.transcriptId}.`,
+      data: {
+        transcriptId: resolved.transcriptId,
+        variant: outcome.value.privacy.variant,
+        piiCount: resolved.piiTerms.length,
+      },
+    }
+  },
+  summarize: (result) => result?.text ?? "REDACT_TRANSCRIPT completed",
+}
+
+export const shareTranscriptAction: Action = {
+  name: "SHARE_TRANSCRIPT",
+  description: "Share a transcript (full or redacted) with a grantee or whole meeting as consent allows.",
+  descriptionCompressed: "Share transcript per capture consent.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [
+    { name: "grantee", description: "Recipient identifier", schema: { type: "string" } },
+    { name: "mode", description: "Share mode", schema: { type: "string", enum: ["full", "redacted"] } },
+    { name: "redactForAll", description: "Admin-only redacted share with whole meeting", schema: { type: "boolean" } },
+    TRANSCRIPT_ID_PARAM,
+  ],
+  validate: async () => true,
+  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+    const resolved = await resolveTranscriptActionInput(runtime, message, options)
+    if (!resolved.ok) return resolved.failure
+    const { params, transcriptId, requester, piiTerms } = resolved
+    if (params.redactForAll === true) {
+      const outcome = await runOutcome(
+        sharedTranscriptStore.redactForAll(transcriptId, requester, piiTerms, sharedAudioRedactionPort),
+      )
+      if (!outcome.ok) {
+        return { success: false, text: "Meeting-wide share was refused by transcript privacy rules." }
+      }
+      return {
+        success: true,
+        text: `Shared redacted transcript ${transcriptId} with meeting participants.`,
+        data: { transcriptId, grantCount: outcome.value.privacy.grants.length },
+      }
+    }
+    const grantee = nonEmptyString(params.grantee)
+    if (grantee === null) return { success: false, text: "grantee is required when redactForAll is not set." }
+    const mode: ShareMode = params.mode === "full" ? "FullShare" : "RedactedShare"
+    const outcome = await runOutcome(
+      sharedTranscriptStore.share(transcriptId, requester, grantee, mode, piiTerms, sharedAudioRedactionPort),
+    )
+    if (!outcome.ok) {
+      return { success: false, text: "Transcript share was refused by consent or role rules." }
+    }
+    return {
+      success: true,
+      text: `Shared transcript ${transcriptId} (${mode}) with ${grantee}.`,
+      data: { transcriptId, grantee, mode, grantCount: outcome.value.privacy.grants.length },
+    }
+  },
+  summarize: (result) => result?.text ?? "SHARE_TRANSCRIPT completed",
+}
+
+export const manageTranscriptPrivacyAction: Action = {
+  name: "MANAGE_TRANSCRIPT_PRIVACY",
+  description: "Record capture consent or update artifact sharing visibility for a transcript.",
+  descriptionCompressed: "Manage transcript consent and visibility.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [
+    {
+      name: "consent",
+      description: "One-time capture consent",
+      schema: { type: "string", enum: ["ConsentGranted", "ConsentNotRequired", "ConsentDenied", "ConsentUnknown"] },
+    },
+    { name: "transcriptId", description: "Transcript identifier", required: true, schema: { type: "string" } },
+    {
+      name: "visibility",
+      description: "Transcript artifact visibility",
+      schema: { type: "string", enum: ["owner_private", "disabled", "restricted", "shared"] },
+    },
+  ],
+  validate: async () => true,
+  handler: async (_runtime, _message, _state, options): Promise<ActionResult> => {
+    const params = readParams(options)
+    const transcriptId = nonEmptyString(params.transcriptId)
+    if (transcriptId === null) return { success: false, text: "transcriptId is required." }
+    if (
+      params.consent === "ConsentGranted" ||
+      params.consent === "ConsentNotRequired" ||
+      params.consent === "ConsentDenied" ||
+      params.consent === "ConsentUnknown"
+    ) {
+      const outcome = await runOutcome(sharedTranscriptStore.recordConsent(transcriptId, params.consent))
+      if (!outcome.ok) {
+        return { success: false, text: "Capture consent could not be recorded." }
+      }
+      return {
+        success: true,
+        text: `Recorded consent ${params.consent} on transcript ${transcriptId}.`,
+        data: { transcriptId, consent: outcome.value.privacy.consent },
+      }
+    }
+    if (
+      params.visibility === "owner_private" ||
+      params.visibility === "disabled" ||
+      params.visibility === "restricted" ||
+      params.visibility === "shared"
+    ) {
+      const outcome = await runOutcome(
+        sharedTranscriptStore.updateArtifactSharing(transcriptId, { transcript: params.visibility }),
+      )
+      if (!outcome.ok) {
+        return { success: false, text: "Artifact visibility change requires matching share grants." }
+      }
+      return {
+        success: true,
+        text: `Updated visibility of transcript ${transcriptId} to ${params.visibility}.`,
+        data: { transcriptId, visibility: outcome.value.sharing.transcript },
+      }
+    }
+    return { success: false, text: "Specify consent or visibility to update." }
+  },
+  summarize: (result) => result?.text ?? "MANAGE_TRANSCRIPT_PRIVACY completed",
+}
+
+export type MediaKind = "image" | "audio" | "video"
+
+export interface IntentDetection {
+  readonly kind: MediaKind
+  readonly prompt: string
+  readonly source: "keyword" | "classifier"
+}
+
+export interface IntentDetectorOptions {
+  readonly classifier?: (prompt: string) => Promise<MediaKind | null>
+}
+
+const MEDIA_KEYWORD_RULES: ReadonlyArray<{
+  readonly kind: MediaKind
+  readonly pattern: RegExp
+  readonly strip: RegExp
+}> = [
+  {
+    kind: "image",
+    pattern: /\b(draw|sketch|paint|illustrate)\b/iu,
+    strip: /^\s*(please\s+)?(draw|sketch|paint|illustrate)(\s+me)?(\s+an?)?\s+(of\s+)?/iu,
+  },
+  {
+    kind: "image",
+    pattern: /\b(generate|create|make)\s+(an?\s+|the\s+)?(image|picture|photo|photograph|drawing|illustration)\b/iu,
+    strip: /^\s*(please\s+)?(generate|create|make)\s+(an?\s+|the\s+)?(image|picture|photo|photograph|drawing|illustration)(\s+of)?\s*/iu,
+  },
+  {
+    kind: "audio",
+    pattern: /\b(say|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts)\b/iu,
+    strip: /^\s*(please\s+)?(say|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts)[:,]?\s*/iu,
+  },
+  {
+    kind: "video",
+    pattern: /\b(video|animate|animation|movie|clip)\b/iu,
+    strip: /^\s*(please\s+)?(generate|create|make|render)?\s*(an?\s+|the\s+)?(video|animation|movie|clip)(\s+of)?\s*/iu,
+  },
+]
+
+export async function detectMediaIntent(
+  text: string,
+  options: IntentDetectorOptions = {},
+): Promise<IntentDetection | null> {
+  const trimmed = text.trim()
+  if (trimmed.length === 0) return null
+  for (const rule of MEDIA_KEYWORD_RULES) {
+    if (rule.pattern.test(trimmed)) {
+      const stripped = trimmed.replace(rule.strip, "").trim()
+      return { kind: rule.kind, prompt: stripped || trimmed, source: "keyword" }
+    }
+  }
+  if (options.classifier === undefined) return null
+  const label = await options.classifier(trimmed)
+  if (label === "image" || label === "audio" || label === "video") {
+    return { kind: label, prompt: trimmed, source: "classifier" }
+  }
+  return null
+}
+
+export function createLocalInferenceStatusProvider(models: LocalModelsApi): Provider {
+  return {
+    name: "LOCAL_INFERENCE_STATUS",
+    description: "Reports active local model status, device tier, and embedding preset.",
+    descriptionCompressed: "Local model status and hardware tier.",
+    dynamic: true,
+    cacheScope: "turn",
+    get: async (): Promise<ProviderResult> => {
+      const view = await runPromise(models.view())
+      const tier = classifyDeviceTier()
+      const preset = detectEmbeddingPreset()
+      const summary = [
+        `Local inference: active=${view.active.model ?? "none"} (${view.active.status})`,
+        `deviceTier=${tier.tier} (${tier.recommendedMode})`,
+        `embeddingPreset=${preset.tier} (${preset.model}, ${preset.dimensions}d)`,
+      ].join("; ")
+      return {
+        text: summary,
+        values: {
+          localInferenceActiveModel: view.active.model,
+          localInferenceStatus: view.active.status,
+          localInferenceDeviceTier: tier.tier,
+        },
+        data: { active: view.active, tier: tier.tier, embeddingPreset: preset.tier },
+      }
+    },
+  }
+}

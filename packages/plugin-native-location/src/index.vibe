@@ -1,11 +1,70 @@
-// spec/nativeLocation/index.md, "Story: Use a fresh device location and stop updates when I close the view"
-import { accessOf, type LocationClient, type LocationOptions } from "@elizaos/os-bridges"
-import { mayUseLocation, type LocationGrant } from "../gen/nativeLocation.effect.vibe"
+// spec/nativeLocation/index.md, "Story: Use a fresh device location and stop updates when I close the view"; spec/nativeLocation/index.md, "A watch reports under the identifier it acquired until that watch is cleared"
+import {
+  accessOf,
+  locationClient,
+  locationPlugin,
+  type LocationClient,
+  type LocationErrorEvent,
+  type LocationOptions,
+  type LocationPermissionStatus,
+  type LocationPlugin,
+  type LocationResult,
+  type WatchLocationOptions,
+} from "@elizaos/os-bridges"
+import {
+  Machine as WatchMachine,
+  machine as watchMachine,
+  mayUseLocation,
+  type Event as LocationWatchEvent,
+  type LocationGrant,
+  type LocationWatch,
+} from "../gen/nativeLocation.effect.vibe"
 
-export { locationClient, locationPlugin } from "@elizaos/os-bridges"
-export type { LocationAccuracy, LocationCoordinates, LocationOptions, WatchLocationOptions, LocationResult, LocationGrant, LocationGrantAccuracy, LocationPermissionStatus, LocationErrorCode, LocationErrorEvent, LocationPlugin, LocationReading, LocationClient } from "@elizaos/os-bridges"
+export { locationClient, locationPlugin }
+export type {
+  LocationAccuracy,
+  LocationClient,
+  LocationCoordinates,
+  LocationErrorCode,
+  LocationErrorEvent,
+  LocationGrant,
+  LocationGrantAccuracy,
+  LocationOptions,
+  LocationPermissionStatus,
+  LocationPlugin,
+  LocationReading,
+  LocationResult,
+  WatchLocationOptions,
+} from "@elizaos/os-bridges"
 
 export error NativeLocationRejected
+
+export interface LocationWatchMachineHandle {
+  readonly state: () => LocationWatch
+  readonly dispatch: (event: LocationWatchEvent) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown) => Promise<"accepted" | "refused">
+}
+
+export function createLocationWatchHandle(): LocationWatchMachineHandle {
+  const created = runSync(effect {
+    provide watchMachine() {
+      const m = try WatchMachine
+      return m
+    }
+  })
+  return {
+    state: () => runSync(created.get()),
+    dispatch: (event) => runPromise(created.send(event).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+    receive: (raw) => runPromise(created.receive(raw).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("NotAnEvent", () => Effect.succeed("refused" as const)),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+  }
+}
 
 export effect function readCurrentDeviceLocation(client: LocationClient, options?: LocationOptions) {
   const reading = try tryPromise(() => client.getCurrentPosition(options))
@@ -22,14 +81,190 @@ export effect function readCurrentDeviceLocation(client: LocationClient, options
     measuredAtMs: Math.floor(reading.coords.timestamp),
     fromCache: reading.source === "cached",
   }
-  if (!Number.isSafeInteger(fix.latitudeMillionths) || !Number.isSafeInteger(fix.longitudeMillionths) ||
-      !Number.isSafeInteger(fix.accuracyMm) || !Number.isSafeInteger(fix.measuredAtMs) ||
-      !Number.isSafeInteger(maxAgeMs) || !mayUseLocation(grant, fix, nowMs, maxAgeMs)) {
+  if (
+    !Number.isSafeInteger(fix.latitudeMillionths) ||
+    !Number.isSafeInteger(fix.longitudeMillionths) ||
+    !Number.isSafeInteger(fix.accuracyMm) ||
+    !Number.isSafeInteger(fix.measuredAtMs) ||
+    !Number.isSafeInteger(maxAgeMs) ||
+    !mayUseLocation(grant, fix, nowMs, maxAgeMs)
+  ) {
     throw new NativeLocationRejected()
   }
   return { ...reading, precise: reading.precise && grant === "PreciseLocation" }
 }
 
-import { locationPlugin } from "@elizaos/os-bridges"
+module node {
+  import type { LocationResult } from "@elizaos/os-bridges"
+
+  export function throwLocationInputError(message: string): never {
+    throw new Error(message)
+  }
+
+  export function browserGeolocation(): Geolocation | null {
+    const nav = (globalThis as { navigator?: { geolocation?: Geolocation } }).navigator
+    return nav?.geolocation ?? null
+  }
+
+  export function requestBrowserPosition(geo: Geolocation, geoOptions: PositionOptions): Promise<LocationResult> {
+    return new Promise((resolve, reject) => {
+      geo.getCurrentPosition(
+        (pos) => resolve({
+          coords: {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            altitude: pos.coords.altitude ?? undefined,
+            accuracy: pos.coords.accuracy,
+            altitudeAccuracy: pos.coords.altitudeAccuracy ?? undefined,
+            speed: pos.coords.speed ?? undefined,
+            heading: pos.coords.heading ?? undefined,
+            timestamp: pos.timestamp,
+          },
+          cached: false,
+        }),
+        (err) => reject(new Error(err.message || "Location error")),
+        geoOptions,
+      )
+    })
+  }
+}
+import { browserGeolocation, requestBrowserPosition, throwLocationInputError } from node
+
+export function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const r = 6_371_000
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return 2 * r * Math.asin(Math.sqrt(a))
+}
+
+export class LocationWeb implements LocationPlugin {
+  private readonly watches = new Map<string, number>()
+  private readonly locationListeners = new Set<(location: LocationResult) => void>()
+  private readonly errorListeners = new Set<(error: LocationErrorEvent) => void>()
+  private watchSeq = 0
+
+  constructor(private readonly geoOverride?: Geolocation | null) {}
+
+  private getGeo(): Geolocation {
+    const geo = this.geoOverride !== undefined ? this.geoOverride : browserGeolocation()
+    if (!geo) throwLocationInputError("Geolocation API is not available")
+    return geo
+  }
+
+  private normalizeOptions(options?: LocationOptions): PositionOptions {
+    const maxAge = options?.maxAge ?? 0
+    const timeout = options?.timeout ?? 10_000
+    if (!Number.isFinite(maxAge) || maxAge < 0) throwLocationInputError("maxAge must be a non-negative finite number")
+    if (!Number.isFinite(timeout) || timeout <= 0) throwLocationInputError("timeout must be a positive finite number")
+    const accuracy = options?.accuracy ?? "high"
+    return {
+      enableHighAccuracy: accuracy === "best" || accuracy === "high",
+      maximumAge: Math.trunc(maxAge),
+      timeout: Math.trunc(timeout),
+    }
+  }
+
+  async getCurrentPosition(options?: LocationOptions): Promise<LocationResult> {
+    return requestBrowserPosition(this.getGeo(), this.normalizeOptions(options))
+  }
+
+  async watchPosition(options?: WatchLocationOptions): Promise<{ watchId: string }> {
+    const minDistance = options?.minDistance
+    const minInterval = options?.minInterval
+    if (minDistance !== undefined && (!Number.isFinite(minDistance) || minDistance < 0)) {
+      throwLocationInputError("minDistance must be a non-negative finite number")
+    }
+    if (minInterval !== undefined && (!Number.isFinite(minInterval) || minInterval < 0)) {
+      throwLocationInputError("minInterval must be a non-negative finite number")
+    }
+    const geo = this.getGeo()
+    const geoOptions = this.normalizeOptions(options)
+    this.watchSeq += 1
+    const watchId = `web-watch-${this.watchSeq}`
+    let lastDelivered: { readonly latitude: number; readonly longitude: number; readonly timestamp: number } | null = null
+    const nativeId = geo.watchPosition(
+      (pos) => {
+        if (lastDelivered !== null) {
+          if (minInterval !== undefined && pos.timestamp - lastDelivered.timestamp < minInterval) return
+          if (
+            minDistance !== undefined &&
+            haversineDistanceMeters(lastDelivered.latitude, lastDelivered.longitude, pos.coords.latitude, pos.coords.longitude) < minDistance
+          ) return
+        }
+        lastDelivered = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          timestamp: pos.timestamp,
+        }
+        const result: LocationResult = {
+          coords: {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            timestamp: pos.timestamp,
+          },
+          cached: false,
+        }
+        for (const fn of this.locationListeners) fn(result)
+      },
+      (err) => {
+        const code: LocationErrorEvent["code"] =
+          err.code === 1
+            ? "PERMISSION_DENIED"
+            : err.code === 2
+              ? "POSITION_UNAVAILABLE"
+              : err.code === 3
+                ? "TIMEOUT"
+                : "UNKNOWN"
+        const event: LocationErrorEvent = { code, message: err.message || "Location watch error" }
+        for (const fn of this.errorListeners) fn(event)
+      },
+      geoOptions,
+    )
+    this.watches.set(watchId, nativeId)
+    return { watchId }
+  }
+
+  async clearWatch(options: { watchId: string }): Promise<void> {
+    const id = typeof options?.watchId === "string" ? options.watchId.trim() : ""
+    if (!id) throwLocationInputError("Missing watchId")
+    const nativeId = this.watches.get(id)
+    if (nativeId === undefined) return
+    this.watches.delete(id)
+    const geo = this.geoOverride !== undefined ? this.geoOverride : browserGeolocation()
+    geo?.clearWatch(nativeId)
+  }
+
+  async checkPermissions(): Promise<LocationPermissionStatus> {
+    return { location: "prompt" }
+  }
+
+  async requestPermissions(): Promise<LocationPermissionStatus> {
+    return { location: "prompt" }
+  }
+
+  addListener(eventName: "locationChange", listenerFunc: (location: LocationResult) => void): Promise<{ remove: () => Promise<void> }>
+  addListener(eventName: "error", listenerFunc: (error: LocationErrorEvent) => void): Promise<{ remove: () => Promise<void> }>
+  async addListener(
+    eventName: "locationChange" | "error",
+    listenerFunc: ((location: LocationResult) => void) | ((error: LocationErrorEvent) => void),
+  ): Promise<{ remove: () => Promise<void> }> {
+    if (eventName === "locationChange") {
+      const fn = listenerFunc as (location: LocationResult) => void
+      this.locationListeners.add(fn)
+      return { remove: async () => { this.locationListeners.delete(fn) } }
+    }
+    const fn = listenerFunc as (error: LocationErrorEvent) => void
+    this.errorListeners.add(fn)
+    return { remove: async () => { this.errorListeners.delete(fn) } }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    this.locationListeners.clear()
+    this.errorListeners.clear()
+  }
+}
 
 export const Location = locationPlugin()

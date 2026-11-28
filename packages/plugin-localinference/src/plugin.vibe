@@ -3,10 +3,20 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ModuleRefused, type AgentModule, type AgentPlugin, type LaunchDocument, type ModuleContext, type ModuleFactory } from "@elizaos/agent-host"
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
 import { FetchHttpClient } from "effect/http"
+import {
+  createLocalInferenceStatusProvider,
+  identifySpeakerAction,
+  manageTranscriptPrivacyAction,
+  redactTranscriptAction,
+  shareTranscriptAction,
+  startTranscriptionAction,
+  stopTranscriptionAction,
+} from "./actions.vibe"
 import { curatedModels, type Catalog } from "./catalog.vibe"
 import { EmbeddingRefused, embedText, embeddingsOwnedBy } from "./embeddings.vibe"
 import { InferenceEngine, type InstalledModel } from "./engine.vibe"
 import { openLocalModels, type LocalModelsApi } from "./models.vibe"
+import { LocalPiiRecognizerService } from "./pii.vibe"
 import { localInferenceRoutes } from "./routes.vibe"
 import { SpeechInputRefused, speakLocally, transcribeLocally } from "./speech.vibe"
 
@@ -78,7 +88,17 @@ export effect function localInferencePlugin(engine: InferenceEngine.Shape, host:
   }
   return {
     name: localInferencePluginName,
-    description: "Curated models on this device, local embeddings when the launch asks for them, and on-device speech",
+    description: "Curated models on this device, local embeddings when the launch asks for them, transcript privacy, local PII NER, and on-device speech",
+    services: [LocalPiiRecognizerService],
+    providers: [createLocalInferenceStatusProvider(models)],
+    actions: [
+      startTranscriptionAction,
+      stopTranscriptionAction,
+      identifySpeakerAction,
+      redactTranscriptAction,
+      shareTranscriptAction,
+      manageTranscriptPrivacyAction,
+    ],
     routes: localInferenceRoutes(models, engine),
     init: (_config, runtime) => registerHandlers(runtime, launch, models, engine),
     dispose: () => runPromise(models.close()),

@@ -1,0 +1,456 @@
+// spec/mcp/index.md, "Provider schema projections retain the meaning of omitted constraints in the prompt"; spec/mcp/workerLifecycle.md, "Story: Isolate untrusted MCP schema compilation and validation"
+import type { IAgentRuntime } from "@elizaos/core"
+import {
+  Machine as WorkerMachine,
+  machine as workerMachine,
+  type Event as WorkerEvent,
+  type SchemaWorkerState,
+} from "../gen/mcp__workerLifecycle.effect.vibe"
+import {
+  detectMcpModelProvider,
+  getMcpJsonSchemaBudgetError,
+  validateJsonSchema,
+} from "./protocol.vibe"
+import type { McpToolInputSchema } from "./types.vibe"
+
+export type McpJsonSchema = Readonly<Record<string, unknown>>
+
+export interface McpSchemaCompatibilityPolicy {
+  readonly applies: boolean
+  unsupportedFor(type: string | undefined): readonly string[]
+  describe(original: string | undefined, constraints: Readonly<Record<string, unknown>>): string
+}
+
+export interface StringConstraints {
+  readonly minLength?: number
+  readonly maxLength?: number
+  readonly pattern?: string
+  readonly format?: string
+  readonly enum?: readonly string[]
+}
+
+export interface NumberConstraints {
+  readonly minimum?: number
+  readonly maximum?: number
+  readonly exclusiveMinimum?: number
+  readonly exclusiveMaximum?: number
+  readonly multipleOf?: number
+}
+
+export interface ArrayConstraints {
+  readonly minItems?: number
+  readonly maxItems?: number
+  readonly uniqueItems?: boolean
+}
+
+export interface ObjectConstraints {
+  readonly minProperties?: number
+  readonly maxProperties?: number
+  readonly additionalProperties?: boolean
+}
+
+export type SchemaConstraints = StringConstraints | NumberConstraints | ArrayConstraints | ObjectConstraints
+export type ModelProvider = "openai" | "anthropic" | "google" | "openrouter"
+
+export interface ModelInfo {
+  readonly provider: ModelProvider
+  readonly modelId: string
+  readonly supportsStructuredOutputs?: boolean
+  readonly isReasoningModel?: boolean
+}
+
+export interface McpActionParameter {
+  readonly name: string
+  readonly description: string
+  readonly required?: boolean
+  readonly schema: Record<string, unknown>
+}
+
+export type McpInputSchema = McpToolInputSchema
+
+export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
+  const detected = detectMcpModelProvider(runtime as unknown as { modelProvider?: unknown; model?: unknown; character?: { settings?: Record<string, unknown> } })
+  return {
+    ...detected,
+    provider: detected.provider === "unknown" || detected.provider === "bitrouter" ? "openrouter" : detected.provider,
+  }
+}
+
+export interface McpMachineHandle<S, E> {
+  readonly state: () => S
+  readonly dispatch: (event: E) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown) => Promise<"accepted" | "refused">
+}
+
+export function wrapMcpMachineHandle<S, E>(created: {
+  readonly get: () => S!never!never
+  readonly send: (event: E) => unknown!({ readonly _tag: "Rejected" })!never
+  readonly receive: (raw: unknown) => unknown!({ readonly _tag: "NotAnEvent" | "Rejected" })!never
+}): McpMachineHandle<S, E> {
+  return {
+    state: () => runSync(created.get()),
+    dispatch: (event) => runPromise(created.send(event).pipe(Effect.as("accepted" as const), Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)))),
+    receive: (raw) => runPromise(created.receive(raw).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("NotAnEvent", () => Effect.succeed("refused" as const)),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+  }
+}
+
+export type SchemaWorkerMachineHandle = McpMachineHandle<SchemaWorkerState, WorkerEvent>
+
+export function createSchemaWorkerHandle(): SchemaWorkerMachineHandle {
+  const created = runSync(effect {
+    provide workerMachine() {
+      const m = try WorkerMachine
+      return m
+    }
+  })
+  return wrapMcpMachineHandle(created)
+}
+
+export effect function evaluateSchemaWithWorkerLifecycle(
+  data: unknown,
+  schema: Readonly<Record<string, unknown>>,
+) {
+  provide workerMachine() {
+    const worker = try WorkerMachine
+    const budgetErr = try Effect.try(() => getMcpJsonSchemaBudgetError(schema))
+    if (budgetErr) {
+      try worker.send({ type: "failWorker" })
+      try worker.send({ type: "settleWorker" })
+      return { success: false as const, error: budgetErr }
+    }
+    try worker.send({ type: "readyWorker" })
+    try worker.send({ type: "submitSchema" })
+    const evaluated = try Effect.try(() => validateJsonSchema(data, schema))
+    try worker.send({ type: "evaluateSchema", valid: evaluated.success })
+    try worker.send({ type: "settleWorker" })
+    return evaluated
+  }
+}
+
+module node {
+  import { ElizaError, type IAgentRuntime } from "@elizaos/core"
+  import { assertMcpJsonSchemaBudget } from "./protocol.vibe"
+  import type { JsonSchemaProperty, McpToolInputSchema } from "./types.vibe"
+  import {
+    detectModelProvider,
+    type McpActionParameter,
+    type McpJsonSchema,
+    type McpSchemaCompatibilityPolicy,
+    type ModelInfo,
+    type SchemaConstraints,
+  } from "./compatibility.vibe"
+
+  const CONSTRAINT_KEYS = [
+    "minLength", "maxLength", "pattern", "format", "enum",
+    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+    "minItems", "maxItems", "uniqueItems",
+    "minProperties", "maxProperties", "additionalProperties",
+  ] as const
+
+  function asSchema(value: unknown): McpJsonSchema | null {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as McpJsonSchema) : null
+  }
+
+  function policyTypes(value: unknown): readonly (string | undefined)[] {
+    if (typeof value === "string") return [value]
+    if (!Array.isArray(value)) return [undefined]
+    const types = Array.from(new Set(value.filter((m): m is string => typeof m === "string"))).sort()
+    return types.length > 0 ? types : [undefined]
+  }
+
+  function rewriteSchema(schema: McpJsonSchema, policy: McpSchemaCompatibilityPolicy): Record<string, unknown> {
+    const output: Record<string, unknown> = { ...schema }
+    const unsupported = Array.from(new Set(policyTypes(schema.type).flatMap((t) => policy.unsupportedFor(t))))
+    const constraints: Record<string, unknown> = {}
+    for (const key of CONSTRAINT_KEYS) {
+      if (key === "additionalProperties" && !unsupported.includes(key)) continue
+      if (schema[key] !== undefined) constraints[key] = schema[key]
+    }
+    for (const key of unsupported) delete output[key]
+    const items = asSchema(schema.items)
+    if (items) output.items = rewriteSchema(items, policy)
+    const properties = asSchema(schema.properties)
+    if (properties) {
+      output.properties = Object.fromEntries(
+        Object.entries(properties).map(([k, v]) => {
+          const child = asSchema(v)
+          return [k, child ? rewriteSchema(child, policy) : v]
+        }),
+      )
+    }
+    for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+      const variants = schema[key]
+      if (Array.isArray(variants)) {
+        output[key] = variants.map((v) => {
+          const child = asSchema(v)
+          return child ? rewriteSchema(child, policy) : v
+        })
+      }
+    }
+    if (Object.keys(constraints).length > 0) {
+      output.description = policy.describe(typeof schema.description === "string" ? schema.description : undefined, constraints)
+    }
+    return output
+  }
+
+  export function transformMcpToolSchema<TSchema extends McpJsonSchema>(
+    schema: TSchema,
+    policy: McpSchemaCompatibilityPolicy,
+  ): TSchema {
+    assertMcpJsonSchemaBudget(schema)
+    if (!policy.applies) return schema
+    const rewritten = rewriteSchema(schema, policy)
+    assertMcpJsonSchemaBudget(rewritten)
+    return rewritten as TSchema
+  }
+
+  export abstract class McpToolCompatibility {
+    protected readonly modelInfo: ModelInfo
+    constructor(modelInfo: ModelInfo) {
+      this.modelInfo = modelInfo
+    }
+    abstract shouldApply(): boolean
+    transformToolSchema<TSchema extends McpJsonSchema>(toolSchema: TSchema): TSchema {
+      return transformMcpToolSchema(toolSchema, {
+        applies: this.shouldApply(),
+        unsupportedFor: (t) => {
+          if (t === "string") return this.getUnsupportedStringProperties()
+          if (t === "number" || t === "integer") return this.getUnsupportedNumberProperties()
+          if (t === "array") return this.getUnsupportedArrayProperties()
+          if (t === "object") return this.getUnsupportedObjectProperties()
+          return []
+        },
+        describe: (original, constraints) => this.mergeDescription(original, constraints as SchemaConstraints),
+      })
+    }
+    protected mergeDescription(original: string | undefined, constraints: SchemaConstraints): string {
+      const serialized = JSON.stringify(constraints)
+      return original ? `${original}\n${serialized}` : serialized
+    }
+    protected abstract getUnsupportedStringProperties(): readonly string[]
+    protected abstract getUnsupportedNumberProperties(): readonly string[]
+    protected abstract getUnsupportedArrayProperties(): readonly string[]
+    protected abstract getUnsupportedObjectProperties(): readonly string[]
+  }
+
+  export class AnthropicMcpCompatibility extends McpToolCompatibility {
+    shouldApply(): boolean { return this.modelInfo.provider === "anthropic" }
+    protected getUnsupportedStringProperties(): readonly string[] { return [] }
+    protected getUnsupportedNumberProperties(): readonly string[] { return [] }
+    protected getUnsupportedArrayProperties(): readonly string[] { return [] }
+    protected getUnsupportedObjectProperties(): readonly string[] { return ["additionalProperties"] }
+    protected override mergeDescription(original: string | undefined, constraints: SchemaConstraints): string {
+      const c = constraints as { additionalProperties?: boolean; format?: string; pattern?: string }
+      const hints: string[] = []
+      if (c.additionalProperties === false) hints.push("Only use the specified properties")
+      if (c.format === "date-time") hints.push("Use ISO 8601 date-time format")
+      if (c.pattern) hints.push(`Must match the pattern: ${c.pattern}`)
+      const joined = hints.join(". ")
+      return original && joined ? `${original}. ${joined}` : joined || (original ?? "")
+    }
+  }
+
+  export class GoogleMcpCompatibility extends McpToolCompatibility {
+    shouldApply(): boolean { return this.modelInfo.provider === "google" }
+    protected getUnsupportedStringProperties(): readonly string[] { return ["minLength", "maxLength", "pattern", "format"] }
+    protected getUnsupportedNumberProperties(): readonly string[] { return ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"] }
+    protected getUnsupportedArrayProperties(): readonly string[] { return ["minItems", "maxItems", "uniqueItems"] }
+    protected getUnsupportedObjectProperties(): readonly string[] { return ["minProperties", "maxProperties", "additionalProperties"] }
+    protected override mergeDescription(original: string | undefined, constraints: SchemaConstraints): string {
+      const c = constraints as Record<string, unknown>
+      const rules: string[] = []
+      if (c.minLength !== undefined) rules.push(`text must be at least ${String(c.minLength)} characters long`)
+      if (c.maxLength !== undefined) rules.push(`text must be no more than ${String(c.maxLength)} characters long`)
+      if (c.minimum !== undefined) rules.push(`number must be at least ${String(c.minimum)}`)
+      if (c.maximum !== undefined) rules.push(`number must be no more than ${String(c.maximum)}`)
+      if (c.exclusiveMinimum !== undefined) rules.push(`number must be greater than ${String(c.exclusiveMinimum)}`)
+      if (c.exclusiveMaximum !== undefined) rules.push(`number must be less than ${String(c.exclusiveMaximum)}`)
+      if (c.multipleOf !== undefined) rules.push(`number must be a multiple of ${String(c.multipleOf)}`)
+      if (c.format === "email") rules.push("must be a valid email address")
+      if (c.format === "uri" || c.format === "url") rules.push("must be a valid URL starting with http:// or https://")
+      if (c.format === "uuid") rules.push("must be a valid UUID in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+      if (c.format === "date-time") rules.push("must be a valid ISO 8601 date-time (e.g., 2023-12-25T10:30:00Z)")
+      if (typeof c.pattern === "string") rules.push(`must match the regular expression pattern: ${c.pattern}`)
+      if (Array.isArray(c.enum)) rules.push(`must be exactly one of these values: ${c.enum.join(", ")}`)
+      if (c.minItems !== undefined) rules.push(`array must contain at least ${String(c.minItems)} items`)
+      if (c.maxItems !== undefined) rules.push(`array must contain no more than ${String(c.maxItems)} items`)
+      if (c.uniqueItems === true) rules.push("array items must all be unique (no duplicates)")
+      if (c.minProperties !== undefined) rules.push(`object must have at least ${String(c.minProperties)} properties`)
+      if (c.maxProperties !== undefined) rules.push(`object must have no more than ${String(c.maxProperties)} properties`)
+      if (c.additionalProperties === false) rules.push("object must only contain the specified properties, no additional properties allowed")
+      const text = rules.join("; ")
+      return original && text ? `${original}\n\nConstraints: ${text}` : text ? `Constraints: ${text}` : (original ?? "")
+    }
+  }
+
+  export class OpenAIMcpCompatibility extends McpToolCompatibility {
+    shouldApply(): boolean {
+      return this.modelInfo.provider === "openai" && (!this.modelInfo.supportsStructuredOutputs || this.modelInfo.isReasoningModel === true)
+    }
+    protected getUnsupportedStringProperties(): readonly string[] {
+      const base = ["format"]
+      return this.modelInfo.isReasoningModel || this.modelInfo.modelId.includes("gpt-3.5") || this.modelInfo.modelId.includes("davinci")
+        ? [...base, "pattern"]
+        : base
+    }
+    protected getUnsupportedNumberProperties(): readonly string[] {
+      return this.modelInfo.isReasoningModel ? ["exclusiveMinimum", "exclusiveMaximum", "multipleOf"] : []
+    }
+    protected getUnsupportedArrayProperties(): readonly string[] {
+      return this.modelInfo.isReasoningModel ? ["uniqueItems"] : []
+    }
+    protected getUnsupportedObjectProperties(): readonly string[] {
+      return ["minProperties", "maxProperties"]
+    }
+  }
+
+  export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
+    shouldApply(): boolean { return this.modelInfo.provider === "openai" && this.modelInfo.isReasoningModel === true }
+    protected getUnsupportedStringProperties(): readonly string[] { return ["format", "pattern", "minLength", "maxLength"] }
+    protected getUnsupportedNumberProperties(): readonly string[] { return ["exclusiveMinimum", "exclusiveMaximum", "multipleOf"] }
+    protected getUnsupportedArrayProperties(): readonly string[] { return ["uniqueItems", "minItems", "maxItems"] }
+    protected getUnsupportedObjectProperties(): readonly string[] { return ["minProperties", "maxProperties", "additionalProperties"] }
+    protected override mergeDescription(original: string | undefined, constraints: SchemaConstraints): string {
+      const text = Object.entries(constraints).map(([k, v]) => `${k}: ${String(v)}`).join(", ")
+      return original ? `${original}\n\nIMPORTANT: ${text}` : `IMPORTANT: ${text}`
+    }
+  }
+
+  export function createMcpToolCompatibilitySync(runtime: IAgentRuntime): McpToolCompatibility | null {
+    const info = detectModelProvider(runtime)
+    if (info.provider === "anthropic") return new AnthropicMcpCompatibility(info)
+    if (info.provider === "google") return new GoogleMcpCompatibility(info)
+    if (info.provider === "openai") {
+      return info.isReasoningModel ? new OpenAIReasoningMcpCompatibility(info) : new OpenAIMcpCompatibility(info)
+    }
+    return null
+  }
+
+  function isNullable(prop?: JsonSchemaProperty): boolean {
+    if (!prop) return false
+    const explicitlyNullable = prop.nullable === true
+    if (prop.type !== undefined) {
+      if (Array.isArray(prop.type)) {
+        if (!prop.type.includes("null")) return false
+      } else if (prop.type !== "null" && !explicitlyNullable) {
+        return false
+      }
+    }
+    if (prop.enum && !prop.enum.some((v) => v === null)) return false
+    if (prop.const !== undefined && prop.const !== null) return false
+    if (prop.allOf && !prop.allOf.every((v) => isNullable(v))) return false
+    if (prop.oneOf && prop.oneOf.filter((v) => isNullable(v)).length !== 1) return false
+    if (prop.anyOf && !prop.anyOf.some((v) => isNullable(v))) return false
+    return true
+  }
+
+  function mapType(t: string): string {
+    return t === "integer" ? "number" : (["string", "number", "boolean", "array", "null"].includes(t) ? t : "object")
+  }
+
+  export function convertJsonSchemaToActionParams(schema?: McpToolInputSchema): McpActionParameter[] | undefined {
+    const properties = schema?.properties
+    if (!properties || Object.keys(properties).length === 0) return undefined
+    const required = new Set(schema?.required ?? [])
+    return Object.entries(properties)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, prop]) => {
+        const types = prop.type !== undefined ? [prop.type].flat().filter((t) => t !== "null").map(mapType) : ["string", "number", "boolean", "object", "array"]
+        const uniqueTypes = [...new Set(types)]
+        const descParts: string[] = []
+        if (prop.description) descParts.push(prop.description)
+        if (prop.enum?.length) descParts.push(`Allowed: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`)
+        if (prop.const !== undefined) descParts.push(`Const: ${JSON.stringify(prop.const)}`)
+        if (prop.format) descParts.push(`Format: ${prop.format}`)
+        if (prop.pattern) descParts.push(`Pattern: ${prop.pattern}`)
+        if (prop.default !== undefined) descParts.push(`Default: ${JSON.stringify(prop.default)}`)
+        const paramSchema: Record<string, unknown> =
+          prop.const !== undefined
+            ? { type: prop.const === null ? "null" : typeof prop.const, enum: [prop.const], enumValues: [prop.const] }
+            : prop.enum !== undefined
+              ? { type: uniqueTypes[0] ?? "string", enum: [...prop.enum], enumValues: [...prop.enum] }
+              : uniqueTypes.length === 1
+                ? { type: uniqueTypes[0], ...(prop.default !== undefined ? { default: prop.default } : {}) }
+                : { anyOf: uniqueTypes.map((type) => ({ type })) }
+        return {
+          name,
+          description: descParts.join(". ") || `(${uniqueTypes.join(" | ")})`,
+          required: required.has(name),
+          schema: paramSchema,
+        }
+      })
+  }
+
+  export function validateParamsAgainstSchema(params: Record<string, unknown>, schema?: McpToolInputSchema): string[] {
+    if (!schema) return []
+    const errors: string[] = []
+    const properties = schema.properties
+    const required = new Set(schema.required ?? [])
+    for (const field of required) {
+      const val = params[field]
+      const prop = properties?.[field]
+      if (val === undefined || (val === null && !isNullable(prop))) {
+        errors.push(`Missing required parameter: ${field}`)
+      }
+    }
+    if (!properties) return errors
+    for (const [name, value] of Object.entries(params)) {
+      const prop = properties[name]
+      if (!prop || value === undefined) continue
+      if (value === null) {
+        if (!required.has(name) && !isNullable(prop)) errors.push(`Parameter '${name}' does not accept null`)
+        continue
+      }
+      if (prop.const !== undefined && value !== prop.const) {
+        errors.push(`Parameter '${name}' must be ${JSON.stringify(prop.const)}`)
+        continue
+      }
+      if (prop.enum !== undefined && !prop.enum.includes(value)) {
+        errors.push(`Parameter '${name}' must be one of: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`)
+        continue
+      }
+      const allowed = prop.type !== undefined ? [...new Set([prop.type].flat().filter((t) => t !== "null").map(mapType))] : ["string", "number", "boolean", "object", "array"]
+      const actual = Array.isArray(value) ? "array" : typeof value
+      if (!allowed.includes(actual)) {
+        errors.push(`Parameter '${name}' expected ${allowed.join(" | ")}, got ${actual}`)
+      }
+      const requiresInt = Array.isArray(prop.type) ? prop.type.includes("integer") && !prop.type.includes("number") : prop.type === "integer"
+      if (requiresInt && typeof value === "number" && !Number.isInteger(value)) {
+        errors.push(`Parameter '${name}' expected integer, got ${value}`)
+      }
+    }
+    return errors
+  }
+
+  export function rejectUnsupportedPin(path: string): never {
+    throw new ElizaError(`MCP parameter '${path}' has unsupported pinned constraints`, { code: "MCP_PINNED_SCHEMA_UNSUPPORTED", context: { path } })
+  }
+}
+
+import {
+  AnthropicMcpCompatibility,
+  GoogleMcpCompatibility,
+  McpToolCompatibility,
+  OpenAIMcpCompatibility,
+  OpenAIReasoningMcpCompatibility,
+  convertJsonSchemaToActionParams,
+  createMcpToolCompatibilitySync,
+  transformMcpToolSchema,
+  validateParamsAgainstSchema,
+} from node
+
+export {
+  AnthropicMcpCompatibility,
+  GoogleMcpCompatibility,
+  McpToolCompatibility,
+  OpenAIMcpCompatibility,
+  OpenAIReasoningMcpCompatibility,
+  convertJsonSchemaToActionParams,
+  createMcpToolCompatibilitySync,
+  transformMcpToolSchema,
+  validateParamsAgainstSchema,
+}

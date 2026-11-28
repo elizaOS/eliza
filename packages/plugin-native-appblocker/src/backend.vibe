@@ -1,0 +1,88 @@
+// spec/nativeAppblocker/index.md, "Story: Block only the apps I selected for a chosen interval"
+import type {
+  AppBlockerPermissionResult,
+  AppBlockerPlugin,
+  AppBlockerStatus,
+  BlockAppsOptions,
+  BlockAppsResult,
+  InstalledApp,
+  SelectAppsResult,
+  UnblockAppsResult,
+} from "./native-contract.vibe"
+
+export interface BackendAppBlockerStatus {
+  available: boolean
+  active: boolean
+  platform: string
+  engine: "family-controls" | "usage-stats-overlay" | "none"
+  blockedCount: number
+  blockedPackageNames: string[]
+  endsAt: string | null
+  permissionStatus: "granted" | "denied" | "not-determined" | "not-applicable"
+  reason?: string
+}
+
+export interface BackendAppBlockerPermissionResult {
+  status: "granted" | "denied" | "not-determined" | "not-applicable"
+  canRequest: boolean
+  reason?: string
+}
+
+export interface NativeAppBlockerBackend {
+  [key: string]: unknown
+  checkPermissions(): Promise<BackendAppBlockerPermissionResult>
+  requestPermissions(): Promise<BackendAppBlockerPermissionResult>
+  getInstalledApps(): Promise<{ apps: InstalledApp[] }>
+  selectApps(): Promise<SelectAppsResult>
+  blockApps(options: BlockAppsOptions): Promise<BlockAppsResult>
+  unblockApps(): Promise<UnblockAppsResult>
+  getStatus(): Promise<BackendAppBlockerStatus>
+}
+
+function toBackendStatus(status: AppBlockerStatus): BackendAppBlockerStatus {
+  return {
+    available: status.available,
+    active: status.active,
+    platform: status.platform,
+    engine: status.engine,
+    blockedCount: status.blockedCount,
+    blockedPackageNames: status.blockedPackageNames,
+    endsAt: status.endsAt,
+    permissionStatus: status.permissionStatus,
+    reason: status.reason,
+  }
+}
+
+function toBackendPermission(permission: AppBlockerPermissionResult): BackendAppBlockerPermissionResult {
+  return {
+    status: permission.status,
+    canRequest: permission.canRequest,
+    reason: permission.reason,
+  }
+}
+
+export function createNativeAppBlockerBackend(plugin: AppBlockerPlugin): NativeAppBlockerBackend {
+  return {
+    async checkPermissions() {
+      return toBackendPermission(await plugin.checkPermissions())
+    },
+    async requestPermissions() {
+      return toBackendPermission(await plugin.requestPermissions())
+    },
+    async getInstalledApps() {
+      return await plugin.getInstalledApps()
+    },
+    async selectApps() {
+      return await plugin.selectApps()
+    },
+    async blockApps(options) {
+      return await plugin.blockApps(options)
+    },
+    async unblockApps() {
+      return await plugin.unblockApps()
+    },
+    async getStatus() {
+      return toBackendStatus(await plugin.getStatus())
+    },
+  }
+}

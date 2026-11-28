@@ -1,0 +1,219 @@
+// spec/reminders/index.md, "Story: Preserve a reminder and its escalation policy"; spec/reminders/migration.md, "Story: Copy prior reminder tables once without losing or replaying owner edits"
+import { assert, it } from "@effect/vitest"
+import * as TestClock from "effect/testing/TestClock"
+import type { IAgentRuntime } from "@elizaos/core"
+import {
+  MIGRATED_REMINDER_TABLES,
+  ReminderRecords,
+  RemindersMigrationService,
+  createSqliteReminderRecordsLayer,
+  importReminder,
+  migrateReminderTables,
+  openSqliteRemindersStore,
+  overdueReminders,
+  remindersDbSchema,
+  remindersPlugin,
+  type CarveOutDatabase,
+  type SqliteCarveOutHandle,
+} from "../src/index.vibe"
+
+module node {
+  import fs from "node:fs"
+  import os from "node:os"
+  import path from "node:path"
+
+  /** @throws {Error} */
+  export function makeTempDbPath(): { readonly dir: string; readonly dbPath: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-reminders-"))
+    return { dir, dbPath: path.join(dir, "reminders.sqlite") }
+  }
+
+  /** @throws {Error} */
+  export function removeTempDir(dir: string): void {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+import { makeTempDbPath, removeTempDir } from node
+
+function seedAndVerifyCarveOut(store: SqliteCarveOutHandle): {
+  readonly initialMissing: string[]
+  readonly firstRun: Array<{ table: string; outcome: string }>
+  readonly secondRun: Array<{ table: string; outcome: string }>
+  readonly remainingPlans: number
+  readonly untouchedPrior: number
+} {
+  const initialMissing = store.migrateAll().map((r) => r.outcome)
+  store.db.exec(`
+    CREATE TABLE legacy_life_reminder_plans (
+      id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, owner_type TEXT NOT NULL, owner_id TEXT NOT NULL,
+      steps_json TEXT NOT NULL, mute_policy_json TEXT NOT NULL, quiet_hours_json TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    INSERT INTO legacy_life_reminder_plans VALUES
+      ('plan-1', 'agent-1', 'owner', 'owner-1', '[]', '{}', '{}', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+    CREATE TABLE legacy_life_escalation_states (
+      id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, reason TEXT NOT NULL, text TEXT NOT NULL,
+      current_step INTEGER NOT NULL, channels_sent_json TEXT NOT NULL, started_at TEXT NOT NULL,
+      last_sent_at TEXT NOT NULL, resolved INTEGER NOT NULL, resolved_at TEXT, metadata_json TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    INSERT INTO legacy_life_escalation_states VALUES
+      ('esc-prior', 'agent-1', 'missed', 'ping', 1, '[]', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 0, NULL, '{}', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+  `)
+  store.db
+    .prepare(
+      `INSERT INTO life_escalation_states VALUES ('esc-live', 'agent-1', 'live', 'stay', 0, '[]', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z', 0, NULL, '{}', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z')`,
+    )
+    .run()
+
+  const firstRun = store.migrateAll()
+  store.db.exec("DELETE FROM life_reminder_plans")
+  const secondRun = store.migrateAll()
+  const remainingPlans = (store.db.prepare("SELECT COUNT(*) AS c FROM life_reminder_plans").get() as { c: number }).c
+  const untouchedPrior = (
+    store.db.prepare("SELECT COUNT(*) AS c FROM legacy_life_reminder_plans").get() as { c: number }
+  ).c
+  return { initialMissing, firstRun, secondRun, remainingPlans, untouchedPrior }
+}
+
+it.effect(
+  `Import reminders idempotently per owner and surface overdue escalations via real file-backed SQLite (spec/reminders/index.md, "Story: Preserve a reminder and its escalation policy")`,
+  effect () => {
+    const { dir, dbPath } = try Effect.try(() => makeTempDbPath())
+    const store = openSqliteRemindersStore(dbPath)
+    const layer = Layer.succeed(ReminderRecords, createSqliteReminderRecordsLayer(store))
+    const row = {
+      ownerId: "owner-file",
+      reminderId: "rem-file-1",
+      scheduledAt: 100,
+      escalationAt: 200,
+      deliveryStatus: "ReminderPending" as const,
+      attempt: 0,
+    }
+    provide layer {
+      const inserted = try importReminder("owner-file", row)
+      const beforeDeadline = try overdueReminders("owner-file")
+      try TestClock.adjust("500 millis")
+      const overdue = try overdueReminders("owner-file")
+      assert.strictEqual(inserted, true)
+      assert.deepStrictEqual(beforeDeadline, [])
+      assert.deepStrictEqual(
+        overdue.map((r) => r.reminderId),
+        ["rem-file-1"],
+      )
+    }
+    store.close()
+    try Effect.try(() => removeTempDir(dir))
+  },
+)
+
+it.effect(
+  `Non-destructive SQLite carve-out copies prior reminder rows once, preserves target-non-empty, and never replays deleted rows (spec/reminders/migration.md, "Story: Copy prior reminder tables once without losing or replaying owner edits")`,
+  effect () => {
+    const store = openSqliteRemindersStore(":memory:")
+    const carveOut = seedAndVerifyCarveOut(store)
+    assert.deepStrictEqual(carveOut.initialMissing, ["source-missing", "source-missing", "source-missing"])
+    assert.deepStrictEqual(carveOut.firstRun, [
+      { table: "life_reminder_plans", outcome: "copied" },
+      { table: "life_reminder_attempts", outcome: "source-missing" },
+      { table: "life_escalation_states", outcome: "target-non-empty" },
+    ])
+    assert.deepStrictEqual(carveOut.secondRun, [
+      { table: "life_reminder_plans", outcome: "already-migrated" },
+      { table: "life_reminder_attempts", outcome: "source-missing" },
+      { table: "life_escalation_states", outcome: "already-migrated" },
+    ])
+    assert.strictEqual(carveOut.remainingPlans, 0)
+    assert.strictEqual(carveOut.untouchedPrior, 1)
+
+    const layer = Layer.succeed(ReminderRecords, createSqliteReminderRecordsLayer(store))
+    const row = {
+      ownerId: "owner-1",
+      reminderId: "rem-1",
+      scheduledAt: 100,
+      escalationAt: 200,
+      deliveryStatus: "ReminderPending" as const,
+      attempt: 0,
+    }
+    const dismissedRow = {
+      ownerId: "owner-1",
+      reminderId: "rem-2",
+      scheduledAt: 100,
+      escalationAt: 200,
+      deliveryStatus: "ReminderDismissed" as const,
+      attempt: 1,
+    }
+    provide layer {
+      const insertedFirst = try importReminder("owner-1", row)
+      const insertedDuplicate = try importReminder("owner-1", row)
+      const insertedWrongOwner = try importReminder("owner-2", row)
+      try importReminder("owner-1", dismissedRow)
+      try TestClock.adjust("500 millis")
+      const overdue = try overdueReminders("owner-1")
+      assert.strictEqual(insertedFirst, true)
+      assert.strictEqual(insertedDuplicate, false)
+      assert.strictEqual(insertedWrongOwner, false)
+      assert.deepStrictEqual(
+        overdue.map((r) => r.reminderId),
+        ["rem-1"],
+      )
+    }
+    store.close()
+    assert.strictEqual(Object.keys(remindersDbSchema).length, MIGRATED_REMINDER_TABLES.length)
+    assert.strictEqual(remindersPlugin.name, "@elizaos/plugin-reminders")
+  },
+)
+
+it.effect(
+  `RemindersMigrationService runs carve-out SQL executor transactions cleanly (spec/reminders/migration.md, "Migration copies only into an empty target, records a durable marker, and never alters the source")`,
+  effect () => {
+    const markers = new Set<string>()
+    const sourceTables = new Set<string>(["life_reminder_plans"])
+    const targetCounts = new Map<string, number>([
+      ["life_reminder_plans", 0],
+      ["life_reminder_attempts", 0],
+      ["life_escalation_states", 0],
+    ])
+    const execute = async (sql: string): Promise<Array<Record<string, unknown>>> => {
+      if (sql.includes('FROM app_reminders."reminders_migration_state"')) {
+        const match = sql.match(/WHERE table_name = '([^']+)'/)
+        return [{ done: match ? markers.has(match[1]) : false }]
+      }
+      if (sql.includes('INSERT INTO app_reminders."reminders_migration_state"')) {
+        const match = sql.match(/VALUES \('([^']+)'\)/)
+        if (match) markers.add(match[1])
+        return []
+      }
+      if (sql.includes("to_regclass('app_lifeops.")) {
+        const match = sql.match(/app_lifeops\.([^']+)'/)
+        return [{ present: match ? sourceTables.has(match[1]) : false }]
+      }
+      if (sql.includes("NOT EXISTS (SELECT 1 FROM app_reminders.")) {
+        const match = sql.match(/app_reminders\."([^"]+)"/)
+        return [{ empty: match ? (targetCounts.get(match[1]) ?? 0) === 0 : true }]
+      }
+      if (sql.includes("SELECT COUNT(*) AS count FROM app_lifeops.")) {
+        return [{ count: 2 }]
+      }
+      if (sql.includes("INSERT INTO app_reminders.")) {
+        const match = sql.match(/INSERT INTO app_reminders\."([^"]+)"/)
+        if (match) targetCounts.set(match[1], 2)
+        return []
+      }
+      if (sql.includes("SELECT COUNT(*) AS missing")) {
+        return [{ missing: 0 }]
+      }
+      return []
+    }
+    const db: CarveOutDatabase = { execute }
+    const first = try Effect.promise(() => migrateReminderTables(db))
+    const second = try Effect.promise(() => migrateReminderTables(db))
+    assert.strictEqual(first[0].outcome, "copied")
+    assert.strictEqual(second[0].outcome, "already-migrated")
+
+    const fakeRuntime = { db: { execute } } as unknown as IAgentRuntime
+    const svc = try Effect.promise(() => RemindersMigrationService.start(fakeRuntime))
+    assert.strictEqual(svc.getResults()[0].outcome, "already-migrated")
+    try Effect.promise(() => svc.stop())
+  },
+)

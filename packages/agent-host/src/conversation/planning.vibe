@@ -768,6 +768,59 @@ function plannedToolRunner(input: PlanInput, named: ReadonlyMap<string, Action>,
   }
 }
 
+function plannerReasker(
+  input: PlanInput,
+  tools: ToolDefinition[],
+  conversation: readonly ChatMessage[],
+  offeredNames: ReadonlySet<string>,
+  settled: ReturnType<typeof settleReply>,
+  reply: string,
+  failedToTheModel: readonly string[],
+  ownerSaid: string,
+): (points: readonly Point[], notes: readonly string[]) => Promise<Reasked> {
+  const { runtime, signal } = input
+  return async (points: readonly Point[], notes: readonly string[]): Promise<Reasked> => {
+    try {
+      const said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
+        system: input.system, reasoning: "off", temperature: plannerTemperature, signal, providerOptions: agentCache(runtime, "planner"),
+        messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...points.map(({ note }, at) => `(${at + 1}) ${note}`), ...notes].join("\n") }],
+        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }), ...(points.length === 0 ? {} : { responseSchema: settleSchema(points) }),
+      })), signal)
+      const answered = answerOf(said)
+      const json = settledJson(answered.text)
+      if (json === "Malformed") return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
+      const forced = json === undefined ? undefined : settledArguments(json)
+      const written = forced === undefined ? reportsOf(answered.text, points.length) : undefined
+      const replied = forced === undefined ? written?.said : forced.reply === undefined ? undefined : reportsOf(forced.reply, points.length).said
+      if (replied === undefined) return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
+      const read = declaredOf(writtenCallFree(replied).prose)
+      const declared = forced === undefined || read.declared === "DeclaredPromise" ? read.declared : "DeclaredAnswer"
+      const answer = read.text
+      const prose = withoutOfferedCalls(answer, offeredNames)
+      const revised = settled.compose(prose)
+      const hostNotes = [...input.hostNotes, ...points.map(({ note }) => note), ...notes]
+      const draft = draftOf(answer, 0, offeredNames, true, declared, hostNotes)
+      const sameAsFirst = revised.trim() === reply.trim()
+      const spoken = revised !== settled.compose(undefined)
+      const quotes = forced === undefined ? written?.quotes ?? new Map<number, readonly string[]>() : forced.told
+      const echoes = (point: number, sentence: string) =>
+        holdsHostText(sentence, hostNotes) || echoesHostText(sentence, [...input.hostNotes, answerAgain, reportNote, ...points.map(({ note }) => hostPartOf(note)), ...points.flatMap(({ toTheModel }) => toTheModel), ...failedToTheModel], ownerSaid)
+      return {
+        revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
+        stoodBy: spoken && standsBy(draft, sameAsFirst),
+        echoes: echoesHostText(prose, failedToTheModel, ownerSaid),
+        reports: reportsEach(new Map([...quotes].filter(([point]) => point >= 1 && point <= points.length).map(([point, told]) => [point, told.map((quote) => {
+          const read = reportIn(prose, quote)
+          return read.span === "OneSentence" && echoes(point, read.sentence) ? { span: "Fragment" as const, sentence: "" } : read
+        })]))),
+      }
+    } catch (error: unknown) {
+      if (signal.aborted) throw error
+      return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
+    }
+  }
+}
+
 export async function planTurn(input: PlanInput, actions: readonly Action[]): Promise<PlannedTurn> {
   const { runtime, message, signal } = input
   signal.throwIfAborted()
@@ -993,45 +1046,6 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
   })))
   const reply = settled.compose(firstProse)
   const firstEchoes = echoesHostText(firstProse ?? "", failedToTheModel, ownerSaid)
-  const reask = async (points: readonly Point[], notes: readonly string[]): Promise<Reasked> => {
-    try {
-      const said = await sentAtMostTwice((bind) => runtime.useModel(ModelType.TEXT_LARGE, bind({
-        system: input.system, reasoning: "off", temperature: plannerTemperature, signal, providerOptions: agentCache(runtime, "planner"),
-        messages: [...conversation, ...(reply.trim() ? [{ role: "assistant" as const, content: reply }] : []), { role: "user" as const, content: [answerAgain, ...points.map(({ note }, at) => `(${at + 1}) ${note}`), ...notes].join("\n") }],
-        ...(tools.length === 0 ? {} : { tools, toolChoice: "none" as const }), ...(points.length === 0 ? {} : { responseSchema: settleSchema(points) }),
-      })), signal)
-      const answered = answerOf(said)
-      const json = settledJson(answered.text)
-      if (json === "Malformed") return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
-      const forced = json === undefined ? undefined : settledArguments(json)
-      const written = forced === undefined ? reportsOf(answered.text, points.length) : undefined
-      const replied = forced === undefined ? written?.said : forced.reply === undefined ? undefined : reportsOf(forced.reply, points.length).said
-      if (replied === undefined) return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
-      const read = declaredOf(writtenCallFree(replied).prose)
-      const declared = forced === undefined || read.declared === "DeclaredPromise" ? read.declared : "DeclaredAnswer"
-      const answer = read.text
-      const prose = withoutOfferedCalls(answer, offeredNames)
-      const revised = settled.compose(prose)
-      const hostNotes = [...input.hostNotes, ...points.map(({ note }) => note), ...notes]
-      const draft = draftOf(answer, 0, offeredNames, true, declared, hostNotes)
-      const sameAsFirst = revised.trim() === reply.trim()
-      const spoken = revised !== settled.compose(undefined)
-      const quotes = forced === undefined ? written?.quotes ?? new Map<number, readonly string[]>() : forced.told
-      const echoes = (point: number, sentence: string) =>
-        holdsHostText(sentence, hostNotes) || echoesHostText(sentence, [...input.hostNotes, answerAgain, reportNote, ...points.map(({ note }) => hostPartOf(note)), ...points.flatMap(({ toTheModel }) => toTheModel), ...failedToTheModel], ownerSaid)
-      return {
-        revised: spoken && answeredAgain(draft, sameAsFirst) ? revised : undefined,
-        stoodBy: spoken && standsBy(draft, sameAsFirst),
-        echoes: echoesHostText(prose, failedToTheModel, ownerSaid),
-        reports: reportsEach(new Map([...quotes].filter(([point]) => point >= 1 && point <= points.length).map(([point, told]) => [point, told.map((quote) => {
-          const read = reportIn(prose, quote)
-          return read.span === "OneSentence" && echoes(point, read.sentence) ? { span: "Fragment" as const, sentence: "" } : read
-        })]))),
-      }
-    } catch (error: unknown) {
-      if (signal.aborted) throw error
-      return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
-    }
-  }
+  const reask = plannerReasker(input, tools, conversation, offeredNames, settled, reply, failedToTheModel, ownerSaid)
   return { reply, notices: settled.notices, cutOff: stoppedShort, steps, streamed, firstReports, firstEchoes, reask, compose: settled.compose }
 }

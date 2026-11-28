@@ -1,4 +1,5 @@
-// spec/goals/index.md, "Story: Review my goals and check-in history"
+// spec/goals/index.md, "Story: Review my goals and check-in history"; spec/goals/lifecycle.md, "Story: Keep goal evaluation prompts safe and goal metadata well formed"
+import type { Plugin } from "@elizaos/core"
 import {
   checkinsFor,
   mayImportGoal,
@@ -7,6 +8,13 @@ import {
   type GoalViewFilter,
   type GoalViewRow,
 } from "../gen/goals.effect.vibe"
+import { ownerGoalsAction } from "./action.vibe"
+import {
+  GoalsCheckinService,
+  GoalsMigrationService,
+  GoalsService,
+  type GoalsRepository,
+} from "./store.vibe"
 
 export error GoalDirectoryFailed { reason: string }
 
@@ -36,3 +44,30 @@ export effect function importLegacyGoal(ownerId: string, row: GoalViewRow) {
   if (!mayImportGoal(row, ownerId, known)) return false
   return try directory.insertMissing(row)
 }
+
+export function createSqliteGoalDirectoryLayer(repository: GoalsRepository, agentId = "agent-default") {
+  return Layer.succeed(GoalDirectory, {
+    listForOwner: (ownerId: string) => Effect.succeed(repository.toGoalViewRows(ownerId)),
+    checkinsForOwner: (ownerId: string, goalId: string) =>
+      Effect.succeed(repository.toGoalReviewEntries(ownerId, goalId)),
+    insertMissing: (row: GoalViewRow) =>
+      Effect.succeed(repository.insertMissingViewRow(row, agentId, new Date().toISOString())),
+  })
+}
+
+export const goalsPlugin: Plugin = {
+  name: "@elizaos/plugin-goals",
+  description: "Owner goal definitions, semantic evaluation, links, check-in reconciliation, and carve-out migration",
+  actions: [ownerGoalsAction],
+  services: [GoalsService, GoalsCheckinService, GoalsMigrationService],
+}
+
+export default goalsPlugin
+
+export * from "./types.vibe"
+export * from "./normalize.vibe"
+export * from "./grounding.vibe"
+export * from "./prompt-value.vibe"
+export * from "./semantic-evaluator.vibe"
+export * from "./store.vibe"
+export * from "./action.vibe"

@@ -1,181 +1,210 @@
 // spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "Complete, partial and unconfirmed Slack sends follow distinct part receipts"; spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
-import { App, webApi } from "@slack/bolt"
-import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
-import { fetchRemoteMedia } from "@elizaos/core-node"
-import { enabled, initial, machineOver, slackEntityText, slackReplyTarget, slackRetries, slackSendOutcome, type SlackAdmission, type SlackCallFailure, type SlackConversation, type SlackInbound, type SlackPartReceipt } from "../gen/slack.effect.vibe"
+import { getConnectorAccountManager, logger, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { createSlackConnectorAccountProvider } from "./connector-account-provider.vibe"
+import { SlackService } from "./service.vibe"
 
-const envelope = Schema.Struct({ team_id: Schema.optionalKey(Schema.String), enterprise_id: Schema.optionalKey(Schema.String) })
-const slackEvent = Schema.Struct({ type: Schema.Literals(["message", "app_mention"]), channel: Schema.String, ts: Schema.String, user: Schema.optionalKey(Schema.String), bot_id: Schema.optionalKey(Schema.String), text: Schema.optionalKey(Schema.String), thread_ts: Schema.optionalKey(Schema.String), channel_type: Schema.optionalKey(Schema.String), subtype: Schema.optionalKey(Schema.String) })
-const systemNotices = new Set(["channel_join", "channel_leave", "channel_topic", "channel_name", "channel_purpose", "channel_archive", "channel_unarchive", "group_join", "group_leave", "group_topic", "group_name", "group_purpose", "group_archive", "group_unarchive", "pinned_item", "unpinned_item"])
+export {
+  DEFAULT_ACCOUNT_ID,
+  isMultiAccountEnabled,
+  listEnabledSlackAccounts,
+  listSlackAccountIds,
+  normalizeAccountId,
+  normalizeSlackAccountRole,
+  resolveDefaultSlackAccountId,
+  resolveSlackAccount,
+  resolveSlackAppToken,
+  resolveSlackBotToken,
+  resolveSlackReplyToMode,
+  resolveSlackUserToken,
+  type ResolvedSlackAccount,
+  type SlackAccountConfig,
+  type SlackAccountRole,
+  type SlackActionConfig,
+  type SlackChannelConfig,
+  type SlackDmConfig,
+  type SlackMultiAccountConfig,
+  type SlackReactionNotificationMode,
+  type SlackSlashCommandConfig,
+  type SlackTokenSource,
+} from "./accounts.vibe"
+export type {
+  SlackAccountConfigBase,
+  SlackConfig,
+  SlackDmPolicy,
+  SlackGroupPolicy,
+  SlackReplyToMode,
+  SlackThreadConfig,
+} from "./config.vibe"
+export {
+  SLACK_OAUTH_TIMEOUT_MS,
+  SLACK_OAUTH_TOKEN_URL,
+  createSlackConnectorAccountProvider,
+  exchangeSlackOAuthTokenWithFetch,
+  type SlackConnectorAccountProviderOptions,
+  type SlackOAuthV2Response,
+} from "./connector-account-provider.vibe"
+export {
+  persistConnectorCredentialRefs,
+  type ConnectorCredentialRefMetadata,
+  type PersistConnectorCredentialRefsParams,
+  type SlackJsonRecord,
+  type SlackJsonValue,
+} from "./connector-credential-refs.vibe"
+export {
+  buildSlackMessagePermalink,
+  chunkSlackText,
+  decodeSlackEntities,
+  decodeSlackText,
+  escapeSlackMrkdwn,
+  extractChannelIdFromMention,
+  extractUrlFromSlackLink,
+  extractUserIdFromMention,
+  formatSlackChannel,
+  formatSlackChannelMention,
+  formatSlackDate,
+  formatSlackLink,
+  formatSlackSpecialMention,
+  formatSlackUserDisplayName,
+  formatSlackUserGroupMention,
+  formatSlackUserMention,
+  getChannelTypeString,
+  isDirectMessage,
+  isGroupDm,
+  isPrivateChannel,
+  markdownToSlackMrkdwn,
+  markdownToSlackMrkdwnChunks,
+  parseSlackMessagePermalink,
+  resolveSlackSystemLocation,
+  splitSlackText,
+  stripSlackFormatting,
+  truncateText,
+  type ChunkSlackTextOpts,
+} from "./formatting.vibe"
+export {
+  fetchSlackFileBytes,
+  isTrustedSlackFileUrl,
+  normalizeSlackFile,
+  normalizeSlackFiles,
+  slackFilesToMedia,
+  type SlackFileBytes,
+} from "./inbound-files.vibe"
+export {
+  SlackAccountPolicyResolver,
+  SlackPolicyConfigurationError,
+  extractSlackEventWorkspace,
+  isSlackChannelIdKey,
+  normalizeSlackSlug,
+  type SlackAccountPolicyResolverOptions,
+  type SlackConversationKind,
+  type SlackDirectoryChannel,
+  type SlackDirectoryUser,
+  type SlackInboundDenyReason,
+  type SlackInboundEventContext,
+  type SlackInboundPolicyDecision,
+  type SlackPairingDecision,
+  type SlackPolicyDirectoryClient,
+  type SlackWorkspaceIdentity,
+} from "./policy.vibe"
+export {
+  SlackRequestFailed,
+  SlackService,
+  bindSlackSession,
+  claimSlackMessage,
+  compareSlackConnectorTargets,
+  connectSlackAccount,
+  extractUploadReceipt,
+  readSlackSession,
+  slackWriteRetries,
+  verifySlackSigningSecret,
+  type SlackConnection,
+  type SlackUploadReceipt,
+} from "./service.vibe"
+export {
+  MAX_SLACK_BLOCKS,
+  MAX_SLACK_FILE_SIZE,
+  MAX_SLACK_MESSAGE_LENGTH,
+  SLACK_SERVICE_NAME,
+  SlackApiError,
+  SlackClientNotAvailableError,
+  SlackConfigurationError,
+  SlackEventTypes,
+  SlackPluginError,
+  SlackServiceNotInitializedError,
+  formatMessageTsForLink,
+  getSlackChannelType,
+  getSlackUserDisplayName,
+  isValidChannelId,
+  isValidMessageTs,
+  isValidTeamId,
+  isValidUserId,
+  normalizeSlackPermalinkTimestamp,
+  parseSlackArchivesUrl,
+  parseSlackMessageLink,
+  type ISlackService,
+  type SlackAttachment,
+  type SlackBlock,
+  type SlackChannel,
+  type SlackChannelType,
+  type SlackEventPayloadMap,
+  type SlackEventType,
+  type SlackFile,
+  type SlackMessage,
+  type SlackMessageReceivedPayload,
+  type SlackMessageSendOptions,
+  type SlackMessageSentPayload,
+  type SlackReaction,
+  type SlackReactionPayload,
+  type SlackSettings,
+  type SlackTeam,
+  type SlackUser,
+  type SlackUserProfile,
+} from "./types.vibe"
 
-module node {
-  import { randomUUID } from "node:crypto"
-  export function nextSlackClaim(): string { return randomUUID() }
+function shouldEnableSlack(
+  _env: Record<string, string | undefined>,
+  config: Record<string, unknown>,
+): boolean {
+  const connector = (config.connectors as Record<string, unknown> | undefined)?.slack
+  if (!connector || typeof connector !== "object") return false
+  return (connector as Record<string, unknown>).enabled !== false
 }
-import { nextSlackClaim } from node
 
-const UploadedSlackFiles = Schema.Struct({ files: Schema.Array(Schema.Struct({ files: Schema.Array(Schema.Struct({ id: Schema.String })) })) })
-
-export error SlackRequestFailed { stage: string }
-
-export interface SlackConnection {
-  readonly accountId: string
-  readonly botToken: Redacted.Redacted<string>
-  readonly appToken: Redacted.Redacted<string>
-  readonly channels: ReadonlySet<string>
-  readonly directUsers: ReadonlySet<string>
-  readonly allowBots: boolean
-  readonly dmMode: SlackAdmission["dmMode"]
-  readonly groupDms: boolean
-  readonly requireMention: boolean
-}
-
-export function decodeSlackText(text: string): string {
-  return text.replace(/&(amp|lt|gt);/g, (_entity, name: string) => slackEntityText(name))
-}
-
-function slackCallFailure(error: Error): SlackCallFailure {
-  if ("code" in error && error.code === webApi.ErrorCode.HTTPError) return "SlackServerAnswer"
-  const cause = "original" in error && error.original instanceof Error ? error.original : error
-  return cause.message.startsWith("A rate limit was exceeded") ? "SlackRateLimited" : "SlackRequestLost"
-}
-
-export const slackWriteRetries = {
-  ...webApi.retryPolicies.tenRetriesInAboutThirtyMinutes,
-  onFailedAttempt: (error: Error): Promise<void> => slackRetries("SlackWrite", slackCallFailure(error)) ? Promise.resolve() : Promise.reject(error),
-}
-
-function kindOf(channelType: string | undefined): SlackConversation {
-  if (channelType === "im") return "SlackDirect"
-  if (channelType === "mpim") return "SlackGroupDirect"
-  if (channelType === "group") return "SlackPrivate"
-  if (channelType === "channel") return "SlackPublic"
-  return "SlackUnknownConversation"
-}
-
-export effect function connectSlackAccount(runtime: IAgentRuntime, config: SlackConnection) {
-  const app = try Effect.try({ try: () => new App({ token: Redacted.value(config.botToken), appToken: Redacted.value(config.appToken), socketMode: true }), catch: () => new SlackRequestFailed({ stage: "client" }) })
-  const writer = try Effect.try({ try: () => new webApi.WebClient(Redacted.value(config.botToken), { retryConfig: slackWriteRetries }), catch: () => new SlackRequestFailed({ stage: "client" }) })
-  const identity = try tryPromise({ try: () => app.client.auth.test(), catch: () => new SlackRequestFailed({ stage: "auth" }) })
-  if (identity.team_id === undefined || identity.user_id === undefined) throw new SlackRequestFailed({ stage: "identity" })
-  const installation = { accountId: config.accountId, teamId: identity.team_id, enterpriseId: identity.enterprise_id ?? "", botUserId: identity.user_id, epoch: 1 }
-  const state = try Ref.make(initial)
-  const active = try Ref.make(true)
-  const admission = try machineOver(() => Ref.get(state), next => Ref.set(state, next))
-  try admission.send({ type: "bindSlack", installation }, "SlackSocket")
-
-  effect function send(target: TargetInfo, content: Content): SendHandlerOutcome!SlackRequestFailed {
-    if (target.accountId !== undefined && target.accountId !== installation.accountId || !(try Ref.get(active))) return { kind: "not_delivered", code: "SLACK_ACCOUNT_GONE", message: "The selected Slack account is no longer active." }
-    const text = content.text?.trim() ?? ""
-    const attachments = content.attachments ?? []
-    if ((text === "" && attachments.length === 0) || target.channelId === undefined || attachments.length > 10 || attachments.some(attachment => attachment.url.trim() === "")) return { kind: "not_delivered", code: "SLACK_INVALID_CONTENT", message: "Slack needs a channel and text or attachments." }
-    const channelId = target.channelId
-    const parts: string[] = []
-    let block = ""
-    for (const unit of text) {
-      if (block.length + unit.length > 4000) { parts.push(block); block = "" }
-      block += unit
+export const slackPlugin: Plugin = {
+  name: "@elizaos/plugin-slack",
+  description: "Slack integration plugin for ElizaOS with Socket Mode support",
+  connectorSources: [
+    {
+      source: "slack",
+      aliases: ["slack"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
+  services: [SlackService],
+  actions: [],
+  providers: [],
+  autoEnable: {
+    connectorKeys: ["slack"],
+    shouldEnable: shouldEnableSlack,
+  },
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+    try {
+      const manager = getConnectorAccountManager(runtime)
+      manager.registerProvider(createSlackConnectorAccountProvider(runtime))
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:slack",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Slack provider with ConnectorAccountManager",
+      )
     }
-    if (block !== "") parts.push(block)
-    const observed: SlackPartReceipt[] = []
-    const ids: string[] = []
-    for (const part of parts) {
-      if (!(try Ref.get(active))) break
-      const response = tryPromise(() => writer.chat.postMessage({ channel: channelId, text: part, unfurl_links: false, unfurl_media: false, ...(target.threadId ? { thread_ts: target.threadId } : {}) })) catch () => undefined
-      if (response === undefined || typeof response.ts !== "string" || response.ts === "") { observed.push({ tag: "SlackPartUnknown" }); break }
-      ids.push(response.ts)
-      observed.push({ tag: "SlackPartAccepted", receiptId: response.ts })
-    }
-    if (ids.length === parts.length) for (const attachment of attachments) {
-      if (!(try Ref.get(active))) break
-      const media = tryPromise(signal => fetchRemoteMedia({ url: attachment.url, maxBytes: 20 * 1024 * 1024, signal })) catch () => undefined
-      if (media === undefined) { observed.push({ tag: "SlackPartRefused" }); continue }
-      const upload = { channel_id: channelId, file: media.buffer, filename: media.fileName ?? attachment.filename ?? "attachment" }
-      const threadId = target.threadId
-      const uploaded = tryPromise(() => threadId
-        ? writer.files.uploadV2({ ...upload, thread_ts: threadId })
-        : writer.files.uploadV2(upload)) catch () => undefined
-      const receipt = Schema.decodeUnknownEffect(UploadedSlackFiles)(uploaded) catch () => undefined
-      const receiptId = receipt?.files[0]?.files[0]?.id
-      if (!receiptId) { observed.push({ tag: "SlackPartUnknown" }); continue }
-      ids.push(receiptId)
-      observed.push({ tag: "SlackPartAccepted", receiptId })
-    }
-    const result = slackSendOutcome({ requestedParts: parts.length + attachments.length, observedParts: observed })
-    const [first, ...rest] = ids
-    if (result === "SlackSendIndeterminate") throw new SlackRequestFailed({ stage: "delivery-unknown" })
-    if (first === undefined) return { kind: "not_delivered", code: "SLACK_SEND_REFUSED", message: "Slack did not confirm a send." }
-    const providerMessageIds: [string, ...string[]] = [first, ...rest]
-    const receipt = { providerMessageIds, acceptedAt: try Clock.currentTimeMillis, persistence: { status: "not_attempted" as const, reason: "Slack returned acceptance timestamps." } }
-    return result === "SlackSendComplete" ? { kind: "delivered", receipt, memories: [] } : { kind: "partially_delivered", receipt, memories: [], code: "SLACK_PARTIAL_SEND", message: "Slack confirmed only part of the text. Repeating it may duplicate delivery." }
-  }
-
-  effect function inbound(input: unknown, requestBody: unknown) {
-    if (!(try Ref.get(active))) return
-    const body = Schema.decodeUnknownEffect(envelope)(requestBody) catch () => undefined
-    const raw = Schema.decodeUnknownEffect(slackEvent)(input) catch () => undefined
-    const messageService = runtime.messageService
-    if (raw === undefined || body === undefined || raw.subtype !== undefined && systemNotices.has(raw.subtype) || !messageService) return
-    const lookup = kindOf(raw.channel_type)
-    const channel = lookup === "SlackUnknownConversation" ? tryPromise(() => app.client.conversations.info({ channel: raw.channel })) catch () => undefined : undefined
-    const record = channel?.channel
-    const conversation = record === undefined ? lookup : record.is_im ? "SlackDirect" : record.is_mpim ? "SlackGroupDirect" : record.is_private || record.is_group ? "SlackPrivate" : "SlackPublic"
-    const sender = raw.user ?? raw.bot_id ?? ""
-    const text = raw.text ?? ""
-    const event: SlackInbound = { eventAccount: installation.accountId, eventEpoch: installation.epoch, eventTeam: body.team_id ?? "", eventEnterprise: body.enterprise_id ?? "", channelId: raw.channel, messageTs: raw.ts, threadTs: raw.thread_ts ?? "", senderId: sender, conversation, eventKind: raw.type === "app_mention" ? "SlackMention" : "SlackMessage", mentionsBot: text.includes(`<@${installation.botUserId}>`), fromBot: raw.bot_id !== undefined }
-    if (event.eventTeam !== installation.teamId || event.eventEnterprise !== "" && installation.enterpriseId !== "" && event.eventEnterprise !== installation.enterpriseId || sender === installation.botUserId) return
-    const pairing = (conversation === "SlackDirect" || conversation === "SlackHome") && config.dmMode === "SlackDmPairing" && !config.directUsers.has(sender) ? tryPromise(() => checkPairingAllowed(runtime, { channel: "slack", senderId: sender })) catch () => undefined : undefined
-    if (pairing?.replyMessage && (!event.fromBot || config.allowBots)) send({ source: "slack", accountId: installation.accountId, channelId: raw.channel }, { text: pairing.replyMessage }) catch () => undefined
-    const policy: SlackAdmission = { allowBots: config.allowBots, dmMode: config.dmMode, dmEnabled: config.dmMode !== "SlackDmDisabled", dmAllowlisted: config.directUsers.has(sender), dmPaired: pairing?.allowed === true, groupDmEnabled: config.groupDms, groupDmAllowed: config.channels.size === 0 || config.channels.has(raw.channel), channelAllowed: config.channels.size === 0 || config.channels.has(raw.channel), channelUserAllowed: true, requireMention: config.requireMention }
-    const admit = { type: "claimSlack" as const, inbound: event, policy }
-    if (!enabled(try admission.get(), admit, "SlackSocket")) return
-    const target = slackReplyTarget(event)
-    const scope = `slack:${installation.teamId}:${installation.accountId}`
-    const id = try Effect.try(() => createUniqueUuid(runtime, `${scope}:message:${raw.channel}:${raw.ts}`))
-    const roomId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:room:${raw.channel}:${raw.thread_ts ?? ""}`))
-    const worldId = try Effect.try(() => createUniqueUuid(runtime, scope))
-    const entityId = try Effect.try(() => createUniqueUuid(runtime, `${scope}:user:${sender}`))
-    const channelType = conversation === "SlackDirect" || conversation === "SlackHome" ? ChannelType.DM : ChannelType.GROUP
-    try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "slack", channelId: raw.channel, serverId: installation.teamId, type: channelType, metadata: { accountId: config.accountId } }))
-    const claimToken = try Effect.try(() => nextSlackClaim())
-    const memory: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: Math.trunc(Number(raw.ts) * 1000), content: { text: decodeSlackText(text), source: "slack", channelType }, metadata: { type: "message", slackClaimToken: claimToken } }
-    try tryPromise(() => runtime.createMemory(memory, "messages"))
-    const kept = try tryPromise(() => runtime.getMemoryById(id))
-    if (kept?.metadata === undefined || !("slackClaimToken" in kept.metadata) || kept.metadata.slackClaimToken !== claimToken || !(try Ref.get(active))) return
-    const claimed = admission.send(admit, "SlackSocket") catch () => undefined
-    if (claimed === undefined) return
-    try tryPromise(() => messageService.handleMessage(runtime, memory, async reply => {
-      requireConfirmedSendHandlerDelivery(await runPromise(send({ source: "slack", accountId: target.targetAccount, channelId: target.targetChannel, ...(target.targetThread !== "" ? { threadId: target.targetThread } : {}) }, reply)))
-      return []
-    }))
-  }
-
-  app.event("message", ({ event, body }) => runPromise(inbound(event, body)))
-  app.event("app_mention", ({ event, body }) => runPromise(inbound(event, body)))
-  try tryPromise({ try: () => app.start(), catch: () => new SlackRequestFailed({ stage: "start" }) })
-  try Effect.try(() => runtime.registerMessageConnector({ source: "slack", accountId: installation.accountId, accountRouting: "connector", label: "Slack", sendHandler: (_runtime, target, content) => runPromise(send(target, content)) }))
-  return { send, effect stop() { try Ref.set(active, false); try tryPromise(() => app.stop()) } }
+  },
+  dispose: async (runtime: IAgentRuntime): Promise<void> => {
+    const svc = runtime.getService<SlackService>(SlackService.serviceType)
+    await svc?.stop()
+  },
 }
 
-function slackIds(input: unknown): Set<string> {
-  return new Set(typeof input === "string" ? input.split(",").map(id => id.trim()).filter(id => id !== "") : [])
-}
-
-class SlackConnector extends Service {
-  static override serviceType = "slack"
-  override capabilityDescription = "Connects authorized Slack conversations to the agent"
-  constructor(runtime?: IAgentRuntime)
-  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
-  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
-  static override async start(runtime: IAgentRuntime): Promise<SlackConnector> {
-    const botToken = runtime.getSetting("SLACK_BOT_TOKEN")
-    const appToken = runtime.getSetting("SLACK_APP_TOKEN")
-    if (typeof botToken !== "string" || typeof appToken !== "string" || !botToken || !appToken) return new SlackConnector(runtime)
-    const connection = await runPromise(connectSlackAccount(runtime, { accountId: "default", botToken: Redacted.make(botToken), appToken: Redacted.make(appToken), channels: slackIds(runtime.getSetting("SLACK_CHANNEL_IDS")), directUsers: slackIds(runtime.getSetting("SLACK_ALLOW_FROM")), allowBots: false, dmMode: "SlackDmPairing", groupDms: false, requireMention: true }))
-    return new SlackConnector(runtime, () => runPromise(connection.stop()))
-  }
-  override stop(): Promise<void> { return this.close() }
-}
-
-export const slackPlugin: Plugin = { name: "@elizaos/plugin-slack", description: "Slack connector", services: [SlackConnector] }
 export default slackPlugin

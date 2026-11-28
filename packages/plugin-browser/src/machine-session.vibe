@@ -1,0 +1,14 @@
+// spec/browser/arbitration.md, "Story: Keep task binding authority on its original browser"
+export interface MachineRuntime<State, Event, E> {
+  send(event: Event): State!E!never
+  get(): State!never!never
+}
+
+export function openMachineSession<State, Event, E>(
+  runtime: MachineRuntime<State, Event, E>,
+): { readonly dispatch: (event: Event) => Promise<boolean>; readonly snapshot: () => Promise<State> } {
+  return {
+    dispatch: async (event: Event) => (await Effect.runPromise(Effect.result(runtime.send(event))))._tag === "Success",
+    snapshot: () => Effect.runPromise(runtime.get()),
+  }
+}

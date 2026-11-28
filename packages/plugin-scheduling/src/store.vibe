@@ -1,0 +1,971 @@
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"; spec/scheduling/dispatch.md, "Task execution guards transitions by revision and freezes terminal states"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import type { AnchorState } from "../gen/scheduling.effect.vibe"
+import {
+  acknowledgeTask,
+  canAcknowledgeTask,
+  canCompleteTask,
+  canEscalateStep,
+  canFireTask,
+  canSettleTerminal,
+  canSnoozeTask,
+  completeTask,
+  escalateStep,
+  fireTask,
+  settleTerminal,
+  snoozeTask,
+  type TaskExecution,
+  type TaskLifecycle,
+} from "../gen/scheduling__dispatch.effect.vibe"
+import {
+  decideDispatchPolicy,
+  createEscalationLadderRegistry,
+  registerDefaultEscalationLadders,
+  resolveEffectiveLadder,
+  type EscalationLadderRegistry,
+} from "./dispatch-policy.vibe"
+import {
+  buildDeterministicDispatchBody,
+  buildDeterministicDispatchTitle,
+  computeNextFireAt,
+  isScheduledTaskDue,
+  isTerminalTaskStatus,
+} from "./due.vibe"
+import {
+  createTaskGateRegistry,
+  getAnchorRegistry,
+  getScheduledTaskChannelDispatcher,
+  registerBuiltInGates,
+  type AnchorRegistry,
+  type TaskGateRegistry,
+} from "./registries.vibe"
+import {
+  SCHEDULED_TASK_RUNNER_SERVICE_TYPE,
+  SCHEDULING_MIGRATION_SERVICE_TYPE,
+  type DispatchPolicyDecision,
+  type DispatchResult,
+  type OwnerFactsView,
+  type ScheduledTask,
+  type ScheduledTaskApplyResult,
+  type ScheduledTaskFireResult,
+  type ScheduledTaskInput,
+  type ScheduledTaskPatch,
+  type ScheduledTaskState,
+  type ScheduledTaskStateLogEntry,
+  type ScheduledTaskStatus,
+  type ScheduledTaskVerb,
+  type TerminalState,
+} from "./types.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { DatabaseSync } from "node:sqlite"
+
+  export interface SqliteStatement {
+    all(...params: unknown[]): unknown[]
+    get(...params: unknown[]): unknown
+    run(...params: unknown[]): { changes: number | bigint }
+  }
+
+  export interface SqliteDatabase {
+    readonly openError: string | null
+    exec(sql: string): void
+    prepare(sql: string): SqliteStatement
+    close(): void
+  }
+
+  /** @throws {never} */
+  export function generateId(): string {
+    return randomUUID()
+  }
+
+  /** @throws {never} */
+  export function openSchedulingSqlite(path: string): SqliteDatabase {
+    try {
+      const db = new DatabaseSync(path) as unknown as Omit<SqliteDatabase, "openError">
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS life_scheduled_tasks (
+          id TEXT PRIMARY KEY,
+          agent_id TEXT NOT NULL,
+          owner_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          priority TEXT NOT NULL,
+          source TEXT NOT NULL,
+          channel_key TEXT NOT NULL,
+          prompt_instructions TEXT NOT NULL DEFAULT '',
+          trigger_json TEXT NOT NULL,
+          should_fire_json TEXT,
+          completion_check_json TEXT,
+          escalation_json TEXT,
+          pipeline_json TEXT,
+          metadata_json TEXT NOT NULL DEFAULT '{}',
+          state_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_life_scheduled_tasks_agent
+          ON life_scheduled_tasks(agent_id, owner_id);
+        CREATE TABLE IF NOT EXISTS life_scheduled_task_log (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL,
+          agent_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          from_status TEXT NOT NULL,
+          to_status TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          detail TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_life_scheduled_task_log_task
+          ON life_scheduled_task_log(task_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS life_schedule_anchors (
+          task_id TEXT PRIMARY KEY,
+          anchor_task TEXT NOT NULL,
+          anchor_revision INTEGER NOT NULL,
+          anchor_occurrence INTEGER NOT NULL,
+          eligible INTEGER NOT NULL,
+          consumed INTEGER NOT NULL
+        );
+      `)
+      return {
+        openError: null,
+        exec: (sql: string) => db.exec(sql),
+        prepare: (sql: string) => db.prepare(sql),
+        close: () => db.close(),
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        openError: message,
+        exec: () => {},
+        prepare: () => ({ all: () => [], get: () => undefined, run: () => ({ changes: 0 }) }),
+        close: () => {},
+      }
+    }
+  }
+
+  /** @throws {never} */
+  export function runSchedulingTx<T>(db: SqliteDatabase, work: () => T, fallback: T): T {
+    try {
+      db.exec("BEGIN IMMEDIATE")
+      const value = work()
+      db.exec("COMMIT")
+      return value
+    } catch {
+      try {
+        db.exec("ROLLBACK")
+      } catch {
+        return fallback
+      }
+      return fallback
+    }
+  }
+}
+import { generateId, openSchedulingSqlite, runSchedulingTx, type SqliteDatabase } from node
+
+export type { SqliteDatabase }
+
+interface RawTaskRow {
+  readonly id: string
+  readonly agent_id: string
+  readonly owner_id: string
+  readonly title: string
+  readonly kind: string
+  readonly priority: string
+  readonly source: string
+  readonly channel_key: string
+  readonly prompt_instructions: string
+  readonly trigger_json: string
+  readonly should_fire_json: string | null
+  readonly completion_check_json: string | null
+  readonly escalation_json: string | null
+  readonly pipeline_json: string | null
+  readonly metadata_json: string
+  readonly state_json: string
+  readonly created_at: string
+  readonly updated_at: string
+}
+
+interface RawLogRow {
+  readonly id: string
+  readonly task_id: string
+  readonly agent_id: string
+  readonly action: string
+  readonly from_status: string
+  readonly to_status: string
+  readonly revision: number
+  readonly detail: string
+  readonly created_at: string
+}
+
+interface RawAnchorRow {
+  readonly anchor_task: string
+  readonly anchor_revision: number
+  readonly anchor_occurrence: number
+  readonly eligible: number
+  readonly consumed: number
+}
+
+function parseJson<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+function toLifecycle(status: ScheduledTaskStatus): TaskLifecycle {
+  if (status === "fired") return "TaskFired"
+  if (status === "acknowledged") return "TaskAcknowledged"
+  if (status === "completed") return "TaskCompleted"
+  if (status === "skipped") return "TaskSkipped"
+  if (status === "expired") return "TaskExpired"
+  if (status === "dismissed") return "TaskDismissed"
+  if (status === "failed") return "TaskFailed"
+  return "TaskScheduled"
+}
+
+function fromLifecycle(lifecycle: TaskLifecycle): ScheduledTaskStatus {
+  if (lifecycle === "TaskFired") return "fired"
+  if (lifecycle === "TaskAcknowledged") return "acknowledged"
+  if (lifecycle === "TaskCompleted") return "completed"
+  if (lifecycle === "TaskSkipped") return "skipped"
+  if (lifecycle === "TaskExpired") return "expired"
+  if (lifecycle === "TaskDismissed") return "dismissed"
+  if (lifecycle === "TaskFailed") return "failed"
+  return "scheduled"
+}
+
+function toExecution(state: ScheduledTaskState, maxSteps: number): TaskExecution {
+  return {
+    status: toLifecycle(state.status),
+    revision: state.revision,
+    occurrence: state.occurrence,
+    stepIndex: state.stepIndex,
+    maxSteps: Math.max(1, maxSteps),
+    receiptCount: Object.keys(state.appliedReceipts).length,
+  }
+}
+
+function rowToTask(row: RawTaskRow): ScheduledTask {
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    ownerId: row.owner_id,
+    title: row.title,
+    kind: row.kind as ScheduledTask["kind"],
+    priority: row.priority as ScheduledTask["priority"],
+    source: row.source as ScheduledTask["source"],
+    channelKey: row.channel_key,
+    promptInstructions: row.prompt_instructions,
+    trigger: parseJson<ScheduledTask["trigger"]>(row.trigger_json, { kind: "manual" }),
+    shouldFire: parseJson<ScheduledTask["shouldFire"]>(row.should_fire_json, undefined),
+    completionCheck: parseJson<ScheduledTask["completionCheck"]>(row.completion_check_json, undefined),
+    escalation: parseJson<ScheduledTask["escalation"]>(row.escalation_json, undefined),
+    pipeline: parseJson<ScheduledTask["pipeline"]>(row.pipeline_json, undefined),
+    metadata: parseJson<Record<string, unknown>>(row.metadata_json, {}),
+    state: parseJson<ScheduledTaskState>(row.state_json, {
+      status: "scheduled",
+      revision: 0,
+      occurrence: 0,
+      stepIndex: 0,
+      firedAt: null,
+      nextFireAt: null,
+      snoozedUntil: null,
+      settledAt: null,
+      lastMessageId: null,
+      lastFailureReason: null,
+      appliedReceipts: {},
+    }),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function rowToLog(row: RawLogRow): ScheduledTaskStateLogEntry {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    agentId: row.agent_id,
+    action: row.action,
+    fromStatus: row.from_status as ScheduledTaskStatus,
+    toStatus: row.to_status as ScheduledTaskStatus,
+    revision: row.revision,
+    detail: row.detail,
+    createdAt: row.created_at,
+  }
+}
+
+export class ScheduledTaskSqliteStore {
+  readonly db: SqliteDatabase
+
+  constructor(dbPath = ":memory:") {
+    this.db = openSchedulingSqlite(dbPath)
+  }
+
+  close(): void {
+    this.db.close()
+  }
+
+  upsertTask(task: ScheduledTask): ScheduledTask {
+    this.db
+      .prepare(
+        `INSERT INTO life_scheduled_tasks
+         (id, agent_id, owner_id, title, kind, priority, source, channel_key, prompt_instructions,
+          trigger_json, should_fire_json, completion_check_json, escalation_json, pipeline_json,
+          metadata_json, state_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           priority = excluded.priority,
+           channel_key = excluded.channel_key,
+           prompt_instructions = excluded.prompt_instructions,
+           trigger_json = excluded.trigger_json,
+           should_fire_json = excluded.should_fire_json,
+           completion_check_json = excluded.completion_check_json,
+           escalation_json = excluded.escalation_json,
+           pipeline_json = excluded.pipeline_json,
+           metadata_json = excluded.metadata_json,
+           state_json = excluded.state_json,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        task.id,
+        task.agentId,
+        task.ownerId,
+        task.title,
+        task.kind,
+        task.priority,
+        task.source,
+        task.channelKey,
+        task.promptInstructions,
+        JSON.stringify(task.trigger),
+        task.shouldFire ? JSON.stringify(task.shouldFire) : null,
+        task.completionCheck ? JSON.stringify(task.completionCheck) : null,
+        task.escalation ? JSON.stringify(task.escalation) : null,
+        task.pipeline ? JSON.stringify(task.pipeline) : null,
+        JSON.stringify(task.metadata),
+        JSON.stringify(task.state),
+        task.createdAt,
+        task.updatedAt,
+      )
+    return task
+  }
+
+  getTask(taskId: string): ScheduledTask | null {
+    const row = this.db.prepare("SELECT * FROM life_scheduled_tasks WHERE id = ?").get(taskId) as RawTaskRow | undefined
+    return row ? rowToTask(row) : null
+  }
+
+  listTasks(filter?: {
+    readonly agentId?: string
+    readonly ownerId?: string
+    readonly status?: ScheduledTaskStatus
+  }): ScheduledTask[] {
+    const rows = this.db
+      .prepare("SELECT * FROM life_scheduled_tasks ORDER BY updated_at DESC, id ASC")
+      .all() as RawTaskRow[]
+    return rows.map(rowToTask).filter((task) => {
+      if (filter?.agentId && task.agentId !== filter.agentId) return false
+      if (filter?.ownerId && task.ownerId !== filter.ownerId) return false
+      if (filter?.status && task.state.status !== filter.status) return false
+      return true
+    })
+  }
+
+  deleteTask(taskId: string): boolean {
+    return runSchedulingTx(
+      this.db,
+      () => {
+        this.db.prepare("DELETE FROM life_scheduled_task_log WHERE task_id = ?").run(taskId)
+        this.db.prepare("DELETE FROM life_schedule_anchors WHERE task_id = ?").run(taskId)
+        const res = this.db.prepare("DELETE FROM life_scheduled_tasks WHERE id = ?").run(taskId)
+        return Number(res.changes) > 0
+      },
+      false,
+    )
+  }
+
+  appendLog(entry: Omit<ScheduledTaskStateLogEntry, "id">): ScheduledTaskStateLogEntry {
+    const record: ScheduledTaskStateLogEntry = { id: generateId(), ...entry }
+    this.db
+      .prepare(
+        `INSERT INTO life_scheduled_task_log
+         (id, task_id, agent_id, action, from_status, to_status, revision, detail, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.id,
+        record.taskId,
+        record.agentId,
+        record.action,
+        record.fromStatus,
+        record.toStatus,
+        record.revision,
+        record.detail,
+        record.createdAt,
+      )
+    return record
+  }
+
+  listLog(taskId: string, limit = 50): ScheduledTaskStateLogEntry[] {
+    const rows = this.db
+      .prepare("SELECT * FROM life_scheduled_task_log WHERE task_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?")
+      .all(taskId, Math.max(1, limit)) as RawLogRow[]
+    return rows.map(rowToLog)
+  }
+
+  readAnchor(taskId: string): AnchorState | undefined {
+    const row = this.db
+      .prepare("SELECT anchor_task, anchor_revision, anchor_occurrence, eligible, consumed FROM life_schedule_anchors WHERE task_id = ?")
+      .get(taskId) as RawAnchorRow | undefined
+    if (!row) return undefined
+    return {
+      anchorTask: row.anchor_task,
+      anchorRevision: row.anchor_revision,
+      anchorOccurrence: row.anchor_occurrence,
+      eligible: row.eligible !== 0,
+      consumed: row.consumed !== 0,
+    }
+  }
+
+  putAnchor(taskId: string, anchor: AnchorState): void {
+    this.db
+      .prepare(
+        `INSERT INTO life_schedule_anchors (task_id, anchor_task, anchor_revision, anchor_occurrence, eligible, consumed)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(task_id) DO UPDATE SET
+           anchor_task = excluded.anchor_task,
+           anchor_revision = excluded.anchor_revision,
+           anchor_occurrence = excluded.anchor_occurrence,
+           eligible = excluded.eligible,
+           consumed = excluded.consumed`,
+      )
+      .run(
+        taskId,
+        anchor.anchorTask,
+        anchor.anchorRevision,
+        anchor.anchorOccurrence,
+        anchor.eligible ? 1 : 0,
+        anchor.consumed ? 1 : 0,
+      )
+  }
+
+  compareAndSwapAnchor(taskId: string, current: AnchorState, replacement: AnchorState): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE life_schedule_anchors
+         SET anchor_revision = ?, anchor_occurrence = ?, eligible = ?, consumed = ?
+         WHERE task_id = ? AND anchor_revision = ? AND consumed = ?`,
+      )
+      .run(
+        replacement.anchorRevision,
+        replacement.anchorOccurrence,
+        replacement.eligible ? 1 : 0,
+        replacement.consumed ? 1 : 0,
+        taskId,
+        current.anchorRevision,
+        current.consumed ? 1 : 0,
+      )
+    return Number(res.changes) > 0
+  }
+}
+
+export type ScheduledTaskDispatcher = (
+  task: ScheduledTask,
+  payload: { readonly title: string; readonly body: string; readonly stepIndex: number },
+) => Promise<DispatchResult>
+
+export interface ScheduledTaskRunnerOptions {
+  readonly agentId?: string
+  readonly store?: ScheduledTaskSqliteStore
+  readonly gates?: TaskGateRegistry
+  readonly ladders?: EscalationLadderRegistry
+  readonly anchors?: AnchorRegistry
+  readonly dispatcher?: ScheduledTaskDispatcher
+  readonly ownerFacts?: OwnerFactsView
+}
+
+export class ScheduledTaskRunner {
+  readonly agentId: string
+  readonly store: ScheduledTaskSqliteStore
+  readonly gates: TaskGateRegistry
+  readonly ladders: EscalationLadderRegistry
+  readonly anchors: AnchorRegistry
+  private dispatcher: ScheduledTaskDispatcher | undefined
+  private ownerFacts: OwnerFactsView | undefined
+  private paused = false
+
+  constructor(options: ScheduledTaskRunnerOptions = {}) {
+    this.agentId = options.agentId ?? "agent-default"
+    this.store = options.store ?? new ScheduledTaskSqliteStore(":memory:")
+    this.gates = options.gates ?? registerBuiltInGates(createTaskGateRegistry())
+    this.ladders = options.ladders ?? registerDefaultEscalationLadders(createEscalationLadderRegistry())
+    this.anchors = options.anchors ?? getAnchorRegistry()
+    this.dispatcher = options.dispatcher
+    this.ownerFacts = options.ownerFacts
+  }
+
+  setDispatcher(dispatcher: ScheduledTaskDispatcher): void {
+    this.dispatcher = dispatcher
+  }
+
+  setOwnerFacts(facts: OwnerFactsView): void {
+    this.ownerFacts = facts
+  }
+
+  pauseAll(): void {
+    this.paused = true
+  }
+
+  resumeAll(): void {
+    this.paused = false
+  }
+
+  isPaused(): boolean {
+    return this.paused
+  }
+
+  async create(input: ScheduledTaskInput, now = new Date()): Promise<ScheduledTask> {
+    const nowIso = now.toISOString()
+    const task: ScheduledTask = {
+      id: input.id ?? generateId(),
+      agentId: this.agentId,
+      ownerId: input.ownerId,
+      title: input.title.trim(),
+      kind: input.kind ?? "reminder",
+      priority: input.priority ?? "medium",
+      source: input.source ?? "user_chat",
+      channelKey: input.channelKey ?? "chat",
+      promptInstructions: input.promptInstructions ?? "",
+      trigger: input.trigger,
+      shouldFire: input.shouldFire,
+      completionCheck: input.completionCheck,
+      escalation: input.escalation,
+      pipeline: input.pipeline,
+      metadata: { ...(input.metadata ?? {}) },
+      state: {
+        status: "scheduled",
+        revision: 0,
+        occurrence: 0,
+        stepIndex: 0,
+        firedAt: null,
+        nextFireAt: computeNextFireAt(input.trigger, now, this.anchors),
+        snoozedUntil: null,
+        settledAt: null,
+        lastMessageId: null,
+        lastFailureReason: null,
+        appliedReceipts: {},
+      },
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }
+    this.store.upsertTask(task)
+    this.store.appendLog({
+      taskId: task.id,
+      agentId: this.agentId,
+      action: "create",
+      fromStatus: "scheduled",
+      toStatus: "scheduled",
+      revision: 0,
+      detail: task.title,
+      createdAt: nowIso,
+    })
+    return task
+  }
+
+  async get(taskId: string): Promise<ScheduledTask | null> {
+    return this.store.getTask(taskId)
+  }
+
+  async list(filter?: { readonly ownerId?: string; readonly status?: ScheduledTaskStatus }): Promise<ScheduledTask[]> {
+    return this.store.listTasks({ agentId: this.agentId, ...filter })
+  }
+
+  async update(taskId: string, patch: ScheduledTaskPatch, now = new Date()): Promise<ScheduledTask | null> {
+    const existing = this.store.getTask(taskId)
+    if (!existing) return null
+    const nowIso = now.toISOString()
+    const nextTrigger = patch.trigger ?? existing.trigger
+    const updated: ScheduledTask = {
+      ...existing,
+      title: patch.title !== undefined ? patch.title.trim() : existing.title,
+      priority: patch.priority ?? existing.priority,
+      channelKey: patch.channelKey ?? existing.channelKey,
+      promptInstructions: patch.promptInstructions ?? existing.promptInstructions,
+      trigger: nextTrigger,
+      shouldFire: patch.shouldFire !== undefined ? patch.shouldFire : existing.shouldFire,
+      completionCheck: patch.completionCheck !== undefined ? patch.completionCheck : existing.completionCheck,
+      escalation: patch.escalation !== undefined ? patch.escalation : existing.escalation,
+      pipeline: patch.pipeline !== undefined ? patch.pipeline : existing.pipeline,
+      metadata: patch.metadata !== undefined ? { ...existing.metadata, ...patch.metadata } : existing.metadata,
+      state: {
+        ...existing.state,
+        nextFireAt: patch.trigger ? computeNextFireAt(nextTrigger, now, this.anchors) : existing.state.nextFireAt,
+      },
+      updatedAt: nowIso,
+    }
+    this.store.upsertTask(updated)
+    return updated
+  }
+
+  async delete(taskId: string): Promise<boolean> {
+    return this.store.deleteTask(taskId)
+  }
+
+  listLog(taskId: string, limit = 50): ScheduledTaskStateLogEntry[] {
+    return this.store.listLog(taskId, limit)
+  }
+
+  private async dispatchForTask(task: ScheduledTask, stepIndex: number): Promise<DispatchResult> {
+    const payload = {
+      title: buildDeterministicDispatchTitle(task),
+      body: buildDeterministicDispatchBody(task),
+      stepIndex,
+    }
+    const channelContrib = getScheduledTaskChannelDispatcher(task.channelKey)
+    if (channelContrib) {
+      return channelContrib.dispatch(task, payload)
+    }
+    if (this.dispatcher) {
+      return this.dispatcher(task, payload)
+    }
+    return { ok: true, messageId: `local-${task.id}-${task.state.occurrence}` }
+  }
+
+  private resolveTransitionContext(
+    taskId: string,
+    options?: { readonly seenRevision?: number; readonly now?: Date },
+  ): { readonly task: ScheduledTask; readonly now: Date; readonly nowIso: string; readonly seenRevision: number } | null {
+    const task = this.store.getTask(taskId)
+    if (!task) return null
+    const now = options?.now ?? new Date()
+    return {
+      task,
+      now,
+      nowIso: now.toISOString(),
+      seenRevision: options?.seenRevision ?? task.state.revision,
+    }
+  }
+
+  async fire(
+    taskId: string,
+    options?: {
+      readonly manual?: boolean
+      readonly seenRevision?: number
+      readonly now?: Date
+      readonly eventPayload?: Record<string, unknown>
+    },
+  ): Promise<ScheduledTaskFireResult> {
+    const ctx = this.resolveTransitionContext(taskId, options)
+    if (!ctx) return { kind: "not_found", task: null }
+    const { task: existing, now, nowIso, seenRevision } = ctx
+    const ladder = resolveEffectiveLadder(existing, this.ladders)
+    const exec = toExecution(existing.state, Math.max(3, ladder.steps.length))
+    if (!canFireTask(exec, seenRevision)) {
+      return { kind: "raced", reason: `cannot fire from ${existing.state.status} at rev ${existing.state.revision}`, task: existing }
+    }
+    if (!options?.manual) {
+      if (this.paused) return { kind: "skipped_gate", reason: "runner_paused", task: existing }
+      const gateDecision = this.gates.evaluate(existing, { now, ownerFacts: this.ownerFacts })
+      if (!gateDecision.allow) {
+        return { kind: "skipped_gate", reason: gateDecision.reason, task: existing }
+      }
+    }
+    const firedExec = fireTask(exec, seenRevision)
+    const firedTask: ScheduledTask = {
+      ...existing,
+      state: {
+        ...existing.state,
+        status: fromLifecycle(firedExec.status),
+        revision: firedExec.revision,
+        occurrence: firedExec.occurrence,
+        stepIndex: firedExec.stepIndex,
+        firedAt: nowIso,
+        snoozedUntil: null,
+      },
+      updatedAt: nowIso,
+    }
+    this.store.upsertTask(firedTask)
+    const dispatchRes = await this.dispatchForTask(firedTask, firedExec.stepIndex)
+    const decision: DispatchPolicyDecision = decideDispatchPolicy(dispatchRes, {
+      currentStepIndex: firedExec.stepIndex,
+      totalSteps: Math.max(1, ladder.steps.length),
+    })
+    return this.applyDispatchDecision(firedTask, decision, now)
+  }
+
+  private async applyDispatchDecision(
+    firedTask: ScheduledTask,
+    decision: DispatchPolicyDecision,
+    now: Date,
+  ): Promise<ScheduledTaskFireResult> {
+    const nowIso = now.toISOString()
+    if (decision.kind === "complete") {
+      const updated: ScheduledTask = {
+        ...firedTask,
+        state: { ...firedTask.state, lastMessageId: decision.messageId ?? null, lastFailureReason: null },
+        updatedAt: nowIso,
+      }
+      this.store.upsertTask(updated)
+      this.store.appendLog({
+        taskId: updated.id,
+        agentId: this.agentId,
+        action: "fire",
+        fromStatus: "scheduled",
+        toStatus: "fired",
+        revision: updated.state.revision,
+        detail: decision.messageId ?? "dispatched",
+        createdAt: nowIso,
+      })
+      return { kind: "fired", task: updated, decision }
+    }
+    if (decision.kind === "retry") {
+      const nextAttemptAtIso = new Date(now.getTime() + decision.retryAfterMinutes * 60_000).toISOString()
+      const updated: ScheduledTask = {
+        ...firedTask,
+        state: { ...firedTask.state, lastFailureReason: decision.reason, nextFireAt: nextAttemptAtIso },
+        updatedAt: nowIso,
+      }
+      this.store.upsertTask(updated)
+      return { kind: "retrying", nextAttemptAtIso, reason: decision.reason, task: updated }
+    }
+    if (decision.kind === "advance" || decision.kind === "surface_degraded") {
+      const ladder = resolveEffectiveLadder(firedTask, this.ladders)
+      const exec = toExecution(firedTask.state, Math.max(3, ladder.steps.length))
+      if (canEscalateStep(exec, firedTask.state.revision)) {
+        const stepped = escalateStep(exec, firedTask.state.revision)
+        const updated: ScheduledTask = {
+          ...firedTask,
+          state: {
+            ...firedTask.state,
+            revision: stepped.revision,
+            stepIndex: stepped.stepIndex,
+            lastFailureReason: decision.reason,
+          },
+          updatedAt: nowIso,
+        }
+        this.store.upsertTask(updated)
+        return { kind: "fired", task: updated, decision }
+      }
+    }
+    const failed = await this.pipeline(firedTask.id, "failed", { seenRevision: firedTask.state.revision, now })
+    return {
+      kind: "failed",
+      error: decision.message ?? decision.reason,
+      task: failed.kind === "applied" ? failed.task : firedTask,
+    }
+  }
+
+  async escalate(taskId: string, seenRevision: number, maxSteps = 3, now = new Date()): Promise<ScheduledTaskApplyResult> {
+    const existing = this.store.getTask(taskId)
+    if (!existing) return { kind: "not_found", task: null }
+    const exec = toExecution(existing.state, maxSteps)
+    if (!canEscalateStep(exec, seenRevision)) {
+      return { kind: "invalid_transition", reason: "escalation_not_allowed", task: existing }
+    }
+    const next = escalateStep(exec, seenRevision)
+    const nowIso = now.toISOString()
+    const updated: ScheduledTask = {
+      ...existing,
+      state: { ...existing.state, revision: next.revision, stepIndex: next.stepIndex },
+      updatedAt: nowIso,
+    }
+    this.store.upsertTask(updated)
+    return { kind: "applied", task: updated, replayed: false }
+  }
+
+  async apply(
+    taskId: string,
+    verb: ScheduledTaskVerb,
+    options?: {
+      readonly seenRevision?: number
+      readonly receiptKey?: string
+      readonly snoozeMinutes?: number
+      readonly now?: Date
+    },
+  ): Promise<ScheduledTaskApplyResult> {
+    const existing = this.store.getTask(taskId)
+    if (!existing) return { kind: "not_found", task: null }
+    if (options?.receiptKey && existing.state.appliedReceipts[options.receiptKey]) {
+      return { kind: "applied", task: existing, replayed: true }
+    }
+    const now = options?.now ?? new Date()
+    const nowIso = now.toISOString()
+    const seenRevision = options?.seenRevision ?? existing.state.revision
+    const exec = toExecution(existing.state, 3)
+
+    if (verb === "acknowledge") {
+      if (!canAcknowledgeTask(exec, seenRevision)) {
+        return { kind: "invalid_transition", reason: `cannot acknowledge from ${existing.state.status}`, task: existing }
+      }
+      const next = acknowledgeTask(exec, seenRevision)
+      const updated = this.commitState(existing, next, { receiptKey: options?.receiptKey, action: verb, nowIso })
+      return { kind: "applied", task: updated, replayed: false }
+    }
+    if (verb === "snooze") {
+      if (!canSnoozeTask(exec, seenRevision)) {
+        return { kind: "invalid_transition", reason: `cannot snooze from ${existing.state.status}`, task: existing }
+      }
+      const next = snoozeTask(exec, seenRevision)
+      const snoozedUntil = new Date(now.getTime() + Math.max(1, options?.snoozeMinutes ?? 15) * 60_000).toISOString()
+      const updated = this.commitState(existing, next, {
+        receiptKey: options?.receiptKey,
+        action: verb,
+        nowIso,
+        snoozedUntil,
+      })
+      return { kind: "applied", task: updated, replayed: false }
+    }
+    if (verb === "complete") {
+      if (!canCompleteTask(exec, seenRevision)) {
+        return { kind: "invalid_transition", reason: `cannot complete from ${existing.state.status}`, task: existing }
+      }
+      const next = completeTask(exec, seenRevision)
+      const updated = this.commitState(existing, next, {
+        receiptKey: options?.receiptKey ?? `complete:${next.revision}`,
+        action: verb,
+        nowIso,
+        settledAt: nowIso,
+      })
+      await this.triggerAfterTasks(updated.id, "completed", now)
+      return { kind: "applied", task: updated, replayed: false }
+    }
+    const targetOutcome: TerminalState = verb === "skip" ? "skipped" : "dismissed"
+    return this.pipeline(taskId, targetOutcome, { seenRevision, receiptKey: options?.receiptKey, now })
+  }
+
+  async pipeline(
+    taskId: string,
+    terminalOutcome: Exclude<TerminalState, "completed">,
+    options?: { readonly seenRevision?: number; readonly receiptKey?: string; readonly now?: Date },
+  ): Promise<ScheduledTaskApplyResult> {
+    const ctx = this.resolveTransitionContext(taskId, options)
+    if (!ctx) return { kind: "not_found", task: null }
+    const { task: existing, now, nowIso, seenRevision } = ctx
+    const exec = toExecution(existing.state, 3)
+    const targetLifecycle = toLifecycle(terminalOutcome)
+    if (!canSettleTerminal(exec, seenRevision, targetLifecycle)) {
+      return { kind: "invalid_transition", reason: `cannot settle ${terminalOutcome} from ${existing.state.status}`, task: existing }
+    }
+    const next = settleTerminal(exec, seenRevision, targetLifecycle)
+    const updated = this.commitState(existing, next, {
+      receiptKey: options?.receiptKey ?? `${terminalOutcome}:${next.revision}`,
+      action: terminalOutcome,
+      nowIso,
+      settledAt: nowIso,
+    })
+    await this.triggerAfterTasks(updated.id, terminalOutcome, now)
+    return { kind: "applied", task: updated, replayed: false }
+  }
+
+  private commitState(
+    existing: ScheduledTask,
+    next: TaskExecution,
+    opts: {
+      readonly receiptKey?: string
+      readonly action: string
+      readonly nowIso: string
+      readonly snoozedUntil?: string | null
+      readonly settledAt?: string | null
+    },
+  ): ScheduledTask {
+    const toStatus = fromLifecycle(next.status)
+    const nextReceipts = opts.receiptKey
+      ? { ...existing.state.appliedReceipts, [opts.receiptKey]: opts.nowIso }
+      : existing.state.appliedReceipts
+    const updated: ScheduledTask = {
+      ...existing,
+      state: {
+        ...existing.state,
+        status: toStatus,
+        revision: next.revision,
+        occurrence: next.occurrence,
+        stepIndex: next.stepIndex,
+        snoozedUntil: opts.snoozedUntil !== undefined ? opts.snoozedUntil : existing.state.snoozedUntil,
+        settledAt: opts.settledAt !== undefined ? opts.settledAt : existing.state.settledAt,
+        appliedReceipts: nextReceipts,
+      },
+      updatedAt: opts.nowIso,
+    }
+    this.store.upsertTask(updated)
+    this.store.appendLog({
+      taskId: updated.id,
+      agentId: this.agentId,
+      action: opts.action,
+      fromStatus: existing.state.status,
+      toStatus,
+      revision: updated.state.revision,
+      detail: opts.receiptKey ?? opts.action,
+      createdAt: opts.nowIso,
+    })
+    return updated
+  }
+
+  private async triggerAfterTasks(parentTaskId: string, terminalOutcome: TerminalState, now: Date): Promise<void> {
+    if (this.paused) return
+    const candidates = this.store.listTasks({ agentId: this.agentId, status: "scheduled" })
+    for (const child of candidates) {
+      if (child.trigger.kind !== "after_task") continue
+      if (child.trigger.taskId !== parentTaskId || child.trigger.outcome !== terminalOutcome) continue
+      await this.fire(child.id, { manual: false, now })
+    }
+  }
+
+  async tick(now = new Date()): Promise<readonly ScheduledTaskFireResult[]> {
+    if (this.paused) return []
+    const tasks = this.store.listTasks({ agentId: this.agentId, status: "scheduled" })
+    const results: ScheduledTaskFireResult[] = []
+    for (const task of tasks) {
+      if (isTerminalTaskStatus(task.state.status)) continue
+      const due = isScheduledTaskDue(task, { now, ownerFacts: this.ownerFacts, anchors: this.anchors })
+      if (!due.due) continue
+      results.push(await this.fire(task.id, { manual: false, now }))
+    }
+    return results
+  }
+}
+
+export class ScheduledTaskRunnerService extends Service {
+  static override serviceType = SCHEDULED_TASK_RUNNER_SERVICE_TYPE
+  override capabilityDescription = "SQLite-backed scheduled task runner with escalation ladders and revision CAS"
+  readonly runner: ScheduledTaskRunner
+
+  constructor(runtime?: IAgentRuntime, runner?: ScheduledTaskRunner) {
+    super(runtime)
+    this.runner = runner ?? new ScheduledTaskRunner({ agentId: runtime?.agentId ?? "agent-default" })
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<ScheduledTaskRunnerService> {
+    return new ScheduledTaskRunnerService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.runner.store.close()
+  }
+}
+
+export class SchedulingMigrationService extends Service {
+  static override serviceType = SCHEDULING_MIGRATION_SERVICE_TYPE
+  override capabilityDescription = "Ensures scheduling SQLite tables exist without altering prior tables"
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<SchedulingMigrationService> {
+    return new SchedulingMigrationService(runtime)
+  }
+
+  override async stop(): Promise<void> {}
+}
+
+export function getScheduledTaskRunner(runtime: IAgentRuntime): ScheduledTaskRunner | null {
+  return runtime.getService<ScheduledTaskRunnerService>(SCHEDULED_TASK_RUNNER_SERVICE_TYPE)?.runner ?? null
+}
+
+export async function waitForScheduledTaskRunnerService(runtime: IAgentRuntime): Promise<ScheduledTaskRunnerService | null> {
+  return runtime.getService<ScheduledTaskRunnerService>(SCHEDULED_TASK_RUNNER_SERVICE_TYPE)
+}

@@ -1,0 +1,258 @@
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"; spec/scheduling/dispatch.md, "Story: Dispatch scheduled tasks safely through escalation ladders without duplicating uncertain deliveries"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import { initial as initialSpecTask } from "../gen/agent__schedule__scheduledTasks.effect.vibe"
+import {
+  GITHUB_PR_SHEPHERD_SERVICE_TYPE,
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  SCHEDULED_TASK_RUNNER_SERVICE_TYPE,
+  ScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+  ScheduledTaskSqliteStore,
+  buildDailyRoutinesPack,
+  buildFallbackDefaultPack,
+  buildPrShepherdScheduleInput,
+  buildSchedulingRoutes,
+  claimScheduledTask,
+  createCodingAgentScheduleDispatcher,
+  createSqliteScheduleAnchorsLayer,
+  decideDispatchPolicy,
+  fireEventTriggeredTasks,
+  firstForwardedProto,
+  makeScheduledTasksRouteHandler,
+  pauseCodingAgentSchedule,
+  resumeCodingAgentSchedule,
+  scheduledTasksAction,
+  scheduledTasksProvider,
+  schedulingPlugin,
+  type GitHubPrShepherdService,
+  type OrchestratorTaskSubmitter,
+} from "../src/index.vibe"
+
+function createRuntime(
+  runnerService: ScheduledTaskRunnerService,
+  extras: Record<string, unknown> = {},
+): IAgentRuntime {
+  return {
+    agentId: "agent-sched-test",
+    getService: (type: string) =>
+      type === SCHEDULED_TASK_RUNNER_SERVICE_TYPE ? runnerService : (extras[type] ?? null),
+  } as unknown as IAgentRuntime
+}
+
+function testMessage(ownerId: string): Memory {
+  return {
+    entityId: ownerId,
+    roomId: "room-sched",
+    content: { text: "manage schedules" },
+  } as unknown as Memory
+}
+
+describe("plugin-scheduling end-to-end journeys", () => {
+  it("runs SCHEDULED_TASKS action, provider, escalation policy, gates, event bridge, and after_task chaining on real SQLite", async () => {
+    const runner = new ScheduledTaskRunner({ agentId: "agent-sched-test" })
+    const runnerService = new ScheduledTaskRunnerService(undefined, runner)
+    const runtime = createRuntime(runnerService)
+    const msg = testMessage("owner-1")
+
+    assert.strictEqual(schedulingPlugin.name, "@elizaos/plugin-scheduling")
+    assert.strictEqual(schedulingPlugin.routes.length, 8)
+    assert.strictEqual(await scheduledTasksAction.validate(runtime, msg), true)
+    assert.strictEqual(buildSchedulingRoutes().length, 8)
+    assert.strictEqual(buildFallbackDefaultPack("owner-1").length, 2)
+    assert.strictEqual(buildDailyRoutinesPack("owner-1").length, 2)
+
+    const unknownDecision = decideDispatchPolicy(
+      { ok: false, reason: "transport_error", acceptance: "unknown", retryAfterMinutes: 5 },
+      { currentStepIndex: 0, totalSteps: 3 },
+    )
+    assert.strictEqual(unknownDecision.kind, "fail")
+
+    const retryDecision = decideDispatchPolicy(
+      { ok: false, reason: "rate_limited", acceptance: "rejected" },
+      { currentStepIndex: 0, totalSteps: 3 },
+    )
+    assert.strictEqual(retryDecision.kind, "retry")
+
+    const degradedDecision = decideDispatchPolicy(
+      { ok: false, reason: "auth_expired", acceptance: "rejected", userActionable: true },
+      { currentStepIndex: 0, totalSteps: 3 },
+    )
+    assert.strictEqual(degradedDecision.kind, "surface_degraded")
+
+    const created = await scheduledTasksAction.handler(runtime, msg, undefined, {
+      parameters: {
+        op: "create",
+        title: "Daily standup reminder",
+        priority: "high",
+        trigger: { kind: "once", atIso: "2026-01-01T09:00:00Z" },
+      },
+    })
+    assert.strictEqual(created.success, true)
+    assert.strictEqual(created.effectReceipts?.[0]?.outcome, "applied")
+    const parentId = (created.data as { task: { id: string } }).task.id
+
+    const child = await runner.create({
+      ownerId: "owner-1",
+      title: "Follow-up summary",
+      trigger: { kind: "after_task", taskId: parentId, outcome: "completed" },
+    })
+
+    const ticked = await runner.tick(new Date("2026-01-01T09:05:00Z"))
+    assert.strictEqual(ticked.length, 1)
+    assert.strictEqual(ticked[0]!.kind, "fired")
+
+    const completed = await scheduledTasksAction.handler(runtime, msg, undefined, {
+      parameters: { op: "apply", taskId: parentId, verb: "complete" },
+    })
+    assert.strictEqual(completed.success, true)
+    assert.strictEqual((await runner.get(child.id))?.state.status, "fired")
+
+    const eventTask = await runner.create({
+      ownerId: "owner-1",
+      title: "Deploy notification",
+      trigger: { kind: "event", eventKind: "deploy.finished", filter: { env: "prod" } },
+    })
+    const bridgeOut = await fireEventTriggeredTasks({
+      runner,
+      eventKind: "deploy.finished",
+      payload: { env: "prod", sha: "abc123" },
+    })
+    assert.strictEqual(bridgeOut.results.length, 1)
+    assert.strictEqual(bridgeOut.results[0]!.taskId, eventTask.id)
+
+    const prov = await scheduledTasksProvider.get(runtime, msg, {} as State)
+    assert.ok(prov.text && prov.text.includes("Daily standup reminder"))
+    await runnerService.stop()
+  })
+
+  it("serves HTTP scheduled-tasks routes with multi-hop X-Forwarded-Proto and idempotent verb receipts", async () => {
+    const runner = new ScheduledTaskRunner({ agentId: "agent-http" })
+    const handler = makeScheduledTasksRouteHandler(async () => runner)
+
+    assert.strictEqual(firstForwardedProto("https, http"), "https")
+    assert.strictEqual(firstForwardedProto(["https", "http"]), "https")
+    assert.strictEqual(firstForwardedProto(undefined), "http")
+
+    const created = await handler({
+      method: "POST",
+      url: "/api/lifeops/scheduled-tasks",
+      headers: { host: "agent.local", "x-forwarded-proto": "https, http" },
+      body: { ownerId: "owner-http", title: "Take vitamins", trigger: { kind: "manual" } },
+    })
+    assert.strictEqual(created?.status, 201)
+    const id = (created!.body.task as { id: string }).id
+
+    const fired = await handler({ method: "POST", url: `/api/lifeops/scheduled-tasks/${id}/fire` })
+    assert.strictEqual(fired?.status, 200)
+
+    const firstComplete = await handler({
+      method: "POST",
+      url: `/api/lifeops/scheduled-tasks/${id}/complete`,
+      body: { receiptKey: "rcpt-1" },
+    })
+    assert.strictEqual(firstComplete?.status, 200)
+    assert.strictEqual((firstComplete!.body as { replayed: boolean }).replayed, false)
+
+    const replayComplete = await handler({
+      method: "POST",
+      url: `/api/lifeops/scheduled-tasks/${id}/complete`,
+      body: { receiptKey: "rcpt-1" },
+    })
+    assert.strictEqual(replayComplete?.status, 200)
+    assert.strictEqual((replayComplete!.body as { replayed: boolean }).replayed, true)
+
+    const logRes = await handler({ method: "GET", url: `/api/lifeops/scheduled-tasks/${id}/log` })
+    assert.strictEqual(logRes?.status, 200)
+    assert.ok(((logRes!.body.log as unknown[]) ?? []).length >= 3)
+    runner.store.close()
+  })
+
+  it("runs PR shepherd coding-agent schedule dispatcher with pause/resume controls", async () => {
+    const submitted: string[] = []
+    const gh: GitHubPrShepherdService = {
+      listAssignedOpenPullRequests: async () => [
+        {
+          owner: "elizaos",
+          repo: "eliza",
+          number: 42,
+          title: "Fix scheduler",
+          url: "https://github.com/elizaos/eliza/pull/42",
+          checksConclusion: "failure",
+        },
+      ],
+    }
+    const orch: OrchestratorTaskSubmitter = {
+      submitTask: async (args) => {
+        submitted.push(args.title)
+        return { id: "orch-1" }
+      },
+    }
+    const runner = new ScheduledTaskRunner({ agentId: "agent-pr" })
+    const runnerService = new ScheduledTaskRunnerService(undefined, runner)
+    const runtime = createRuntime(runnerService, {
+      [GITHUB_PR_SHEPHERD_SERVICE_TYPE]: gh,
+      [ORCHESTRATOR_TASK_SERVICE_TYPE]: orch,
+    })
+    runner.setDispatcher(createCodingAgentScheduleDispatcher(runtime))
+
+    const task = await runner.create(
+      buildPrShepherdScheduleInput({ ownerId: "owner-1", ownerAgentId: "agent-pr", repo: "elizaos/eliza" }),
+    )
+    const fired = await runner.fire(task.id, { manual: true })
+    assert.strictEqual(fired.kind, "fired")
+    assert.strictEqual(submitted.length, 1)
+
+    assert.strictEqual(await pauseCodingAgentSchedule(runner, task.id), true)
+    assert.strictEqual(await resumeCodingAgentSchedule(runner, task.id), true)
+    await runnerService.stop()
+  })
+
+  it.effect(
+    "claims scheduled-task anchor atomically via SQLite ScheduleAnchors layer without consuming on manual run",
+    effect () => {
+      const store = new ScheduledTaskSqliteStore(":memory:")
+      const task = {
+        ...initialSpecTask,
+        revision: 1,
+        pending: 1,
+        due: { tag: "DueAt" as const, at: 0 },
+      }
+      store.putAnchor("dossier", {
+        anchorTask: "dossier",
+        anchorRevision: 1,
+        anchorOccurrence: 1,
+        eligible: true,
+        consumed: false,
+      })
+      const layer = createSqliteScheduleAnchorsLayer(store)
+      provide layer {
+        const manualRes = try claimScheduledTask({
+          task,
+          taskId: "dossier",
+          taskRevision: 1,
+          anchorRevision: 1,
+          manual: true,
+        })
+        const autoRes = try claimScheduledTask({
+          task,
+          taskId: "dossier",
+          taskRevision: 1,
+          anchorRevision: 1,
+          manual: false,
+        })
+        const replayRes = try claimScheduledTask({
+          task,
+          taskId: "dossier",
+          taskRevision: 1,
+          anchorRevision: 1,
+          manual: false,
+        })
+        assert.notStrictEqual(manualRes, "ClaimAnchor")
+        assert.strictEqual(autoRes, "ClaimAnchor")
+        assert.strictEqual(replayRes, "ClaimRaced")
+      }
+      store.close()
+    },
+  )
+})

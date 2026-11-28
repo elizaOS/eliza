@@ -29,7 +29,10 @@ pure def lawPhaseProjectionKeepsOnlyItsOwnRecords(items: List[TraceKind], phase:
 
 ### An active turn highlights only its latest completed phase before evaluation
 
-Idle, skipped, or failed phases retain their status. A completed turn does not show an active phase.
+Idle, skipped, or failed phases retain their status. A completed turn does not
+show an active phase. When fetching trajectory routes, only HTTP `404` and `503`
+classify a route as unavailable. A `should_respond` verdict of `IGNORE`, `STOP`,
+or `SKIP` skips the turn, whereas `RESPOND`, `REPLY`, and `ANSWER` never skip.
 
 ```quint
 type PhaseProgress = PhaseIdle | PhaseDone | PhaseSkipped | PhaseErrored | PhaseActive
@@ -44,6 +47,14 @@ pure def showProgress(progress: TurnProgress, running: bool): TurnProgress =
 pure def lawCompletedTurnKeepsPhaseProgress(progress: TurnProgress): bool = showProgress(progress, false) == progress
 pure def lawEvaluationStatusDoesNotChange(progress: TurnProgress, running: bool): bool =
   showProgress(progress, running).evaluating == progress.evaluating
+pure def routeUnavailable(status: int): bool = status == 404 or status == 503
+pure def lawOnly404And503AreUnavailable(status: int): bool =
+  routeUnavailable(status) iff (status == 404 or status == 503)
+pure def verdictSkipsTurn(verdict: str): bool = Set("IGNORE", "STOP", "SKIP").contains(verdict)
+pure def lawRespondNeverSkipsTurn(verdict: str): bool =
+  Set("RESPOND", "REPLY", "ANSWER").contains(verdict) implies not(verdictSkipsTurn(verdict))
+pure val statusValues = Set(200, 401, 404, 500, 503)
+pure val verdictValues = Set("RESPOND", "REPLY", "ANSWER", "IGNORE", "STOP", "SKIP")
 pure val itemsValues = Set(List(), List(ModelCall({ label: "reasoning" }), ProviderRead, ToolInvocation, EvaluationRecord))
 pure val progressValues = Set({ handling: PhaseDone, planning: PhaseDone, acting: PhaseIdle, evaluating: PhaseIdle }, { handling: PhaseDone, planning: PhaseDone, acting: PhaseDone, evaluating: PhaseDone })
 ```

@@ -1,0 +1,421 @@
+// spec/x/index.md, "Direct requests, discovered items and autonomous actions use their own policy gates"
+import {
+  ChannelType,
+  createUniqueUuid,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+  type UUID,
+} from "@elizaos/core"
+import {
+  DEFAULT_X_ACCOUNT_ID,
+  TWITTER_SERVICE_NAME,
+  X_SERVICE_NAME,
+  type ClientTweet,
+  type TwitterProfile,
+} from "./types.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+
+  export function encodeDraftBody(body: string): string {
+    return Buffer.from(body, "utf8").toString("base64url")
+  }
+
+  export function decodeDraftBody(encoded: string): string {
+    return Buffer.from(encoded, "base64url").toString("utf8")
+  }
+
+  export function failAdapter(message: string): never {
+    throw new Error(message)
+  }
+}
+import { decodeDraftBody, encodeDraftBody, failAdapter } from node
+
+export type TwitterCacheIdentity = string | { accountId: string; profileId: string }
+
+export interface TwitterContextOptions {
+  tweet?: ClientTweet
+  accountId?: string
+  userId: string
+  username: string
+  name?: string
+  conversationId?: string
+}
+
+export interface TwitterContextResult {
+  worldId: UUID
+  roomId: UUID
+  entityId: UUID
+}
+
+export interface XMessageRef {
+  id: string
+  source: "twitter"
+  worldId?: string
+  externalId: string
+  threadId: string
+  from: { identifier: string; displayName: string }
+  to: Array<{ identifier: string; displayName?: string }>
+  snippet: string
+  body: string
+  receivedAtMs: number
+  hasAttachments: boolean
+  isRead: boolean
+  channelId: string
+  metadata: Record<string, unknown>
+}
+
+export interface XDmListOptions {
+  limit?: number
+  sinceMs?: number
+  channelIds?: string[]
+  worldIds?: string[]
+}
+
+export interface XDmDraftRequest {
+  to: Array<{ identifier: string }>
+  body: string
+  worldId?: string
+}
+
+export interface XMessageAdapterCapabilities {
+  list: boolean
+  search: boolean
+  manage: Record<string, boolean>
+  send: { reply: boolean; new: boolean; schedule: boolean }
+  worlds: "single" | "multi"
+  channels: "implicit" | "explicit"
+}
+
+interface XRuntimeServiceLike {
+  refreshActiveProfile?: () => Promise<TwitterProfile | null>
+  sendDirectMessageForAccount?: (
+    accountId: string | undefined,
+    params: { participantId: string; text: string },
+  ) => Promise<{ ok?: boolean; status?: number; messageId?: string | null }>
+  fetchDirectMessagesForAccount?: (
+    accountId: string | undefined,
+    params?: { participantId?: string; limit?: number },
+  ) => Promise<Memory[]>
+}
+
+function recentTweetsCacheKey(identity: TwitterCacheIdentity): string {
+  return typeof identity === "string"
+    ? `twitter/${identity}/recentTweets`
+    : `twitter/${encodeURIComponent(identity.accountId)}/${identity.profileId}/recentTweets`
+}
+
+export async function getRecentTweets(
+  runtime: IAgentRuntime,
+  identity: TwitterCacheIdentity,
+): Promise<string[]> {
+  const cached = await runtime.getCache<string[]>(recentTweetsCacheKey(identity))
+  return Array.isArray(cached) ? cached : []
+}
+
+export async function addToRecentTweets(
+  runtime: IAgentRuntime,
+  identity: TwitterCacheIdentity,
+  tweetText: string,
+  maxRecent = 10,
+): Promise<void> {
+  const cacheKey = recentTweetsCacheKey(identity)
+  const recent = await getRecentTweets(runtime, identity)
+  const next = [tweetText, ...recent].slice(0, maxRecent)
+  await runtime.setCache(cacheKey, next)
+}
+
+export function normalizeTweetForDuplicateCheck(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{L}\p{N}#@]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+export function tweetTokenSimilarity(a: string, b: string): number {
+  const aTokens = new Set(a.split(" ").filter(Boolean))
+  const bTokens = new Set(b.split(" ").filter(Boolean))
+  if (aTokens.size === 0 && bTokens.size === 0) return 1
+  if (aTokens.size === 0 || bTokens.size === 0) return 0
+  let intersection = 0
+  for (const token of aTokens) {
+    if (bTokens.has(token)) intersection += 1
+  }
+  const union = aTokens.size + bTokens.size - intersection
+  return union === 0 ? 0 : intersection / union
+}
+
+export async function isDuplicateTweet(
+  runtime: IAgentRuntime,
+  identity: TwitterCacheIdentity,
+  tweetText: string,
+  similarityThreshold = 0.9,
+): Promise<boolean> {
+  const recentTweets = await getRecentTweets(runtime, identity)
+  if (recentTweets.includes(tweetText)) return true
+  const normalizedNew = normalizeTweetForDuplicateCheck(tweetText)
+  if (!normalizedNew) return false
+  const paddedNew = ` ${normalizedNew} `
+  for (const recent of recentTweets) {
+    const normalizedRecent = normalizeTweetForDuplicateCheck(recent)
+    if (!normalizedRecent) continue
+    if (normalizedNew === normalizedRecent) return true
+    const paddedRecent = ` ${normalizedRecent} `
+    if (paddedNew.includes(paddedRecent) || paddedRecent.includes(paddedNew)) return true
+    if (tweetTokenSimilarity(normalizedNew, normalizedRecent) >= similarityThreshold) return true
+  }
+  return false
+}
+
+export async function isTweetProcessed(runtime: IAgentRuntime, tweetId: string): Promise<boolean> {
+  const memoryId = createUniqueUuid(runtime, tweetId)
+  const memory = await runtime.getMemoryById(memoryId)
+  return Boolean(memory)
+}
+
+export function buildTwitterMessageMetadata(
+  tweet: Pick<ClientTweet, "conversationId" | "id" | "name" | "userId" | "username">,
+  entityId: UUID,
+  createdAt: number,
+  accountId?: string,
+): Record<string, unknown> {
+  return {
+    type: "message",
+    source: "twitter",
+    provider: "twitter",
+    timestamp: createdAt,
+    entityName: tweet.name,
+    entityUserName: tweet.username,
+    fromBot: false,
+    fromId: tweet.userId,
+    sourceId: entityId,
+    chatType: ChannelType.FEED,
+    messageIdFull: tweet.id,
+    accountId: accountId ?? DEFAULT_X_ACCOUNT_ID,
+    sender: {
+      id: tweet.userId,
+      name: tweet.name,
+      username: tweet.username,
+    },
+    twitter: {
+      ...(accountId ? { accountId } : {}),
+      id: tweet.userId,
+      userId: tweet.userId,
+      username: tweet.username,
+      userName: tweet.username,
+      name: tweet.name,
+      tweetId: tweet.id,
+      conversationId: tweet.conversationId,
+    },
+  }
+}
+
+export async function ensureTwitterContext(
+  runtime: IAgentRuntime,
+  options: TwitterContextOptions,
+): Promise<TwitterContextResult> {
+  const { userId, username, name = username, conversationId = userId, accountId } = options
+  const worldId = createUniqueUuid(runtime, userId) as UUID
+  const roomId = createUniqueUuid(runtime, conversationId) as UUID
+  const entityId = createUniqueUuid(runtime, userId) as UUID
+  await runtime.ensureConnection({
+    entityId,
+    roomId,
+    userName: username,
+    name,
+    source: "twitter",
+    type: ChannelType.FEED,
+    worldId,
+    channelId: conversationId,
+    metadata: accountId ? { accountId } : undefined,
+  })
+  return { worldId, roomId, entityId }
+}
+
+function resolveXServiceLike(runtime: IAgentRuntime): XRuntimeServiceLike | null {
+  const service = runtime.getService(X_SERVICE_NAME) ?? runtime.getService(TWITTER_SERVICE_NAME)
+  return service && typeof service === "object" ? (service as XRuntimeServiceLike) : null
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) return value
+  }
+  return ""
+}
+
+function memoryToMessageRef(memory: Memory): XMessageRef {
+  const metadata = asRecord(memory.metadata)
+  const content = asRecord(memory.content)
+  const xMeta = asRecord(metadata.x)
+  const sender = asRecord(metadata.sender)
+  const receivedAtMs = Number(memory.createdAt)
+  const senderId = firstString(xMeta.senderId, sender.id, memory.entityId) || "unknown"
+  const senderHandle = firstString(xMeta.senderUsername, sender.username)
+  const body = firstString(content.text)
+  const externalId = firstString(xMeta.dmEventId, metadata.messageIdFull, memory.id)
+  const threadId = firstString(xMeta.conversationId, memory.roomId, senderId)
+  const accountId = firstString(metadata.accountId, xMeta.accountId)
+  return {
+    id: `twitter:${externalId}`,
+    source: "twitter",
+    ...(accountId ? { worldId: accountId } : {}),
+    externalId,
+    threadId,
+    from: { identifier: senderId, displayName: senderHandle },
+    to: [],
+    snippet: body,
+    body,
+    receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
+    hasAttachments: false,
+    isRead: false,
+    channelId: threadId,
+    metadata,
+  }
+}
+
+function parseDraftId(draftId: string): { participantId: string; text: string; accountId?: string } {
+  const parts = draftId.split(":")
+  if ((parts.length !== 4 && parts.length !== 5) || parts[0] !== "twitter") {
+    failAdapter(`[XDmAdapter] malformed draftId ${draftId}`)
+  }
+  let participantId = ""
+  let accountId: string | undefined
+  try {
+    participantId = parts[1] ? decodeURIComponent(parts[1]) : ""
+    accountId = parts[4] ? decodeURIComponent(parts[4]) : undefined
+  } catch {
+    failAdapter(`[XDmAdapter] malformed draftId encoding ${draftId}`)
+  }
+  const text = parts[3] ? decodeDraftBody(parts[3]) : ""
+  if (!participantId) failAdapter(`[XDmAdapter] cannot resolve recipient from draftId ${draftId}`)
+  if (!text) failAdapter(`[XDmAdapter] cannot resolve body from draftId ${draftId}`)
+  return { participantId, text, ...(accountId ? { accountId } : {}) }
+}
+
+export class XDmAdapter {
+  readonly source = "twitter" as const
+
+  isAvailable(runtime: IAgentRuntime): boolean {
+    return Boolean(resolveXServiceLike(runtime))
+  }
+
+  capabilities(): XMessageAdapterCapabilities {
+    return {
+      list: true,
+      search: false,
+      manage: {},
+      send: { reply: true, new: true, schedule: false },
+      worlds: "single",
+      channels: "implicit",
+    }
+  }
+
+  async listMessages(runtime: IAgentRuntime, opts: XDmListOptions = {}): Promise<XMessageRef[]> {
+    const service = resolveXServiceLike(runtime)
+    if (typeof service?.fetchDirectMessagesForAccount !== "function") return []
+    if (opts.limit !== undefined && (!Number.isSafeInteger(opts.limit) || opts.limit <= 0)) {
+      failAdapter("X triage limit must be a positive safe integer")
+    }
+    const channels = opts.channelIds?.length ? new Set(opts.channelIds) : null
+    const accountIds: Array<string | undefined> = opts.worldIds?.length
+      ? [...new Set(opts.worldIds)]
+      : [undefined]
+    const refs: XMessageRef[] = []
+    for (const accountId of accountIds) {
+      const memories = await service.fetchDirectMessagesForAccount(accountId, { participantId: undefined })
+      for (const memory of memories) {
+        if (memory.entityId === runtime.agentId) continue
+        const ref = memoryToMessageRef(memory)
+        if (channels && !channels.has(ref.channelId)) continue
+        if (opts.sinceMs !== undefined && Number.isFinite(ref.receivedAtMs) && ref.receivedAtMs < opts.sinceMs) continue
+        refs.push(ref)
+      }
+    }
+    const sorted = refs
+      .map((ref, index) => ({ ref, index }))
+      .sort((left, right) => right.ref.receivedAtMs - left.ref.receivedAtMs || left.index - right.index)
+      .map(({ ref }) => ref)
+    return opts.limit === undefined ? sorted : sorted.slice(0, opts.limit)
+  }
+
+  async getMessage(runtime: IAgentRuntime, id: string): Promise<XMessageRef | null> {
+    const all = await this.listMessages(runtime, { limit: 100 })
+    return all.find((ref) => ref.id === id) ?? null
+  }
+
+  async createDraft(_runtime: IAgentRuntime, draft: XDmDraftRequest): Promise<{ draftId: string; preview: string }> {
+    const recipient = draft.to[0]?.identifier
+    if (!recipient) failAdapter("[XDmAdapter] createDraft requires a recipient identifier")
+    if (!draft.body.trim()) failAdapter("[XDmAdapter] createDraft requires non-empty body")
+    const accountSegment = draft.worldId ? `:${encodeURIComponent(draft.worldId)}` : ""
+    const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}${accountSegment}`
+    return { draftId, preview: draft.body.toWellFormed() }
+  }
+
+  async sendDraft(runtime: IAgentRuntime, draftId: string): Promise<{ externalId: string }> {
+    const service = resolveXServiceLike(runtime)
+    if (typeof service?.sendDirectMessageForAccount !== "function") {
+      failAdapter("[XDmAdapter] X runtime service is unavailable")
+    }
+    const { participantId, text, accountId } = parseDraftId(draftId)
+    const sent = await service.sendDirectMessageForAccount(accountId, { participantId, text })
+    if (sent.ok === false) {
+      failAdapter(`[XDmAdapter] failed to send direct message${sent.status ? ` (status ${sent.status})` : ""}`)
+    }
+    return { externalId: sent.messageId ?? `${participantId}:${Date.now()}` }
+  }
+}
+
+function renderIdentityText(profile: TwitterProfile): string {
+  const lines = [
+    `The agent's X (Twitter) account:`,
+    `- Username: @${profile.username}`,
+    `- Screen name: ${profile.screenName}`,
+  ]
+  if (profile.bio.trim()) lines.push(`- Bio: ${profile.bio.trim()}`)
+  if (profile.nicknames.length > 0) lines.push(`- Nicknames: ${profile.nicknames.join(", ")}`)
+  return lines.join("\n")
+}
+
+export const xIdentityProvider: Provider = {
+  name: "TWITTER_IDENTITY",
+  description: "The agent's own X (Twitter) identity: username, screen name, bio, and nicknames.",
+  position: -10,
+  dynamic: true,
+  cacheStable: false,
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+    const service = resolveXServiceLike(runtime)
+    const profile = service?.refreshActiveProfile ? await service.refreshActiveProfile() : null
+    if (!profile) {
+      return { text: "", values: {}, data: { twitterProfile: null } }
+    }
+    return {
+      text: renderIdentityText(profile),
+      values: {
+        twitterUserName: profile.username,
+        twitterScreenName: profile.screenName,
+        twitterBio: profile.bio,
+        twitterNicknames: profile.nicknames.join(", "),
+      },
+      data: {
+        twitterProfile: {
+          id: profile.id,
+          username: profile.username,
+          screenName: profile.screenName,
+          bio: profile.bio,
+          nicknames: profile.nicknames,
+        },
+      },
+    }
+  },
+}

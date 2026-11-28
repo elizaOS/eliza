@@ -1,0 +1,130 @@
+// spec/network/index.md, "Only the authenticated turn may request a state write or relay"
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core"
+import type { NetworkAppId, NetworkStore } from "./types.vibe"
+
+export interface NetworkAppVoice {
+  readonly appName: string
+  readonly agentName: string
+  readonly purpose: string
+  readonly tone: string
+}
+
+export const NETWORK_APP_VOICES: Readonly<Record<NetworkAppId, NetworkAppVoice>> = {
+  ntwrk: {
+    appName: "The Network",
+    agentName: "the Network's agent",
+    purpose: "introduces members to people, plans and events they asked for",
+    tone: "warm, brief and direct, like a well-connected friend",
+  },
+  slop: {
+    appName: "slop",
+    agentName: "slop's matchmaker",
+    purpose: "makes dating introductions, only with mutual opt-in",
+    tone: "playful and light, never pushy, never explicit",
+  },
+  peon: {
+    appName: "peon",
+    agentName: "peon's recruiter",
+    purpose: "makes job and hiring introductions",
+    tone: "crisp and professional, still friendly",
+  },
+  friends: {
+    appName: "friends.help",
+    agentName: "friends.help's planner",
+    purpose: "finds friends and plans in New York City",
+    tone: "upbeat and social, concrete about times and places",
+  },
+}
+
+export function networkAgentVoice(app: NetworkAppId): string {
+  const v = NETWORK_APP_VOICES[app]
+  return [
+    "# Voice",
+    `You are Eliza. In this conversation you speak as ${v.agentName}: ${v.appName} ${v.purpose}.`,
+    `Tone: ${v.tone}. Text-message length: one to three short sentences, no lists, no emoji walls.`,
+    `Introduce yourself as Eliza from ${v.appName} only when asked who you are.`,
+    "Never invent introductions, matches, members or plans; mention only items in the member context or action results.",
+    "Never share another member's contact details, photos or private facets; RELAY is the only way anything reaches another member.",
+    "If the member is in single-player mode, help them directly and never offer introductions.",
+  ].join("\n")
+}
+
+export function createNetworkVoiceProvider(options: { readonly app: NetworkAppId }): Provider {
+  const text = networkAgentVoice(options.app)
+  return {
+    name: "NETWORK_VOICE",
+    description: "How the agent speaks for the Network app this turn belongs to.",
+    descriptionCompressed: "Network app voice guidelines.",
+    position: -20,
+    get: async (): Promise<ProviderResult> => ({
+      text,
+      values: { networkApp: options.app },
+      data: { app: options.app },
+    }),
+  }
+}
+
+export interface MemberContextProviderOptions {
+  readonly store: NetworkStore
+  readonly authority: { readonly memberId: string }
+  readonly roleGate?: Provider["roleGate"]
+}
+
+export function createMemberContextProvider(options: MemberContextProviderOptions): Provider {
+  return {
+    name: "MEMBER_CONTEXT",
+    description:
+      "The Network member's shareable profile summary, availability state and active items.",
+    descriptionCompressed: "Network member profile, state, and active items.",
+    position: -10,
+    roleGate: options.roleGate ?? { minRole: "GUEST" },
+    get: async (
+      _runtime: IAgentRuntime,
+      _message: Memory,
+      _state?: State,
+    ): Promise<ProviderResult> => {
+      const member = await options.store.getMemberContext(options.authority.memberId)
+      if (member === null) {
+        return { text: "", data: { member: null } }
+      }
+      const lines = [
+        "# Network member",
+        `Name: ${member.firstName} (${member.city})`,
+        `State: ${member.state}${member.stateFrom ? ` from ${member.stateFrom}` : ""}${member.stateUntil ? ` until ${member.stateUntil}` : ""}`,
+      ]
+      if (member.facets.length > 0) {
+        lines.push(`About: ${member.facets.join("; ")}`)
+      }
+      if (member.activeItems === null) {
+        lines.push(
+          "Active Network items are unavailable this turn; do not claim the inbox is empty.",
+        )
+      }
+      if (member.activeItems !== null && member.activeItems.length > 0) {
+        lines.push("Active items:")
+        for (const item of member.activeItems) {
+          lines.push(`- [${item.kind}] ${item.summary}${item.id ? ` (itemId: ${item.id})` : ""}`)
+        }
+      }
+      return {
+        text: lines.join("\n"),
+        values: { networkMemberState: member.state },
+        data: {
+          member: {
+            memberId: member.memberId,
+            state: member.state,
+            stateFrom: member.stateFrom ?? null,
+            stateUntil: member.stateUntil,
+            city: member.city,
+          },
+        },
+      }
+    },
+  }
+}

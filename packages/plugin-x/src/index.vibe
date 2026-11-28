@@ -1,196 +1,211 @@
 // spec/x/index.md, "X cursors compare complete decimal provider IDs and stay with the selected session"; spec/x/index.md, "Direct requests, discovered items and autonomous actions use their own policy gates"; spec/x/index.md, "The X direct-message journal retries only a confirmed transient refusal before any part was accepted"
-import { ApiResponseError, TwitterApi } from "twitter-api-v2"
-import { ChannelType, Service, checkPairingAllowed, createUniqueUuid, type Content, type IAgentRuntime, type Memory, type Plugin, type SendHandlerOutcome, type TargetInfo, requireConfirmedSendHandlerDelivery } from "@elizaos/core"
-import { initial, machineOver, validXId, laterXId, xDmDecision, xWriteDecision, emptyXDmWrite, xReserveDmWrite, xDispatchDmPart, xObserveDmPart, type XSession, type XDmMode, type XWritePolicy } from "../gen/x.effect.vibe"
+import { getConnectorAccountManager, logger, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { xIdentityProvider } from "./memory.vibe"
+import { createXConnectorAccountProvider } from "./oauth.vibe"
+import { XService } from "./service.vibe"
 
-export error XRequestFailed { stage: string }
+export {
+  DEFAULT_TWITTER_DM_POLICY,
+  checkTwitterDmAccess,
+  getTargetUsers,
+  getXSetting,
+  isEndpointOwnedByCloudBase,
+  normalizeXAccountId,
+  parseTwitterCount,
+  parseTwitterInterval,
+  resolveCloudApiKeyForXEndpoint,
+  resolveDefaultXAccountId,
+  resolveRequestedXAccountId,
+  resolveTwitterAccountConfig,
+  resolveTwitterDmPolicy,
+  shouldTargetUser,
+  validateTwitterConfig,
+  type RuntimeWithXConnectorAccounts,
+  type TwitterDmAccessDecision,
+  type XAccountCredentials,
+  type XConnectorAccountRecord,
+  type XConnectorAccountStore,
+} from "./environment.vibe"
+export {
+  XDmAdapter,
+  addToRecentTweets,
+  buildTwitterMessageMetadata,
+  ensureTwitterContext,
+  getRecentTweets,
+  isDuplicateTweet,
+  isTweetProcessed,
+  normalizeTweetForDuplicateCheck,
+  tweetTokenSimilarity,
+  xIdentityProvider,
+  type TwitterCacheIdentity,
+  type TwitterContextOptions,
+  type TwitterContextResult,
+  type XDmDraftRequest,
+  type XDmListOptions,
+  type XMessageAdapterCapabilities,
+  type XMessageRef,
+} from "./memory.vibe"
+export {
+  OAUTH2_DEFAULT_SCOPES,
+  OAuth2PKCEAuthProvider,
+  RuntimeCacheTokenStore,
+  X_OAUTH_AUTHORIZE_URL,
+  X_OAUTH_TOKEN_URL,
+  X_OAUTH_USERS_ME_URL,
+  base64UrlEncode,
+  chooseDefaultTokenStore,
+  createCodeChallenge,
+  createCodeVerifier,
+  createState,
+  createXConnectorAccountProvider,
+  materializeEnvAccountIfMissing,
+  persistXConnectorCredentialRefs,
+  type StoredOAuth2Tokens,
+  type TokenStore,
+  type XConnectorAccountProviderOptions,
+  type XConnectorCredentialRefMetadata,
+} from "./oauth.vibe"
+export {
+  XRequestFailed,
+  XService,
+  advanceXCursorState,
+  bindXCursor,
+  connectXAccount,
+  readXCursorState,
+  seedXCursorState,
+  type XAccount,
+  type XAccountStatus,
+  type XApiTransport,
+  type XCredentials,
+  type XRateLimitWindow,
+} from "./service.vibe"
+export {
+  countTwitterWeightedLength,
+  extractTwitterUrlsWithIndices,
+  extractXWriteReceiptId,
+  isValidTweet,
+  normalizeXReceiptId,
+  parseActionResponseFromText,
+  quoteThreadFirstChunkMaxLength,
+  quoteTweetText,
+  sendTextAsTweetThread,
+  splitTweetContent,
+  splitXDirectMessageContent,
+  type TwitterUrlEntity,
+} from "./tweet-text.vibe"
+export {
+  ApiError,
+  DEFAULT_X_ACCOUNT_ID,
+  MessageType,
+  THREAD_TWEET_MAX_LENGTH,
+  TWEET_CHAR_LIMIT,
+  TWEET_MAX_LENGTH,
+  TWITTER_SERVICE_NAME,
+  TwitterError,
+  TwitterErrorType,
+  TwitterEventTypes,
+  X_MAX_DM_LENGTH,
+  X_MAX_RESULTS_PER_PAGE,
+  X_RECENT_SEARCH_MIN_RESULTS,
+  X_SERVICE_NAME,
+  X_USER_TWEETS_MIN_RESULTS,
+  convertClientTweetToCoreTweet,
+  getTwitterProviderStatus,
+  isExplicitTwitterRejection,
+  isPermanentTwitterRejection,
+  maxResultsFor,
+  normalizeTwitterProviderError,
+  type ActionResponse,
+  type ClientTweet,
+  type CreatePostOptions,
+  type GetMessagesOptions,
+  type GetPostsOptions,
+  type IMessageService,
+  type IPostService,
+  type MediaAttachment,
+  type MediaData,
+  type Message,
+  type MessageTypeValue,
+  type Post,
+  type PostMetrics,
+  type QueryTweetsResponse,
+  type SendMessageOptions,
+  type SentTweet,
+  type Tweet,
+  type TweetThreadReceipt,
+  type TwitterAuthMode,
+  type TwitterClientState,
+  type TwitterConfig,
+  type TwitterDmPolicy,
+  type TwitterErrorTypeValue,
+  type TwitterEventPayloadMap,
+  type TwitterEventType,
+  type TwitterLikeReceivedPayload,
+  type TwitterMemory,
+  type TwitterMentionReceivedPayload,
+  type TwitterMessageReceivedPayload,
+  type TwitterMessageSentPayload,
+  type TwitterProfile,
+  type TwitterQuoteReceivedPayload,
+  type TwitterReactionReceivedPayload,
+  type TwitterRetweetReceivedPayload,
+  type TwitterServerPayload,
+  type TwitterThreadCreatedPayload,
+  type TwitterThreadUpdatedPayload,
+  type TwitterUserFollowedPayload,
+  type TwitterUserJoinedPayload,
+  type TwitterUserRef,
+  type TwitterUserUnfollowedPayload,
+} from "./types.vibe"
 
-export type XCredentials = { readonly kind: "oauth1"; readonly appKey: string; readonly appSecret: Redacted.Redacted<string>; readonly accessToken: Redacted.Redacted<string>; readonly accessSecret: Redacted.Redacted<string> } | { readonly kind: "oauth2"; readonly accessToken: Redacted.Redacted<string> }
-export interface XAccount {
-  readonly binding: XSession
-  readonly credentials: XCredentials
-  readonly policy: XWritePolicy
-  readonly dmMode: XDmMode
-  readonly allowedSenders: ReadonlySet<string>
-  readonly pollSeconds: number
+function shouldEnableX(
+  _env: Record<string, string | undefined>,
+  config: Record<string, unknown>,
+): boolean {
+  const connectors = config.connectors as Record<string, unknown> | undefined
+  if (!connectors) return false
+  for (const key of ["x", "twitter"] as const) {
+    const connector = connectors[key]
+    if (!connector || typeof connector !== "object") continue
+    if ((connector as Record<string, unknown>).enabled === false) continue
+    return true
+  }
+  return false
 }
 
-const ProviderEvent = Schema.Struct({ id: Schema.String, sender_id: Schema.optionalKey(Schema.String), text: Schema.optionalKey(Schema.String), dm_conversation_id: Schema.optionalKey(Schema.String), created_at: Schema.optionalKey(Schema.String), event_type: Schema.optionalKey(Schema.String), participant_ids: Schema.optionalKey(Schema.Array(Schema.String)) })
-schema DmReceipt { dm_event_id: string }
-const DmResponse = Schema.Union([Schema.Struct({ data: DmReceipt }), DmReceipt])
-
-function digits(value: string): number[] { return /^\d+$/.test(value) ? Array.from(value, digit => Number(digit)) : [] }
-
-export effect function connectXAccount(runtime: IAgentRuntime, config: XAccount) {
-  const credential = config.credentials
-  const client = try Effect.try({
-    try: () => credential.kind === "oauth2"
-      ? new TwitterApi(Redacted.value(credential.accessToken))
-      : new TwitterApi({ appKey: credential.appKey, appSecret: Redacted.value(credential.appSecret), accessToken: Redacted.value(credential.accessToken), accessSecret: Redacted.value(credential.accessSecret) }),
-    catch: () => new XRequestFailed({ stage: "client" }),
-  })
-  const profile = try tryPromise({ try: () => client.v2.me(), catch: () => new XRequestFailed({ stage: "identity" }) })
-  const ownId = profile.data.id
-  if (ownId === "") throw new XRequestFailed({ stage: "identity" })
-  const cache = `twitter/${config.binding.accountId}/${ownId}`
-  const durableCursor = try tryPromise(() => runtime.getCache<string>(`${cache}/dm_cursor`))
-  const restored = digits(durableCursor ?? "")
-  const state = try Ref.make(validXId(restored) ? { binding: config.binding, cursor: restored, initialized: true } : initial)
-  const active = try Ref.make(true)
-  const poller = try machineOver(() => Ref.get(state), next => Ref.set(state, next))
-  if (!validXId(restored)) try poller.send({ type: "bindX", binding: config.binding }, "XAdapter")
-
-  effect function send(target: TargetInfo, content: Content, runtimeKey?: string): SendHandlerOutcome!XRequestFailed {
-    const text = content.text?.trim() ?? ""
-    const recipient = target.channelId
-    if (xWriteDecision("XSendDm", config.policy) !== "XDoWrite" || target.accountId !== undefined && target.accountId !== config.binding.accountId || recipient === undefined || text === "" || !(try Ref.get(active)) || (content.attachments?.length ?? 0) > 0) return { kind: "not_delivered", code: "X_DM_UNAVAILABLE", message: "The selected X account cannot send this direct message." }
-    const parts: string[] = []
-    let part = ""
-    for (const unit of text) {
-      if (part.length + unit.length > 10000) { parts.push(part); part = "" }
-      part += unit
+export const XPlugin: Plugin = {
+  name: "@elizaos/plugin-x",
+  description: "X (formerly Twitter) connector with posting, interactions, timeline, and direct messages",
+  connectorSources: [
+    {
+      source: "x",
+      aliases: ["x", "x_dm"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
+  actions: [],
+  providers: [xIdentityProvider],
+  services: [XService],
+  autoEnable: {
+    connectorKeys: ["x", "twitter"],
+    shouldEnable: shouldEnableX,
+  },
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+    try {
+      const manager = getConnectorAccountManager(runtime)
+      manager.registerProvider(createXConnectorAccountProvider(runtime))
+    } catch (err) {
+      logger.warn(
+        { src: "plugin:x", err: err instanceof Error ? err.message : String(err) },
+        "Failed to register X provider with ConnectorAccountManager",
+      )
     }
-    if (part !== "") parts.push(part)
-    let journal = xReserveDmWrite(parts.length, emptyXDmWrite)
-    if (runtimeKey !== undefined) {
-      const settled = try tryPromise({ try: () => runtime.getCache<string>(runtimeKey), catch: () => new XRequestFailed({ stage: "journal-read" }) })
-      if (settled !== undefined && settled !== null) return { kind: "duplicate", priorDelivery: "in_flight" }
-      const saved = try tryPromise({ try: () => runtime.setCache(runtimeKey, "egress_started"), catch: () => new XRequestFailed({ stage: "journal-save" }) })
-      if (!saved) throw new XRequestFailed({ stage: "journal-save" })
-    }
-    for (const textPart of parts) {
-      journal = xDispatchDmPart(try Ref.get(active), journal)
-      if (journal.phase !== "XAwaitingPart") break
-      const outcome = try exit(tryPromise(() => recipient.includes("-") ? client.v2.sendDmInConversation(recipient, { text: textPart }) : client.v2.sendDmToParticipant(recipient, { text: textPart })))
-      if (Exit.isSuccess(outcome)) {
-        const response = Schema.decodeUnknownEffect(DmResponse)(outcome.value) catch () => undefined
-        if (response === undefined) journal = xObserveDmPart({ tag: "XDmOutcomeUnknown" }, journal)
-        else {
-          const receiptId = "data" in response ? response.data.dm_event_id : response.dm_event_id
-          journal = xObserveDmPart({ tag: "XDmAccepted", receiptId }, journal)
-        }
-      } else {
-        const reason = Cause.findErrorOption(outcome.cause)
-        const issue = Option.isSome(reason) && reason.value instanceof Cause.UnknownError ? reason.value.cause : undefined
-        const observation = issue instanceof ApiResponseError && issue.code >= 400 && issue.code < 500 ? issue.code === 404 ? "XDmExplicitPermanentRefusal" : "XDmExplicitTransientRefusal" : "XDmOutcomeUnknown"
-        journal = xObserveDmPart({ tag: observation }, journal)
-      }
-      if (journal.phase !== "XPartAccepted") break
-    }
-    if (runtimeKey !== undefined) {
-      if (journal.phase === "XNoAttempt") try tryPromise({ try: () => runtime.deleteCache(runtimeKey), catch: () => new XRequestFailed({ stage: "journal-release" }) })
-      else try tryPromise({ try: () => runtime.setCache(runtimeKey, journal.phase), catch: () => new XRequestFailed({ stage: "journal-settle" }) })
-    }
-    const [first, ...rest] = journal.acceptedIds
-    if (first === undefined) {
-      if (journal.phase === "XIndeterminateWrite" || journal.phase === "XNoAttempt") throw new XRequestFailed({ stage: journal.phase === "XNoAttempt" ? "temporarily-refused" : "delivery-unknown" })
-      return { kind: "not_delivered", code: "X_DM_NOT_DELIVERED", message: "X did not confirm delivery." }
-    }
-    const providerMessageIds: [string, ...string[]] = [first, ...rest]
-    const receipt = { providerMessageIds, acceptedAt: try Clock.currentTimeMillis, persistence: { status: "not_attempted" as const, reason: "X returned provider event IDs." } }
-    return journal.phase === "XAllPartsAccepted" ? { kind: "delivered", receipt, memories: [] } : { kind: "partially_delivered", code: "X_DM_PARTIAL", message: "X accepted part of the message. Repeating it may duplicate delivery.", receipt, memories: [] }
-  }
-
-  effect function handle(event: typeof ProviderEvent.Type) {
-    const sender = event.sender_id
-    const text = event.text?.trim() ?? ""
-    if (sender === undefined || sender === ownId || text === "" || event.event_type !== undefined && event.event_type !== "MessageCreate") return
-    const settledKey = `${cache}/dm_settled/${event.id}`
-    if (try tryPromise(() => runtime.getCache<string>(settledKey))) return
-    const group = (event.participant_ids?.length ?? 0) > 2
-    const conversation = event.dm_conversation_id ?? ""
-    const scope = group ? "XGroupDm" : "XOneToOne"
-    const allowlisted = config.allowedSenders.has(sender)
-    let decision = xDmDecision(scope, config.dmMode, allowlisted, false, conversation)
-    if (decision === "XPairDm") {
-      const pairing = try tryPromise(() => checkPairingAllowed(runtime, { channel: "twitter", senderId: sender }))
-      if (pairing.replyMessage) send({ source: "twitter", channelId: sender }, { text: pairing.replyMessage }) catch () => undefined
-      decision = xDmDecision(scope, config.dmMode, allowlisted, pairing.allowed, conversation)
-    }
-    if (decision !== "XAcceptDm" || !(try Ref.get(active))) return
-    const bound = `${cache}/${conversation || sender}`
-    const { id, roomId, worldId, entityId } = try Effect.try(() => ({ id: createUniqueUuid(runtime, `${bound}/event/${event.id}`), roomId: createUniqueUuid(runtime, `${bound}/room`), worldId: createUniqueUuid(runtime, `${cache}/world`), entityId: createUniqueUuid(runtime, `${cache}/user/${sender}`) }))
-    const channelType = group ? ChannelType.GROUP : ChannelType.DM
-    const channelId = group ? conversation : sender
-    const createdAt = Date.parse(event.created_at ?? "")
-    try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "twitter", channelId, type: channelType, metadata: { accountId: config.binding.accountId } }))
-    const incoming: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, ...(Number.isFinite(createdAt) ? { createdAt } : {}), content: { text, source: "twitter", channelType } }
-    if (!runtime.messageService) { try tryPromise(() => runtime.createMemory(incoming, "messages")); return }
-    const messageService = runtime.messageService
-    try tryPromise(() => messageService.handleMessage(runtime, incoming, async reply => {
-      requireConfirmedSendHandlerDelivery(await runPromise(send({ source: "twitter", accountId: config.binding.accountId, channelId }, reply, settledKey)))
-      return []
-    }))
-  }
-
-  effect function poll() {
-    const before = try poller.get()
-    const page = try tryPromise(() => client.v2.listDmEvents({ max_results: 50, "dm_event.fields": ["id", "created_at", "dm_conversation_id", "sender_id", "text", "event_type", "participant_ids"], event_types: ["MessageCreate"] }))
-    let previousCount = -1
-    while (before.initialized && !page.done && page.events.length > 0) {
-      const oldest = page.events[page.events.length - 1]
-      if (oldest === undefined || !laterXId(digits(oldest.id), before.cursor)) break
-      if (page.events.length === previousCount) throw new XRequestFailed({ stage: "pagination" })
-      previousCount = page.events.length
-      try tryPromise(() => page.fetchNext(50))
-    }
-    const events = page.events.filter(event => validXId(digits(event.id))).toSorted((left, right) => left.id === right.id ? 0 : laterXId(digits(left.id), digits(right.id)) ? 1 : -1)
-    if (!(try Ref.get(active))) return
-    if (!before.initialized) {
-      const newest = events.at(-1)
-      if (newest === undefined) return
-      if (!(try tryPromise(() => runtime.setCache(`${cache}/dm_cursor`, newest.id)))) throw new XRequestFailed({ stage: "cursor-save" })
-      try poller.send({ type: "seedXCursor", binding: config.binding, eventId: digits(newest.id) }, "XAdapter")
-      return
-    }
-    for (const candidate of events) {
-      if (!(try Ref.get(active))) return
-      const eventId = digits(candidate.id)
-      if (!laterXId(eventId, (try poller.get()).cursor)) continue
-      const event = Schema.decodeUnknownEffect(ProviderEvent)(candidate) catch () => undefined
-      if (event) try handle(event)
-      if (!(try Ref.get(active))) return
-      if (!(try tryPromise(() => runtime.setCache(`${cache}/dm_cursor`, candidate.id)))) throw new XRequestFailed({ stage: "cursor-save" })
-      try poller.send({ type: "advanceXCursor", binding: config.binding, eventId, eventFinalized: true }, "XAdapter")
-    }
-  }
-
-  effect function publish(content: Content) {
-    const text = content.text?.trim() ?? ""
-    if (text === "" || (content.attachments?.length ?? 0) > 0 || xWriteDecision("XPublishPost", config.policy) !== "XDoWrite" || !(try Ref.get(active))) throw new XRequestFailed({ stage: "post-not-authorized" })
-    const result = try tryPromise({ try: () => client.v2.tweet(text), catch: () => new XRequestFailed({ stage: "publish" }) })
-    if (result.data.id === "") throw new XRequestFailed({ stage: "delivery-unknown" })
-    return result.data.id
-  }
-
-  const worker = fork.detached effect {
-    while (try Ref.get(active)) {
-      poll() catch () => undefined
-      try sleep(Duration.seconds(config.pollSeconds))
-    }
-  }
-  try Effect.try(() => runtime.registerMessageConnector({ source: "twitter", accountId: config.binding.accountId, accountRouting: "connector", label: "X", sendHandler: (_runtime, target, content) => runPromise(send(target, content)) }))
-  return { send, publish, effect stop() { try Ref.set(active, false); try Fiber.interrupt(worker) } }
+  },
+  dispose: async (runtime: IAgentRuntime): Promise<void> => {
+    const svc = runtime.getService<XService>(XService.serviceType)
+    await svc?.stop()
+  },
 }
 
-class XConnector extends Service {
-  static override serviceType = "twitter"
-  override capabilityDescription = "Connects X direct messages and publishing to the selected account"
-  constructor(runtime?: IAgentRuntime)
-  constructor(runtime: IAgentRuntime, close: () => Promise<void>)
-  constructor(runtime?: IAgentRuntime, readonly close: () => Promise<void> = () => Promise.resolve()) { super(runtime) }
-  static override async start(runtime: IAgentRuntime): Promise<XConnector> {
-    const accessToken = runtime.getSetting("TWITTER_ACCESS_TOKEN")
-    const appKey = runtime.getSetting("TWITTER_API_KEY")
-    const appSecret = runtime.getSetting("TWITTER_API_SECRET_KEY")
-    const accessSecret = runtime.getSetting("TWITTER_ACCESS_TOKEN_SECRET")
-    if (typeof accessToken !== "string" || !accessToken || typeof appKey !== "string" || !appKey || typeof appSecret !== "string" || !appSecret || typeof accessSecret !== "string" || !accessSecret) return new XConnector(runtime)
-    const dm = runtime.getSetting("TWITTER_DM_POLICY")
-    const connection = await runPromise(connectXAccount(runtime, { binding: { accountId: "default", epoch: 1, auth: "XEnvironment" }, credentials: { kind: "oauth1", appKey, appSecret: Redacted.make(appSecret), accessToken: Redacted.make(accessToken), accessSecret: Redacted.make(accessSecret) }, policy: { dryRun: runtime.getSetting("TWITTER_DRY_RUN") === "true", postsEnabled: runtime.getSetting("TWITTER_ENABLE_POST") === "true", repliesEnabled: runtime.getSetting("TWITTER_ENABLE_REPLIES") !== "false", directEnabled: runtime.getSetting("TWITTER_ENABLE_DMS") !== "false", timelineActionsEnabled: runtime.getSetting("TWITTER_ENABLE_ACTIONS") === "true" }, dmMode: dm === "open" ? "XDmOpen" : dm === "disabled" ? "XDmDisabled" : dm === "allowlist" ? "XDmAllowlist" : "XDmPairing", allowedSenders: new Set(), pollSeconds: 90 }))
-    return new XConnector(runtime, () => runPromise(connection.stop()))
-  }
-  override stop(): Promise<void> { return this.close() }
-}
-
-export const XPlugin: Plugin = { name: "@elizaos/plugin-x", description: "X account connector", services: [XConnector] }
 export default XPlugin

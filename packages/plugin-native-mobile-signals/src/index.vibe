@@ -2,19 +2,32 @@
 import type { MobileSignalsPlugin } from "./native-contract.vibe"
 
 export type * from "./native-contract.vibe"
+export { MobileSignalsWeb, __internal } from "./web.vibe"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { MobileSignalsPlugin } from "./native-contract.vibe"
+  import { MobileSignalsWeb } from "./web.vibe"
 
-  export const native = registerPlugin<MobileSignalsPlugin>("MobileSignals")
+  export const native = registerPlugin<MobileSignalsPlugin>("MobileSignals", {
+    web: () => Promise.resolve(new MobileSignalsWeb()),
+  })
 }
 import { native } from capacitor
 
 export const MobileSignals = native
 
 import { nativeReply } from "@elizaos/os-bridges"
-import { mayObserveSignal, type MobileMonitor, type SignalGrants } from "../gen/nativeMobileSignals.effect.vibe"
+import {
+  canStartMonitoring,
+  canStopMonitoring,
+  initial,
+  mayObserveSignal,
+  startMonitoring,
+  stopMonitoring,
+  type MobileMonitor,
+  type SignalGrants,
+} from "../gen/nativeMobileSignals.effect.vibe"
 
 const DeviceObservation = Schema.Struct({
   source: Schema.Literal("mobile_device"),
@@ -26,6 +39,29 @@ const DeviceObservation = Schema.Struct({
 const Snapshot = Schema.Struct({ supported: Schema.Boolean, snapshot: Schema.NullOr(DeviceObservation) })
 
 export error MobileObservationRefused
+
+export interface MobileSignalsMonitorSession {
+  readonly state: () => MobileMonitor
+  readonly start: (supported: boolean) => boolean
+  readonly stop: () => boolean
+}
+
+export function createMobileSignalsMonitorSession(): MobileSignalsMonitorSession {
+  let current: MobileMonitor = initial
+  return {
+    state: () => current,
+    start(supported) {
+      if (!canStartMonitoring(current, supported)) return false
+      current = startMonitoring(current, supported)
+      return true
+    },
+    stop() {
+      if (!canStopMonitoring(current)) return false
+      current = stopMonitoring(current)
+      return true
+    },
+  }
+}
 
 export effect function readMobileObservation(monitor: () => MobileMonitor, generation: number, grants: () => SignalGrants, port: MobileSignalsPlugin = MobileSignals) {
   if (!Number.isSafeInteger(generation) || !mayObserveSignal(monitor(), generation, grants(), "DeviceBattery")) {

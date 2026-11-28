@@ -1,0 +1,635 @@
+// spec/sql/index.md, "A scoped read or mutation must name the active tenant and agent"
+module sqlAdapterStores {
+  import {
+    ElizaError,
+    cloneConnectorJsonObject,
+    redactConnectorJsonAudit,
+    worldMetadataValueEquals,
+    type AppendConnectorAccountAuditEventParams,
+    type ConnectorAccountAuditEventRecord,
+    type ConnectorAccountAuditOutcome,
+    type ConnectorAccountCredentialRefRecord,
+    type ConnectorAccountJsonObject,
+    type ConnectorAccountRecord,
+    type ConsumeOAuthFlowStateParams,
+    type CreateOAuthFlowStateParams,
+    type DeleteConnectorAccountCredentialRefsParams,
+    type DeleteConnectorAccountParams,
+    type DeleteOAuthFlowStateParams,
+    type GetConnectorAccountCredentialRefParams,
+    type GetConnectorAccountParams,
+    type GetOAuthFlowStateParams,
+    type ListConnectorAccountCredentialRefsParams,
+    type ListConnectorAccountsParams,
+    type Metadata,
+    type OAuthFlowRecord,
+    type PairingAllowlistEntry,
+    type PairingAllowlistQuery,
+    type PairingAllowlistsResult,
+    type PairingChannel,
+    type PairingRequest,
+    type PairingRequestQuery,
+    type PairingRequestsResult,
+    type SetConnectorAccountCredentialRefParams,
+    type UpdateOAuthFlowStateParams,
+    type UpsertConnectorAccountParams,
+    type UUID,
+    type WorldMetadataCompareAndSwapParams,
+    type WorldMetadataMutationResult,
+  } from "@elizaos/core"
+  import { asRecord, asStringList, encodeJsonb, randomUuid, sha256Hex } from "./adapter-helpers.vibe"
+  import type { SqlExecutor } from "./types.vibe"
+
+  const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
+    /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i
+
+  function toMillis(value: number | Date | null | undefined): number | null {
+    if (value === undefined || value === null) return null
+    return value instanceof Date ? value.getTime() : value
+  }
+
+  function asStringRecord(value: unknown): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(asRecord(value))) {
+      if (typeof v === "string") out[k] = v
+    }
+    return out
+  }
+
+  function asConnectorJson(value: unknown): ConnectorAccountJsonObject {
+    return cloneConnectorJsonObject(asRecord(value) as ConnectorAccountJsonObject)
+  }
+
+  export async function compareAndSwapSqlWorldMetadata(
+    executor: SqlExecutor,
+    params: WorldMetadataCompareAndSwapParams,
+  ): Promise<WorldMetadataMutationResult> {
+    return executor.transaction(async (tx) => {
+      const res = await tx.query("SELECT * FROM worlds WHERE id = $1 LIMIT 1", [params.worldId])
+      const row = res.rows[0]
+      if (!row) return { status: "not_found" }
+      const currentMetadata = asRecord(row.metadata) as Metadata
+      if (!worldMetadataValueEquals(currentMetadata, params.expectedMetadata)) {
+        return { status: "conflict" }
+      }
+      await tx.query("UPDATE worlds SET metadata = $1::jsonb WHERE id = $2", [
+        encodeJsonb(params.replacementMetadata, true),
+        params.worldId,
+      ])
+      return { status: "updated" }
+    })
+  }
+
+  export async function compareAndSetSqlCache<T>(
+    executor: SqlExecutor,
+    agentId: UUID,
+    key: string,
+    expected: unknown,
+    replacement: T,
+  ): Promise<boolean> {
+    return executor.transaction(async (tx) => {
+      const res = await tx.query(
+        "SELECT value FROM cache WHERE key = $1 AND agent_id = $2 LIMIT 1",
+        [key, agentId],
+      )
+      const exists = res.rows.length > 0
+      const current = exists ? res.rows[0]?.value : undefined
+      if (expected === undefined) {
+        if (exists) return false
+      } else if (!exists || JSON.stringify(current) !== JSON.stringify(expected)) {
+        return false
+      }
+      await tx.query(
+        `INSERT INTO cache (key, agent_id, value, created_at)
+         VALUES ($1, $2, $3::jsonb, $4)
+         ON CONFLICT (key, agent_id) DO UPDATE SET value = EXCLUDED.value, created_at = EXCLUDED.created_at`,
+        [key, agentId, encodeJsonb(replacement, true), Date.now()],
+      )
+      return true
+    })
+  }
+
+  export async function listSqlPairingRequests(
+    executor: SqlExecutor,
+    queries: PairingRequestQuery[],
+  ): Promise<PairingRequestsResult> {
+    const out: PairingRequestsResult = []
+    for (const query of queries) {
+      const res = await executor.query(
+        "SELECT * FROM pairing_requests WHERE channel = $1 AND agent_id = $2 ORDER BY created_at ASC",
+        [query.channel, query.agentId],
+      )
+      const requests: PairingRequest[] = res.rows.map((row) => ({
+        id: String(row.id) as UUID,
+        channel: String(row.channel) as PairingChannel,
+        senderId: String(row.sender_id),
+        code: String(row.code),
+        agentId: String(row.agent_id) as UUID,
+        metadata: asStringRecord(row.metadata),
+        createdAt: new Date(Number(row.created_at)),
+        lastSeenAt: new Date(Number(row.last_seen_at)),
+      }))
+      out.push({ channel: query.channel, agentId: query.agentId, requests })
+    }
+    return out
+  }
+
+  export async function listSqlPairingAllowlists(
+    executor: SqlExecutor,
+    queries: PairingAllowlistQuery[],
+  ): Promise<PairingAllowlistsResult> {
+    const out: PairingAllowlistsResult = []
+    for (const query of queries) {
+      const res = await executor.query(
+        "SELECT * FROM pairing_allowlist WHERE channel = $1 AND agent_id = $2 ORDER BY created_at ASC",
+        [query.channel, query.agentId],
+      )
+      const entries: PairingAllowlistEntry[] = res.rows.map((row) => ({
+        id: String(row.id) as UUID,
+        channel: String(row.channel) as PairingChannel,
+        senderId: String(row.sender_id),
+        agentId: String(row.agent_id) as UUID,
+        metadata: asStringRecord(row.metadata),
+        createdAt: new Date(Number(row.created_at)),
+      }))
+      out.push({ channel: query.channel, agentId: query.agentId, entries })
+    }
+    return out
+  }
+
+  function rowToConnectorAccount(row: Record<string, unknown>): ConnectorAccountRecord {
+    const meta = asRecord(row.metadata)
+    const stored = asRecord(meta.__account)
+    return {
+      id: String(row.id) as UUID,
+      agentId: String(row.agent_id) as UUID,
+      provider: String(row.connector_id),
+      accountKey: String(row.account_key),
+      externalId: typeof stored.externalId === "string" ? stored.externalId : undefined,
+      displayName: row.display_name ? String(row.display_name) : undefined,
+      username: typeof stored.username === "string" ? stored.username : undefined,
+      email: typeof stored.email === "string" ? stored.email : undefined,
+      ownerBindingId: typeof stored.ownerBindingId === "string" ? (stored.ownerBindingId as UUID) : undefined,
+      ownerIdentityId: typeof stored.ownerIdentityId === "string" ? (stored.ownerIdentityId as UUID) : undefined,
+      role: (typeof stored.role === "string" ? stored.role : "OWNER") as ConnectorAccountRecord["role"],
+      purpose: asStringList(stored.purpose) as ConnectorAccountRecord["purpose"],
+      accessGate: (typeof stored.accessGate === "string" ? stored.accessGate : "open") as ConnectorAccountRecord["accessGate"],
+      status: String(row.status) as ConnectorAccountRecord["status"],
+      scopes: asStringList(stored.scopes),
+      capabilities: asStringList(row.capabilities),
+      profile: asConnectorJson(stored.profile),
+      metadata: asConnectorJson(stored.metadata),
+      connectedAt: typeof stored.connectedAt === "number" ? stored.connectedAt : Number(row.created_at),
+      lastSyncAt: typeof stored.lastSyncAt === "number" ? stored.lastSyncAt : undefined,
+      deletedAt: typeof stored.deletedAt === "number" ? stored.deletedAt : null,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    }
+  }
+
+  export async function listSqlConnectorAccounts(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params?: ListConnectorAccountsParams,
+  ): Promise<ConnectorAccountRecord[]> {
+    const res = await executor.query(
+      `SELECT * FROM connector_accounts
+       WHERE agent_id = $1
+         AND ($2::text IS NULL OR connector_id = $2::text)
+         AND ($3::text IS NULL OR status = $3::text)
+       ORDER BY updated_at DESC`,
+      [params?.agentId ?? agentId, params?.provider ?? null, params?.status ?? null],
+    )
+    const rows = res.rows.map(rowToConnectorAccount).filter((a) => a.deletedAt == null)
+    const offset = params?.offset ?? 0
+    return params?.limit !== undefined ? rows.slice(offset, offset + params.limit) : rows.slice(offset)
+  }
+
+  export async function getSqlConnectorAccount(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: GetConnectorAccountParams,
+  ): Promise<ConnectorAccountRecord | null> {
+    const targetAgent = params.agentId ?? agentId
+    const res = params.id
+      ? await executor.query(
+          "SELECT * FROM connector_accounts WHERE id = $1 AND agent_id = $2 LIMIT 1",
+          [params.id, targetAgent],
+        )
+      : await executor.query(
+          "SELECT * FROM connector_accounts WHERE agent_id = $1 AND connector_id = $2 AND account_key = $3 LIMIT 1",
+          [targetAgent, params.provider ?? "", params.accountKey ?? ""],
+        )
+    const account = res.rows[0] ? rowToConnectorAccount(res.rows[0]) : null
+    return account && account.deletedAt == null ? account : null
+  }
+
+  export async function upsertSqlConnectorAccount(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: UpsertConnectorAccountParams,
+  ): Promise<ConnectorAccountRecord> {
+    const now = Date.now()
+    const targetAgent = params.agentId ?? agentId
+    const existing = await getSqlConnectorAccount(executor, targetAgent, {
+      agentId: targetAgent,
+      provider: params.provider,
+      accountKey: params.accountKey,
+    })
+    const id = existing?.id ?? params.id ?? randomUuid()
+    const createdAt = existing?.createdAt ?? now
+    const envelope = {
+      __account: {
+        externalId: params.externalId !== undefined ? params.externalId : existing?.externalId,
+        username: params.username !== undefined ? params.username : existing?.username,
+        email: params.email !== undefined ? params.email : existing?.email,
+        ownerBindingId: params.ownerBindingId !== undefined ? params.ownerBindingId : existing?.ownerBindingId,
+        ownerIdentityId: params.ownerIdentityId !== undefined ? params.ownerIdentityId : existing?.ownerIdentityId,
+        role: params.role ?? existing?.role ?? "OWNER",
+        purpose: params.purpose ? [...params.purpose] : [...(existing?.purpose ?? ["messaging"])],
+        accessGate: params.accessGate ?? existing?.accessGate ?? "open",
+        scopes: params.scopes ? [...params.scopes] : [...(existing?.scopes ?? [])],
+        profile: asConnectorJson(params.profile !== undefined ? params.profile : existing?.profile),
+        metadata: asConnectorJson(params.metadata !== undefined ? params.metadata : existing?.metadata),
+        connectedAt: toMillis(params.connectedAt) ?? existing?.connectedAt ?? now,
+        lastSyncAt: toMillis(params.lastSyncAt) ?? existing?.lastSyncAt ?? null,
+        deletedAt: toMillis(params.deletedAt) ?? null,
+      },
+    }
+    await executor.query(
+      `INSERT INTO connector_accounts
+        (id, agent_id, connector_id, account_key, display_name, status, capabilities, metadata, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10)
+       ON CONFLICT (agent_id, connector_id, account_key) DO UPDATE SET
+         display_name = EXCLUDED.display_name,
+         status = EXCLUDED.status,
+         capabilities = EXCLUDED.capabilities,
+         metadata = EXCLUDED.metadata,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        id,
+        targetAgent,
+        params.provider,
+        params.accountKey,
+        params.displayName ?? existing?.displayName ?? null,
+        params.status ?? existing?.status ?? "connected",
+        encodeJsonb(params.capabilities ?? existing?.capabilities ?? []),
+        encodeJsonb(envelope),
+        createdAt,
+        now,
+      ],
+    )
+    return (await getSqlConnectorAccount(executor, targetAgent, { id, agentId: targetAgent }))!
+  }
+
+  export async function deleteSqlConnectorAccount(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: DeleteConnectorAccountParams,
+  ): Promise<boolean> {
+    const targetAgent = params.agentId ?? agentId
+    const res = params.id
+      ? await executor.query("DELETE FROM connector_accounts WHERE id = $1 AND agent_id = $2", [
+          params.id,
+          targetAgent,
+        ])
+      : await executor.query(
+          "DELETE FROM connector_accounts WHERE agent_id = $1 AND connector_id = $2 AND account_key = $3",
+          [targetAgent, params.provider ?? "", params.accountKey ?? ""],
+        )
+    return (res.affectedRows ?? 0) > 0
+  }
+
+  function rowToCredentialRef(row: Record<string, unknown>): ConnectorAccountCredentialRefRecord {
+    const meta = asRecord(row.metadata)
+    return {
+      id: String(row.id) as UUID,
+      accountId: String(row.connector_account_id) as UUID,
+      agentId: String(row.agent_id) as UUID,
+      provider: String(meta.provider ?? ""),
+      credentialType: String(row.credential_key),
+      vaultRef: String(row.secret_ref),
+      metadata: asConnectorJson(meta.metadata),
+      expiresAt: typeof meta.expiresAt === "number" ? meta.expiresAt : undefined,
+      lastVerifiedAt: typeof meta.lastVerifiedAt === "number" ? meta.lastVerifiedAt : undefined,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    }
+  }
+
+  export async function setSqlConnectorCredentialRef(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: SetConnectorAccountCredentialRefParams,
+  ): Promise<ConnectorAccountCredentialRefRecord> {
+    const account = await getSqlConnectorAccount(executor, agentId, { id: params.accountId })
+    if (!account) {
+      throw new ElizaError(`Connector account not found: ${params.accountId}`, { code: "SQL_CONNECTOR_INVALID" })
+    }
+    const now = Date.now()
+    const id = randomUuid()
+    const meta = {
+      provider: account.provider,
+      expiresAt: toMillis(params.expiresAt),
+      lastVerifiedAt: toMillis(params.lastVerifiedAt),
+      metadata: asConnectorJson(params.metadata),
+    }
+    await executor.query(
+      `INSERT INTO connector_account_credentials
+        (id, agent_id, connector_account_id, credential_key, secret_ref, metadata, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$7)
+       ON CONFLICT (agent_id, connector_account_id, credential_key) DO UPDATE SET
+         secret_ref = EXCLUDED.secret_ref,
+         metadata = EXCLUDED.metadata,
+         updated_at = EXCLUDED.updated_at`,
+      [id, account.agentId, params.accountId, params.credentialType, params.vaultRef, encodeJsonb(meta), now],
+    )
+    return {
+      id,
+      accountId: params.accountId,
+      agentId: account.agentId,
+      provider: account.provider,
+      credentialType: params.credentialType,
+      vaultRef: params.vaultRef,
+      metadata: meta.metadata,
+      expiresAt: meta.expiresAt ?? undefined,
+      lastVerifiedAt: meta.lastVerifiedAt ?? undefined,
+      createdAt: now,
+      updatedAt: now,
+    }
+  }
+
+  export async function getSqlConnectorCredentialRef(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: GetConnectorAccountCredentialRefParams,
+  ): Promise<ConnectorAccountCredentialRefRecord | null> {
+    const res = await executor.query(
+      `SELECT * FROM connector_account_credentials
+       WHERE agent_id = $1 AND connector_account_id = $2 AND credential_key = $3 LIMIT 1`,
+      [agentId, params.accountId, params.credentialType],
+    )
+    return res.rows[0] ? rowToCredentialRef(res.rows[0]) : null
+  }
+
+  export async function listSqlConnectorCredentialRefs(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: ListConnectorAccountCredentialRefsParams,
+  ): Promise<ConnectorAccountCredentialRefRecord[]> {
+    const res = await executor.query(
+      `SELECT * FROM connector_account_credentials
+       WHERE agent_id = $1 AND connector_account_id = $2 ORDER BY updated_at DESC`,
+      [agentId, params.accountId],
+    )
+    return res.rows.map(rowToCredentialRef)
+  }
+
+  export async function deleteSqlConnectorCredentialRefs(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: DeleteConnectorAccountCredentialRefsParams,
+  ): Promise<number> {
+    const res = await executor.query(
+      "DELETE FROM connector_account_credentials WHERE agent_id = $1 AND connector_account_id = $2",
+      [agentId, params.accountId],
+    )
+    return res.affectedRows ?? 0
+  }
+
+  export async function appendSqlConnectorAuditEvent(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: AppendConnectorAccountAuditEventParams,
+  ): Promise<ConnectorAccountAuditEventRecord> {
+    const id = randomUuid()
+    const createdAt = toMillis(params.createdAt) ?? Date.now()
+    const targetAgent = params.agentId ?? agentId
+    let provider = params.provider
+    if (!provider && params.accountId) {
+      const account = await getSqlConnectorAccount(executor, targetAgent, { id: params.accountId })
+      provider = account?.provider
+    }
+    const redacted = redactConnectorJsonAudit(params.metadata, (key) =>
+      CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key),
+    )
+    const outcome: ConnectorAccountAuditOutcome = params.outcome ?? "success"
+    await executor.query(
+      `INSERT INTO connector_account_audit_events
+        (id, agent_id, connector_account_id, action, outcome, actor_id, details, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
+      [
+        id,
+        targetAgent,
+        params.accountId ?? targetAgent,
+        params.action,
+        outcome,
+        params.actorId ?? null,
+        encodeJsonb(redacted),
+        createdAt,
+      ],
+    )
+    return {
+      id,
+      accountId: params.accountId ?? null,
+      agentId: targetAgent,
+      provider: provider ?? "",
+      actorId: params.actorId ?? null,
+      action: params.action,
+      outcome,
+      metadata: redacted,
+      createdAt,
+    }
+  }
+
+  function rowToOAuthFlow(row: Record<string, unknown>): OAuthFlowRecord {
+    const envelope = asRecord(row.metadata)
+    return {
+      agentId: String(row.agent_id) as UUID,
+      provider: String(row.connector_id),
+      accountId: typeof envelope.accountId === "string" ? (envelope.accountId as UUID) : null,
+      stateHash: String(row.state_hash),
+      redirectUri: row.redirect_uri ? String(row.redirect_uri) : null,
+      codeVerifierRef: row.code_verifier_ref ? String(row.code_verifier_ref) : null,
+      scopes: asStringList(envelope.scopes),
+      metadata: asConnectorJson(envelope.metadata),
+      expiresAt: Number(row.expires_at),
+      consumedAt: row.consumed_at ? Number(row.consumed_at) : null,
+      consumedBy: typeof envelope.consumedBy === "string" ? envelope.consumedBy : null,
+      createdAt: Number(row.created_at),
+    }
+  }
+
+  export async function createSqlOAuthFlowState(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: CreateOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord> {
+    const now = Date.now()
+    const stateHash = sha256Hex(params.state)
+    const targetAgent = params.agentId ?? agentId
+    const expiresAt = toMillis(params.expiresAt) ?? now + (params.ttlMs ?? 600_000)
+    const envelope = {
+      accountId: params.accountId ?? null,
+      scopes: params.scopes ? [...params.scopes] : [],
+      metadata: asConnectorJson(params.metadata),
+      consumedBy: null,
+    }
+    await executor.query(
+      `INSERT INTO oauth_flows
+        (state_hash, agent_id, connector_id, account_key, code_verifier_ref, redirect_uri, metadata, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+      [
+        stateHash,
+        targetAgent,
+        params.provider,
+        params.accountId ?? "",
+        params.codeVerifierRef ?? null,
+        params.redirectUri ?? null,
+        encodeJsonb(envelope),
+        now,
+        expiresAt,
+      ],
+    )
+    return {
+      agentId: targetAgent,
+      provider: params.provider,
+      accountId: params.accountId ?? null,
+      stateHash,
+      redirectUri: params.redirectUri ?? null,
+      codeVerifierRef: params.codeVerifierRef ?? null,
+      scopes: envelope.scopes,
+      metadata: envelope.metadata,
+      expiresAt,
+      consumedAt: null,
+      consumedBy: null,
+      createdAt: now,
+    }
+  }
+
+  export async function getSqlOAuthFlowState(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: GetOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord | null> {
+    const hash = params.stateHash ?? (params.state ? sha256Hex(params.state) : "")
+    const res = await executor.query(
+      "SELECT * FROM oauth_flows WHERE state_hash = $1 AND agent_id = $2 LIMIT 1",
+      [hash, params.agentId ?? agentId],
+    )
+    if (!res.rows[0]) return null
+    const record = rowToOAuthFlow(res.rows[0])
+    const now = toMillis(params.now) ?? Date.now()
+    if (!params.includeConsumed && record.consumedAt != null) return null
+    if (!params.includeExpired && record.expiresAt <= now) return null
+    return record
+  }
+
+  export async function consumeSqlOAuthFlowState(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: ConsumeOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord | null> {
+    const hash = params.state ? sha256Hex(params.state) : ""
+    const now = toMillis(params.now) ?? Date.now()
+    return executor.transaction(async (tx) => {
+      const existing = await tx.query(
+        "SELECT * FROM oauth_flows WHERE state_hash = $1 AND agent_id = $2 AND consumed_at IS NULL AND expires_at > $3 LIMIT 1",
+        [hash, params.agentId ?? agentId, now],
+      )
+      if (!existing.rows[0]) return null
+      const envelope = asRecord(existing.rows[0].metadata)
+      const nextEnv = { ...envelope, consumedBy: params.consumedBy ?? null }
+      const updated = await tx.query(
+        "UPDATE oauth_flows SET consumed_at = $1, metadata = $2::jsonb WHERE state_hash = $3 AND agent_id = $4 RETURNING *",
+        [now, encodeJsonb(nextEnv), hash, params.agentId ?? agentId],
+      )
+      return updated.rows[0] ? rowToOAuthFlow(updated.rows[0]) : null
+    })
+  }
+
+  export async function updateSqlOAuthFlowState(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: UpdateOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord | null> {
+    const hash = params.stateHash ?? (params.state ? sha256Hex(params.state) : "")
+    const current = await getSqlOAuthFlowState(executor, agentId, {
+      agentId: params.agentId ?? agentId,
+      provider: params.provider,
+      stateHash: hash,
+      includeConsumed: true,
+      includeExpired: true,
+    })
+    if (!current) return null
+    const nextMeta = asConnectorJson({ ...current.metadata, ...asRecord(params.metadata) })
+    const envelope = {
+      accountId: params.accountId !== undefined ? params.accountId : current.accountId,
+      scopes: params.scopes ? [...params.scopes] : current.scopes,
+      metadata: nextMeta,
+      consumedBy: params.consumedBy !== undefined ? params.consumedBy : current.consumedBy,
+    }
+    const expiresAt = toMillis(params.expiresAt) ?? current.expiresAt
+    const consumedAt = params.consumedAt !== undefined ? toMillis(params.consumedAt) : current.consumedAt
+    await executor.query(
+      "UPDATE oauth_flows SET metadata = $1::jsonb, expires_at = $2, consumed_at = $3 WHERE state_hash = $4 AND agent_id = $5",
+      [encodeJsonb(envelope), expiresAt, consumedAt, hash, params.agentId ?? agentId],
+    )
+    return { ...current, ...envelope, expiresAt, consumedAt }
+  }
+
+  export async function deleteSqlOAuthFlowState(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: DeleteOAuthFlowStateParams,
+  ): Promise<boolean> {
+    const hash = params.stateHash ?? (params.state ? sha256Hex(params.state) : "")
+    const res = await executor.query(
+      "DELETE FROM oauth_flows WHERE state_hash = $1 AND agent_id = $2",
+      [hash, params.agentId ?? agentId],
+    )
+    return (res.affectedRows ?? 0) > 0
+  }
+}
+
+import {
+  appendSqlConnectorAuditEvent,
+  compareAndSetSqlCache,
+  compareAndSwapSqlWorldMetadata,
+  consumeSqlOAuthFlowState,
+  createSqlOAuthFlowState,
+  deleteSqlConnectorAccount,
+  deleteSqlConnectorCredentialRefs,
+  deleteSqlOAuthFlowState,
+  getSqlConnectorAccount,
+  getSqlConnectorCredentialRef,
+  getSqlOAuthFlowState,
+  listSqlConnectorAccounts,
+  listSqlConnectorCredentialRefs,
+  listSqlPairingAllowlists,
+  listSqlPairingRequests,
+  setSqlConnectorCredentialRef,
+  updateSqlOAuthFlowState,
+  upsertSqlConnectorAccount,
+} from sqlAdapterStores
+
+export {
+  appendSqlConnectorAuditEvent,
+  compareAndSetSqlCache,
+  compareAndSwapSqlWorldMetadata,
+  consumeSqlOAuthFlowState,
+  createSqlOAuthFlowState,
+  deleteSqlConnectorAccount,
+  deleteSqlConnectorCredentialRefs,
+  deleteSqlOAuthFlowState,
+  getSqlConnectorAccount,
+  getSqlConnectorCredentialRef,
+  getSqlOAuthFlowState,
+  listSqlConnectorAccounts,
+  listSqlConnectorCredentialRefs,
+  listSqlPairingAllowlists,
+  listSqlPairingRequests,
+  setSqlConnectorCredentialRef,
+  updateSqlOAuthFlowState,
+  upsertSqlConnectorAccount,
+}

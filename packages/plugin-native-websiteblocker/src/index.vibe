@@ -2,12 +2,30 @@
 import type { WebsiteBlockerPlugin } from "./native-contract.vibe"
 
 export type * from "./native-contract.vibe"
+export {
+  WebsiteBlockerWeb,
+  normalizeWebsiteHostname,
+  validateStartWebsiteBlockOptions,
+} from "./web.vibe"
+export {
+  createNativeWebsiteBlockerBackend,
+  type BackendStartBlockResult,
+  type BackendStopBlockResult,
+  type NativeWebsiteBlockerBackend,
+  type SelfControlBlockRequest,
+  type SelfControlMatchMode,
+  type SelfControlPermissionState,
+  type SelfControlStatus,
+} from "./backend.vibe"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { WebsiteBlockerPlugin } from "./native-contract.vibe"
+  import { WebsiteBlockerWeb } from "./web.vibe"
 
-  export const native = registerPlugin<WebsiteBlockerPlugin>("ElizaWebsiteBlocker")
+  export const native = registerPlugin<WebsiteBlockerPlugin>("ElizaWebsiteBlocker", {
+    web: () => Promise.resolve(new WebsiteBlockerWeb()),
+  })
 }
 import { native } from capacitor
 
@@ -15,6 +33,16 @@ export const WebsiteBlocker = native
 
 import { nativeReply } from "@elizaos/os-bridges"
 import { mayInstallWebsitePolicy, type WebsiteEngine, type WebsiteWindow } from "../gen/nativeWebsiteblocker.effect.vibe"
+import {
+  canExpireWebsiteSession,
+  canStartWebsiteSession,
+  canStopWebsiteSession,
+  expireWebsiteSession,
+  initial as initialSession,
+  startWebsiteSession,
+  stopWebsiteSession,
+  type WebsiteBlockSessionState,
+} from "../gen/nativeWebsiteblocker__session.effect.vibe"
 
 const WebPermission = Schema.Struct({
   status: Schema.Literals(["granted", "denied", "not-determined", "not-applicable"]),
@@ -36,6 +64,35 @@ const Engines = {
 } satisfies Record<typeof WebPermission.Type["engine"], WebsiteEngine>
 
 export error WebsiteBlockSelectionRefused
+
+export interface WebsiteBlockerSession {
+  readonly state: () => WebsiteBlockSessionState
+  readonly start: (granted: boolean, domainCount: number, nowMs: number, deadlineMs: number) => boolean
+  readonly stop: () => boolean
+  readonly expire: (nowMs: number) => boolean
+}
+
+export function createWebsiteBlockerSession(): WebsiteBlockerSession {
+  let current: WebsiteBlockSessionState = initialSession
+  return {
+    state: () => current,
+    start(granted, domainCount, nowMs, deadlineMs) {
+      if (!canStartWebsiteSession(current, granted, domainCount, nowMs, deadlineMs)) return false
+      current = startWebsiteSession(current, granted, domainCount, nowMs, deadlineMs)
+      return true
+    },
+    stop() {
+      if (!canStopWebsiteSession(current)) return false
+      current = stopWebsiteSession(current)
+      return true
+    },
+    expire(nowMs) {
+      if (!canExpireWebsiteSession(current, nowMs)) return false
+      current = expireWebsiteSession(current, nowMs)
+      return true
+    },
+  }
+}
 
 export effect function applyWebsiteBlock(options: { domains: readonly string[]; durationMinutes?: number }, port: WebsiteBlockerPlugin = WebsiteBlocker) {
   const domains = [...new Set(options.domains.map((domain) => domain.trim().toLowerCase()))].filter((domain) => domain !== "")

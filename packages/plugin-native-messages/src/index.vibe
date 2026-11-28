@@ -1,3 +1,8 @@
 // spec/nativeMessages/index.md, "Story: Read my inbox and see the evidence for the message I reviewed"
+import { appMessagesPlugin } from "./plugin.vibe"
 export { messagesClient, messagesPlugin } from "@elizaos/os-bridges"
+export { appMessagesPlugin } from "./plugin.vibe"
+export { MessagesWeb } from "./web.vibe"
+export type { ListMessagesOptions, MessagesPermissionStatus, MessagesWebPlugin, SendSmsOptions, SendSmsResult, SmsMessageSummary } from "./web.vibe"
 export type { OperationId, ThreadId, MessageId, ThreadCursor, MessageCursor, SmsReview, DirectSmsReview, SmsReviewProblem, MmsAttachmentType, MmsAttachmentDraft, MmsReview, MmsReviewProblem, MmsAttachmentBinding, MmsBinding, SmsSendState, SendPartState, SmsSendPart, SmsSendStatus, MmsSendStatus, SmsSendResult, MmsSendResult, SendNotAttemptedReason, SmsCancelOutcome, MessageDirection, MessageStatus, DeliveryReport, MessageKind, SmsThread, SmsMessage, SmsIncompleteReason, IncompleteSmsThread, IncompleteSmsMessage, ThreadRow, MessageRow, ThreadPage, MessagePage, MessageDeleteReference, MessageDeleteStatus, MessageDeleteResult, ThreadDeleteReference, ThreadDeleteStatus, ThreadDeleteResult, StagingAnswer, SmsLatestSender, ThreadReadMark, SmsHandoffReport, MessagesNativePlugin, MessagesClient } from "@elizaos/os-bridges"
+export default appMessagesPlugin

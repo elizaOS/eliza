@@ -1,0 +1,208 @@
+// spec/health/index.md, "An inactivity signal does not count as active use"; spec/health/index.md, "Interval summaries include only valid observations for the owner and requested time range"
+import { countsAsScreenUse, intervalCoverage, type HealthWindow, type ScreenSignal } from "../gen/health.effect.vibe"
+import type { HealthHabitCategory, HealthHabitDevice } from "./types.vibe"
+
+export interface ActivityAppIdentity {
+  readonly bundleId?: string | null
+  readonly appName?: string | null
+  readonly executableName?: string | null
+  readonly platform?: string | null
+}
+
+export interface ScreenTimeEntry {
+  readonly id: string
+  readonly ownerId: string
+  readonly identifier: string
+  readonly appName: string
+  readonly source: "app" | "website"
+  readonly signal: ScreenSignal
+  readonly startMs: number
+  readonly endMs: number
+  readonly platform?: string
+}
+
+export interface ScreenTimeClassification {
+  readonly category: HealthHabitCategory
+  readonly device: HealthHabitDevice
+  readonly service: string | null
+}
+
+export interface ScreenTimeSummary {
+  readonly totalActiveMs: number
+  readonly totalActiveMinutes: number
+  readonly ignoredInactivityEntries: number
+  readonly byCategoryMinutes: Readonly<Record<string, number>>
+  readonly topApps: readonly { readonly appName: string; readonly category: HealthHabitCategory; readonly minutes: number }[]
+}
+
+const INACTIVITY_IDS = new Set([
+  "com.apple.loginwindow",
+  "com.apple.screensaver.engine",
+  "com.apple.securityagent",
+  "microsoft.lockapp",
+  "microsoft.windows.lockapp",
+  "org.freedesktop.screensaver",
+  "org.gnome.screensaver",
+])
+
+const INACTIVITY_NAMES = new Set([
+  "loginwindow",
+  "login window",
+  "screensaverengine",
+  "screen saver engine",
+  "securityagent",
+  "security agent",
+  "lockapp",
+  "logonui",
+  "winlogon",
+  "credentialuibroker",
+  "credential ui broker",
+  "windows lock application",
+  "windows logon application",
+  "cinnamon-screensaver",
+  "gdm",
+  "gdm3",
+  "gnome-screensaver",
+  "i3lock",
+  "kscreenlocker",
+  "kscreenlocker_greet",
+  "light-locker",
+  "lightdm-gtk-greeter",
+  "mate-screensaver",
+  "sddm-greeter",
+  "slock",
+  "unity-greeter",
+  "xfce4-screensaver",
+  "xlock",
+  "xscreensaver",
+])
+
+const SOCIAL_KEYWORDS: readonly [string, HealthHabitCategory, string][] = [
+  ["x.com", "social", "x"],
+  ["twitter.com", "social", "x"],
+  ["instagram", "social", "instagram"],
+  ["reddit", "social", "reddit"],
+  ["tiktok", "video", "tiktok"],
+  ["youtube", "video", "youtube"],
+  ["netflix", "video", "netflix"],
+  ["twitch", "video", "twitch"],
+  ["slack", "communication", "slack"],
+  ["discord", "communication", "discord"],
+  ["telegram", "communication", "telegram"],
+  ["whatsapp", "communication", "whatsapp"],
+  ["messages", "communication", "imessage"],
+]
+
+const BROWSER_KEYWORDS = ["chrome", "safari", "firefox", "arc", "brave", "edge"]
+const WORK_KEYWORDS = ["vscode", "code", "cursor", "xcode", "terminal", "iterm", "ghostty", "linear", "github", "figma", "notion"]
+
+export function isSystemInactivityApp(identity: ActivityAppIdentity): boolean {
+  const bundle = identity.bundleId?.trim().toLowerCase() ?? ""
+  if (bundle !== "" && INACTIVITY_IDS.has(bundle)) return true
+  for (const candidate of [identity.appName, identity.executableName]) {
+    const norm = candidate?.trim().toLowerCase() ?? ""
+    if (norm === "") continue
+    const stripped = norm.endsWith(".exe") ? norm.slice(0, -4) : norm
+    if (INACTIVITY_NAMES.has(norm) || INACTIVITY_NAMES.has(stripped)) return true
+  }
+  return false
+}
+
+export function resolveScreenSignal(entry: {
+  readonly signal?: ScreenSignal
+  readonly bundleId?: string | null
+  readonly appName?: string | null
+  readonly executableName?: string | null
+}): ScreenSignal {
+  if (isSystemInactivityApp(entry)) return "InactivityPlaceholder"
+  return entry.signal ?? "ForegroundUse"
+}
+
+export function classifyScreenTimeTarget(target: {
+  readonly identifier: string
+  readonly appName?: string
+  readonly source: "app" | "website"
+  readonly platform?: string
+}): ScreenTimeClassification {
+  const haystack = `${target.identifier} ${target.appName ?? ""}`.toLowerCase()
+  const platform = (target.platform ?? "").toLowerCase()
+  const device: HealthHabitDevice = platform.includes("ipad")
+    ? "tablet"
+    : platform.includes("ios") || platform.includes("android")
+      ? "phone"
+      : target.source === "website"
+        ? "browser"
+        : "computer"
+  if (isSystemInactivityApp({ bundleId: target.identifier, appName: target.appName })) {
+    return { category: "system", device, service: null }
+  }
+  for (const [pattern, category, service] of SOCIAL_KEYWORDS) {
+    if (haystack.includes(pattern)) return { category, device, service }
+  }
+  if (WORK_KEYWORDS.some((kw) => haystack.includes(kw))) {
+    return { category: "work", device, service: null }
+  }
+  if (BROWSER_KEYWORDS.some((kw) => haystack.includes(kw))) {
+    return { category: "browser", device, service: null }
+  }
+  return { category: "other", device, service: null }
+}
+
+export function summarizeScreenTime(
+  entries: readonly ScreenTimeEntry[],
+  window: HealthWindow,
+): ScreenTimeSummary {
+  const activeSpans: HealthWindow[] = []
+  const byCategoryMs = new Map<string, number>()
+  const byAppMs = new Map<string, { readonly appName: string; readonly category: HealthHabitCategory; ms: number }>()
+  let ignoredInactivityEntries = 0
+
+  for (const entry of entries) {
+    const resolved = resolveScreenSignal({ signal: entry.signal, bundleId: entry.identifier, appName: entry.appName })
+    if (!countsAsScreenUse(resolved)) {
+      ignoredInactivityEntries += 1
+      continue
+    }
+    const startMs = Math.max(window.fromMs, entry.startMs)
+    const endMs = Math.min(window.untilMs, entry.endMs)
+    if (endMs <= startMs) continue
+    activeSpans.push({ fromMs: startMs, untilMs: endMs })
+    const duration = endMs - startMs
+    const classified = classifyScreenTimeTarget({
+      identifier: entry.identifier,
+      appName: entry.appName,
+      source: entry.source,
+      ...(entry.platform === undefined ? {} : { platform: entry.platform }),
+    })
+    byCategoryMs.set(classified.category, (byCategoryMs.get(classified.category) ?? 0) + duration)
+    const appKey = entry.appName || entry.identifier
+    const existing = byAppMs.get(appKey)
+    if (existing === undefined) {
+      byAppMs.set(appKey, { appName: appKey, category: classified.category, ms: duration })
+    } else {
+      existing.ms += duration
+    }
+  }
+
+  activeSpans.sort((a, b) => a.fromMs - b.fromMs)
+  const totalActiveMs = intervalCoverage(activeSpans, window)
+  const byCategoryMinutes: Record<string, number> = {}
+  for (const [cat, ms] of byCategoryMs.entries()) {
+    byCategoryMinutes[cat] = Math.round(ms / 60_000)
+  }
+  const topApps = [...byAppMs.values()]
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 10)
+    .map((item) => ({
+      appName: item.appName,
+      category: item.category,
+      minutes: Math.round(item.ms / 60_000),
+    }))
+  return {
+    totalActiveMs,
+    totalActiveMinutes: Math.round(totalActiveMs / 60_000),
+    ignoredInactivityEntries,
+    byCategoryMinutes,
+    topApps,
+  }
+}

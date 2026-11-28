@@ -1,0 +1,621 @@
+// spec/health/index.md, "Story: Review recorded sleep and device activity"; spec/health/lifecycle.md, "Story: Sync health connectors only with owner consent and gate exports and sleep alerts safely"; spec/health/lifecycle.md, "Health data exports require granted consent, owner role, and owner-only audience"; spec/health/lifecycle.md, "Connector authorization and sync transitions enforce owner consent and monotonic revisions"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import type { HealthWindow } from "../gen/health.effect.vibe"
+import {
+  apply,
+  initial,
+  mayExportHealthData,
+  parseState,
+  type Event as HealthLifecycleEvent,
+  type HealthConnectorState,
+  type Rejected,
+} from "../gen/health__lifecycle.effect.vibe"
+import {
+  HEALTH_CONNECTOR_CAPABILITY_MAP,
+  HEALTH_CONNECTOR_LABELS,
+  HealthOAuthError,
+  HealthOAuthManager,
+  type PendingOAuthSession,
+  type StoredHealthConnectorToken,
+} from "./providers-registry.vibe"
+import { summarizeScreenTime, type ScreenTimeEntry, type ScreenTimeSummary } from "./screen-time.vibe"
+import {
+  buildSleepRecapText,
+  computeAwakeProbability,
+  computePersonalBaseline,
+  computeSleepRegularity,
+  type ActivitySignalSample,
+  type CircadianInsight,
+  type PersonalBaselineReport,
+  type SleepRegularityReport,
+} from "./sleep.vibe"
+import {
+  HEALTH_CONNECTOR_KINDS,
+  HEALTH_SERVICE_TYPE,
+  type HealthAnomaly,
+  type HealthConnectorKind,
+  type HealthConnectorOverview,
+  type HealthDailySummary,
+  type HealthMetric,
+  type HealthMetricSample,
+  type HealthOAuthProvider,
+  type HealthSleepEpisode,
+  type HealthSummaryResponse,
+  type HealthWorkout,
+} from "./types.vibe"
+
+module node {
+  import { DatabaseSync } from "node:sqlite"
+  import type { HealthWindow } from "../gen/health.effect.vibe"
+  import type {
+    HealthMetricSample as SampleRow,
+    HealthSleepEpisode as SleepRow,
+    HealthWorkout as WorkoutRow,
+  } from "./types.vibe"
+  import type { ScreenTimeEntry as ScreenRow } from "./screen-time.vibe"
+
+  export const HEALTH_SQLITE_DDL = `
+    CREATE TABLE IF NOT EXISTS health_samples (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      value REAL NOT NULL,
+      unit TEXT NOT NULL,
+      recorded_at TEXT NOT NULL,
+      date_key TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_health_samples_owner_date ON health_samples(owner_id, date_key);
+
+    CREATE TABLE IF NOT EXISTS health_sleep_episodes (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      cycle_type TEXT NOT NULL,
+      duration_minutes INTEGER NOT NULL,
+      efficiency_pct REAL,
+      stages_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_health_sleep_owner_end ON health_sleep_episodes(owner_id, end_at);
+
+    CREATE TABLE IF NOT EXISTS health_workouts (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      sport TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      duration_seconds INTEGER NOT NULL,
+      distance_meters REAL,
+      calories REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS health_screen_entries (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      identifier TEXT NOT NULL,
+      app_name TEXT NOT NULL,
+      source TEXT NOT NULL,
+      signal TEXT NOT NULL,
+      start_ms INTEGER NOT NULL,
+      end_ms INTEGER NOT NULL,
+      platform TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS health_connectors (
+      connector_key TEXT PRIMARY KEY,
+      state_json TEXT NOT NULL
+    );
+  `
+
+  export class HealthSqliteStore {
+    private readonly db: DatabaseSync
+    private closed = false
+
+    constructor(dbPath = ":memory:") {
+      this.db = new DatabaseSync(dbPath)
+      this.db.exec(HEALTH_SQLITE_DDL)
+    }
+
+    /** @throws {never} */
+    close(): void {
+      if (this.closed) return
+      this.closed = true
+      try { this.db.close() } catch { return }
+    }
+
+    /** @throws {never} */
+    saveSample(sample: SampleRow): void {
+      const stmt = this.db.prepare(
+        `INSERT OR REPLACE INTO health_samples (id, owner_id, provider, metric, value, unit, recorded_at, date_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      stmt.run(sample.id, sample.ownerId, sample.provider, sample.metric, sample.value, sample.unit, sample.recordedAt, sample.dateKey)
+    }
+
+    /** @throws {never} */
+    listSamples(ownerId: string, sinceDateKey?: string, metric?: string): readonly SampleRow[] {
+      const clauses = ["owner_id = ?"]
+      const args: (string | number)[] = [ownerId]
+      if (sinceDateKey !== undefined) {
+        clauses.push("date_key >= ?")
+        args.push(sinceDateKey)
+      }
+      if (metric !== undefined) {
+        clauses.push("metric = ?")
+        args.push(metric)
+      }
+      const rows = this.db
+        .prepare(`SELECT id, owner_id, provider, metric, value, unit, recorded_at, date_key FROM health_samples WHERE ${clauses.join(" AND ")} ORDER BY recorded_at DESC`)
+        .all(...args) as Record<string, unknown>[]
+      return rows.map((row) => ({
+        id: String(row.id),
+        ownerId: String(row.owner_id),
+        provider: String(row.provider),
+        metric: String(row.metric) as SampleRow["metric"],
+        value: Number(row.value),
+        unit: String(row.unit),
+        recordedAt: String(row.recorded_at),
+        dateKey: String(row.date_key),
+      }))
+    }
+
+    /** @throws {never} */
+    saveSleepEpisode(episode: SleepRow): void {
+      const stmt = this.db.prepare(
+        `INSERT OR REPLACE INTO health_sleep_episodes (id, owner_id, provider, start_at, end_at, cycle_type, duration_minutes, efficiency_pct, stages_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      stmt.run(
+        episode.id,
+        episode.ownerId,
+        episode.provider,
+        episode.startAt,
+        episode.endAt,
+        episode.cycleType,
+        episode.durationMinutes,
+        episode.efficiencyPct,
+        JSON.stringify(episode.stages),
+      )
+    }
+
+    /** @throws {never} */
+    listSleepEpisodes(ownerId: string, includeNaps = true): readonly SleepRow[] {
+      const sql = includeNaps
+        ? "SELECT * FROM health_sleep_episodes WHERE owner_id = ? ORDER BY end_at DESC"
+        : "SELECT * FROM health_sleep_episodes WHERE owner_id = ? AND cycle_type != 'nap' ORDER BY end_at DESC"
+      const rows = this.db.prepare(sql).all(ownerId) as Record<string, unknown>[]
+      return rows.map((row) => {
+        let stages: SleepRow["stages"] = []
+        try {
+          const parsed = JSON.parse(String(row.stages_json ?? "[]")) as unknown
+          if (Array.isArray(parsed)) stages = parsed as SleepRow["stages"]
+        } catch {
+          stages = []
+        }
+        return {
+          id: String(row.id),
+          ownerId: String(row.owner_id),
+          provider: String(row.provider),
+          startAt: String(row.start_at),
+          endAt: String(row.end_at),
+          cycleType: row.cycle_type === "nap" ? "nap" : "main",
+          durationMinutes: Number(row.duration_minutes),
+          efficiencyPct: row.efficiency_pct === null || row.efficiency_pct === undefined ? null : Number(row.efficiency_pct),
+          stages,
+        }
+      })
+    }
+
+    /** @throws {never} */
+    saveWorkout(workout: WorkoutRow): void {
+      const stmt = this.db.prepare(
+        `INSERT OR REPLACE INTO health_workouts (id, owner_id, provider, sport, start_at, end_at, duration_seconds, distance_meters, calories)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      stmt.run(
+        workout.id,
+        workout.ownerId,
+        workout.provider,
+        workout.sport,
+        workout.startAt,
+        workout.endAt,
+        workout.durationSeconds,
+        workout.distanceMeters,
+        workout.calories,
+      )
+    }
+
+    /** @throws {never} */
+    listWorkouts(ownerId: string): readonly WorkoutRow[] {
+      const rows = this.db
+        .prepare("SELECT * FROM health_workouts WHERE owner_id = ? ORDER BY start_at DESC")
+        .all(ownerId) as Record<string, unknown>[]
+      return rows.map((row) => ({
+        id: String(row.id),
+        ownerId: String(row.owner_id),
+        provider: String(row.provider),
+        sport: String(row.sport),
+        startAt: String(row.start_at),
+        endAt: String(row.end_at),
+        durationSeconds: Number(row.duration_seconds),
+        distanceMeters: row.distance_meters === null || row.distance_meters === undefined ? null : Number(row.distance_meters),
+        calories: row.calories === null || row.calories === undefined ? null : Number(row.calories),
+      }))
+    }
+
+    /** @throws {never} */
+    saveScreenEntry(entry: ScreenRow): void {
+      const stmt = this.db.prepare(
+        `INSERT OR REPLACE INTO health_screen_entries (id, owner_id, identifier, app_name, source, signal, start_ms, end_ms, platform)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      stmt.run(
+        entry.id,
+        entry.ownerId,
+        entry.identifier,
+        entry.appName,
+        entry.source,
+        entry.signal,
+        entry.startMs,
+        entry.endMs,
+        entry.platform ?? null,
+      )
+    }
+
+    /** @throws {never} */
+    listScreenEntries(ownerId: string, window: HealthWindow): readonly ScreenRow[] {
+      const rows = this.db
+        .prepare("SELECT * FROM health_screen_entries WHERE owner_id = ? AND end_ms > ? AND start_ms < ? ORDER BY start_ms ASC")
+        .all(ownerId, window.fromMs, window.untilMs) as Record<string, unknown>[]
+      return rows.map((row) => ({
+        id: String(row.id),
+        ownerId: String(row.owner_id),
+        identifier: String(row.identifier),
+        appName: String(row.app_name),
+        source: row.source === "website" ? "website" : "app",
+        signal: String(row.signal) as ScreenRow["signal"],
+        startMs: Number(row.start_ms),
+        endMs: Number(row.end_ms),
+        ...(typeof row.platform === "string" && row.platform !== "" ? { platform: row.platform } : {}),
+      }))
+    }
+
+    /** @throws {never} */
+    readConnectorStateJson(key: string): unknown | undefined {
+      const row = this.db
+        .prepare("SELECT state_json FROM health_connectors WHERE connector_key = ?")
+        .get(key) as { readonly state_json?: string } | undefined
+      if (row?.state_json === undefined) return undefined
+      try {
+        return JSON.parse(row.state_json) as unknown
+      } catch {
+        return undefined
+      }
+    }
+
+    /** @throws {never} */
+    writeConnectorStateJson(key: string, value: unknown): void {
+      this.db
+        .prepare("INSERT OR REPLACE INTO health_connectors (connector_key, state_json) VALUES (?, ?)")
+        .run(key, JSON.stringify(value))
+    }
+  }
+}
+
+import { HEALTH_SQLITE_DDL, HealthSqliteStore } from node
+export { HEALTH_SQLITE_DDL, HealthSqliteStore }
+
+function dateKeyBefore(nowMs: number, daysBack: number): string {
+  return new Date(nowMs - daysBack * 86_400_000).toISOString().slice(0, 10)
+}
+
+function aggregateDailySummaries(samples: readonly HealthMetricSample[]): readonly HealthDailySummary[] {
+  const buckets = new Map<string, {
+    readonly date: string
+    readonly provider: string
+    steps: number
+    activeMinutes: number
+    sleepHours: number
+    calories: number
+    hrValues: number[]
+    hrvValues: number[]
+    weightKg: number | null
+    readinessScore: number | null
+  }>()
+
+  for (const sample of samples) {
+    const key = `${sample.dateKey}\n${sample.provider}`
+    let bucket = buckets.get(key)
+    if (bucket === undefined) {
+      bucket = {
+        date: sample.dateKey,
+        provider: sample.provider,
+        steps: 0,
+        activeMinutes: 0,
+        sleepHours: 0,
+        calories: 0,
+        hrValues: [],
+        hrvValues: [],
+        weightKg: null,
+        readinessScore: null,
+      }
+      buckets.set(key, bucket)
+    }
+    switch (sample.metric) {
+      case "steps": bucket.steps += sample.value; break
+      case "active_minutes": bucket.activeMinutes += sample.value; break
+      case "sleep_hours": bucket.sleepHours += sample.value; break
+      case "calories": bucket.calories += sample.value; break
+      case "heart_rate": bucket.hrValues.push(sample.value); break
+      case "hrv_ms": bucket.hrvValues.push(sample.value); break
+      case "weight_kg": bucket.weightKg = sample.value; break
+      case "readiness_score": bucket.readinessScore = sample.value; break
+      default: break
+    }
+  }
+
+  return [...buckets.values()]
+    .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : a.provider.localeCompare(b.provider)))
+    .map((b) => ({
+      date: b.date,
+      provider: b.provider,
+      steps: Math.round(b.steps),
+      activeMinutes: Math.round(b.activeMinutes),
+      sleepHours: Math.round(b.sleepHours * 100) / 100,
+      heartRateAvg: b.hrValues.length === 0 ? null : Math.round((b.hrValues.reduce((s, v) => s + v, 0) / b.hrValues.length) * 10) / 10,
+      hrvAvgMs: b.hrvValues.length === 0 ? null : Math.round((b.hrvValues.reduce((s, v) => s + v, 0) / b.hrvValues.length) * 10) / 10,
+      weightKg: b.weightKg,
+      readinessScore: b.readinessScore,
+      calories: Math.round(b.calories),
+    }))
+}
+
+function detectAnomalies(samples: readonly HealthMetricSample[]): readonly HealthAnomaly[] {
+  const byMetric = new Map<HealthMetric, HealthMetricSample[]>()
+  for (const sample of samples) {
+    const list = byMetric.get(sample.metric)
+    if (list === undefined) byMetric.set(sample.metric, [sample])
+    else list.push(sample)
+  }
+  const anomalies: HealthAnomaly[] = []
+  for (const [metric, list] of byMetric.entries()) {
+    if (list.length < 3) continue
+    const latest = list[0]
+    if (latest === undefined) continue
+    const prior = list.slice(1)
+    const baselineAvg = prior.reduce((sum, item) => sum + item.value, 0) / prior.length
+    if (baselineAvg <= 0) continue
+    const ratio = (latest.value - baselineAvg) / baselineAvg
+    if (Math.abs(ratio) >= 0.25) {
+      anomalies.push({
+        metric,
+        date: latest.dateKey,
+        value: latest.value,
+        baselineAvg: Math.round(baselineAvg * 100) / 100,
+        direction: ratio > 0 ? "above" : "below",
+      })
+    }
+  }
+  return anomalies
+}
+
+export interface HealthServiceOptions {
+  readonly dbPath?: string
+  readonly credentialsDir?: string
+  readonly encryptionKey?: string
+}
+
+export class HealthService extends Service {
+  static readonly serviceType = HEALTH_SERVICE_TYPE
+  readonly capabilityDescription = "Owner health metrics, wearable connector OAuth/sync, sleep regularity, circadian insights, and screen-time summaries"
+
+  readonly store: HealthSqliteStore
+  readonly oauth: HealthOAuthManager
+
+  constructor(runtime?: IAgentRuntime, options?: HealthServiceOptions) {
+    super(runtime)
+    const configuredPath = options?.dbPath ?? (typeof runtime?.getSetting === "function" ? String(runtime.getSetting("HEALTH_DB_PATH") ?? "") : "")
+    this.store = new HealthSqliteStore(configuredPath !== "" ? configuredPath : ":memory:")
+    this.oauth = new HealthOAuthManager(options?.credentialsDir, options?.encryptionKey)
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<HealthService> {
+    return new HealthService(runtime)
+  }
+
+  async stop(): Promise<void> {
+    this.store.close()
+  }
+
+  getConnectorState(connectorKey: string): HealthConnectorState {
+    const raw = this.store.readConnectorStateJson(connectorKey)
+    if (raw === undefined) return initial
+    return parseState(raw) ?? initial
+  }
+
+  effect stepConnector(connectorKey: string, event: HealthLifecycleEvent): HealthConnectorState!Rejected {
+    const current = this.getConnectorState(connectorKey)
+    const next = try apply(current, event)
+    this.store.writeConnectorStateJson(connectorKey, next)
+    return next
+  }
+
+  listConnectorOverviews(ownerId: string): readonly HealthConnectorOverview[] {
+    return HEALTH_CONNECTOR_KINDS.map((provider) => {
+      const state = this.getConnectorState(`${ownerId}:${provider}`)
+      return {
+        provider,
+        label: HEALTH_CONNECTOR_LABELS[provider],
+        connected: state.phase === "ConnectorConnected",
+        phase: state.phase,
+        consent: state.consent,
+        syncedSamples: state.syncedSamples,
+        revision: state.revision,
+        hasRefreshToken: state.hasRefreshToken,
+        capabilities: HEALTH_CONNECTOR_CAPABILITY_MAP[provider],
+      }
+    })
+  }
+
+  effect beginOAuthConnection(args: {
+    readonly ownerId: string
+    readonly provider: HealthOAuthProvider
+    readonly clientId: string
+    readonly clientSecret?: string | null
+    readonly redirectUri: string
+  }): { readonly session: PendingOAuthSession; readonly state: HealthConnectorState }!(Rejected | HealthOAuthError) {
+    const key = `${args.ownerId}:${args.provider}`
+    const current = this.getConnectorState(key)
+    if (current.consent === "ConsentRevoked") {
+      try this.stepConnector(key, { type: "grantConsent" })
+    }
+    const nextState = try this.stepConnector(key, { type: "startAuthorization" })
+    const session = this.oauth.startAuthorization(args)
+    if (session === undefined) {
+      throw new HealthOAuthError({ status: 400, message: `Unsupported provider: ${args.provider}` })
+    }
+    return { session, state: nextState }
+  }
+
+  effect completeOAuthConnection(
+    stateToken: string,
+    code: string,
+  ): { readonly token: StoredHealthConnectorToken; readonly state: HealthConnectorState }!(Rejected | HealthOAuthError) {
+    const token = try this.oauth.exchangeCode(stateToken, code)
+    const key = `${token.ownerId}:${token.provider}`
+    const state = try this.stepConnector(key, {
+      type: "completeAuthorization",
+      withRefresh: token.refreshToken !== null,
+    })
+    return { token, state }
+  }
+
+  effect syncOAuthProvider(
+    ownerId: string,
+    provider: HealthOAuthProvider,
+    endpointPath = "/summary",
+  ): { readonly addedSamples: number; readonly addedSleep: number; readonly addedWorkouts: number; readonly state: HealthConnectorState }!(Rejected | HealthOAuthError) {
+    const key = `${ownerId}:${provider}`
+    const payload = try this.oauth.fetchProviderSummary(ownerId, provider, endpointPath)
+    for (const sample of payload.samples) this.store.saveSample(sample)
+    for (const ep of payload.sleepEpisodes) this.store.saveSleepEpisode(ep)
+    for (const workout of payload.workouts) this.store.saveWorkout(workout)
+    const addedSamples = payload.samples.length
+    const state = try this.stepConnector(key, { type: "recordSync", addedSamples })
+    return {
+      addedSamples,
+      addedSleep: payload.sleepEpisodes.length,
+      addedWorkouts: payload.workouts.length,
+      state,
+    }
+  }
+
+  effect revokeConnectorConsent(ownerId: string, provider: HealthConnectorKind): HealthConnectorState!Rejected {
+    const key = `${ownerId}:${provider}`
+    if (provider === "strava" || provider === "fitbit" || provider === "withings" || provider === "oura") {
+      this.oauth.revokeToken(ownerId, provider)
+    }
+    return try this.stepConnector(key, { type: "revokeConsent" })
+  }
+
+  ingestSample(sample: HealthMetricSample): void {
+    this.store.saveSample(sample)
+  }
+
+  ingestSleepEpisode(episode: HealthSleepEpisode): void {
+    this.store.saveSleepEpisode(episode)
+  }
+
+  ingestWorkout(workout: HealthWorkout): void {
+    this.store.saveWorkout(workout)
+  }
+
+  recordScreenEntry(entry: ScreenTimeEntry): void {
+    this.store.saveScreenEntry(entry)
+  }
+
+  getSummary(ownerId: string, days = 7, nowMs = Date.now()): HealthSummaryResponse {
+    const clampedDays = Math.max(1, Math.min(90, Math.round(days)))
+    const sinceKey = dateKeyBefore(nowMs, clampedDays - 1)
+    const samples = this.store.listSamples(ownerId, sinceKey)
+    const sleepEpisodes = this.store.listSleepEpisodes(ownerId, true)
+    const workouts = this.store.listWorkouts(ownerId)
+    return {
+      ownerId,
+      days: clampedDays,
+      providers: this.listConnectorOverviews(ownerId),
+      summaries: aggregateDailySummaries(samples),
+      samples,
+      sleepEpisodes,
+      workouts,
+      anomalies: detectAnomalies(samples),
+    }
+  }
+
+  getMetricSeries(ownerId: string, metric: HealthMetric, days = 14, nowMs = Date.now()): readonly HealthMetricSample[] {
+    const sinceKey = dateKeyBefore(nowMs, Math.max(1, Math.min(90, Math.round(days))) - 1)
+    return this.store.listSamples(ownerId, sinceKey, metric)
+  }
+
+  getSleepRegularity(ownerId: string, windowDays = 14, nowMs = Date.now(), timezone = "UTC"): SleepRegularityReport {
+    return computeSleepRegularity(this.store.listSleepEpisodes(ownerId, false), nowMs, windowDays, timezone)
+  }
+
+  getPersonalBaseline(ownerId: string, windowDays = 21, nowMs = Date.now(), timezone = "UTC"): PersonalBaselineReport {
+    return computePersonalBaseline(this.store.listSleepEpisodes(ownerId, false), nowMs, windowDays, timezone)
+  }
+
+  getCircadianInsight(
+    ownerId: string,
+    signals: readonly ActivitySignalSample[],
+    nowMs = Date.now(),
+    timezone = "UTC",
+    quietHours = false,
+  ): CircadianInsight {
+    return {
+      timezone,
+      regularity: this.getSleepRegularity(ownerId, 14, nowMs, timezone),
+      baseline: this.getPersonalBaseline(ownerId, 21, nowMs, timezone),
+      awake: computeAwakeProbability(signals, nowMs, timezone, quietHours),
+    }
+  }
+
+  getSleepRecap(ownerId: string, windowDays = 14, nowMs = Date.now(), timezone = "UTC"): string {
+    const episodes = this.store.listSleepEpisodes(ownerId, true)
+    return buildSleepRecapText(
+      episodes,
+      computeSleepRegularity(episodes, nowMs, windowDays, timezone),
+      computePersonalBaseline(episodes, nowMs, windowDays, timezone),
+    )
+  }
+
+  getScreenTimeSummary(ownerId: string, window: HealthWindow): ScreenTimeSummary {
+    return summarizeScreenTime(this.store.listScreenEntries(ownerId, window), window)
+  }
+
+  exportHealthSnapshot(args: {
+    readonly ownerId: string
+    readonly provider: HealthConnectorKind
+    readonly isOwner: boolean
+    readonly ownerAudienceOnly: boolean
+    readonly days?: number
+    readonly nowMs?: number
+  }): { readonly allowed: true; readonly snapshot: HealthSummaryResponse } | { readonly allowed: false; readonly reason: string } {
+    const state = this.getConnectorState(`${args.ownerId}:${args.provider}`)
+    if (!mayExportHealthData(state.consent, args.isOwner, args.ownerAudienceOnly)) {
+      return {
+        allowed: false,
+        reason: state.consent !== "ConsentGranted"
+          ? "Health export refused: owner consent is not granted for this connector."
+          : "Health export refused: owner role and owner-only audience are required.",
+      }
+    }
+    return {
+      allowed: true,
+      snapshot: this.getSummary(args.ownerId, args.days ?? 30, args.nowMs ?? Date.now()),
+    }
+  }
+}

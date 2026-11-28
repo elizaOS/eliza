@@ -1,0 +1,111 @@
+// spec/pdf/index.md, "Story: Read text and metadata from a PDF"; spec/pdf/index.md, "Story: Extract a complete document while my request is active"; spec/pdf/index.md, "A blank visual claim is accepted only when no contradicting text or unchecked drawing exists"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime } from "@elizaos/core"
+import { parsePdfSpecDate, pdfPlugin, PdfService } from "../src/index.vibe"
+
+const encoder = new TextEncoder()
+const byteLen = (value: string): number => encoder.encode(value).length
+
+function buildPdf(text: string, infoDict = "<< >>", streamOverride?: string): Uint8Array {
+  const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)")
+  const stream = streamOverride ?? `BT /F1 12 Tf 72 720 Td (${escaped}) Tj ET`
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 5 0 R >> >> >>",
+    `<< /Length ${byteLen(stream)} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    infoDict,
+  ]
+  let body = "%PDF-1.4\n"
+  const offsets: number[] = [0]
+  for (let i = 0; i < objects.length; i++) {
+    offsets.push(byteLen(body))
+    body += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`
+  }
+  const xrefStart = byteLen(body)
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets.slice(1)) {
+    body += `${String(offset).padStart(10, "0")} 00000 n \n`
+  }
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`
+  return encoder.encode(body)
+}
+
+function fakeRuntime(description = "Page transcribed."): IAgentRuntime {
+  return {
+    useModel: async () => ({ description }),
+  } as unknown as IAgentRuntime
+}
+
+describe("plugin-pdf end-to-end journeys", () => {
+  it.live(`Read text, positioned geometry, options, and spec dates from real PDFs (spec/pdf/index.md, "Story: Read text and metadata from a PDF"; spec/pdf/index.md, "A text query selects a range and preserves native run order")`, effect () => {
+    const service = new PdfService(fakeRuntime())
+    const multiline = buildPdf(
+      "",
+      "<< >>",
+      "BT /F1 12 Tf 72 720 Td (Project schedule) Tj 0 -18 Td (Monday: prepare report) Tj 0 -18 Td (Tuesday: publish report) Tj ET",
+    )
+    const snapshot = Uint8Array.from(multiline)
+    const splitRun = buildPdf("", "<< >>", "BT /F1 12 Tf 72 720 Td (Re) Tj /F2 12 Tf (port) Tj ET")
+
+    assert.strictEqual(try tryPromise(() => service.convertPdfToText(multiline)), "Project schedule\nMonday: prepare report\nTuesday: publish report")
+    assert.deepStrictEqual(multiline, snapshot)
+    assert.strictEqual(try tryPromise(() => service.convertPdfToText(splitRun)), "Report")
+
+    const positioned = try tryPromise(() => service.convertPdfToPositionedText(multiline))
+    assert.strictEqual(positioned.pageCount, 1)
+    assert.deepStrictEqual(positioned.items.map((item) => item.text), [
+      "Project schedule",
+      "Monday: prepare report",
+      "Tuesday: publish report",
+    ])
+    assert.strictEqual(positioned.items[0]?.x, 72)
+    assert.strictEqual((positioned.items[0]?.y ?? 0) > (positioned.items[1]?.y ?? 0), true)
+
+    const optsResult = try tryPromise(() => service.convertPdfToTextWithOptions(multiline, { startPage: 1, endPage: 99, cleanContent: true }))
+    assert.strictEqual(optsResult.success, true)
+    assert.strictEqual(optsResult.pageCount, 1)
+    const badResult = try tryPromise(() => service.convertPdfToTextWithOptions(Uint8Array.from([1, 2, 3])))
+    assert.strictEqual(badResult.success, false)
+
+    const hostile = buildPdf("real parser boundary", "<< /Title 123 /Author (Ada) /CreationDate 0 /ModDate false >>")
+    const hostileInfo = try tryPromise(() => service.getDocumentInfo(hostile))
+    assert.deepStrictEqual(
+      { text: hostileInfo.text, author: hostileInfo.metadata.author, title: hostileInfo.metadata.title, creationDate: hostileInfo.metadata.creationDate, modDate: hostileInfo.metadata.modificationDate },
+      { text: "real parser boundary", author: "Ada", title: undefined, creationDate: undefined, modDate: undefined },
+    )
+
+    const dated = buildPdf("offset date", "<< /CreationDate (D:20200610093121-05'00') /ModDate (D:20200610093121+02'30') >>")
+    const datedInfo = try tryPromise(() => service.getDocumentInfo(dated))
+    assert.strictEqual(datedInfo.metadata.creationDate?.toISOString(), "2020-06-10T14:31:21.000Z")
+    assert.strictEqual(datedInfo.metadata.modificationDate?.toISOString(), "2020-06-10T07:01:21.000Z")
+
+    assert.strictEqual(parsePdfSpecDate("D:20240102030405Z")?.toISOString(), "2024-01-02T03:04:05.000Z")
+    assert.strictEqual(parsePdfSpecDate("D:20230229000000Z"), undefined)
+    assert.strictEqual(parsePdfSpecDate("D:20240230000000Z"), undefined)
+    assert.strictEqual(parsePdfSpecDate("D:00100102030405Z")?.getUTCFullYear(), 10)
+    assert.strictEqual(service.cleanUpContent("hello\x00   world \n next"), "hello world\n next")
+    assert.strictEqual(pdfPlugin.name, "@elizaos/plugin-pdf")
+  })
+
+  it.live(`Reconcile blank visual claims and honor cancellation in complete PDF extraction (spec/pdf/index.md, "Story: Extract a complete document while my request is active"; spec/pdf/index.md, "A blank visual claim is accepted only when no contradicting text or unchecked drawing exists"; spec/pdf/index.md, "Publication needs every page and current authority")`, effect () => {
+    const whitePage = buildPdf("", "<< >>", "1 1 1 rg 0 0 612 792 re f")
+    const blankService = new PdfService(fakeRuntime("[BLANK PAGE]"))
+
+    const acceptedBlank = try tryPromise(() => blankService.extractCompleteDocument(whitePage, { ocrPage: async () => "" }))
+    assert.strictEqual(acceptedBlank.complete, true)
+    assert.deepStrictEqual(acceptedBlank.pages.map((p) => p.method), ["blank"])
+
+    const rejectedWithoutOcr = try Effect.result(tryPromise(() => blankService.extractCompleteDocument(whitePage)))
+    assert.strictEqual(rejectedWithoutOcr._tag, "Failure")
+
+    const rejectedWithOcrText = try Effect.result(tryPromise(() => blankService.extractCompleteDocument(whitePage, { ocrPage: async () => "Signed: A. Parent" })))
+    assert.strictEqual(rejectedWithOcrText._tag, "Failure")
+
+    const controller = new AbortController()
+    controller.abort()
+    const cancelled = try Effect.result(tryPromise(() => blankService.extractCompleteDocument(whitePage, { signal: controller.signal })))
+    assert.strictEqual(cancelled._tag, "Failure")
+  })
+})

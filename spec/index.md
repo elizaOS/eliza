@@ -61,6 +61,7 @@ The optional integrations and native bridge contracts are specified below.
 | `@elizaos/capacitor-appblocker` | [Native app blocking](./nativeAppblocker/) |
 | `@elizaos/capacitor-canvas` | [Native canvas](./nativeCanvas/) |
 | `@elizaos/plugin-native-contacts` | [Native contacts](./nativeContacts/) |
+| `@elizaos/capacitor-desktop` | [Native desktop](./nativeDesktop/) |
 | `@elizaos/capacitor-eliza-tasks` | [Native background tasks](./nativeElizaTasks/) |
 | `@elizaos/plugin-native-filesystem` | [Native filesystem](./nativeFilesystem/) |
 | `@elizaos/capacitor-gateway` | [Native gateway](./nativeGateway/) |

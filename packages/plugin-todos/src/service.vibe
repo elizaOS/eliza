@@ -1,0 +1,65 @@
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"
+import { logger, Service, type IAgentRuntime } from "@elizaos/core"
+import { createTodosSqliteStore, type SqliteTodoStoreHandle } from "./store.vibe"
+import { TODOS_LOG_PREFIX, TODOS_SERVICE_TYPE, type RuntimeTodoStore } from "./types.vibe"
+
+export class TodosService extends Service implements RuntimeTodoStore {
+  static override readonly serviceType = TODOS_SERVICE_TYPE
+
+  override capabilityDescription = "User-scoped persistent todos with transactional idempotency."
+
+  private readonly storeHandle: SqliteTodoStoreHandle | null
+  private readonly store: RuntimeTodoStore
+
+  readonly applyMutation: RuntimeTodoStore["applyMutation"]
+  readonly readCutoverState: RuntimeTodoStore["readCutoverState"]
+  readonly listMutationRecords: RuntimeTodoStore["listMutationRecords"]
+  readonly importMutationRecords: RuntimeTodoStore["importMutationRecords"]
+  readonly create: RuntimeTodoStore["create"]
+  readonly get: RuntimeTodoStore["get"]
+  readonly list: RuntimeTodoStore["list"]
+  readonly update: RuntimeTodoStore["update"]
+  readonly delete: RuntimeTodoStore["delete"]
+  readonly writeList: RuntimeTodoStore["writeList"]
+  readonly clear: RuntimeTodoStore["clear"]
+
+  constructor(runtime?: IAgentRuntime, customStore?: RuntimeTodoStore) {
+    super(runtime)
+    if (customStore) {
+      this.storeHandle = null
+      this.store = customStore
+    } else {
+      const configuredPath = runtime?.getSetting("TODOS_SQLITE_PATH")
+      const dbPath =
+        typeof configuredPath === "string" && configuredPath.trim().length > 0 ? configuredPath.trim() : ":memory:"
+      const sqliteStore = createTodosSqliteStore(dbPath)
+      this.storeHandle = sqliteStore
+      this.store = sqliteStore
+    }
+    this.applyMutation = this.store.applyMutation.bind(this.store)
+    this.readCutoverState = this.store.readCutoverState.bind(this.store)
+    this.listMutationRecords = this.store.listMutationRecords.bind(this.store)
+    this.importMutationRecords = this.store.importMutationRecords.bind(this.store)
+    this.create = this.store.create.bind(this.store)
+    this.get = this.store.get.bind(this.store)
+    this.list = this.store.list.bind(this.store)
+    this.update = this.store.update.bind(this.store)
+    this.delete = this.store.delete.bind(this.store)
+    this.writeList = this.store.writeList.bind(this.store)
+    this.clear = this.store.clear.bind(this.store)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<TodosService> {
+    logger.info(`${TODOS_LOG_PREFIX} starting TodosService`)
+    return new TodosService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    logger.info(`${TODOS_LOG_PREFIX} stopping TodosService`)
+    this.storeHandle?.close()
+  }
+}
+
+export function getTodosService(runtime: IAgentRuntime): TodosService | null {
+  return runtime.getService<TodosService>(TODOS_SERVICE_TYPE)
+}

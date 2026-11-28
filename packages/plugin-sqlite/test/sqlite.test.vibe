@@ -1,7 +1,38 @@
-// spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
+// spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"; spec/sqlite/index.md, "Story: Bound nested component-data filter walks against hostile payloads"; spec/sqlite/index.md, "Story: Keep a single consistent embedding space and dimension per SQLite database"; spec/sqlite/backupPublication.md, "Story: Publish a durable SQLite backup without overwriting an existing destination"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { openSqlite } from "../src/index.vibe"
+import {
+  MemoryType,
+  type Component,
+  type Entity,
+  type IAgentRuntime,
+  type IDatabaseAdapter,
+  type Memory,
+  type Metadata,
+  type Room,
+  type Task,
+  type UUID,
+  type World,
+} from "@elizaos/core"
+import {
+  dataContainsFilter,
+  decodeRecord,
+  encodeRecord,
+  EphemeralHNSW,
+  INMEMORY_FILTER_UNBOUNDED,
+  MAX_INMEMORY_FILTER_DEPTH,
+  openSqlite,
+  RECORD_CODEC,
+  SQLiteDatabaseAdapter,
+  sqlitePlugin,
+} from "../src/index.vibe"
+
+let nextUuid = 1
+
+function uuid(): UUID {
+  const hex = String(nextUuid++).padStart(12, "0")
+  return `00000000-0000-4000-8000-${hex}` as UUID
+}
 
 it.effect(`Reopen my agent's SQLite database in the owning runtime (spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime")`, effect () => {
   provide NodeServices.layer {
@@ -20,6 +51,323 @@ it.effect(`Reopen my agent's SQLite database in the owning runtime (spec/sqlite/
       const second = try openSqlite(databasePath, "agent-a", lease, [firstMigration, secondMigration])
       const row = try ensuring(Effect.try(() => second.prepare("SELECT body, completed FROM todo WHERE id = 1").get()), orDie(Effect.try(() => second.close())))
       try Effect.try(() => assert.deepStrictEqual(row && { ...row }, { body: "renew", completed: 0 }))
+    })
+  }
+})
+
+it.effect(`Portable record codec and bounded component filter enforce depth, node, and cycle limits (spec/sqlite/index.md, "Story: Bound nested component-data filter walks against hostile payloads")`, effect () => {
+  try Effect.try(() => {
+    const encoder = new TextEncoder()
+    const sample = {
+      name: "record",
+      when: new Date(1700000000000),
+      raw: new Uint8Array([1, 2, 3, 4]),
+      tags: new Set(["a", "b"]),
+      meta: new Map<string, number>([["count", 7]]),
+      big: 9007199254740993n,
+      missing: undefined,
+      zero: -0,
+    }
+    const encoded = encodeRecord(sample)
+    const decoded = decodeRecord(encoded) as typeof sample
+    assert.strictEqual(decoded.name, "record")
+    assert.strictEqual(decoded.when.getTime(), 1700000000000)
+    assert.deepStrictEqual([...decoded.raw], [1, 2, 3, 4])
+    assert.deepStrictEqual([...decoded.tags], ["a", "b"])
+    assert.strictEqual(decoded.meta.get("count"), 7)
+    assert.strictEqual(decoded.big, 9007199254740993n)
+    assert.isTrue(Object.is(decoded.zero, -0))
+    assert.throws(() => encodeRecord({ fn: () => 1 }), /unsupported/i)
+    assert.throws(() => decodeRecord(encoder.encode("bad-header\n{}")), /codec/i)
+    assert.isTrue(RECORD_CODEC.length > 0)
+
+    assert.isTrue(dataContainsFilter({ role: "admin", nested: { tier: 2 }, tags: ["alpha", "beta"] }, { nested: { tier: 2 }, tags: ["beta"] }))
+    assert.isFalse(dataContainsFilter({ role: "guest" }, { role: "admin" }))
+
+    let deepVal: Record<string, unknown> = { leaf: 1 }
+    let deepFilter: Record<string, unknown> = { leaf: 1 }
+    for (let i = 0; i <= MAX_INMEMORY_FILTER_DEPTH + 2; i += 1) {
+      deepVal = { child: deepVal }
+      deepFilter = { child: deepFilter }
+    }
+    let depthCode = ""
+    try {
+      dataContainsFilter(deepVal, deepFilter)
+    } catch (err) {
+      depthCode = (err as { code?: string }).code ?? ""
+    }
+    assert.strictEqual(depthCode, INMEMORY_FILTER_UNBOUNDED)
+
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    let cycleCode = ""
+    try {
+      dataContainsFilter(cyclic, cyclic)
+    } catch (err) {
+      cycleCode = (err as { code?: string }).code ?? ""
+    }
+    assert.strictEqual(cycleCode, INMEMORY_FILTER_UNBOUNDED)
+  })
+})
+
+it.effect(`End-to-end SQLiteDatabaseAdapter CRUD, transactions, HNSW recall, embedding space pinning, connector accounts, and atomic backup (spec/sqlite/index.md, "Story: Keep a single consistent embedding space and dimension per SQLite database"; spec/sqlite/backupPublication.md, "Story: Publish a durable SQLite backup without overwriting an existing destination")`, effect () => {
+  provide NodeServices.layer {
+    try scoped(effect {
+      const fs = try FileSystem.FileSystem
+      const path = try Path.Path
+      const folder = try fs.makeTempDirectoryScoped()
+      const dbPath = path.join(folder, "runtime.sqlite")
+      const existingBackup = path.join(folder, "existing.sqlite")
+      try fs.writeFileString(existingBackup, "keep-me")
+      const backupPath = path.join(folder, "nested", "dir", "backup.sqlite")
+
+      const agentId = uuid()
+      const otherAgentId = uuid()
+      const entityId = uuid()
+      const targetEntityId = uuid()
+      const worldId = uuid()
+      const roomId = uuid()
+
+      let registered: IDatabaseAdapter | undefined
+      const runtime = {
+        agentId,
+        getSetting: (key: string) => (key === "SQLITE_DATABASE_PATH" ? dbPath : undefined),
+        registerDatabaseAdapter: (adapter: IDatabaseAdapter) => {
+          registered = adapter
+        },
+        hasDatabaseAdapter: () => registered !== undefined,
+      } as unknown as IAgentRuntime
+      try Effect.tryPromise(async () => {
+        await sqlitePlugin.init!({}, runtime)
+      })
+      const adapter = registered as unknown as SQLiteDatabaseAdapter
+
+      try ensuring(
+        Effect.tryPromise(async () => {
+          assert.isTrue(await adapter.isReady())
+          await adapter.ensureEmbeddingDimension(4)
+          const pending = await adapter.ensureEmbeddingSpace("openai:text-embedding-3-small")
+          assert.deepStrictEqual(pending, [])
+
+          let spaceErrCode = ""
+          try {
+            await adapter.ensureEmbeddingDimension(8)
+          } catch (err) {
+            spaceErrCode = (err as { code?: string }).code ?? ""
+          }
+          assert.strictEqual(spaceErrCode, "EMBEDDING_SPACE_CHANGED")
+
+          let switchErrCode = ""
+          try {
+            await adapter.ensureEmbeddingSpace("local:other")
+          } catch (err) {
+            switchErrCode = (err as { code?: string }).code ?? ""
+          }
+          assert.strictEqual(switchErrCode, "EMBEDDING_SPACE_CHANGED")
+
+          await adapter.createAgents([{ id: agentId, name: "Eliza" }])
+          assert.strictEqual(await adapter.countAgents(), 1)
+
+          const world: World = { id: worldId, name: "Home", agentId, metadata: { role: "owner" } }
+          await adapter.createWorlds([world])
+          const fetchedWorlds = await adapter.getWorldsByIds([worldId])
+          assert.strictEqual(fetchedWorlds.length, 1)
+          const currentWorldMeta = (fetchedWorlds[0]!.metadata ?? {}) as Metadata
+          const casResult = await adapter.compareAndSwapWorldMetadata({
+            worldId,
+            expectedMetadata: currentWorldMeta,
+            replacementMetadata: { ...currentWorldMeta, role: "admin" },
+          })
+          assert.strictEqual(casResult.status, "updated")
+
+          const room: Room = { id: roomId, name: "General", agentId, worldId, source: "test", type: "GROUP" as Room["type"] }
+          await adapter.createRooms([room])
+
+          const entity: Entity = { id: entityId, names: ["Alice"], agentId }
+          const targetEntity: Entity = { id: targetEntityId, names: ["Bob"], agentId }
+          await adapter.createEntities([entity, targetEntity])
+          await adapter.createRoomParticipants([entityId, targetEntityId], roomId)
+          assert.deepStrictEqual(await adapter.areRoomParticipants([{ roomId, entityId }]), [true])
+
+          const compId = uuid()
+          const comp: Component = {
+            id: compId,
+            entityId,
+            agentId,
+            roomId,
+            worldId,
+            sourceEntityId: entityId,
+            type: "profile",
+            createdAt: Date.now(),
+            data: { level: 1, tags: ["vip"] },
+          }
+          await adapter.createComponents([comp])
+          await adapter.patchComponents([
+            {
+              componentId: compId,
+              ops: [
+                { op: "increment", path: "level", value: 4 },
+                { op: "push", path: "tags", value: "trusted" },
+              ],
+            },
+          ])
+          const queried = await adapter.queryEntities({
+            agentId,
+            componentType: "profile",
+            componentDataFilter: { level: 5, tags: ["trusted"] },
+          })
+          assert.strictEqual(queried.length, 1)
+          assert.strictEqual(queried[0]?.id, entityId)
+
+          const memAId = uuid()
+          const memBId = uuid()
+          const memA: Memory = {
+            id: memAId,
+            entityId,
+            agentId,
+            roomId,
+            worldId,
+            createdAt: 1000,
+            content: { text: "alpha launch checklist" },
+            embedding: [1, 0, 0, 0],
+            metadata: { type: MemoryType.MESSAGE },
+          }
+          const memB: Memory = {
+            id: memBId,
+            entityId,
+            agentId,
+            roomId,
+            worldId,
+            createdAt: 2000,
+            content: { text: "beta status report" },
+            embedding: [0, 1, 0, 0],
+            metadata: { type: MemoryType.MESSAGE },
+          }
+          await adapter.createMemories([
+            { memory: memA, tableName: "messages" },
+            { memory: memB, tableName: "messages" },
+          ])
+          const recalled = await adapter.searchMemories({
+            tableName: "messages",
+            embedding: [0.99, 0.01, 0, 0],
+            roomId,
+            count: 1,
+            match_threshold: 0.8,
+          })
+          assert.strictEqual(recalled.length, 1)
+          assert.strictEqual(recalled[0]?.id, memAId)
+
+          const rolledBackId = uuid()
+          let txFailed = false
+          try {
+            await adapter.transaction(async (tx) => {
+              await tx.createMemories([
+                {
+                  memory: {
+                    id: rolledBackId,
+                    entityId,
+                    agentId,
+                    roomId,
+                    content: { text: "transient" },
+                    embedding: [1, 0, 0, 0],
+                    metadata: { type: MemoryType.MESSAGE },
+                  },
+                  tableName: "messages",
+                },
+              ])
+              throw new Error("abort-transaction")
+            })
+          } catch {
+            txFailed = true
+          }
+          assert.isTrue(txFailed)
+          assert.deepStrictEqual(await adapter.getMemoriesByIds([rolledBackId]), [])
+
+          assert.isTrue(await adapter.compareAndSetCache("cursor", undefined, { page: 1 }))
+          assert.isFalse(await adapter.compareAndSetCache("cursor", undefined, { page: 2 }))
+          assert.isTrue(await adapter.compareAndSetCache("cursor", { page: 1 }, { page: 2 }))
+          assert.deepStrictEqual((await adapter.getCaches<{ page: number }>(["cursor"])).get("cursor"), { page: 2 })
+
+          const taskId = uuid()
+          const task: Task = { id: taskId, name: "sync", description: "run", roomId, worldId, tags: ["queue"], metadata: { status: "pending" } }
+          await adapter.createTasks([task])
+          assert.isTrue(await adapter.updatePendingTask(taskId, { metadata: { status: "running" } }))
+          assert.isFalse(await adapter.updatePendingTask(taskId, { metadata: { status: "done" } }))
+
+          await adapter.createRelationships([{ sourceEntityId: entityId, targetEntityId, tags: ["friend"] }])
+          assert.strictEqual((await adapter.getRelationships({ entityIds: [entityId], tags: ["friend"] })).length, 1)
+
+          const account = await adapter.upsertConnectorAccount({
+            provider: "slack",
+            accountKey: "workspace-1",
+            displayName: "Ops",
+          })
+          await adapter.setConnectorAccountCredentialRef({
+            accountId: account.id,
+            credentialType: "oauth_access",
+            vaultRef: "vault://slack/1",
+          })
+          const audit = await adapter.appendConnectorAccountAuditEvent({
+            accountId: account.id,
+            action: "connect",
+            metadata: { access_token: "super-secret", channel: "general" },
+          })
+          assert.notStrictEqual(audit.metadata.access_token, "super-secret")
+          assert.strictEqual(audit.metadata.channel, "general")
+
+          const flow = await adapter.createOAuthFlowState({ provider: "slack", state: "opaque-state-1" })
+          assert.isNotNull(await adapter.consumeOAuthFlowState({ provider: "slack", state: "opaque-state-1" }))
+          assert.isNull(await adapter.consumeOAuthFlowState({ provider: "slack", state: "opaque-state-1" }))
+          assert.isTrue(flow.stateHash.length === 64)
+
+          await adapter.recordStore.set("plugin_custom", "k1", { ok: true })
+          assert.deepStrictEqual(await adapter.recordStore.get("plugin_custom", "k1"), { ok: true })
+
+          await adapter.backup(backupPath)
+          let backupFailed = false
+          try {
+            await adapter.backup(existingBackup)
+          } catch {
+            backupFailed = true
+          }
+          assert.isTrue(backupFailed)
+
+          const reopened = SQLiteDatabaseAdapter.create(backupPath, agentId)
+          await reopened.initialize()
+          try {
+            const restored = await reopened.getMemoriesByIds([memAId])
+            assert.strictEqual(restored.length, 1)
+            assert.strictEqual(restored[0]?.content.text, "alpha launch checklist")
+          } finally {
+            await reopened.close()
+          }
+
+          const wrongOwner = SQLiteDatabaseAdapter.create(backupPath, otherAgentId)
+          let wrongOwnerFailed = false
+          try {
+            await wrongOwner.initialize()
+          } catch {
+            wrongOwnerFailed = true
+          }
+          assert.isTrue(wrongOwnerFailed)
+
+          const hnsw = new EphemeralHNSW()
+          await hnsw.init(3)
+          await hnsw.add("v1", [1, 0, 0])
+          await hnsw.add("v2", [0, 1, 0])
+          const hits = await hnsw.search([1, 0, 0], 1, 0.9)
+          assert.strictEqual(hits[0]?.id, "v1")
+          assert.strictEqual(hnsw.size(), 2)
+        }),
+        orDie(Effect.tryPromise(() => adapter.close())),
+      )
+
+      const backupExists = try fs.exists(backupPath)
+      const preserved = try fs.readFileString(existingBackup)
+      try Effect.try(() => {
+        assert.isTrue(backupExists)
+        assert.strictEqual(preserved, "keep-me")
+      })
     })
   }
 })

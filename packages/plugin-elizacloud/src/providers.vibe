@@ -1,0 +1,197 @@
+// spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/inference.md, "Credit severity classifies balance thresholds consistently"
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core"
+import { creditSeverity } from "../gen/elizaCloud__inference.effect.vibe"
+import { getApiKey, getBaseURL, getCloudLink, resolveCloudBillingUrl } from "./config.vibe"
+import { cloudJsonFetch } from "./http.vibe"
+import {
+  CLOUD_AUTH_SERVICE_TYPE,
+  CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE,
+  CLOUD_MODEL_REGISTRY_SERVICE_TYPE,
+  type CloudAuthService,
+  type CloudManagedGatewayRelayService,
+  type CloudModelRegistryService,
+} from "./services.vibe"
+
+const ACCOUNT_TTL_MS = 60000
+
+export interface CloudAccountSnapshot {
+  readonly balance: number
+  readonly organizationId: string | undefined
+}
+
+const accountCaches = new WeakMap<object, { readonly value: CloudAccountSnapshot; readonly at: number; readonly organizationId: string | undefined }>()
+const accountGenerations = new WeakMap<object, number>()
+
+function getAuthService(runtime: IAgentRuntime): CloudAuthService | undefined {
+  return runtime.getService<CloudAuthService>(CLOUD_AUTH_SERVICE_TYPE) ?? undefined
+}
+
+function isCloudSignedIn(runtime: IAgentRuntime): boolean {
+  const auth = getAuthService(runtime)
+  if (auth) return auth.isAuthenticated()
+  return getApiKey(runtime) !== "" || getCloudLink(runtime) !== undefined
+}
+
+function currentOrgId(runtime: IAgentRuntime): string | undefined {
+  return getAuthService(runtime)?.getOrganizationId()
+}
+
+export function invalidateCloudAccountCache(runtime: object): void {
+  accountCaches.delete(runtime)
+  accountGenerations.set(runtime, (accountGenerations.get(runtime) ?? 0) + 1)
+}
+
+export function getCachedAccountSnapshot(runtime: IAgentRuntime, nowMs = Date.now()): CloudAccountSnapshot | null {
+  const entry = accountCaches.get(runtime)
+  if (!entry || entry.organizationId !== currentOrgId(runtime)) return null
+  return nowMs - entry.at < ACCOUNT_TTL_MS ? entry.value : null
+}
+
+function extractBalanceNumber(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== "object") return undefined
+  const rec = payload as Record<string, unknown>
+  if (typeof rec.balance === "number" && Number.isFinite(rec.balance)) return rec.balance
+  if (typeof rec.creditBalance === "number" && Number.isFinite(rec.creditBalance)) return rec.creditBalance
+  const data = rec.data && typeof rec.data === "object" ? (rec.data as Record<string, unknown>) : undefined
+  if (data && typeof data.balance === "number" && Number.isFinite(data.balance)) return data.balance
+  if (data && typeof data.creditBalance === "number" && Number.isFinite(data.creditBalance)) return data.creditBalance
+  return undefined
+}
+
+export async function fetchCreditBalance(runtime: IAgentRuntime, nowMs = Date.now()): Promise<CloudAccountSnapshot> {
+  const orgId = currentOrgId(runtime)
+  const generation = accountGenerations.get(runtime) ?? 0
+  const link = getCloudLink(runtime)
+  let raw: unknown
+  if (link !== undefined && getApiKey(runtime) === "") {
+    const reply = await link.request({ method: "GET", path: "/api/v1/billing/limits" })
+    if (reply.kind !== "answered") throw new Error("Cloud credit balance request was refused.")
+    raw = reply.body
+  } else {
+    raw = await runPromise(cloudJsonFetch(runtime, { method: "GET", path: "/api/v1/credits/balance", maxWarmingRetries: 1 }))
+  }
+  const balance = extractBalanceNumber(raw)
+  if (balance === undefined) throw new Error("Cloud credit balance response had no numeric balance.")
+  if (!isCloudSignedIn(runtime) || orgId !== currentOrgId(runtime) || generation !== (accountGenerations.get(runtime) ?? 0)) {
+    throw new Error("Cloud account changed while its snapshot was loading.")
+  }
+  const snapshot: CloudAccountSnapshot = { balance, organizationId: orgId }
+  accountCaches.set(runtime, { value: snapshot, at: nowMs, organizationId: orgId })
+  return snapshot
+}
+
+function formatCreditSummary(balance: number, topUpUrl: string): ProviderResult {
+  const severity = creditSeverity(Math.round(balance * 100))
+  const critical = severity === "CreditCritical"
+  const low = critical || severity === "CreditLow"
+  const suffix = critical
+    ? ` (CRITICAL — top up at ${topUpUrl})`
+    : low
+      ? ` (LOW — top up at ${topUpUrl})`
+      : ""
+  return {
+    text: `ElizaCloud credits: $${balance.toFixed(2)}${suffix}`,
+    values: {
+      cloudCredits: balance,
+      cloudCreditsLow: low,
+      cloudCreditsCritical: critical,
+      cloudTopUpUrl: topUpUrl,
+    },
+  }
+}
+
+const CLOUD_PROVIDER_GATE = {
+  dynamic: true,
+  contexts: ["cloud", "settings", "finance"],
+  contextGate: { anyOf: ["cloud", "settings", "finance"] },
+  cacheStable: false,
+}
+
+async function resolveCreditSnapshot(runtime: IAgentRuntime): Promise<CloudAccountSnapshot | null> {
+  if (!isCloudSignedIn(runtime)) return null
+  const cached = getCachedAccountSnapshot(runtime)
+  if (cached) return cached
+  return fetchCreditBalance(runtime).catch(() => null)
+}
+
+export const connectionProvider: Provider = {
+  name: "cloud-status",
+  description: "Whether the agent has an authenticated Cloud link.",
+  descriptionCompressed: "Authenticated Cloud link status.",
+  ...CLOUD_PROVIDER_GATE,
+  get: (runtime) => Promise.resolve({ text: isCloudSignedIn(runtime) ? "Cloud is connected." : "Cloud is disconnected." }),
+}
+
+export const cloudStatusProvider: Provider = {
+  name: "elizacloud_status",
+  description: "Eliza Cloud connection, model readiness, and managed gateway relay status.",
+  descriptionCompressed: "Eliza Cloud auth, model readiness, and relay status.",
+  ...CLOUD_PROVIDER_GATE,
+  async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
+    const signedIn = isCloudSignedIn(runtime)
+    if (!signedIn) {
+      return { text: "ElizaCloud: disconnected", values: { cloudConnected: false } }
+    }
+    const relay = runtime.getService<CloudManagedGatewayRelayService>(CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE)
+    const relayActive = relay?.getRelayStatus().relayActive ?? false
+    const registry = runtime.getService<CloudModelRegistryService>(CLOUD_MODEL_REGISTRY_SERVICE_TYPE)
+    const readiness = registry ? (await registry.checkTextModelReadiness()).readiness : "UnknownTextModels"
+    return {
+      text: `ElizaCloud: connected (models=${readiness}, relay=${relayActive ? "active" : "idle"})`,
+      values: { cloudConnected: true, cloudModelReadiness: readiness, cloudRelayActive: relayActive },
+    }
+  },
+}
+
+export const creditBalanceProvider: Provider = {
+  name: "elizacloud_credits",
+  description: "Current Eliza Cloud credit balance and low-balance top-up warning.",
+  descriptionCompressed: "Eliza Cloud credit balance and top-up warning.",
+  ...CLOUD_PROVIDER_GATE,
+  async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
+    if (!isCloudSignedIn(runtime)) return { text: "" }
+    const snapshot = await resolveCreditSnapshot(runtime)
+    if (!snapshot) return { text: "", values: { cloudCreditsUnavailable: true }, data: {} }
+    return formatCreditSummary(snapshot.balance, resolveCloudBillingUrl(getBaseURL(runtime)))
+  },
+}
+
+export const modelRegistryProvider: Provider = {
+  name: "elizacloud_models",
+  description: "Available AI models from ElizaCloud grouped by provider.",
+  descriptionCompressed: "Available AI models from ElizaCloud by provider.",
+  dynamic: true,
+  contexts: ["settings", "finance"],
+  contextGate: { anyOf: ["settings", "finance"] },
+  roleGate: { minRole: "ADMIN" },
+  cacheStable: false,
+  async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
+    const registry = runtime.getService<CloudModelRegistryService>(CLOUD_MODEL_REGISTRY_SERVICE_TYPE)
+    if (!registry) return { text: "" }
+    const byProvider = await registry.getModelsByProvider()
+    const providers = Object.keys(byProvider).sort()
+    if (providers.length === 0) return { text: "" }
+    const total = providers.reduce((sum, name) => sum + byProvider[name].length, 0)
+    return {
+      text: `ElizaCloud: ${total} models (${providers.join(", ")})`,
+      values: { cloudModelProviders: providers.join(","), cloudModelCount: total },
+    }
+  },
+}
+
+export const cloudAccountProvider: Provider = {
+  name: "CLOUD_ACCOUNT",
+  description: "Compact Eliza Cloud account summary with credit balance and billing URL.",
+  descriptionCompressed: "Eliza Cloud credit balance and billing link.",
+  ...CLOUD_PROVIDER_GATE,
+  async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
+    const snapshot = await resolveCreditSnapshot(runtime)
+    if (!snapshot) return { text: "" }
+    const topUpUrl = resolveCloudBillingUrl(getBaseURL(runtime))
+    const formatted = formatCreditSummary(snapshot.balance, topUpUrl)
+    return {
+      text: `${formatted.text} | billing: ${topUpUrl}`,
+      values: formatted.values,
+    }
+  },
+}

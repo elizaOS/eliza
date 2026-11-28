@@ -1,0 +1,728 @@
+// spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/index.md, "A stale response is tagged, suppressed, or left alone by its policy"
+import { checkPairingAllowed, type IAgentRuntime } from "@elizaos/core"
+import type { Guild, GuildMember, User } from "discord.js"
+import {
+  discordDirectAllowed,
+  discordGuildAllowed,
+  discordInboundAllowed,
+  discordMessagesSince,
+  discordNeedsMention,
+  discordStalenessDecision,
+  type DiscordInbound,
+  type DiscordPolicy,
+  type DiscordReplyDecision,
+  type DiscordScope,
+  type DiscordStaleness,
+} from "../gen/discord.effect.vibe"
+import type {
+  DiscordAccountConfig,
+  DiscordDmPolicyMode,
+  DiscordGuildChannelConfig,
+  DiscordGuildEntry,
+  DiscordReactionNotificationMode,
+  PermissionDiff,
+  PermissionState,
+} from "./types.vibe"
+
+export interface DiscordAllowList {
+  readonly allowAll: boolean
+  readonly ids: ReadonlySet<string>
+  readonly names: ReadonlySet<string>
+}
+
+export type AllowListMatchSource = "wildcard" | "id" | "name" | "tag"
+
+export interface DiscordAllowListMatch {
+  readonly allowed: boolean
+  readonly matchKey?: string
+  readonly matchSource?: AllowListMatchSource
+}
+
+export type ChannelMatchSource = "id" | "name" | "slug" | "wildcard" | "parent"
+
+export interface DiscordChannelConfigResolved {
+  readonly allowed: boolean
+  readonly requireMention?: boolean
+  readonly skills?: readonly string[]
+  readonly enabled?: boolean
+  readonly users?: ReadonlyArray<string | number>
+  readonly systemPrompt?: string
+  readonly autoThread?: boolean
+  readonly matchKey?: string
+  readonly matchSource?: ChannelMatchSource
+}
+
+export function normalizeDiscordSlug(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/^#/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+  let start = 0
+  let end = slug.length
+  while (start < end && slug.charCodeAt(start) === 45) start += 1
+  while (end > start && slug.charCodeAt(end - 1) === 45) end -= 1
+  return slug.slice(start, end)
+}
+
+export function formatDiscordUserTag(user: User | GuildMember | { readonly id: string; readonly username: string; readonly discriminator?: string }): string {
+  const target = "user" in user ? user.user : user
+  if (target.discriminator && target.discriminator !== "0") {
+    return `${target.username}#${target.discriminator}`
+  }
+  return target.username
+}
+
+export function normalizeDiscordAllowList(
+  entries: ReadonlyArray<string | number> | undefined,
+  prefixes: readonly string[] = ["discord:", "user:"],
+): DiscordAllowList {
+  const ids = new Set<string>()
+  const names = new Set<string>()
+  let allowAll = false
+  for (const rawEntry of entries ?? []) {
+    let entry = String(rawEntry).trim()
+    if (!entry) continue
+    if (entry === "*") {
+      allowAll = true
+      continue
+    }
+    const lower = entry.toLowerCase()
+    for (const prefix of prefixes) {
+      if (lower.startsWith(prefix)) {
+        entry = entry.slice(prefix.length).trim()
+        break
+      }
+    }
+    const mentionMatch = entry.match(/^<@!?(\d+)>$/)
+    if (mentionMatch) {
+      ids.add(mentionMatch[1])
+      continue
+    }
+    if (/^\d{15,20}$/.test(entry)) {
+      ids.add(entry)
+    } else if (entry.length > 0) {
+      names.add(entry.toLowerCase())
+      const slug = normalizeDiscordSlug(entry)
+      if (slug) names.add(slug)
+    }
+  }
+  return { allowAll, ids, names }
+}
+
+export function resolveDiscordAllowListMatch(
+  allowList: DiscordAllowList,
+  candidate: { readonly id: string; readonly name?: string; readonly tag?: string },
+): DiscordAllowListMatch {
+  if (allowList.allowAll) return { allowed: true, matchKey: "*", matchSource: "wildcard" }
+  if (allowList.ids.has(candidate.id)) return { allowed: true, matchKey: candidate.id, matchSource: "id" }
+  if (candidate.tag) {
+    const tagLower = candidate.tag.toLowerCase()
+    if (allowList.names.has(tagLower)) return { allowed: true, matchKey: candidate.tag, matchSource: "tag" }
+  }
+  if (candidate.name) {
+    const nameLower = candidate.name.toLowerCase()
+    const slug = normalizeDiscordSlug(candidate.name)
+    if (allowList.names.has(nameLower) || (slug && allowList.names.has(slug))) {
+      return { allowed: true, matchKey: candidate.name, matchSource: "name" }
+    }
+  }
+  return { allowed: false }
+}
+
+export function allowListMatches(
+  allowList: DiscordAllowList,
+  candidate: { readonly id: string; readonly name?: string; readonly tag?: string },
+): boolean {
+  return resolveDiscordAllowListMatch(allowList, candidate).allowed
+}
+
+export function resolveDiscordUserAllowed(params: {
+  readonly allowList?: ReadonlyArray<string | number>
+  readonly userId: string
+  readonly userName?: string
+  readonly userTag?: string
+}): boolean {
+  const list = normalizeDiscordAllowList(params.allowList)
+  return allowListMatches(list, { id: params.userId, name: params.userName, tag: params.userTag })
+}
+
+export function resolveDiscordGuildEntry(
+  guild: Pick<Guild, "id" | "name"> | { readonly id: string; readonly name?: string } | null | undefined,
+  guildEntries?: Readonly<Record<string, DiscordGuildEntry>>,
+): DiscordGuildEntry | undefined {
+  if (!guild || !guildEntries) return undefined
+  if (guildEntries[guild.id]) return guildEntries[guild.id]
+  if (guild.name) {
+    const slug = normalizeDiscordSlug(guild.name)
+    for (const [key, entry] of Object.entries(guildEntries)) {
+      if (key === "*") continue
+      if (normalizeDiscordSlug(key) === slug || (entry.slug && normalizeDiscordSlug(entry.slug) === slug)) {
+        return entry
+      }
+    }
+  }
+  return guildEntries["*"]
+}
+
+function resolveChannelInMap(
+  channels: Readonly<Record<string, DiscordGuildChannelConfig>>,
+  channelId: string,
+  channelName?: string,
+): DiscordChannelConfigResolved | undefined {
+  if (channels[channelId]) {
+    const cfg = channels[channelId]
+    return {
+      allowed: cfg.allow !== false && cfg.enabled !== false,
+      requireMention: cfg.requireMention,
+      skills: cfg.skills,
+      enabled: cfg.enabled,
+      users: cfg.users,
+      systemPrompt: cfg.systemPrompt,
+      autoThread: cfg.autoThread,
+      matchKey: channelId,
+      matchSource: "id",
+    }
+  }
+  if (channelName) {
+    const lower = channelName.toLowerCase()
+    const slug = normalizeDiscordSlug(channelName)
+    for (const [key, cfg] of Object.entries(channels)) {
+      if (key === "*") continue
+      if (key.toLowerCase() === lower || normalizeDiscordSlug(key) === slug) {
+        return {
+          allowed: cfg.allow !== false && cfg.enabled !== false,
+          requireMention: cfg.requireMention,
+          skills: cfg.skills,
+          enabled: cfg.enabled,
+          users: cfg.users,
+          systemPrompt: cfg.systemPrompt,
+          autoThread: cfg.autoThread,
+          matchKey: key,
+          matchSource: key.toLowerCase() === lower ? "name" : "slug",
+        }
+      }
+    }
+  }
+  if (channels["*"]) {
+    const cfg = channels["*"]
+    return {
+      allowed: cfg.allow !== false && cfg.enabled !== false,
+      requireMention: cfg.requireMention,
+      skills: cfg.skills,
+      enabled: cfg.enabled,
+      users: cfg.users,
+      systemPrompt: cfg.systemPrompt,
+      autoThread: cfg.autoThread,
+      matchKey: "*",
+      matchSource: "wildcard",
+    }
+  }
+  return undefined
+}
+
+export function resolveDiscordChannelConfig(params: {
+  readonly guildInfo?: DiscordGuildEntry
+  readonly channelId: string
+  readonly channelName?: string
+}): DiscordChannelConfigResolved | undefined {
+  const channels = params.guildInfo?.channels
+  if (!channels || Object.keys(channels).length === 0) return undefined
+  return resolveChannelInMap(channels, params.channelId, params.channelName)
+}
+
+export function resolveDiscordChannelConfigWithFallback(params: {
+  readonly guildInfo?: DiscordGuildEntry
+  readonly channelId: string
+  readonly channelName?: string
+  readonly parentId?: string | null
+  readonly parentName?: string
+}): DiscordChannelConfigResolved | undefined {
+  const direct = resolveDiscordChannelConfig(params)
+  if (direct && direct.matchSource !== "wildcard") return direct
+  if (params.parentId) {
+    const parent = resolveDiscordChannelConfig({
+      guildInfo: params.guildInfo,
+      channelId: params.parentId,
+      channelName: params.parentName,
+    })
+    if (parent) return { ...parent, matchSource: "parent" }
+  }
+  return direct
+}
+
+export function isDiscordAutoThreadOwnedByBot(params: {
+  readonly isThread: boolean
+  readonly channelConfig?: DiscordChannelConfigResolved
+  readonly threadOwnerId?: string | null
+  readonly botUserId?: string | null
+}): boolean {
+  return (
+    params.isThread &&
+    params.channelConfig?.autoThread === true &&
+    Boolean(params.botUserId) &&
+    params.threadOwnerId === params.botUserId
+  )
+}
+
+function toAddressing(value: boolean | undefined): DiscordPolicy["channelAddressing"] {
+  if (value === true) return "DiscordRequireMention"
+  if (value === false) return "DiscordDoNotRequireMention"
+  return "DiscordDefaultMention"
+}
+
+export function resolveDiscordShouldRequireMention(params: {
+  readonly isGuildMessage: boolean
+  readonly isThread?: boolean
+  readonly botAutoThread?: boolean
+  readonly channelConfig?: DiscordChannelConfigResolved
+  readonly guildInfo?: DiscordGuildEntry
+}): boolean {
+  if (!params.isGuildMessage) return false
+  const scope: DiscordScope = params.isThread ? "DiscordThread" : "DiscordGuild"
+  const policy: DiscordPolicy = {
+    dmMode: "DiscordDmOpen",
+    groupMode: "DiscordGroupOpen",
+    guildAllowed: true,
+    channelListConfigured: false,
+    channelAllowed: true,
+    actorAllowed: true,
+    admin: false,
+    paired: false,
+    channelAddressing: toAddressing(params.channelConfig?.requireMention),
+    guildAddressing: toAddressing(params.guildInfo?.requireMention),
+    botAutoThread: params.botAutoThread === true,
+  }
+  return discordNeedsMention(scope, policy)
+}
+
+export function isDiscordGroupAllowedByPolicy(params: {
+  readonly groupPolicy: "open" | "disabled" | "allowlist"
+  readonly guildAllowlisted: boolean
+  readonly channelAllowlistConfigured: boolean
+  readonly channelAllowed: boolean
+}): boolean {
+  const groupMode: DiscordPolicy["groupMode"] =
+    params.groupPolicy === "open"
+      ? "DiscordGroupOpen"
+      : params.groupPolicy === "disabled"
+        ? "DiscordGroupDisabled"
+        : "DiscordGroupAllowlist"
+  return discordGuildAllowed({
+    dmMode: "DiscordDmDisabled",
+    groupMode,
+    guildAllowed: params.guildAllowlisted,
+    channelListConfigured: params.channelAllowlistConfigured,
+    channelAllowed: params.channelAllowed,
+    actorAllowed: false,
+    admin: false,
+    paired: false,
+    channelAddressing: "DiscordDefaultMention",
+    guildAddressing: "DiscordDefaultMention",
+    botAutoThread: false,
+  })
+}
+
+export function resolveDiscordCommandAuthorized(params: {
+  readonly isDirectMessage: boolean
+  readonly allowFrom?: ReadonlyArray<string | number>
+  readonly guildInfo?: DiscordGuildEntry
+  readonly channelConfig?: DiscordChannelConfigResolved
+  readonly sender: { readonly id: string; readonly name?: string; readonly tag?: string }
+  readonly dmPolicy?: DiscordDmPolicyMode
+  readonly admin?: boolean
+  readonly paired?: boolean
+}): boolean {
+  const dmMode: DiscordPolicy["dmMode"] =
+    params.dmPolicy === "open"
+      ? "DiscordDmOpen"
+      : params.dmPolicy === "disabled"
+        ? "DiscordDmDisabled"
+        : params.dmPolicy === "allowlist"
+          ? "DiscordDmAllowlist"
+          : "DiscordDmPairing"
+  const actorAllowed = params.isDirectMessage
+    ? resolveDiscordUserAllowed({
+        allowList: params.allowFrom,
+        userId: params.sender.id,
+        userName: params.sender.name,
+        userTag: params.sender.tag,
+      })
+    : params.channelConfig?.users
+      ? resolveDiscordUserAllowed({
+          allowList: params.channelConfig.users,
+          userId: params.sender.id,
+          userName: params.sender.name,
+          userTag: params.sender.tag,
+        })
+      : params.guildInfo?.users
+        ? resolveDiscordUserAllowed({
+            allowList: params.guildInfo.users,
+            userId: params.sender.id,
+            userName: params.sender.name,
+            userTag: params.sender.tag,
+          })
+        : true
+  const policy: DiscordPolicy = {
+    dmMode,
+    groupMode: "DiscordGroupOpen",
+    guildAllowed: true,
+    channelListConfigured: false,
+    channelAllowed: true,
+    actorAllowed,
+    admin: params.admin === true,
+    paired: params.paired === true,
+    channelAddressing: "DiscordDefaultMention",
+    guildAddressing: "DiscordDefaultMention",
+    botAutoThread: false,
+  }
+  const inbound: DiscordInbound = {
+    accountId: "default",
+    epoch: 1,
+    channelId: "cmd",
+    messageId: "cmd",
+    senderId: params.sender.id,
+    scope: params.isDirectMessage ? "DiscordDirect" : "DiscordGuild",
+    inboundKind: "DiscordSlashCommand",
+    mentioned: true,
+    commandAllowed: actorAllowed || params.admin === true,
+  }
+  return discordInboundAllowed(inbound, policy)
+}
+
+export function shouldEmitDiscordReactionNotification(params: {
+  readonly mode: DiscordReactionNotificationMode
+  readonly botId?: string
+  readonly messageAuthorId?: string
+  readonly userId: string
+  readonly userName?: string
+  readonly userTag?: string
+  readonly allowlist?: ReadonlyArray<string | number>
+}): boolean {
+  if (params.mode === "off") return false
+  if (params.mode === "all") return true
+  if (params.mode === "own") return Boolean(params.botId && params.messageAuthorId === params.botId)
+  return resolveDiscordUserAllowed({
+    allowList: params.allowlist,
+    userId: params.userId,
+    userName: params.userName,
+    userTag: params.userTag,
+  })
+}
+
+export function isDiscordUserAddressed(params: {
+  readonly text?: string | null
+  readonly userId?: string | null
+  readonly hasMessageReference?: boolean
+  readonly repliedUserId?: string | null
+}): boolean {
+  const userId = params.userId?.trim()
+  if (!userId) return false
+  if (params.hasMessageReference && params.repliedUserId === userId) return true
+  const text = params.text ?? ""
+  return new RegExp(`<@!?${userId}>`).test(text)
+}
+
+export interface DiscordDmIdentity {
+  readonly userId: string
+  readonly username?: string
+  readonly tag?: string
+  readonly isAdmin?: boolean
+  readonly channelId?: string
+}
+
+export interface DiscordDmAccessResult {
+  readonly allowed: boolean
+  readonly reason: string
+  readonly replyMessage?: string
+}
+
+export async function checkDiscordDmAccess(
+  runtime: IAgentRuntime,
+  account: DiscordAccountConfig,
+  identity: DiscordDmIdentity,
+): Promise<DiscordDmAccessResult> {
+  if (account.dm?.enabled === false) {
+    return { allowed: false, reason: "dm_disabled" }
+  }
+  const mode = account.dm?.policy ?? "pairing"
+  const dmMode: DiscordPolicy["dmMode"] =
+    mode === "open"
+      ? "DiscordDmOpen"
+      : mode === "disabled"
+        ? "DiscordDmDisabled"
+        : mode === "allowlist"
+          ? "DiscordDmAllowlist"
+          : "DiscordDmPairing"
+  const actorAllowed = resolveDiscordUserAllowed({
+    allowList: account.dm?.allowFrom,
+    userId: identity.userId,
+    userName: identity.username,
+    userTag: identity.tag,
+  })
+  let paired = false
+  let replyMessage: string | undefined
+  if (dmMode === "DiscordDmPairing" && !actorAllowed && identity.isAdmin !== true) {
+    try {
+      const result = await checkPairingAllowed(runtime, {
+        channel: "discord",
+        senderId: identity.userId,
+        metadata: { ...(identity.username ? { username: identity.username } : {}) },
+      })
+      paired = result.allowed === true
+      replyMessage = result.replyMessage
+    } catch {
+      paired = false
+    }
+  }
+  const allowed = discordDirectAllowed({
+    dmMode,
+    groupMode: "DiscordGroupDisabled",
+    guildAllowed: false,
+    channelListConfigured: false,
+    channelAllowed: false,
+    actorAllowed,
+    admin: identity.isAdmin === true,
+    paired,
+    channelAddressing: "DiscordDefaultMention",
+    guildAddressing: "DiscordDefaultMention",
+    botAutoThread: false,
+  })
+  return {
+    allowed,
+    reason: allowed ? "allowed" : dmMode === "DiscordDmDisabled" ? "dm_disabled" : "dm_not_allowed",
+    ...(replyMessage ? { replyMessage } : {}),
+  }
+}
+
+export const DM_REGISTRY_MAX_ENTRIES = 1000
+
+export interface DmChannelRecord {
+  readonly channelId: string
+  readonly userId: string
+  readonly accountId: string
+  readonly lastSeenAt: number
+}
+
+export class DmChannelRegistry {
+  private readonly records = new Map<string, DmChannelRecord>()
+  private readonly maxEntries: number
+
+  constructor(maxEntries = DM_REGISTRY_MAX_ENTRIES) {
+    this.maxEntries = maxEntries
+  }
+
+  record(channelId: string, userId: string, accountId = "default", now = Date.now()): DmChannelRecord {
+    const entry: DmChannelRecord = { channelId, userId, accountId, lastSeenAt: now }
+    this.records.delete(channelId)
+    this.records.set(channelId, entry)
+    while (this.records.size > this.maxEntries) {
+      const oldest = this.records.keys().next().value
+      if (oldest === undefined) break
+      this.records.delete(oldest)
+    }
+    return entry
+  }
+
+  get(channelId: string): DmChannelRecord | undefined {
+    return this.records.get(channelId)
+  }
+
+  findByUser(userId: string, accountId?: string): DmChannelRecord | undefined {
+    for (const entry of this.records.values()) {
+      if (entry.userId === userId && (!accountId || entry.accountId === accountId)) {
+        return entry
+      }
+    }
+    return undefined
+  }
+
+  list(): DmChannelRecord[] {
+    return Array.from(this.records.values())
+  }
+
+  delete(channelId: string): boolean {
+    return this.records.delete(channelId)
+  }
+
+  clear(): void {
+    this.records.clear()
+  }
+}
+
+export const PERMISSIONS_BASIC = 68608n
+export const PERMISSIONS_BASIC_VOICE = 3214336n
+export const PERMISSIONS_MODERATOR = 268553222n
+export const PERMISSIONS_MODERATOR_VOICE = 299920390n
+export const PERMISSIONS_ADMIN = 8n
+export const PERMISSIONS_ADMIN_VOICE = 8n
+
+export const DiscordPermissionTiers = {
+  basic: PERMISSIONS_BASIC,
+  basicVoice: PERMISSIONS_BASIC_VOICE,
+  moderator: PERMISSIONS_MODERATOR,
+  moderatorVoice: PERMISSIONS_MODERATOR_VOICE,
+  admin: PERMISSIONS_ADMIN,
+  adminVoice: PERMISSIONS_ADMIN_VOICE,
+} as const
+
+export type DiscordPermissionTier = keyof typeof DiscordPermissionTiers
+
+export interface DiscordPermissionValues {
+  readonly basic: string
+  readonly basicVoice: string
+  readonly moderator: string
+  readonly moderatorVoice: string
+  readonly admin: string
+  readonly adminVoice: string
+}
+
+export interface DiscordInviteUrls {
+  readonly basic: string
+  readonly basicVoice: string
+  readonly moderator: string
+  readonly moderatorVoice: string
+  readonly admin: string
+  readonly adminVoice: string
+}
+
+export function getPermissionValues(): DiscordPermissionValues {
+  return {
+    basic: PERMISSIONS_BASIC.toString(),
+    basicVoice: PERMISSIONS_BASIC_VOICE.toString(),
+    moderator: PERMISSIONS_MODERATOR.toString(),
+    moderatorVoice: PERMISSIONS_MODERATOR_VOICE.toString(),
+    admin: PERMISSIONS_ADMIN.toString(),
+    adminVoice: PERMISSIONS_ADMIN_VOICE.toString(),
+  }
+}
+
+export function generateInviteUrl(applicationId: string, tier: DiscordPermissionTier = "basic"): string {
+  const perms = DiscordPermissionTiers[tier].toString()
+  return `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(applicationId)}&permissions=${perms}&scope=bot%20applications.commands`
+}
+
+export function generateAllInviteUrls(applicationId: string): DiscordInviteUrls {
+  return {
+    basic: generateInviteUrl(applicationId, "basic"),
+    basicVoice: generateInviteUrl(applicationId, "basicVoice"),
+    moderator: generateInviteUrl(applicationId, "moderator"),
+    moderatorVoice: generateInviteUrl(applicationId, "moderatorVoice"),
+    admin: generateInviteUrl(applicationId, "admin"),
+    adminVoice: generateInviteUrl(applicationId, "adminVoice"),
+  }
+}
+
+export const ELEVATED_PERMISSIONS = [
+  "Administrator",
+  "ManageGuild",
+  "ManageRoles",
+  "ManageChannels",
+  "ManageWebhooks",
+  "BanMembers",
+  "KickMembers",
+  "ModerateMembers",
+  "ManageMessages",
+] as const
+
+const ELEVATED_PERMISSION_SET = new Set<string>(ELEVATED_PERMISSIONS)
+
+export function hasElevatedPermissions(permissions: readonly string[]): boolean {
+  return permissions.some((p) => ELEVATED_PERMISSION_SET.has(p))
+}
+
+export function isElevatedRole(role: { readonly permissions: readonly string[] | { readonly toArray: () => string[] } }): boolean {
+  const list = Array.isArray(role.permissions)
+    ? role.permissions
+    : (role.permissions as { readonly toArray: () => string[] }).toArray()
+  return hasElevatedPermissions(list)
+}
+
+export function diffOverwrites(before: PermissionState, after: PermissionState): PermissionDiff {
+  const beforeAllow = new Set(before.allow)
+  const afterAllow = new Set(after.allow)
+  const beforeDeny = new Set(before.deny)
+  const afterDeny = new Set(after.deny)
+  return {
+    addedAllow: after.allow.filter((p) => !beforeAllow.has(p)),
+    removedAllow: before.allow.filter((p) => !afterAllow.has(p)),
+    addedDeny: after.deny.filter((p) => !beforeDeny.has(p)),
+    removedDeny: before.deny.filter((p) => !afterDeny.has(p)),
+  }
+}
+
+export function diffRolePermissions(before: readonly string[], after: readonly string[]): { readonly added: readonly string[]; readonly removed: readonly string[] } {
+  const beforeSet = new Set(before)
+  const afterSet = new Set(after)
+  return {
+    added: after.filter((p) => !beforeSet.has(p)),
+    removed: before.filter((p) => !afterSet.has(p)),
+  }
+}
+
+export function diffMemberRoles(beforeIds: readonly string[], afterIds: readonly string[]): { readonly addedRoleIds: readonly string[]; readonly removedRoleIds: readonly string[] } {
+  const beforeSet = new Set(beforeIds)
+  const afterSet = new Set(afterIds)
+  return {
+    addedRoleIds: afterIds.filter((id) => !beforeSet.has(id)),
+    removedRoleIds: beforeIds.filter((id) => !afterSet.has(id)),
+  }
+}
+
+export type DiscordStalenessBehavior = "tag" | "skip" | "ignore"
+
+export interface DiscordStalenessConfig {
+  readonly enabled: boolean
+  readonly behavior: DiscordStalenessBehavior
+  readonly threshold: number
+}
+
+export interface DiscordStalenessDecision {
+  readonly decision: DiscordReplyDecision
+  readonly messagesSince: number
+  readonly suppress: boolean
+  readonly tag: boolean
+}
+
+const channelMessageSequence = new Map<string, number>()
+
+export function recordDiscordChannelMessageSeen(channelId: string): number {
+  const next = (channelMessageSequence.get(channelId) ?? 0) + 1
+  channelMessageSequence.set(channelId, next)
+  return next
+}
+
+export function getDiscordChannelMessageSequence(channelId: string): number {
+  return channelMessageSequence.get(channelId) ?? 0
+}
+
+export function getDiscordStalenessConfig(runtime: Pick<IAgentRuntime, "getSetting">): DiscordStalenessConfig {
+  const rawBehavior = String(runtime.getSetting("DISCORD_STALENESS_BEHAVIOR") ?? "tag").trim().toLowerCase()
+  const behavior: DiscordStalenessBehavior =
+    rawBehavior === "skip" || rawBehavior === "ignore" ? rawBehavior : "tag"
+  const rawThreshold = Number(runtime.getSetting("DISCORD_STALENESS_THRESHOLD") ?? 3)
+  const threshold = Number.isFinite(rawThreshold) && rawThreshold >= 0 ? Math.floor(rawThreshold) : 3
+  const enabled = String(runtime.getSetting("DISCORD_STALENESS_ENABLED") ?? "true").trim().toLowerCase() !== "false"
+  return { enabled, behavior, threshold }
+}
+
+export function applyDiscordStalenessGuard(
+  config: DiscordStalenessConfig,
+  startedAtSequence: number,
+  currentSequence: number,
+): DiscordStalenessDecision {
+  const mode: DiscordStaleness =
+    config.behavior === "skip"
+      ? "DiscordSkipStale"
+      : config.behavior === "ignore"
+        ? "DiscordIgnoreStale"
+        : "DiscordTagStale"
+  const messagesSince = discordMessagesSince(startedAtSequence, currentSequence)
+  const decision = discordStalenessDecision(mode, config.enabled, config.threshold, startedAtSequence, currentSequence)
+  return {
+    decision,
+    messagesSince,
+    suppress: decision === "DiscordSuppressReply",
+    tag: decision === "DiscordSendTagged",
+  }
+}

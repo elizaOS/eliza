@@ -1,0 +1,140 @@
+// spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+module screenTiler {
+  import { ElizaError } from "@elizaos/core"
+  import sharp from "sharp"
+  import type { ScreenTile } from "./types.vibe"
+
+  export interface TileScreenshotInput {
+    displayId: string
+    width: number
+    height: number
+    pngBytes: Uint8Array
+  }
+
+  export interface TileScreenshotOptions {
+    maxEdge: number
+    overlapFraction: number
+  }
+
+  export const DEFAULT_MAX_EDGE = 1280
+  export const DEFAULT_OVERLAP_FRACTION = 0.12
+  const MAX_SCREEN_TILES = 512
+
+  function validateInput(width: number, height: number, pngBytes: Uint8Array): void {
+    if (!Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0) {
+      throw new ElizaError("Screenshot tiling requires positive integer dimensions", {
+        code: "SCREEN_TILE_INVALID_DIMENSIONS",
+        context: { width, height },
+      })
+    }
+    if (pngBytes.byteLength === 0) {
+      throw new ElizaError("Screenshot tiling requires non-empty PNG bytes", { code: "SCREEN_TILE_EMPTY_IMAGE" })
+    }
+  }
+
+  function validateOptions(maxEdge: number, overlapFraction: number): void {
+    if (!Number.isSafeInteger(maxEdge) || maxEdge < 64) {
+      throw new ElizaError("Screen tile maxEdge must be an integer >= 64", { code: "SCREEN_TILE_INVALID_OPTIONS" })
+    }
+    if (!Number.isFinite(overlapFraction) || overlapFraction < 0 || overlapFraction >= 0.5) {
+      throw new ElizaError("Screen tile overlapFraction must be in [0, 0.5)", { code: "SCREEN_TILE_INVALID_OPTIONS" })
+    }
+  }
+
+  export async function tileScreenshot(
+    input: TileScreenshotInput,
+    opts: TileScreenshotOptions = { maxEdge: DEFAULT_MAX_EDGE, overlapFraction: DEFAULT_OVERLAP_FRACTION },
+  ): Promise<ScreenTile[]> {
+    const { displayId, width, height, pngBytes } = input
+    validateInput(width, height, pngBytes)
+    const { maxEdge, overlapFraction } = opts
+    validateOptions(maxEdge, overlapFraction)
+
+    const cols = Math.max(1, Math.ceil(width / maxEdge))
+    const rows = Math.max(1, Math.ceil(height / maxEdge))
+    const tileCount = cols * rows
+    if (!Number.isSafeInteger(tileCount) || tileCount > MAX_SCREEN_TILES) {
+      throw new ElizaError(`Screen tile grid requires ${tileCount} tiles; maximum is ${MAX_SCREEN_TILES}`, {
+        code: "SCREEN_TILE_BUDGET_EXCEEDED",
+        context: { cols, rows, tileCount, maxTiles: MAX_SCREEN_TILES },
+      })
+    }
+
+    if (width <= maxEdge && height <= maxEdge) {
+      return [
+        {
+          id: "tile-0-0",
+          displayId,
+          sourceX: 0,
+          sourceY: 0,
+          sourceW: width,
+          sourceH: height,
+          tileW: width,
+          tileH: height,
+          pngBytes,
+        },
+      ]
+    }
+
+    const tileWidth = Math.min(maxEdge, Math.ceil(width / cols + maxEdge * overlapFraction))
+    const tileHeight = Math.min(maxEdge, Math.ceil(height / rows + maxEdge * overlapFraction))
+    const strideX = cols > 1 ? Math.ceil((width - tileWidth) / (cols - 1)) : tileWidth
+    const strideY = rows > 1 ? Math.ceil((height - tileHeight) / (rows - 1)) : tileHeight
+
+    const image = sharp(pngBytes)
+    const tiles: ScreenTile[] = []
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const sourceX = col === cols - 1 ? Math.max(0, width - tileWidth) : Math.min(col * strideX, Math.max(0, width - tileWidth))
+        const sourceY = row === rows - 1 ? Math.max(0, height - tileHeight) : Math.min(row * strideY, Math.max(0, height - tileHeight))
+        const sourceW = Math.min(tileWidth, width - sourceX)
+        const sourceH = Math.min(tileHeight, height - sourceY)
+        const cropped = await image.clone().extract({ left: sourceX, top: sourceY, width: sourceW, height: sourceH }).png().toBuffer()
+        tiles.push({
+          id: `tile-${row}-${col}`,
+          displayId,
+          sourceX,
+          sourceY,
+          sourceW,
+          sourceH,
+          tileW: sourceW,
+          tileH: sourceH,
+          pngBytes: new Uint8Array(cropped.buffer, cropped.byteOffset, cropped.byteLength),
+        })
+      }
+    }
+    return tiles
+  }
+
+  export function reconstructAbsoluteCoords(
+    tile: Pick<ScreenTile, "sourceX" | "sourceY" | "sourceW" | "sourceH" | "tileW" | "tileH">,
+    bbox: readonly [number, number, number, number],
+  ): [number, number, number, number] {
+    const scaleX = tile.tileW > 0 ? tile.sourceW / tile.tileW : 1
+    const scaleY = tile.tileH > 0 ? tile.sourceH / tile.tileH : 1
+    return [
+      Math.round(tile.sourceX + bbox[0] * scaleX),
+      Math.round(tile.sourceY + bbox[1] * scaleY),
+      Math.max(1, Math.round(bbox[2] * scaleX)),
+      Math.max(1, Math.round(bbox[3] * scaleY)),
+    ]
+  }
+}
+
+import {
+  DEFAULT_MAX_EDGE,
+  DEFAULT_OVERLAP_FRACTION,
+  reconstructAbsoluteCoords,
+  tileScreenshot,
+  type TileScreenshotInput,
+  type TileScreenshotOptions,
+} from screenTiler
+
+export {
+  DEFAULT_MAX_EDGE,
+  DEFAULT_OVERLAP_FRACTION,
+  reconstructAbsoluteCoords,
+  tileScreenshot,
+  type TileScreenshotInput,
+  type TileScreenshotOptions,
+}

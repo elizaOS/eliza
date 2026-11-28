@@ -1,0 +1,288 @@
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import type { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
+import type { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+import type { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import type { EmbeddedResource, ImageContent, Resource, ResourceTemplate, TextContent, Tool } from "@modelcontextprotocol/sdk/types.js"
+
+export const MCP_SERVICE_NAME = "mcp" as const
+export const DEFAULT_MCP_TIMEOUT_MS = 60000
+export const MIN_MCP_TIMEOUT_MS = 1
+export const DEFAULT_MAX_RETRIES = 2
+export const MAX_RECONNECT_ATTEMPTS = 5
+export const BACKOFF_MULTIPLIER = 2
+export const INITIAL_RETRY_DELAY = 2000
+
+export interface PingConfig {
+  readonly enabled: boolean
+  readonly intervalMs: number
+  readonly timeoutMs: number
+  readonly failuresBeforeDisconnect: number
+}
+
+export const DEFAULT_PING_CONFIG: Readonly<PingConfig> = {
+  enabled: true,
+  intervalMs: 10000,
+  timeoutMs: 5000,
+  failuresBeforeDisconnect: 3,
+} as const
+
+export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "failed"
+
+export interface ConnectionState {
+  status: ConnectionStatus
+  reconnectAttempts: number
+  lastConnected?: Date
+  lastError?: Error
+  consecutivePingFailures: number
+  config: string
+}
+
+export interface StdioMcpServerConfig {
+  readonly type: "stdio"
+  readonly command: string
+  readonly args?: readonly string[]
+  readonly env?: Readonly<Record<string, string>>
+  readonly cwd?: string
+  readonly timeoutInMillis?: number
+}
+
+export interface HttpMcpServerConfig {
+  readonly type: "http" | "streamable-http" | "sse"
+  readonly url: string
+  readonly timeout?: number
+}
+
+export type McpServerConfig = StdioMcpServerConfig | HttpMcpServerConfig
+
+export interface McpSettings {
+  readonly servers: Readonly<Record<string, McpServerConfig>>
+  readonly maxRetries?: number
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isStdioConfig(value: unknown): value is StdioMcpServerConfig {
+  return (
+    isPlainRecord(value) &&
+    value.type === "stdio" &&
+    typeof value.command === "string" &&
+    (value.args === undefined || (Array.isArray(value.args) && value.args.every((arg) => typeof arg === "string"))) &&
+    (value.env === undefined || (isPlainRecord(value.env) && Object.values(value.env).every((entry) => typeof entry === "string"))) &&
+    (value.cwd === undefined || typeof value.cwd === "string") &&
+    (value.timeoutInMillis === undefined || typeof value.timeoutInMillis === "number")
+  )
+}
+
+function isHttpConfig(value: unknown): value is HttpMcpServerConfig {
+  return (
+    isPlainRecord(value) &&
+    (value.type === "http" || value.type === "streamable-http" || value.type === "sse") &&
+    typeof value.url === "string" &&
+    (value.timeout === undefined || typeof value.timeout === "number")
+  )
+}
+
+export function isMcpSettings(value: unknown): value is McpSettings {
+  if (!isPlainRecord(value) || !isPlainRecord(value.servers)) return false
+  return (
+    Object.values(value.servers).every((server) => isStdioConfig(server) || isHttpConfig(server)) &&
+    (value.maxRetries === undefined || typeof value.maxRetries === "number")
+  )
+}
+
+export type McpServerStatus = "connecting" | "connected" | "disconnected" | "error"
+
+export interface McpServerRecord {
+  readonly name: string
+  status: McpServerStatus
+  readonly config: string
+  error?: string
+  disabled?: boolean
+  tools?: readonly Tool[]
+  resources?: readonly Resource[]
+  resourceTemplates?: readonly ResourceTemplate[]
+}
+
+export interface McpClientConnection {
+  server: McpServerRecord
+  readonly client: Client
+  readonly transport: StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport
+}
+
+export interface McpToolResult {
+  readonly content: ReadonlyArray<TextContent | ImageContent | EmbeddedResource>
+  readonly isError?: boolean
+}
+
+export interface McpResourceContent {
+  readonly uri: string
+  readonly mimeType?: string
+  readonly text?: string
+  readonly blob?: string
+}
+
+export interface McpResourceResponse {
+  readonly contents: readonly McpResourceContent[]
+}
+
+export type JsonSchemaPrimitive = string | number | boolean | null
+export type JsonSchemaValue = JsonSchemaPrimitive | JsonSchemaObject | JsonSchemaArray
+export interface JsonSchemaObject {
+  readonly [key: string]: JsonSchemaValue
+}
+export type JsonSchemaArray = readonly JsonSchemaValue[]
+
+export interface JsonSchemaProperty {
+  readonly type?: string | readonly string[]
+  readonly description?: string
+  readonly minLength?: number
+  readonly maxLength?: number
+  readonly pattern?: string
+  readonly format?: string
+  readonly enum?: readonly unknown[]
+  readonly const?: unknown
+  readonly default?: unknown
+  readonly minimum?: number
+  readonly maximum?: number
+  readonly exclusiveMinimum?: number
+  readonly exclusiveMaximum?: number
+  readonly multipleOf?: number
+  readonly minItems?: number
+  readonly maxItems?: number
+  readonly uniqueItems?: boolean
+  readonly minProperties?: number
+  readonly maxProperties?: number
+  readonly items?: JsonSchemaProperty | readonly JsonSchemaProperty[]
+  readonly contains?: JsonSchemaProperty
+  readonly properties?: Readonly<Record<string, JsonSchemaProperty>>
+  readonly required?: readonly string[]
+  readonly additionalProperties?: boolean | JsonSchemaProperty
+  readonly $ref?: string
+  readonly oneOf?: readonly JsonSchemaProperty[]
+  readonly anyOf?: readonly JsonSchemaProperty[]
+  readonly allOf?: readonly JsonSchemaProperty[]
+  readonly not?: JsonSchemaProperty
+  readonly if?: JsonSchemaProperty
+  readonly then?: JsonSchemaProperty
+  readonly else?: JsonSchemaProperty
+  readonly prefixItems?: readonly JsonSchemaProperty[]
+  readonly dependentSchemas?: Readonly<Record<string, JsonSchemaProperty>>
+  readonly patternProperties?: Readonly<Record<string, JsonSchemaProperty>>
+  readonly nullable?: boolean
+  readonly [key: string]: unknown
+}
+
+export interface McpToolInputSchema {
+  readonly properties?: Readonly<Record<string, JsonSchemaProperty>>
+  readonly required?: readonly string[]
+  readonly [key: string]: unknown
+}
+
+export interface McpToolInfo {
+  readonly description: string
+  readonly inputSchema?: McpToolInputSchema
+}
+
+export interface McpResourceInfo {
+  readonly name: string
+  readonly description: string
+  readonly mimeType?: string
+}
+
+export interface McpServerInfo {
+  readonly status: string
+  readonly tools: Readonly<Record<string, McpToolInfo>>
+  readonly resources: Readonly<Record<string, McpResourceInfo>>
+}
+
+export interface McpProviderData {
+  readonly [serverName: string]: McpServerInfo
+}
+
+export interface McpProviderValues {
+  readonly mcp: McpProviderData
+  readonly mcpText?: string
+}
+
+export interface McpProvider {
+  readonly values: McpProviderValues
+  readonly data: { readonly mcp: McpProviderData }
+  readonly text: string
+}
+
+export const ToolSelectionSchema = {
+  type: "object",
+  required: ["serverName", "toolName", "arguments"],
+  properties: {
+    serverName: { type: "string", minLength: 1 },
+    toolName: { type: "string", minLength: 1 },
+    arguments: { type: "object" },
+    reasoning: { type: "string" },
+    noToolAvailable: { type: "boolean" },
+  },
+} as const
+
+export const ResourceSelectionSchema = {
+  type: "object",
+  required: ["serverName", "uri"],
+  properties: {
+    serverName: { type: "string", minLength: 1 },
+    uri: { type: "string", minLength: 1 },
+    reasoning: { type: "string" },
+    noResourceAvailable: { type: "boolean" },
+  },
+} as const
+
+export interface ToolSelectionName {
+  readonly serverName: string
+  readonly toolName: string
+  readonly reasoning?: string
+  readonly noToolAvailable?: boolean
+}
+
+export interface ToolSelectionArgument {
+  readonly toolArguments: Readonly<Record<string, unknown>>
+}
+
+export interface ResourceSelection {
+  readonly serverName: string
+  readonly uri: string
+  readonly reasoning?: string
+  readonly noResourceAvailable?: boolean
+}
+
+export type ValidationResult<T> =
+  | { readonly success: true; readonly data: T }
+  | { readonly success: false; readonly error: string }
+
+module node {
+  export class McpError extends Error {
+    readonly code: string
+    constructor(message: string, code = "UNKNOWN") {
+      super(message)
+      this.name = "McpError"
+      this.code = code
+    }
+    static connectionError(serverName: string, details?: string): McpError {
+      return new McpError(`Failed to connect to server '${serverName}'${details ? `: ${details}` : ""}`, "CONNECTION_ERROR")
+    }
+    static toolNotFound(toolName: string, serverName: string): McpError {
+      return new McpError(`Tool '${toolName}' not found on server '${serverName}'`, "TOOL_NOT_FOUND")
+    }
+    static resourceNotFound(uri: string, serverName: string): McpError {
+      return new McpError(`Resource '${uri}' not found on server '${serverName}'`, "RESOURCE_NOT_FOUND")
+    }
+    static validationError(details: string): McpError {
+      return new McpError(`Validation error: ${details}`, "VALIDATION_ERROR")
+    }
+    static serverError(serverName: string, details?: string): McpError {
+      return new McpError(`Server error from '${serverName}'${details ? `: ${details}` : ""}`, "SERVER_ERROR")
+    }
+  }
+}
+
+import { McpError } from node
+export { McpError }

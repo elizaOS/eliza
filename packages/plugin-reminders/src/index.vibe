@@ -1,5 +1,31 @@
-// spec/reminders/index.md, "Story: Preserve a reminder and its escalation policy"
+// spec/reminders/index.md, "Story: Preserve a reminder and its escalation policy"; spec/reminders/migration.md, "Story: Copy prior reminder tables once without losing or replaying owner edits"
+import type { Plugin } from "@elizaos/core"
 import { escalationDue, mayImportReminder, validReminderDelivery, type ReminderDelivery } from "../gen/reminders.effect.vibe"
+import {
+  migrateReminderTable,
+  migrateReminderTables,
+  openSqliteRemindersStore,
+  REMINDERS_LOG_PREFIX,
+  REMINDERS_MIGRATION_SERVICE_TYPE,
+  RemindersMigrationService,
+  type CarveOutDatabase,
+  type SqlExecutor,
+  type SqliteCarveOutHandle,
+  type TableMigrationOutcome,
+  type TableMigrationResult,
+} from "./migration.vibe"
+import {
+  MIGRATED_REMINDER_TABLES,
+  REMINDERS_SCHEMA_NAME,
+  REMINDERS_SOURCE_SCHEMA,
+  REMINDERS_SQLITE_DDL,
+  remindersDbSchema,
+  type EscalationStateRow,
+  type MigratedReminderTable,
+  type ReminderAttemptRow,
+  type ReminderPlanRow,
+  type ReminderTableSchemaSpec,
+} from "./schema.vibe"
 
 export error ReminderRecordsUnavailable { reason: string }
 
@@ -22,4 +48,60 @@ export effect function overdueReminders(ownerId: string) {
   const records = try ReminderRecords
   const pending = try records.pendingForOwner(ownerId)
   return pending.filter((row) => row.ownerId === ownerId && validReminderDelivery(row) && escalationDue(row, at))
+}
+
+export function createSqliteReminderRecordsLayer(handle: SqliteCarveOutHandle) {
+  return ReminderRecords.of({
+    idsForOwner: effect (ownerId: string) => {
+      return try Effect.try({
+        try: () => handle.listIdsForOwner(ownerId),
+        catch: (err) => new ReminderRecordsUnavailable({ reason: err instanceof Error ? err.message : String(err) }),
+      })
+    },
+    insertMissing: effect (row: ReminderDelivery) => {
+      return try Effect.try({
+        try: () => handle.insertDelivery(row),
+        catch: (err) => new ReminderRecordsUnavailable({ reason: err instanceof Error ? err.message : String(err) }),
+      })
+    },
+    pendingForOwner: effect (ownerId: string) => {
+      return try Effect.try({
+        try: () => handle.listPendingForOwner(ownerId),
+        catch: (err) => new ReminderRecordsUnavailable({ reason: err instanceof Error ? err.message : String(err) }),
+      })
+    },
+  })
+}
+
+export const remindersPlugin: Plugin = {
+  name: "@elizaos/plugin-reminders",
+  description:
+    "Reminder delivery/escalation data layer owning app_reminders schema (plans, attempts, escalation states) with non-destructive one-time migration from app_lifeops.",
+  services: [RemindersMigrationService],
+}
+
+export default remindersPlugin
+
+export {
+  MIGRATED_REMINDER_TABLES,
+  REMINDERS_LOG_PREFIX,
+  REMINDERS_MIGRATION_SERVICE_TYPE,
+  REMINDERS_SCHEMA_NAME,
+  REMINDERS_SOURCE_SCHEMA,
+  REMINDERS_SQLITE_DDL,
+  RemindersMigrationService,
+  migrateReminderTable,
+  migrateReminderTables,
+  openSqliteRemindersStore,
+  remindersDbSchema,
+  type CarveOutDatabase,
+  type EscalationStateRow,
+  type MigratedReminderTable,
+  type ReminderAttemptRow,
+  type ReminderPlanRow,
+  type ReminderTableSchemaSpec,
+  type SqlExecutor,
+  type SqliteCarveOutHandle,
+  type TableMigrationOutcome,
+  type TableMigrationResult,
 }

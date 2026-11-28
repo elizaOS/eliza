@@ -1,15 +1,45 @@
-// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "An invocation can be sent once only after its original schema accepts the arguments"
-import { assert, it } from "@effect/vitest"
-import { type Action, type ActionParameters, actionToTool, AgentRuntime, stringToUuid, validateToolArgs } from "@elizaos/core"
-import { McpConnectionPolicy, mcpToolActions } from "../src/index.vibe"
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "An invocation can be sent once only after its original schema accepts the arguments"; spec/mcp/workerLifecycle.md, "Story: Isolate untrusted MCP schema compilation and validation"
+import { assert, describe, it } from "@effect/vitest"
+import { type Action, type ActionParameters, type ActionResult, type Memory, actionToTool, AgentRuntime, stringToUuid, validateToolArgs } from "@elizaos/core"
+import {
+  AnthropicMcpCompatibility,
+  GoogleMcpCompatibility,
+  McpConnectionPolicy,
+  McpService,
+  OpenAIReasoningMcpCompatibility,
+  actionNamesCollide,
+  convertJsonSchemaToActionParams,
+  detectMcpModelProvider,
+  evaluateSchemaWithWorkerLifecycle,
+  formatMcpProviderForPrompt,
+  generateSimiles,
+  getMcpServerDetails,
+  handleMcpRoutes,
+  isMcpSettings,
+  makeUniqueActionName,
+  mcpAction,
+  mcpPlugin,
+  mcpProvider,
+  mcpToolActions,
+  parseActionName,
+  parseJSON,
+  searchMcpMarketplace,
+  toActionName,
+  validateJsonSchema,
+  validateMcpServerConfigSecurity,
+  validateParamsAgainstSchema,
+} from "../src/index.vibe"
 
 module node {
   import { once } from "node:events"
   import { createServer } from "node:http"
   import { Server } from "@modelcontextprotocol/sdk/server/index.js"
   import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
-  import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
+  import { CallToolRequestSchema, ListResourcesRequestSchema, ListResourceTemplatesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/types.js"
   import { Ajv } from "ajv"
+  import type http from "node:http"
+  import type { IAgentRuntime } from "@elizaos/core"
+  import type { McpRouteConfig, McpRouteContext, McpService } from "../src/index.vibe"
 
   const text = { type: "string" }
   const deep = (levels: number, leaf: object = { type: "integer" }): object => levels === 0 ? leaf : { type: "object", properties: { next: deep(levels - 1, leaf) }, required: ["next"] }
@@ -100,8 +130,131 @@ module node {
     if (address === null || typeof address === "string") throw new Error("Could not reserve a loopback port")
     return { connection: { kind: "http", url: new URL(`http://127.0.0.1:${address.port}/mcp`), fetch }, called, delivered, stop: () => new Promise<void>((resolve) => http.close(() => resolve())) }
   }
+
+  export async function startRichMcpServer(): Promise<{ readonly url: string; readonly stop: () => Promise<void> }> {
+    const httpServer = createServer((request, response) => {
+      const server = new Server({ name: "rich-mcp", version: "1.0.0" }, { capabilities: { tools: {}, resources: {} } })
+      server.setRequestHandler(ListToolsRequestSchema, async () => ({
+        tools: [
+          {
+            name: "add_numbers",
+            description: "Adds two integers",
+            inputSchema: {
+              type: "object",
+              properties: { a: { type: "integer" }, b: { type: "integer" } },
+              required: ["a", "b"],
+              additionalProperties: false,
+            },
+          },
+        ],
+      }))
+      server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+        const args = (params.arguments ?? {}) as { a?: number; b?: number }
+        return { content: [{ type: "text", text: `sum=${Number(args.a ?? 0) + Number(args.b ?? 0)}` }] }
+      })
+      server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+        resources: [{ uri: "docs://guide", name: "Guide", description: "Setup guide", mimeType: "text/plain" }],
+      }))
+      server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({ resourceTemplates: [] }))
+      server.setRequestHandler(ReadResourceRequestSchema, async ({ params }) => ({
+        contents: [{ uri: params.uri, mimeType: "text/plain", text: "Welcome to MCP guide" }],
+      }))
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
+      response.on("close", () => { void transport.close(); void server.close() })
+      void server.connect(transport).then(() => transport.handleRequest(request, response))
+    })
+    httpServer.listen(0, "127.0.0.1")
+    await once(httpServer, "listening")
+    const addr = httpServer.address() as { port: number }
+    return {
+      url: `http://127.0.0.1:${addr.port}/mcp`,
+      stop: () => new Promise<void>((resolve) => httpServer.close(() => resolve())),
+    }
+  }
+
+  export async function startMockRegistry(): Promise<{ readonly baseUrl: string; readonly stop: () => Promise<void> }> {
+    const httpServer = createServer((req, res) => {
+      res.setHeader("content-type", "application/json")
+      if (req.url?.startsWith("/v0/servers?")) {
+        res.end(JSON.stringify({
+          servers: [
+            {
+              server: {
+                name: "io.example/github",
+                title: "GitHub MCP",
+                description: "GitHub tools",
+                version: "1.0.0",
+                remotes: [{ type: "streamable-http", url: "https://mcp.example/github" }],
+              },
+              _meta: { "io.modelcontextprotocol.registry/official": { isLatest: true, publishedAt: "2026-01-01T00:00:00Z" } },
+            },
+          ],
+        }))
+        return
+      }
+      if (req.url?.includes("/versions/latest")) {
+        if (req.url.includes("missing")) {
+          res.statusCode = 404
+          res.end(JSON.stringify({ error: "not found" }))
+          return
+        }
+        res.end(JSON.stringify({
+          server: { name: "io.example/github", title: "GitHub MCP", description: "GitHub tools", version: "1.0.0" },
+        }))
+        return
+      }
+      res.statusCode = 404
+      res.end("{}")
+    })
+    httpServer.listen(0, "127.0.0.1")
+    await once(httpServer, "listening")
+    const addr = httpServer.address() as { port: number }
+    return {
+      baseUrl: `http://127.0.0.1:${addr.port}`,
+      stop: () => new Promise<void>((resolve) => httpServer.close(() => resolve())),
+    }
+  }
+
+  export function makeMcpRuntime(mcpSetting: unknown, service?: McpService): { readonly runtime: IAgentRuntime; readonly attach: (svc: McpService) => void } {
+    let attached = service ?? null
+    const runtime = {
+      agentId: "00000000-0000-4000-8000-000000000001",
+      character: { settings: {} },
+      getSetting: (key: string) => (key === "mcp" ? mcpSetting : null),
+      getService: (name: string) => (name === "mcp" ? attached : null),
+      getModel: () => undefined,
+      useModel: async (_type: unknown, params: { prompt: string }) => params.prompt.includes("Synthesize") ? "Sum is 7." : "{}",
+      createMemory: async () => "mem-1",
+      reportError: () => undefined,
+    } as unknown as IAgentRuntime
+    return { runtime, attach: (svc) => { attached = svc } }
+  }
+
+  export function makeRouteContext(method: string, pathname: string, service: McpService): { readonly ctx: McpRouteContext; readonly replies: readonly { readonly status: number; readonly body: unknown }[] } {
+    const replies: { status: number; body: unknown }[] = []
+    const config: McpRouteConfig = { mcp: { servers: { docs: { type: "streamable-http", url: "https://mcp.example/docs" } } } }
+    const ctx: McpRouteContext = {
+      req: {} as http.IncomingMessage,
+      res: {} as http.ServerResponse,
+      method,
+      pathname,
+      url: new URL(`http://127.0.0.1${pathname}`),
+      state: { config, runtime: { getService: (name) => (name === "mcp" ? service : null) } },
+      json: (_res, data, status = 200) => { replies.push({ status, body: data }) },
+      error: (_res, message, status = 400) => { replies.push({ status, body: { error: message } }) },
+      readJsonBody: async () => null,
+      saveElizaConfig: () => undefined,
+      redactDeep: (v) => v,
+      isBlockedObjectKey: (k) => k === "__proto__" || k === "constructor" || k === "prototype",
+      cloneWithoutBlockedObjectKeys: (v) => v,
+      resolveMcpServersRejection: async () => null,
+      resolveMcpTerminalAuthorizationRejection: () => null,
+      decodePathComponent: (raw) => decodeURIComponent(raw),
+    }
+    return { ctx, replies }
+  }
 }
-import { startServer } from node
+import { makeMcpRuntime, makeRouteContext, startMockRegistry, startRichMcpServer, startServer } from node
 
 const server = { serverId: "peer", serverEpoch: 1, transport: "HttpTransport" as const, enabled: true }
 const nested = (levels: number, leaf: unknown): unknown => levels === 0 ? leaf : { next: nested(levels - 1, leaf) }
@@ -210,3 +363,87 @@ it.live("An MCP tool's nested argument shapes reach the planner and the server (
     assert.deepStrictEqual(fixture.delivered, cases.filter(([, , , delivered]) => delivered).map(([tool, args]) => ({ [tool]: args })))
   })
 }), 30_000)
+
+describe("MCP service, compatibility, marketplace, routes and worker lifecycle (spec/mcp/index.md, \"Story: Call an explicitly enabled server with valid tool arguments\")", () => {
+  it("Runs McpService discovery, call_tool, read_resource, provider, routes, marketplace, JSON5, compatibility and worker lifecycle end-to-end (spec/mcp/workerLifecycle.md, \"Story: Isolate untrusted MCP schema compilation and validation\")", async () => {
+    const rich = await startRichMcpServer()
+    const registry = await startMockRegistry()
+    try {
+      const settings = { servers: { demo: { type: "streamable-http" as const, url: rich.url } } }
+      assert.strictEqual(isMcpSettings(settings), true)
+      assert.isNotNull(validateMcpServerConfigSecurity({ type: "stdio", command: "bash", args: ["-c", "id"] }, false))
+      assert.isNotNull(validateMcpServerConfigSecurity({ type: "http", url: "http://169.254.169.254/latest" }, false))
+      assert.isNull(validateMcpServerConfigSecurity({ type: "streamable-http", url: "https://mcp.example/api" }, false))
+
+      const { runtime, attach } = makeMcpRuntime(settings)
+      const service = await McpService.start(runtime)
+      attach(service)
+      assert.strictEqual(service.getServers().length, 1)
+      assert.strictEqual(service.getServers()[0]?.status, "connected")
+
+      const prov = await mcpProvider.get(runtime, { entityId: stringToUuid("u"), roomId: stringToUuid("r"), content: { text: "" } }, { values: {}, data: {}, text: "" })
+      assert.include(prov.text ?? "", "demo")
+      assert.include(formatMcpProviderForPrompt(service.getProviderData().values.mcp), "add_numbers")
+
+      assert.strictEqual(mcpAction.toolSchemaStrict, true)
+      assert.strictEqual(mcpAction.cacheStable, true)
+      assert.isFunction(mcpAction.summarize)
+      const paramNames = (mcpAction.parameters ?? []).map((p) => p.name)
+      assert.deepStrictEqual(paramNames, [...paramNames].sort())
+
+      const msg: Memory = { entityId: stringToUuid("u"), roomId: stringToUuid("r"), agentId: stringToUuid("a"), content: { text: "add 3 and 4" } }
+      const toolRes = await mcpAction.handler(runtime, msg, undefined, { parameters: { action: "call_tool", serverName: "demo", toolName: "add_numbers", arguments: { a: 3, b: 4 } } }) as ActionResult
+      assert.strictEqual(toolRes.success, true)
+      assert.strictEqual(toolRes.promptDataMode, "replace-data")
+      assert.include(String((toolRes.data as { output?: string }).output), "sum=7")
+
+      const badRes = await mcpAction.handler(runtime, msg, undefined, { parameters: { action: "call_tool", serverName: "demo", toolName: "add_numbers", arguments: { a: "bad", b: 4 } } }) as ActionResult
+      assert.strictEqual(badRes.success, false)
+
+      const readRes = await mcpAction.handler(runtime, msg, undefined, { parameters: { action: "read_resource", serverName: "demo", uri: "docs://guide" } }) as ActionResult
+      assert.strictEqual(readRes.success, true)
+      assert.include(String((readRes.data as { output?: string }).output), "Welcome to MCP guide")
+
+      const statusRoute = makeRouteContext("GET", "/api/mcp/status", service)
+      assert.strictEqual(await handleMcpRoutes(statusRoute.ctx), true)
+      assert.strictEqual((statusRoute.replies[0]?.body as { servers: { name: string }[] }).servers[0]?.name, "demo")
+
+      const found = await searchMcpMarketplace("github", 10, { baseUrl: registry.baseUrl })
+      assert.strictEqual(found.results[0]?.name, "io.example/github")
+      const details = await getMcpServerDetails("io.example/github", { baseUrl: registry.baseUrl })
+      assert.strictEqual(details?.version, "1.0.0")
+      assert.isNull(await getMcpServerDetails("missing", { baseUrl: registry.baseUrl }))
+
+      assert.deepStrictEqual(parseJSON("Here's prose {ignore} then { key: 'val', trailing: 1, }"), { key: "val", trailing: 1 })
+      assert.strictEqual(toActionName("github", "list_prs"), "GITHUB_LIST_PRS")
+      assert.strictEqual(actionNamesCollide("a-b", "A_B"), true)
+      assert.deepStrictEqual(parseActionName("GITHUB_LIST_PRS"), { serverName: "github", toolName: "list_prs" })
+      assert.strictEqual(makeUniqueActionName("github", "list_prs", new Set(["GITHUB_LIST_PRS"])), "GITHUB_LIST_PRS_2")
+      assert.isAbove(generateSimiles("github", "list_prs").length, 0)
+
+      assert.strictEqual(detectMcpModelProvider({ modelProvider: "anthropic", model: "claude-3" }).provider, "anthropic")
+      const googleRewritten: Record<string, unknown> = new GoogleMcpCompatibility({ provider: "google", modelId: "gemini-2.5" }).transformToolSchema({ type: "object", additionalProperties: false, properties: { x: { type: "string", minLength: 2 } } } as Record<string, unknown>)
+      assert.notProperty(googleRewritten, "additionalProperties")
+      assert.include(String(googleRewritten.description), "Constraints:")
+      const anthropicRewritten: Record<string, unknown> = new AnthropicMcpCompatibility({ provider: "anthropic", modelId: "claude" }).transformToolSchema({ type: "object", additionalProperties: false } as Record<string, unknown>)
+      assert.notProperty(anthropicRewritten, "additionalProperties")
+      const openaiRewritten: Record<string, unknown> = new OpenAIReasoningMcpCompatibility({ provider: "openai", modelId: "o3", isReasoningModel: true }).transformToolSchema({ type: "object", additionalProperties: false } as Record<string, unknown>)
+      assert.include(String(openaiRewritten.description), "IMPORTANT:")
+
+      const converted = convertJsonSchemaToActionParams({ properties: { mode: { type: "string", enum: ["fast", "deep"] } }, required: ["mode"] })
+      assert.strictEqual(converted?.[0]?.name, "mode")
+      assert.deepStrictEqual(validateParamsAgainstSchema({ mode: "fast" }, { properties: { mode: { type: "string", enum: ["fast", "deep"] } }, required: ["mode"] }), [])
+      assert.isAbove(validateParamsAgainstSchema({ mode: "invalid" }, { properties: { mode: { type: "string", enum: ["fast", "deep"] } }, required: ["mode"] }).length, 0)
+      assert.strictEqual(validateJsonSchema({ a: 1 }, { type: "object", properties: { a: { type: "integer" } }, required: ["a"] }).success, true)
+
+      const workerEval = await runPromise(evaluateSchemaWithWorkerLifecycle({ a: 2 }, { type: "object", properties: { a: { type: "integer" } }, required: ["a"] }))
+      assert.strictEqual(workerEval.success, true)
+
+      await mcpPlugin.dispose?.(runtime)
+      assert.strictEqual(service.getServers().length, 0)
+    } finally {
+      await rich.stop()
+      await registry.stop()
+    }
+  }, 30_000)
+})

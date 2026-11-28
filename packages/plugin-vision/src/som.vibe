@@ -1,0 +1,191 @@
+// spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+module somModule {
+  import sharp from "sharp"
+  import { bboxIou } from "./get-screen-elements.vibe"
+  import type { BoundingBox } from "./types.vibe"
+
+  export type SomBbox = readonly [number, number, number, number]
+  export type SomSource = "icon" | "text"
+
+  export interface SomCandidate {
+    readonly bbox: SomBbox
+    readonly source: SomSource
+    readonly label?: string
+    readonly score?: number
+  }
+
+  export interface SomMark {
+    readonly index: number
+    readonly bbox: [number, number, number, number]
+    readonly center: [number, number]
+    readonly source: SomSource
+    readonly label?: string
+    readonly score: number
+  }
+
+  export interface SetOfMarksOptions {
+    readonly iconOverTextCoverage?: number
+    readonly nmsIouThreshold?: number
+    readonly rowTolerance?: number
+    readonly minScore?: number
+  }
+
+  export interface SomOverlayOptions {
+    readonly width: number
+    readonly height: number
+  }
+
+  export interface DetectedObjectLike {
+    readonly type: string
+    readonly confidence: number
+    readonly boundingBox: BoundingBox
+  }
+
+  export interface OcrBlockLike {
+    readonly text: string
+    readonly bbox: SomBbox
+    readonly confidence?: number
+  }
+
+  function intersectionArea(a: SomBbox, b: SomBbox): number {
+    const ix = Math.max(a[0], b[0])
+    const iy = Math.max(a[1], b[1])
+    const ix2 = Math.min(a[0] + a[2], b[0] + b[2])
+    const iy2 = Math.min(a[1] + a[3], b[1] + b[3])
+    return Math.max(0, ix2 - ix) * Math.max(0, iy2 - iy)
+  }
+
+  export function coverageRatio(inner: SomBbox, outer: SomBbox): number {
+    const area = inner[2] * inner[3]
+    if (area <= 0) return 0
+    return intersectionArea(inner, outer) / area
+  }
+
+  function isValidBox(b: SomBbox): boolean {
+    return Number.isFinite(b[0]) && Number.isFinite(b[1]) && Number.isFinite(b[2]) && Number.isFinite(b[3]) && b[2] > 0 && b[3] > 0
+  }
+
+  export function buildSetOfMarks(candidates: readonly SomCandidate[], options: SetOfMarksOptions = {}): SomMark[] {
+    const iconOverText = options.iconOverTextCoverage ?? 0.7
+    const nmsIou = options.nmsIouThreshold ?? 0.5
+    const rowTolerance = options.rowTolerance ?? 12
+    const minScore = options.minScore ?? 0
+    const normalized = candidates
+      .filter((c) => isValidBox(c.bbox) && (c.score ?? 0.5) >= minScore)
+      .map((c) => ({
+        bbox: [c.bbox[0], c.bbox[1], c.bbox[2], c.bbox[3]] as [number, number, number, number],
+        source: c.source,
+        label: c.label,
+        score: c.score ?? 0.5,
+      }))
+    const icons = normalized.filter((c) => c.source === "icon")
+    const filtered = normalized.filter(
+      (c) => c.source === "icon" || !icons.some((icon) => coverageRatio(c.bbox, icon.bbox) >= iconOverText),
+    )
+    filtered.sort((a, b) => {
+      if (a.source !== b.source) return a.source === "icon" ? -1 : 1
+      return b.score - a.score || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]
+    })
+    const kept: typeof filtered = []
+    for (const candidate of filtered) {
+      if (!kept.some((existing) => bboxIou(existing.bbox, candidate.bbox) >= nmsIou)) kept.push(candidate)
+    }
+    kept.sort((a, b) => (Math.abs(a.bbox[1] - b.bbox[1]) <= rowTolerance ? a.bbox[0] - b.bbox[0] : a.bbox[1] - b.bbox[1]))
+    return kept.map((item, idx) => ({
+      index: idx + 1,
+      bbox: item.bbox,
+      center: [Math.round(item.bbox[0] + item.bbox[2] / 2), Math.round(item.bbox[1] + item.bbox[3] / 2)],
+      source: item.source,
+      label: item.label,
+      score: item.score,
+    }))
+  }
+
+  export function somCandidatesFromDetections(objects: readonly DetectedObjectLike[]): SomCandidate[] {
+    return objects.map((obj) => ({
+      bbox: [obj.boundingBox.x, obj.boundingBox.y, obj.boundingBox.width, obj.boundingBox.height],
+      source: "icon",
+      label: obj.type,
+      score: obj.confidence,
+    }))
+  }
+
+  export function somCandidatesFromOcr(blocks: readonly OcrBlockLike[]): SomCandidate[] {
+    return blocks
+      .filter((block) => block.text.trim().length > 0)
+      .map((block) => ({
+        bbox: block.bbox,
+        source: "text",
+        label: block.text.trim(),
+        score: block.confidence ?? 0.85,
+      }))
+  }
+
+  export function buildSceneSetOfMarks(
+    objects: readonly DetectedObjectLike[],
+    ocrBlocks: readonly OcrBlockLike[],
+    options: SetOfMarksOptions = {},
+  ): SomMark[] {
+    return buildSetOfMarks([...somCandidatesFromDetections(objects), ...somCandidatesFromOcr(ocrBlocks)], options)
+  }
+
+  export function buildSetOfMarksSvg(marks: readonly SomMark[], options: SomOverlayOptions): string {
+    const rects = marks.map((m) => {
+      const [x, y, w, h] = m.bbox
+      const color = m.source === "icon" ? "#2563eb" : "#16a34a"
+      const badgeY = Math.max(14, y)
+      return [
+        `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${color}" stroke-width="2" />`,
+        `<rect x="${x}" y="${badgeY - 14}" width="24" height="14" fill="${color}" />`,
+        `<text x="${x + 12}" y="${badgeY - 3}" fill="#ffffff" font-size="11" font-family="sans-serif" text-anchor="middle">${m.index}</text>`,
+      ].join("")
+    })
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${options.width}" height="${options.height}">${rects.join("")}</svg>`
+  }
+
+  export async function renderSetOfMarksOverlay(
+    pngBytes: Uint8Array,
+    marks: readonly SomMark[],
+    options: SomOverlayOptions,
+  ): Promise<Uint8Array> {
+    const svg = Buffer.from(buildSetOfMarksSvg(marks, options), "utf8")
+    const rendered = await sharp(pngBytes).composite([{ input: svg, top: 0, left: 0 }]).png().toBuffer()
+    return new Uint8Array(rendered.buffer, rendered.byteOffset, rendered.byteLength)
+  }
+}
+
+import {
+  buildSceneSetOfMarks,
+  buildSetOfMarks,
+  buildSetOfMarksSvg,
+  coverageRatio,
+  renderSetOfMarksOverlay,
+  somCandidatesFromDetections,
+  somCandidatesFromOcr,
+  type DetectedObjectLike,
+  type OcrBlockLike,
+  type SetOfMarksOptions,
+  type SomBbox,
+  type SomCandidate,
+  type SomMark,
+  type SomOverlayOptions,
+  type SomSource,
+} from somModule
+
+export {
+  buildSceneSetOfMarks,
+  buildSetOfMarks,
+  buildSetOfMarksSvg,
+  coverageRatio,
+  renderSetOfMarksOverlay,
+  somCandidatesFromDetections,
+  somCandidatesFromOcr,
+  type DetectedObjectLike,
+  type OcrBlockLike,
+  type SetOfMarksOptions,
+  type SomBbox,
+  type SomCandidate,
+  type SomMark,
+  type SomOverlayOptions,
+  type SomSource,
+}

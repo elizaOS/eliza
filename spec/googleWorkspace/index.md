@@ -1,5 +1,7 @@
 # Google Workspace connections
 
+- [OAuth connection lifecycle](./oauth.md)
+
 ## Story: Use only the Google account and permissions I connected
 
 > As an owner, I can choose among connected Google accounts for Gmail, Calendar, Drive, Meet and Contacts, and remove a connection without leaving old requests authorized.

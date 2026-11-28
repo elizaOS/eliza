@@ -1,6 +1,6 @@
 # Discord
 
-Discord connects account-scoped bot and managed transports to text channels, threads, direct messages, voice and server management. The rules follow `plugins/plugin-discord/{allowlist,dm-access,staleness,message-coalesce,service}.ts` on `develop` at `51aad7ee8a82e1b8e6fa1908ed76d0c344c75d55`.
+Discord connects account-scoped bot and managed transports to text channels, threads, direct messages, voice and server management. The rules follow `plugins/plugin-discord/{allowlist,dm-access,staleness,message-coalesce,service}.ts` on `develop` at `51aad7ee8a82e1b8e6fa1908ed76d0c344c75d55`. Durable turn lifecycles, group speaker-lease coordination, owner-pairing rate limits and audio lane preemption live in [coordination and turn lifecycle](./coordination.md).
 
 ## Story: Route Discord messages and commands through the account that received them
 

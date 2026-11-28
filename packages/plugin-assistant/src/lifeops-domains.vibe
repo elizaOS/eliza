@@ -1,0 +1,561 @@
+// spec/assistant/advancedMemory.md, "Memory consolidation and first-run onboarding preserve capacity and completion invariants"
+import { Service, type Action, type IAgentRuntime, type Provider } from "@elizaos/core"
+import type { AgentPlugin } from "@elizaos/agent-host"
+import { MemoryFirstRunController } from "./advanced-memory.vibe"
+import { readActionParameters, summarizeAssistantResult } from "./autonomy.vibe"
+
+type LocalRoute = NonNullable<AgentPlugin["routes"]>[number]
+
+export const FIRST_RUN_SERVICE_TYPE = "lifeops-first-run"
+export const ACTIVITY_PROFILE_SERVICE_TYPE = "lifeops-activity-profile"
+export const FOOD_DOMAIN_SERVICE_TYPE = "lifeops-food"
+export const FAMILY_COORDINATION_SERVICE_TYPE = "lifeops-family"
+
+export interface StarterPackDescriptor {
+  readonly id: string
+  readonly name: string
+  readonly category: "rhythm" | "executive" | "family" | "habits" | "inbox" | "safety" | "persona"
+  readonly summary: string
+}
+
+export const DEFAULT_PACKS: readonly StarterPackDescriptor[] = [
+  { id: "daily-rhythm", name: "Daily Rhythm", category: "rhythm", summary: "Morning, midday, and evening check-in cadence." },
+  { id: "morning-brief", name: "Morning Brief", category: "rhythm", summary: "Concise daily calendar, todos, and reminders digest." },
+  { id: "executive-assistant", name: "Executive Assistant", category: "executive", summary: "Priority triage, follow-ups, and meeting preparation." },
+  { id: "family-coordination", name: "Family Coordination", category: "family", summary: "Shared household requests, schedules, and agreements." },
+  { id: "followup-starter", name: "Follow-up Starter", category: "executive", summary: "Tracks unanswered threads and open approvals." },
+  { id: "habit-starters", name: "Habit Starters", category: "habits", summary: "Hydration, exercise, sleep, and focus routines." },
+  { id: "inbox-triage-starter", name: "Inbox Triage Starter", category: "inbox", summary: "Urgent vs newsletter classification and digests." },
+  { id: "quiet-user-watcher", name: "Quiet User Watcher", category: "safety", summary: "Low-noise check-ins respecting quiet hours." },
+  { id: "escalation-ladders", name: "Escalation Ladders", category: "safety", summary: "Progressive reminder nudges outside quiet hours." },
+  { id: "consolidation-policies", name: "Consolidation Policies", category: "executive", summary: "Periodic memory summary compaction rules." },
+  { id: "autofill-whitelist-pack", name: "Autofill Whitelist", category: "safety", summary: "Explicitly approved domains for safe form autofill." },
+  { id: "persona-packs", name: "Persona Packs", category: "persona", summary: "Tone and brevity presets for assistant responses." },
+  { id: "meal-planner-starter", name: "Meal Planner Starter", category: "family", summary: "Weekly meal rotation and pantry restock reminders." },
+  { id: "travel-buffer-pack", name: "Travel Buffer Pack", category: "rhythm", summary: "Departure alerts based on estimated travel duration." },
+  { id: "bill-evidence-pack", name: "Bill Evidence Pack", category: "executive", summary: "Receipt capture and recurring bill tracking." },
+  { id: "focus-shield-pack", name: "Focus Shield Pack", category: "habits", summary: "Deep-work blocks with non-urgent notification deferral." },
+  { id: "weekly-review-pack", name: "Weekly Review Pack", category: "rhythm", summary: "Sunday goal standing and next-week prioritization." },
+  { id: "account-handoff-pack", name: "Account Handoff Pack", category: "safety", summary: "Owner-reviewed connector migration checkpoints." },
+]
+
+export function listDefaultPacks(category?: StarterPackDescriptor["category"]): readonly StarterPackDescriptor[] {
+  return category ? DEFAULT_PACKS.filter((p) => p.category === category) : DEFAULT_PACKS
+}
+
+export function getDefaultPack(id: string): StarterPackDescriptor | undefined {
+  return DEFAULT_PACKS.find((p) => p.id === id)
+}
+
+export function lintDefaultPacks(): { valid: boolean; duplicateIds: string[] } {
+  const seen = new Set<string>()
+  const duplicateIds: string[] = []
+  for (const pack of DEFAULT_PACKS) {
+    if (seen.has(pack.id)) duplicateIds.push(pack.id)
+    seen.add(pack.id)
+  }
+  return { valid: duplicateIds.length === 0 && DEFAULT_PACKS.length === 18, duplicateIds }
+}
+
+export type EmailCategory =
+  | "urgent"
+  | "billing"
+  | "travel"
+  | "security"
+  | "personal"
+  | "newsletter"
+  | "automated"
+
+export interface EmailClassificationResult {
+  category: EmailCategory
+  confidence: number
+  tags: string[]
+  requiresAttention: boolean
+}
+
+export function classifyEmail(input: { subject: string; body?: string; sender?: string }): EmailClassificationResult {
+  const combined = `${input.subject} ${input.body ?? ""} ${input.sender ?? ""}`.toLowerCase()
+  if (/verification code|password reset|security alert|login attempt|2fa/.test(combined)) {
+    return { category: "security", confidence: 0.94, tags: ["security", "auth"], requiresAttention: true }
+  }
+  if (/urgent|asap|action required|deadline today|immediately/.test(combined)) {
+    return { category: "urgent", confidence: 0.9, tags: ["urgent"], requiresAttention: true }
+  }
+  if (/invoice|receipt|payment due|billing|statement/.test(combined)) {
+    return { category: "billing", confidence: 0.88, tags: ["finance", "billing"], requiresAttention: true }
+  }
+  if (/flight|boarding pass|itinerary|hotel confirmation|check-in/.test(combined)) {
+    return { category: "travel", confidence: 0.9, tags: ["travel"], requiresAttention: true }
+  }
+  if (/unsubscribe|newsletter|weekly digest|promo|sale ends/.test(combined)) {
+    return { category: "newsletter", confidence: 0.92, tags: ["bulk", "newsletter"], requiresAttention: false }
+  }
+  if (/no-reply|noreply|automated|notification@/.test(combined)) {
+    return { category: "automated", confidence: 0.85, tags: ["automated"], requiresAttention: false }
+  }
+  return { category: "personal", confidence: 0.72, tags: ["personal"], requiresAttention: true }
+}
+
+export interface TravelTimeEstimate {
+  distanceKm: number
+  mode: "driving" | "walking" | "transit" | "cycling"
+  travelMinutes: number
+  bufferMinutes: number
+  totalMinutes: number
+}
+
+const MODE_SPEED_KMH: Record<TravelTimeEstimate["mode"], number> = {
+  driving: 45,
+  transit: 28,
+  cycling: 15,
+  walking: 5,
+}
+
+export function estimateTravelTime(input: {
+  fromLat: number
+  fromLng: number
+  toLat: number
+  toLng: number
+  mode?: TravelTimeEstimate["mode"]
+  bufferMinutes?: number
+}): TravelTimeEstimate {
+  const mode = input.mode ?? "driving"
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLat = toRad(input.toLat - input.fromLat)
+  const dLng = toRad(input.toLng - input.fromLng)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(input.fromLat)) * Math.cos(toRad(input.toLat)) * Math.sin(dLng / 2) ** 2
+  const distanceKm = Math.round(2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a))) * 100) / 100
+  const travelMinutes = Math.max(1, Math.ceil((distanceKm / MODE_SPEED_KMH[mode]) * 60))
+  const bufferMinutes = Math.max(0, input.bufferMinutes ?? 10)
+  return { distanceKm, mode, travelMinutes, bufferMinutes, totalMinutes: travelMinutes + bufferMinutes }
+}
+
+export function evaluateSafeArithmetic(expression: string): number | null {
+  const tokens = expression.match(/\d+(?:\.\d+)?|[+\-*/()]/g)
+  if (!tokens || tokens.join("") !== expression.replace(/\s+/g, "")) return null
+  let pos = 0
+  const parseExpr = (): number | null => {
+    let left = parseTerm()
+    if (left === null) return null
+    while (pos < tokens.length && (tokens[pos] === "+" || tokens[pos] === "-")) {
+      const op = tokens[pos++]
+      const right = parseTerm()
+      if (right === null) return null
+      left = op === "+" ? left + right : left - right
+    }
+    return left
+  }
+  const parseTerm = (): number | null => {
+    let left = parseFactor()
+    if (left === null) return null
+    while (pos < tokens.length && (tokens[pos] === "*" || tokens[pos] === "/")) {
+      const op = tokens[pos++]
+      const right = parseFactor()
+      if (right === null || (op === "/" && right === 0)) return null
+      left = op === "*" ? left * right : left / right
+    }
+    return left
+  }
+  const parseFactor = (): number | null => {
+    const tok = tokens[pos]
+    if (tok === "(") {
+      pos += 1
+      const inner = parseExpr()
+      if (inner === null || tokens[pos] !== ")") return null
+      pos += 1
+      return inner
+    }
+    if (tok === "-") {
+      pos += 1
+      const inner = parseFactor()
+      return inner === null ? null : -inner
+    }
+    if (tok === undefined) return null
+    const num = Number(tok)
+    if (!Number.isFinite(num)) return null
+    pos += 1
+    return num
+  }
+  const result = parseExpr()
+  return pos === tokens.length && result !== null && Number.isFinite(result) ? result : null
+}
+
+export class FirstRunService extends Service {
+  static override serviceType: string = FIRST_RUN_SERVICE_TYPE
+  override capabilityDescription = "Tracks owner first-run onboarding questions and defaults."
+
+  private readonly controller = new MemoryFirstRunController()
+  private readonly answers = new Map<string, string>()
+
+  static override start(runtime: IAgentRuntime): Promise<FirstRunService> {
+    return Promise.resolve(new FirstRunService(runtime))
+  }
+
+  getState() {
+    const st = this.controller.getState()
+    return {
+      phase: st.firstRunPhase,
+      answeredQuestions: st.answeredQuestions,
+      totalQuestions: st.totalQuestions,
+      answers: Object.fromEntries(this.answers),
+    }
+  }
+
+  begin(): boolean {
+    return this.controller.startFirstRun()
+  }
+
+  recordAnswer(questionKey: string, answer: string): boolean {
+    if (!questionKey.trim() || !answer.trim()) return false
+    if (!this.controller.answerFirstRunQuestion()) return false
+    this.answers.set(questionKey.trim(), answer.trim())
+    return true
+  }
+
+  complete(): boolean {
+    return this.controller.completeFirstRun()
+  }
+
+  skip(): boolean {
+    return this.controller.skipFirstRun()
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export class ActivityTrackerService extends Service {
+  static override serviceType: string = ACTIVITY_PROFILE_SERVICE_TYPE
+  override capabilityDescription =
+    "Learns owner active/quiet windows and redacts sensitive window titles."
+
+  private readonly samples: Array<{ hour: number; app: string; active: boolean; timestamp: number }> = []
+
+  static override start(runtime: IAgentRuntime): Promise<ActivityTrackerService> {
+    return Promise.resolve(new ActivityTrackerService(runtime))
+  }
+
+  recordSample(input: { hour: number; app: string; active: boolean }): void {
+    const safeApp = input.app.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+/g, "[redacted]").slice(0, 64)
+    this.samples.push({
+      hour: Math.max(0, Math.min(23, Math.trunc(input.hour))),
+      app: safeApp,
+      active: input.active,
+      timestamp: Date.now(),
+    })
+    if (this.samples.length > 500) this.samples.splice(0, this.samples.length - 500)
+  }
+
+  getProfile(): { activeHours: number[]; sampleCount: number } {
+    const counts = new Map<number, number>()
+    for (const s of this.samples) {
+      if (s.active) counts.set(s.hour, (counts.get(s.hour) ?? 0) + 1)
+    }
+    const activeHours = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([hour]) => hour)
+    return { activeHours, sampleCount: this.samples.length }
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export interface MealPlanItem {
+  id: string
+  day: string
+  meal: string
+  ingredients: string[]
+}
+
+export class FoodDomainService extends Service {
+  static override serviceType: string = FOOD_DOMAIN_SERVICE_TYPE
+  override capabilityDescription = "Manages household meal plans and grocery shopping lists."
+
+  private readonly plans: MealPlanItem[] = []
+  private readonly groceries = new Set<string>()
+  private seq = 0
+
+  static override start(runtime: IAgentRuntime): Promise<FoodDomainService> {
+    return Promise.resolve(new FoodDomainService(runtime))
+  }
+
+  addMealPlan(day: string, meal: string, ingredients: readonly string[] = []): MealPlanItem {
+    const item: MealPlanItem = {
+      id: `meal-${++this.seq}`,
+      day: day.trim(),
+      meal: meal.trim(),
+      ingredients: ingredients.map((i) => i.trim()).filter(Boolean),
+    }
+    this.plans.push(item)
+    for (const ing of item.ingredients) this.groceries.add(ing)
+    return item
+  }
+
+  listMealPlans(): MealPlanItem[] {
+    return [...this.plans]
+  }
+
+  listGroceries(): string[] {
+    return [...this.groceries]
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export interface FamilyRequestItem {
+  id: string
+  member: string
+  summary: string
+  status: "pending" | "approved" | "declined"
+  createdAt: number
+}
+
+export class FamilyCoordinationService extends Service {
+  static override serviceType: string = FAMILY_COORDINATION_SERVICE_TYPE
+  override capabilityDescription = "Coordinates household members, intake requests, and approval decisions."
+
+  private readonly requests: FamilyRequestItem[] = []
+  private seq = 0
+
+  static override start(runtime: IAgentRuntime): Promise<FamilyCoordinationService> {
+    return Promise.resolve(new FamilyCoordinationService(runtime))
+  }
+
+  submitRequest(member: string, summary: string): FamilyRequestItem {
+    const item: FamilyRequestItem = {
+      id: `fam-${++this.seq}`,
+      member: member.trim(),
+      summary: summary.trim(),
+      status: "pending",
+      createdAt: Date.now(),
+    }
+    this.requests.push(item)
+    return item
+  }
+
+  decideRequest(id: string, status: "approved" | "declined"): FamilyRequestItem | null {
+    const found = this.requests.find((r) => r.id === id)
+    if (!found) return null
+    found.status = status
+    return found
+  }
+
+  listRequests(): FamilyRequestItem[] {
+    return [...this.requests]
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+}
+
+export const firstRunProvider: Provider = {
+  name: "FIRST_RUN_ONBOARDING",
+  description: "Current first-run onboarding progress and remaining questions.",
+  descriptionCompressed: "Owner first-run onboarding phase and answer count.",
+  dynamic: true,
+  cacheStable: false,
+  get: (runtime) => {
+    const svc = runtime.getService<FirstRunService>(FIRST_RUN_SERVICE_TYPE)
+    if (!svc) return Promise.resolve({ text: "", data: { available: false } })
+    const state = svc.getState()
+    return Promise.resolve({
+      text: `First-run onboarding: ${state.phase} (${state.answeredQuestions}/${state.totalQuestions})`,
+      data: state,
+    })
+  },
+}
+
+export const foodPlanningAction: Action = {
+  name: "FOOD_PLANNING",
+  similes: ["MEAL_PLAN", "GROCERY_LIST"],
+  description: "Plan household meals and inspect the consolidated grocery list.",
+  descriptionCompressed: "Add meal plans and list consolidated groceries.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  parameters: [
+    { name: "day", description: "Day of week or date.", schema: { type: "string" } },
+    { name: "ingredients", description: "Ingredients to add to grocery list.", schema: { type: "array", items: { type: "string" } } },
+    { name: "meal", description: "Meal description.", schema: { type: "string" } },
+    { name: "op", description: "Food operation.", required: true, schema: { type: "string", enum: ["add_meal", "list_meals", "list_groceries"] } },
+  ],
+  summarize: (result) => summarizeAssistantResult(result, "Food plan updated."),
+  validate: () => Promise.resolve(true),
+  handler: (runtime, _message, _state, options) => {
+    const params = readActionParameters(options)
+    const svc = runtime.getService<FoodDomainService>(FOOD_DOMAIN_SERVICE_TYPE)
+    if (!svc) return Promise.resolve({ success: false, text: "Food service unavailable." })
+    const op = typeof params.op === "string" ? params.op : "list_meals"
+    if (op === "add_meal") {
+      const day = typeof params.day === "string" ? params.day : "today"
+      const meal = typeof params.meal === "string" ? params.meal.trim() : ""
+      if (!meal) return Promise.resolve({ success: false, text: "Provide a meal description." })
+      const ingredients = Array.isArray(params.ingredients)
+        ? params.ingredients.filter((v): v is string => typeof v === "string")
+        : []
+      const added = svc.addMealPlan(day, meal, ingredients)
+      return Promise.resolve({ success: true, text: `Planned ${added.meal} for ${added.day}.`, data: { meal: added } })
+    }
+    if (op === "list_groceries") {
+      const groceries = svc.listGroceries()
+      return Promise.resolve({ success: true, text: groceries.join(", ") || "Grocery list is empty.", data: { groceries } })
+    }
+    const plans = svc.listMealPlans()
+    return Promise.resolve({
+      success: true,
+      text: plans.map((p) => `${p.day}: ${p.meal}`).join("\n") || "No meals planned.",
+      data: { plans },
+    })
+  },
+}
+
+export const familyWorkflowsAction: Action = {
+  name: "FAMILY_WORKFLOWS",
+  similes: ["HOUSEHOLD_COORDINATION"],
+  description: "Submit, decide, or list household coordination requests.",
+  descriptionCompressed: "Submit, approve/decline, or list household family requests.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  parameters: [
+    { name: "decision", description: "Decision (approved or declined).", schema: { type: "string", enum: ["approved", "declined"] } },
+    { name: "id", description: "Family request ID.", schema: { type: "string" } },
+    { name: "member", description: "Household member name.", schema: { type: "string" } },
+    { name: "op", description: "Family workflow operation.", required: true, schema: { type: "string", enum: ["submit", "decide", "list"] } },
+    { name: "summary", description: "Request summary.", schema: { type: "string" } },
+  ],
+  summarize: (result) => summarizeAssistantResult(result, "Family workflow updated."),
+  validate: () => Promise.resolve(true),
+  handler: (runtime, _message, _state, options) => {
+    const params = readActionParameters(options)
+    const svc = runtime.getService<FamilyCoordinationService>(FAMILY_COORDINATION_SERVICE_TYPE)
+    if (!svc) return Promise.resolve({ success: false, text: "Family coordination service unavailable." })
+    const op = typeof params.op === "string" ? params.op : "list"
+    if (op === "submit") {
+      const member = typeof params.member === "string" ? params.member.trim() : ""
+      const summary = typeof params.summary === "string" ? params.summary.trim() : ""
+      if (!member || !summary) return Promise.resolve({ success: false, text: "Provide member and summary." })
+      const req = svc.submitRequest(member, summary)
+      return Promise.resolve({ success: true, text: `Submitted family request ${req.id}.`, data: { request: req } })
+    }
+    if (op === "decide") {
+      const id = typeof params.id === "string" ? params.id : ""
+      const decision = params.decision === "approved" || params.decision === "declined" ? params.decision : null
+      if (!decision) return Promise.resolve({ success: false, text: "Specify approved or declined." })
+      const updated = svc.decideRequest(id, decision)
+      return Promise.resolve({
+        success: updated !== null,
+        text: updated ? `Family request ${id} ${decision}.` : `Request ${id} not found.`,
+        data: { request: updated },
+      })
+    }
+    const items = svc.listRequests()
+    return Promise.resolve({
+      success: true,
+      text: items.map((i) => `${i.id} (${i.member}): ${i.summary} [${i.status}]`).join("\n") || "No family requests.",
+      data: { requests: items },
+    })
+  },
+}
+
+export const assistantUtilityAction: Action = {
+  name: "ASSISTANT_UTILITY",
+  similes: ["CALCULATE", "CHOICE", "NOTIFY", "RESOLVE_REFERENT", "RESOLVE_REQUEST"],
+  description:
+    "Safe arithmetic evaluation, structured option selection, email classification, travel time estimation, and default starter pack lookup.",
+  descriptionCompressed: "Safe math, choice selection, email classify, travel estimate, and packs.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  parameters: [
+    { name: "expression", description: "Arithmetic expression to evaluate.", schema: { type: "string" } },
+    { name: "op", description: "Utility operation.", required: true, schema: { type: "string", enum: ["calculate", "choose", "classify_email", "list_packs"] } },
+    { name: "options", description: "Candidate options for choose.", schema: { type: "array", items: { type: "string" } } },
+    { name: "subject", description: "Email subject for classify_email.", schema: { type: "string" } },
+  ],
+  summarize: (result) => summarizeAssistantResult(result, "Utility completed."),
+  validate: () => Promise.resolve(true),
+  handler: (_runtime, _message, _state, options) => {
+    const params = readActionParameters(options)
+    const op = typeof params.op === "string" ? params.op : "list_packs"
+    if (op === "calculate") {
+      const expr = typeof params.expression === "string" ? params.expression : ""
+      const value = evaluateSafeArithmetic(expr)
+      return Promise.resolve({
+        success: value !== null,
+        text: value !== null ? `${expr} = ${value}` : "Invalid arithmetic expression.",
+        data: { value },
+      })
+    }
+    if (op === "choose") {
+      const list = Array.isArray(params.options)
+        ? params.options.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+        : []
+      if (list.length === 0) return Promise.resolve({ success: false, text: "Provide at least one option." })
+      const picked = list[0]
+      return Promise.resolve({ success: true, text: `Selected: ${picked}`, data: { selected: picked, options: list } })
+    }
+    if (op === "classify_email") {
+      const subject = typeof params.subject === "string" ? params.subject : ""
+      const result = classifyEmail({ subject })
+      return Promise.resolve({ success: true, text: `Classified as ${result.category} (${result.confidence}).`, data: { classification: result } })
+    }
+    const packs = listDefaultPacks()
+    return Promise.resolve({
+      success: true,
+      text: `${packs.length} default packs available.`,
+      data: { packs },
+    })
+  },
+}
+
+export function lifeopsExtraRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
+  const offline = { status: 503, body: { error: "assistant_unavailable" } }
+  return [
+    {
+      method: "GET",
+      path: "/api/lifeops/first-run",
+      handler: () => {
+        const svc = agent()?.getService<FirstRunService>(FIRST_RUN_SERVICE_TYPE)
+        return Promise.resolve(svc ? { status: 200, body: svc.getState() } : offline)
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/lifeops/packs",
+      handler: () => Promise.resolve({ status: 200, body: { packs: listDefaultPacks() } }),
+    },
+    {
+      method: "GET",
+      path: "/api/lifeops/activity-profile",
+      handler: () => {
+        const svc = agent()?.getService<ActivityTrackerService>(ACTIVITY_PROFILE_SERVICE_TYPE)
+        return Promise.resolve(svc ? { status: 200, body: svc.getProfile() } : offline)
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/lifeops/family",
+      handler: () => {
+        const svc = agent()?.getService<FamilyCoordinationService>(FAMILY_COORDINATION_SERVICE_TYPE)
+        return Promise.resolve(svc ? { status: 200, body: { requests: svc.listRequests() } } : offline)
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/lifeops/food",
+      handler: () => {
+        const svc = agent()?.getService<FoodDomainService>(FOOD_DOMAIN_SERVICE_TYPE)
+        return Promise.resolve(svc ? { status: 200, body: { plans: svc.listMealPlans(), groceries: svc.listGroceries() } } : offline)
+      },
+    },
+  ]
+}

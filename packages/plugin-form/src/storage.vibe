@@ -1,0 +1,448 @@
+// spec/form/index.md, "The participant can shelve and resume an unexpired form, cancel it, or let it expire"
+import type { Component, IAgentRuntime, Metadata, UUID } from "@elizaos/core"
+import { isExpired, isExpiringSoon } from "./ttl.vibe"
+import {
+  FORM_AUTOFILL_COMPONENT,
+  FORM_SESSION_COMPONENT,
+  FORM_SUBMISSION_COMPONENT,
+  type FormAutofillData,
+  type FormSession,
+  type FormSubmission,
+  type JsonValue,
+} from "./types.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  export function nextFormUuid(): string {
+    return randomUUID()
+  }
+  export class FormComponentDataError extends Error {
+    override readonly name = "FormComponentDataError"
+    readonly code = "FORM_COMPONENT_DATA_UNBOUNDED" as const
+    readonly context: Record<string, unknown>
+
+    constructor(message: string, context: Record<string, unknown>, cause?: unknown) {
+      super(message, cause !== undefined ? { cause } : undefined)
+      this.context = context
+    }
+  }
+  export function failComponentData(reason: string, context: Record<string, unknown> = {}, cause?: unknown): never {
+    throw new FormComponentDataError("Form component data is not bounded JSON", { reason, ...context }, cause)
+  }
+}
+import { failComponentData, FormComponentDataError, nextFormUuid } from node
+export { FormComponentDataError }
+
+export const MAX_FORM_COMPONENT_DATA_DEPTH = 64
+export const MAX_FORM_COMPONENT_DATA_NODES = 100_000
+export const MAX_FORM_COMPONENT_DATA_BYTES = 1024 * 1024
+export const FORM_COMPONENT_DATA_UNBOUNDED = "FORM_COMPONENT_DATA_UNBOUNDED"
+
+const OMIT_COMPONENT_VALUE = Symbol("omit-component-value")
+type ComponentValue = JsonValue | typeof OMIT_COMPONENT_VALUE
+type ComponentWalk = { bytes: number; nodes: number; visiting: WeakSet<object> }
+
+const RESTORABLE_SESSION_STATUSES: FormSession["status"][] = ["active", "ready", "stashed"]
+const RESTORABLE_SESSION_SCAN_LIMIT = 100
+
+function isRecord(value: JsonValue | object): value is Record<string, JsonValue> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function inspectComponentData<T>(operation: string, inspect: () => T): T {
+  try {
+    return inspect()
+  } catch (cause) {
+    failComponentData("reflection", { operation }, cause)
+  }
+}
+
+function reserveNodes(walk: ComponentWalk, count = 1): void {
+  if (count > MAX_FORM_COMPONENT_DATA_NODES - walk.nodes) {
+    failComponentData("nodes", { maxNodes: MAX_FORM_COMPONENT_DATA_NODES, nodes: walk.nodes + count })
+  }
+  walk.nodes += count
+}
+
+function reserveBytes(walk: ComponentWalk, count: number): void {
+  if (count > MAX_FORM_COMPONENT_DATA_BYTES - walk.bytes) {
+    failComponentData("bytes", { maxBytes: MAX_FORM_COMPONENT_DATA_BYTES, bytes: walk.bytes + count })
+  }
+  walk.bytes += count
+}
+
+function jsonStringBytes(value: string): number {
+  if (value.length > MAX_FORM_COMPONENT_DATA_BYTES) {
+    failComponentData("bytes", { maxBytes: MAX_FORM_COMPONENT_DATA_BYTES, minimumBytes: value.length })
+  }
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength
+}
+
+function defineComponentProperty(target: Record<string, JsonValue>, key: string, value: JsonValue): void {
+  Object.defineProperty(target, key, { configurable: true, enumerable: true, value, writable: true })
+}
+
+function convertArrayValue(value: unknown[], walk: ComponentWalk, depth: number): JsonValue[] {
+  const lengthDescriptor = inspectComponentData("array.length", () => Object.getOwnPropertyDescriptor(value, "length"))
+  const length = lengthDescriptor?.value
+  if (!Number.isSafeInteger(length) || length < 0) failComponentData("array-length")
+  if (length > MAX_FORM_COMPONENT_DATA_NODES - walk.nodes) {
+    failComponentData("nodes", { maxNodes: MAX_FORM_COMPONENT_DATA_NODES, nodes: walk.nodes + length })
+  }
+  const result: JsonValue[] = new Array(length)
+  reserveBytes(walk, 2 + Math.max(0, length - 1))
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = inspectComponentData(`array[${index}]`, () => Object.getOwnPropertyDescriptor(value, String(index)))
+    if (!descriptor) {
+      reserveNodes(walk)
+      reserveBytes(walk, 4)
+      result[index] = null
+      continue
+    }
+    if (!("value" in descriptor)) failComponentData("accessor", { key: String(index) })
+    const item = toComponentValue(descriptor.value, walk, depth + 1, true)
+    result[index] = item === OMIT_COMPONENT_VALUE ? null : item
+  }
+  return result
+}
+
+function convertObjectValue(value: object, walk: ComponentWalk, depth: number): Record<string, JsonValue> {
+  const prototype = inspectComponentData("Object.getPrototypeOf", () => Object.getPrototypeOf(value))
+  if (prototype !== null && prototype !== Object.prototype) {
+    failComponentData("unsupported", { type: "non-plain-object" })
+  }
+  const keys = inspectComponentData("Reflect.ownKeys", () => Reflect.ownKeys(value))
+  if (keys.length > MAX_FORM_COMPONENT_DATA_NODES - walk.nodes) {
+    failComponentData("nodes", { maxNodes: MAX_FORM_COMPONENT_DATA_NODES, nodes: walk.nodes + keys.length })
+  }
+  const result: Record<string, JsonValue> = Object.create(null)
+  reserveBytes(walk, 2)
+  let properties = 0
+  for (const key of keys) {
+    if (typeof key !== "string") {
+      reserveNodes(walk)
+      continue
+    }
+    const descriptor = inspectComponentData(`object.${key}`, () => Object.getOwnPropertyDescriptor(value, key))
+    if (!descriptor?.enumerable) {
+      reserveNodes(walk)
+      continue
+    }
+    if (!("value" in descriptor)) failComponentData("accessor", { key })
+    const child = toComponentValue(descriptor.value, walk, depth + 1)
+    if (child === OMIT_COMPONENT_VALUE) continue
+    reserveBytes(walk, jsonStringBytes(key) + 1 + (properties > 0 ? 1 : 0))
+    defineComponentProperty(result, key, child)
+    properties += 1
+  }
+  return result
+}
+
+function toComponentValue(value: unknown, walk: ComponentWalk, depth: number, arrayElement = false): ComponentValue {
+  if (depth > MAX_FORM_COMPONENT_DATA_DEPTH) {
+    failComponentData("depth", { depth, maxDepth: MAX_FORM_COMPONENT_DATA_DEPTH })
+  }
+  reserveNodes(walk)
+  if (value === null) {
+    reserveBytes(walk, 4)
+    return null
+  }
+  switch (typeof value) {
+    case "string":
+      reserveBytes(walk, jsonStringBytes(value))
+      return value
+    case "boolean":
+      reserveBytes(walk, value ? 4 : 5)
+      return value
+    case "number":
+      if (!Number.isFinite(value)) {
+        reserveBytes(walk, 4)
+        return null
+      }
+      reserveBytes(walk, String(value).length)
+      return value
+    case "undefined":
+    case "function":
+    case "symbol":
+      if (arrayElement) {
+        reserveBytes(walk, 4)
+        return null
+      }
+      return OMIT_COMPONENT_VALUE
+    case "bigint":
+      failComponentData("unsupported", { type: "bigint" })
+  }
+  if (walk.visiting.has(value)) failComponentData("cycle")
+  walk.visiting.add(value)
+  try {
+    const isArray = inspectComponentData("Array.isArray", () => Array.isArray(value))
+    return isArray ? convertArrayValue(value as unknown[], walk, depth) : convertObjectValue(value, walk, depth)
+  } finally {
+    walk.visiting.delete(value)
+  }
+}
+
+export function toComponentData<T extends object>(value: T): Record<string, JsonValue> {
+  const walk: ComponentWalk = { bytes: 0, nodes: 0, visiting: new WeakSet() }
+  const data = toComponentValue(value, walk, 0)
+  if (data === OMIT_COMPONENT_VALUE || Array.isArray(data) || !isRecord(data)) {
+    failComponentData("root")
+  }
+  return data
+}
+
+async function resolveComponentContext(runtime: IAgentRuntime, roomId?: UUID): Promise<{ roomId: UUID; worldId: UUID }> {
+  if (roomId) {
+    const room = await runtime.getRoom(roomId)
+    return { roomId, worldId: room?.worldId ?? runtime.agentId }
+  }
+  return { roomId: runtime.agentId, worldId: runtime.agentId }
+}
+
+function isFormSessionIdentity(data: JsonValue | object): data is FormSession {
+  if (!isRecord(data)) return false
+  return (
+    typeof data.id === "string" &&
+    typeof data.formId === "string" &&
+    typeof data.entityId === "string" &&
+    typeof data.roomId === "string"
+  )
+}
+
+function isFormSession(data: JsonValue | object): data is FormSession {
+  return isFormSessionIdentity(data) && typeof data.updatedAt === "number" && Number.isFinite(data.updatedAt)
+}
+
+function isFormSubmission(data: JsonValue | object): data is FormSubmission {
+  if (!isRecord(data)) return false
+  return (
+    typeof data.id === "string" &&
+    typeof data.formId === "string" &&
+    typeof data.sessionId === "string" &&
+    typeof data.entityId === "string"
+  )
+}
+
+function isFormAutofillData(data: JsonValue | object): data is FormAutofillData {
+  if (!isRecord(data)) return false
+  return typeof data.formId === "string" && typeof data.updatedAt === "number" && typeof data.values === "object"
+}
+
+function isLiveSession(session: FormSession): boolean {
+  return !isExpired(session)
+}
+
+function sessionComponentType(roomId: UUID, sessionId: string): string {
+  return `${FORM_SESSION_COMPONENT}:${roomId}:${sessionId}`
+}
+
+function legacySessionComponentType(roomId: UUID): string {
+  return `${FORM_SESSION_COMPONENT}:${roomId}`
+}
+
+async function retireLegacySessionComponent(runtime: IAgentRuntime, session: FormSession): Promise<void> {
+  const legacy = await runtime.getComponent(session.entityId, legacySessionComponentType(session.roomId))
+  if (legacy?.data && isFormSession(legacy.data) && legacy.data.id === session.id) {
+    await runtime.deleteComponent(legacy.id)
+  }
+}
+
+function recordedComponentCreatedAt(createdAt: number | undefined, now: number): number {
+  return typeof createdAt === "number" && Number.isFinite(createdAt) ? createdAt : now
+}
+
+async function getRestorableSessions(runtime: IAgentRuntime): Promise<FormSession[]> {
+  const sessionsById = new Map<string, FormSession>()
+  let offset = 0
+  for (;;) {
+    const entities = await runtime.queryEntities({
+      agentId: runtime.agentId,
+      includeAllComponents: true,
+      limit: RESTORABLE_SESSION_SCAN_LIMIT,
+      offset,
+    })
+    for (const entity of entities) {
+      for (const component of entity.components ?? []) {
+        if (!component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) continue
+        if (component.data && isFormSession(component.data)) {
+          const session = component.data
+          if (isLiveSession(session) && RESTORABLE_SESSION_STATUSES.includes(session.status)) {
+            sessionsById.set(session.id, session)
+          }
+        }
+      }
+    }
+    if (entities.length < RESTORABLE_SESSION_SCAN_LIMIT) break
+    offset += RESTORABLE_SESSION_SCAN_LIMIT
+  }
+  return [...sessionsById.values()]
+}
+
+async function listEntitySessions(
+  runtime: IAgentRuntime,
+  entityId: UUID,
+  predicate: (session: FormSession) => boolean,
+): Promise<FormSession[]> {
+  const components = await runtime.getComponents(entityId)
+  const sessions: FormSession[] = []
+  for (const component of components) {
+    if (!component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) continue
+    if (component.data && isFormSession(component.data)) {
+      const session = component.data
+      if (isLiveSession(session) && predicate(session)) sessions.push(session)
+    }
+  }
+  return sessions
+}
+
+async function upsertScopedComponent(
+  runtime: IAgentRuntime,
+  entityId: UUID,
+  componentType: string,
+  roomId: UUID | undefined,
+  componentData: Record<string, JsonValue>,
+): Promise<void> {
+  const existing = await runtime.getComponent(entityId, componentType)
+  const context = await resolveComponentContext(runtime, roomId)
+  const component: Component = {
+    id: existing?.id || (nextFormUuid() as UUID),
+    entityId,
+    agentId: runtime.agentId,
+    roomId: roomId ?? context.roomId,
+    worldId: existing?.worldId ?? context.worldId,
+    sourceEntityId: runtime.agentId,
+    type: componentType,
+    createdAt: recordedComponentCreatedAt(existing?.createdAt, Date.now()),
+    data: { ...componentData } as Metadata,
+  }
+  if (existing) {
+    await runtime.updateComponent(component)
+  } else {
+    await runtime.createComponent(component)
+  }
+}
+
+export async function getActiveSession(runtime: IAgentRuntime, entityId: UUID, roomId: UUID): Promise<FormSession | null> {
+  const matches = await listEntitySessions(
+    runtime,
+    entityId,
+    (session) => session.roomId === roomId && (session.status === "active" || session.status === "ready"),
+  )
+  return matches[0] ?? null
+}
+
+export async function getAllActiveSessions(runtime: IAgentRuntime, entityId: UUID): Promise<FormSession[]> {
+  return listEntitySessions(runtime, entityId, (session) => session.status === "active" || session.status === "ready")
+}
+
+export async function getStashedSessions(runtime: IAgentRuntime, entityId: UUID): Promise<FormSession[]> {
+  return listEntitySessions(runtime, entityId, (session) => session.status === "stashed")
+}
+
+export async function getSessionById(runtime: IAgentRuntime, entityId: UUID, sessionId: string): Promise<FormSession | null> {
+  const matches = await listEntitySessions(runtime, entityId, (session) => session.id === sessionId)
+  return matches[0] ?? null
+}
+
+export async function saveSession(runtime: IAgentRuntime, session: FormSession, refreshUpdatedAt = false): Promise<void> {
+  const stagedSession = toComponentData(session)
+  if (!isFormSessionIdentity(stagedSession)) failComponentData("session-shape")
+  if (refreshUpdatedAt) stagedSession.updatedAt = Date.now()
+  const componentData = toComponentData(stagedSession)
+  if (!isFormSession(componentData)) failComponentData("session-shape")
+  const persistedSession = componentData
+  await upsertScopedComponent(
+    runtime,
+    persistedSession.entityId,
+    sessionComponentType(persistedSession.roomId, persistedSession.id),
+    persistedSession.roomId,
+    componentData,
+  )
+  await retireLegacySessionComponent(runtime, persistedSession)
+}
+
+export async function deleteSession(runtime: IAgentRuntime, session: FormSession): Promise<void> {
+  const componentType = sessionComponentType(session.roomId, session.id)
+  const existing = await runtime.getComponent(session.entityId, componentType)
+  if (existing) await runtime.deleteComponent(existing.id)
+  await retireLegacySessionComponent(runtime, session)
+}
+
+export async function saveSubmission(runtime: IAgentRuntime, submission: FormSubmission): Promise<void> {
+  const componentData = toComponentData(submission)
+  if (!isFormSubmission(componentData)) failComponentData("submission-shape")
+  const persistedSubmission = componentData
+  const componentType = `${FORM_SUBMISSION_COMPONENT}:${persistedSubmission.formId}:${persistedSubmission.id}`
+  const context = await resolveComponentContext(runtime)
+  const component: Component = {
+    id: nextFormUuid() as UUID,
+    entityId: persistedSubmission.entityId,
+    agentId: runtime.agentId,
+    roomId: context.roomId,
+    worldId: context.worldId,
+    sourceEntityId: runtime.agentId,
+    type: componentType,
+    createdAt: persistedSubmission.submittedAt,
+    data: { ...componentData } as Metadata,
+  }
+  await runtime.createComponent(component)
+}
+
+export async function getSubmissions(runtime: IAgentRuntime, entityId: UUID, formId?: string): Promise<FormSubmission[]> {
+  const components = await runtime.getComponents(entityId)
+  const submissions: FormSubmission[] = []
+  const prefix = formId ? `${FORM_SUBMISSION_COMPONENT}:${formId}:` : `${FORM_SUBMISSION_COMPONENT}:`
+  for (const component of components) {
+    if (component.type.startsWith(prefix) && component.data && isFormSubmission(component.data)) {
+      submissions.push(component.data)
+    }
+  }
+  submissions.sort((a, b) => {
+    const bTime = typeof b.submittedAt === "number" && Number.isFinite(b.submittedAt) ? b.submittedAt : 0
+    const aTime = typeof a.submittedAt === "number" && Number.isFinite(a.submittedAt) ? a.submittedAt : 0
+    return bTime - aTime || a.id.localeCompare(b.id)
+  })
+  return submissions
+}
+
+export async function getSubmissionById(
+  runtime: IAgentRuntime,
+  entityId: UUID,
+  submissionId: string,
+): Promise<FormSubmission | null> {
+  const components = await runtime.getComponents(entityId)
+  for (const component of components) {
+    if (component.type.startsWith(`${FORM_SUBMISSION_COMPONENT}:`) && component.data && isFormSubmission(component.data)) {
+      if (component.data.id === submissionId) return component.data
+    }
+  }
+  return null
+}
+
+export async function getAutofillData(runtime: IAgentRuntime, entityId: UUID, formId: string): Promise<FormAutofillData | null> {
+  const component = await runtime.getComponent(entityId, `${FORM_AUTOFILL_COMPONENT}:${formId}`)
+  if (!component?.data || !isFormAutofillData(component.data)) return null
+  return component.data
+}
+
+export async function saveAutofillData(
+  runtime: IAgentRuntime,
+  entityId: UUID,
+  formId: string,
+  values: Record<string, JsonValue>,
+): Promise<void> {
+  const componentData = toComponentData({ formId, values, updatedAt: Date.now() })
+  if (!isFormAutofillData(componentData)) failComponentData("autofill-shape")
+  await upsertScopedComponent(runtime, entityId, `${FORM_AUTOFILL_COMPONENT}:${formId}`, undefined, componentData)
+}
+
+export async function getStaleSessions(runtime: IAgentRuntime, afterInactiveMs: number): Promise<FormSession[]> {
+  const now = Date.now()
+  const sessions = await getRestorableSessions(runtime)
+  return sessions.filter((session) => now - session.effort.lastInteractionAt >= afterInactiveMs)
+}
+
+export async function getExpiringSessions(runtime: IAgentRuntime, withinMs: number): Promise<FormSession[]> {
+  const sessions = await getRestorableSessions(runtime)
+  return sessions.filter((session) => isExpiringSoon(session, withinMs))
+}

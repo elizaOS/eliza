@@ -1,0 +1,285 @@
+// spec/meetings/index.md, "Story: Join a meeting as a disclosed transcription guest"; spec/meetings/urlAndDisclosure.md, "Story: Enforce HTTPS provider matching, fail-closed transcript disclosure, and clean segment admission"
+import { assert, describe, it } from "@effect/vitest"
+import { ModelType, type IAgentRuntime, type Memory, type State } from "@elizaos/core"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import {
+  MEETINGS_SERVICE_TYPE,
+  MeetingService,
+  MeetingTransport,
+  activeMeetingsProvider,
+  captureMeeting,
+  finishMeeting,
+  float32ToWav,
+  getMeetingTranscript,
+  getMeetingTranscriptAction,
+  handleMeetingsRoute,
+  isHallucination,
+  joinMeetingAction,
+  keepTranscriptSegment,
+  leaveMeetingAction,
+  meetingsPlugin,
+  parseMeetingUrl,
+  parseWebVtt,
+  shouldEnableMeetings,
+  wavToFloat32,
+} from "../src/index.vibe"
+
+module node {
+  import http from "node:http"
+
+  export interface LoopbackZoomServer {
+    readonly baseUrl: string
+    readonly close: () => Promise<void>
+  }
+
+  /** @throws {never} */
+  export async function startMockZoomServer(): Promise<LoopbackZoomServer> {
+    const server = http.createServer((req, res) => {
+      if (req.headers.authorization !== "Bearer valid-zoom-token") {
+        res.writeHead(401, { "content-type": "application/json" })
+        res.end(JSON.stringify({ error: "unauthorized" }))
+        return
+      }
+      if (req.url === "/v2/meetings/987654321") {
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({ id: "987654321", topic: "Weekly Design Sync", join_url: "https://zoom.us/j/987654321" }))
+        return
+      }
+      if (req.url === "/v2/meetings/987654321/recordings") {
+        const addr = server.address() as { port: number }
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(
+          JSON.stringify({
+            recording_files: [
+              { file_type: "TRANSCRIPT", download_url: `http://127.0.0.1:${addr.port}/v2/files/transcript.vtt` },
+            ],
+          }),
+        )
+        return
+      }
+      if (req.url === "/v2/files/transcript.vtt") {
+        res.writeHead(200, { "content-type": "text/vtt" })
+        res.end(
+          [
+            "WEBVTT",
+            "",
+            "00:00:01.000 --> 00:00:04.500",
+            "Jordan: Welcome to the design review.",
+            "",
+            "00:00:05.000 --> 00:00:06.000",
+            "Jordan: Thank you.",
+            "",
+            "00:00:07.000 --> 00:00:10.000",
+            "Riley: Let us finalize the API.",
+          ].join("\n"),
+        )
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    const addr = server.address() as { port: number }
+    return {
+      baseUrl: `http://127.0.0.1:${addr.port}/v2`,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+}
+import { startMockZoomServer } from node
+
+function createRuntime(service: MeetingService, transcriptionReplies: string[] = []): IAgentRuntime {
+  let idx = 0
+  return {
+    agentId: "agent-meet-test",
+    getService: (type: string) => (type === MEETINGS_SERVICE_TYPE ? service : null),
+    useModel: async (modelType: string) => {
+      if (modelType === ModelType.TRANSCRIPTION) {
+        const next = transcriptionReplies[idx] ?? ""
+        idx += 1
+        return next
+      }
+      return ""
+    },
+  } as unknown as IAgentRuntime
+}
+
+function testMessage(ownerId: string, text = "join meeting"): Memory {
+  return {
+    entityId: ownerId,
+    roomId: "room-meet",
+    content: { text },
+  } as unknown as Memory
+}
+
+describe("plugin-meetings end-to-end journeys", () => {
+  it("runs JOIN_MEETING, live audio transcription with hallucination filtering, ACTIVE_MEETINGS, GET_MEETING_TRANSCRIPT, and LEAVE_MEETING", async () => {
+    const service = new MeetingService(undefined, {
+      asr: {
+        transcribe: (() => {
+          const replies = ["Let's review the roadmap.", "Thank you.", "Ship v4 on Friday."]
+          let i = 0
+          return async () => ({ text: replies[i++] ?? "" })
+        })(),
+      },
+    })
+    const runtime = createRuntime(service)
+    const msg = testMessage("owner-1", "Please join https://meet.google.com/abc-defg-hij")
+
+    assert.strictEqual(meetingsPlugin.name, "@elizaos/plugin-meetings")
+    assert.strictEqual(meetingsPlugin.routes.length, 6)
+    assert.strictEqual(shouldEnableMeetings({ config: { features: { meetings: true } }, isNativePlatform: false } as never), true)
+    assert.strictEqual(shouldEnableMeetings({ config: { features: { meetings: true } }, isNativePlatform: true } as never), false)
+
+    assert.strictEqual(parseMeetingUrl("https://meet.google.com/abc-defg-hij")?.platform, "google_meet")
+    assert.strictEqual(parseMeetingUrl("https://zoom.us/j/1234567890")?.platform, "zoom")
+    assert.strictEqual(parseMeetingUrl("http://meet.google.com/abc-defg-hij")?.https, false)
+    assert.strictEqual(isHallucination("Thank you."), true)
+    assert.strictEqual(isHallucination("Ship v4 on Friday."), false)
+
+    const wav = float32ToWav(new Float32Array([0, 0.5, -0.5, 0.25]), 16000)
+    const decoded = wavToFloat32(wav)
+    assert.strictEqual(decoded.sampleRate, 16000)
+    assert.strictEqual(decoded.samples.length, 4)
+
+    const joined = await joinMeetingAction.handler(runtime, msg)
+    assert.strictEqual(joined.success, true)
+    assert.strictEqual(joined.effectReceipts?.[0]?.outcome, "applied")
+    const sessionId = (joined.data as { sessionId: string }).sessionId
+
+    const dupJoin = await joinMeetingAction.handler(runtime, msg)
+    assert.strictEqual(dupJoin.success, false)
+
+    const pipeline = service.getLivePipeline(sessionId)
+    assert.ok(pipeline)
+    pipeline!.setSpeakerName("spk-1", "Jordan")
+    pipeline!.pushSpeakerAudio("spk-1", new Float32Array(3200))
+    await pipeline!.flushSpeaker("spk-1")
+    pipeline!.pushSpeakerAudio("spk-1", new Float32Array(3200))
+    await pipeline!.flushSpeaker("spk-1")
+    pipeline!.setSpeakerName("spk-2", "Riley")
+    pipeline!.pushSpeakerAudio("spk-2", new Float32Array(3200))
+    await pipeline!.flushSpeaker("spk-2")
+
+    const active = await activeMeetingsProvider.get(runtime, msg, {} as State)
+    assert.ok(active.text && active.text.includes("abc-defg-hij"))
+
+    const readRes = await getMeetingTranscriptAction.handler(runtime, msg, undefined, {
+      parameters: { sessionId },
+    })
+    assert.strictEqual(readRes.success, true)
+    assert.strictEqual((readRes.data as { segmentCount: number }).segmentCount, 2)
+    assert.ok(readRes.text && readRes.text.includes("Jordan: Let's review the roadmap."))
+    assert.ok(readRes.text && !readRes.text.includes("Thank you."))
+
+    const left = await leaveMeetingAction.handler(runtime, msg, undefined, { parameters: { sessionId } })
+    assert.strictEqual(left.success, true)
+    await service.stop()
+  })
+
+  it("serves /api/meetings routes with fail-closed per-viewer disclosure and real loopback Zoom cloud VTT import", async () => {
+    const zoomServer = await startMockZoomServer()
+    const service = new MeetingService()
+
+    const badJoin = await handleMeetingsRoute({
+      service,
+      method: "POST",
+      pathname: "/api/meetings",
+      body: { meetingUrl: "http://meet.google.com/abc-defg-hij" },
+      viewer: { viewerId: "owner-1", isOwner: true },
+    })
+    assert.strictEqual(badJoin?.status, 400)
+
+    const created = await handleMeetingsRoute({
+      service,
+      method: "POST",
+      pathname: "/api/meetings",
+      body: { meetingUrl: "https://teams.microsoft.com/l/meetup-join/team-call-1" },
+      viewer: { viewerId: "owner-1", isOwner: true },
+    })
+    assert.strictEqual(created?.status, 201)
+    const sessionId = (created!.body.session as { id: string }).id
+
+    const strangerView = await handleMeetingsRoute({
+      service,
+      method: "GET",
+      pathname: `/api/meetings/${sessionId}`,
+      viewer: { viewerId: "stranger-1", isOwner: false },
+    })
+    assert.strictEqual(strangerView?.status, 200)
+    assert.strictEqual((strangerView!.body.session as { transcriptId?: string }).transcriptId, undefined)
+
+    const strangerTranscript = await handleMeetingsRoute({
+      service,
+      method: "GET",
+      pathname: `/api/meetings/${sessionId}/transcript`,
+      viewer: { viewerId: "stranger-1", isOwner: false },
+    })
+    assert.strictEqual(strangerTranscript?.status, 404)
+
+    const imported = await handleMeetingsRoute({
+      service,
+      method: "POST",
+      pathname: "/api/meetings/zoom/import",
+      body: { meetingId: "987654321", accessToken: "valid-zoom-token", baseUrl: zoomServer.baseUrl },
+      viewer: { viewerId: "owner-1", isOwner: true },
+    })
+    assert.strictEqual(imported?.status, 201)
+    const transcript = imported!.body.transcript as { segments: Array<{ speaker: string; words: string }> }
+    assert.strictEqual(transcript.segments.length, 2)
+    assert.strictEqual(transcript.segments[0]!.speaker, "Jordan")
+    assert.strictEqual(transcript.segments[1]!.speaker, "Riley")
+
+    const unauthImport = await handleMeetingsRoute({
+      service,
+      method: "POST",
+      pathname: "/api/meetings/zoom/import",
+      body: { meetingId: "987654321", accessToken: "bad-token", baseUrl: zoomServer.baseUrl },
+      viewer: { viewerId: "owner-1", isOwner: true },
+    })
+    assert.strictEqual(unauthImport?.status, 401)
+    assert.strictEqual(parseWebVtt("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nAlice: Hello team").length, 1)
+
+    await service.stop()
+    await zoomServer.close()
+  })
+
+  it.effect(
+    "drives spec MeetingCapture state machine through captureMeeting, keepTranscriptSegment, and finishMeeting",
+    effect () => {
+      const transportLayer = Layer.succeed(MeetingTransport, {
+        waitForAdmission: () => Effect.succeed(true),
+        disclose: () => Effect.succeed(true),
+        stop: () => Effect.void,
+        saveTranscript: () => Effect.void,
+      })
+      const env = Layer.merge(KeyValueStore.layerMemory, transportLayer)
+      const req = {
+        ownerId: "owner-eff",
+        sessionKey: "run-1",
+        provider: "GoogleMeet" as const,
+        verifiedJoinUrl: "https://meet.google.com/abc-defg-hij",
+      }
+      provide env {
+        const started = try captureMeeting(req)
+        assert.strictEqual(started.capturePhase, "Capturing")
+        assert.strictEqual(started.disclosed, true)
+
+        const appended = try keepTranscriptSegment("owner-eff", "run-1", {
+          seq: 1,
+          speaker: "Jordan",
+          fromMs: 0,
+          toMs: 100,
+          words: "Let's begin",
+        })
+        assert.strictEqual(appended.transcript.length, 1)
+
+        const finished = try finishMeeting(req)
+        assert.strictEqual(finished.capturePhase, "CompleteMeeting")
+        const transcript = try getMeetingTranscript("owner-eff", "run-1")
+        assert.strictEqual(transcript.length, 1)
+        assert.strictEqual(transcript[0]!.speaker, "Jordan")
+      }
+    },
+  )
+})

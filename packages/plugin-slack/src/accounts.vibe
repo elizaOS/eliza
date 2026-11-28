@@ -1,0 +1,310 @@
+// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  normalizeConnectorAccountId,
+  selectDefaultConnectorAccountId,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import type {
+  SlackAccountConfigBase,
+  SlackChannelConfig,
+  SlackDmConfig,
+} from "./config.vibe"
+
+export type {
+  SlackActionConfig,
+  SlackChannelConfig,
+  SlackDmConfig,
+  SlackReactionNotificationMode,
+  SlackSlashCommandConfig,
+} from "./config.vibe"
+
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID
+export type SlackTokenSource = "env" | "config" | "character" | "none"
+export type SlackAccountRole = "OWNER" | "AGENT" | "TEAM"
+
+const SLACK_CREDENTIAL_KEYS = ["appToken", "botToken", "signingSecret", "userToken"] as const
+
+module guard {
+  import { SlackPluginError as BaseSlackError } from "./types.vibe"
+
+  export function failAccountCollision(normalized: string, existing: string, configuredId: string): never {
+    throw new BaseSlackError(
+      `Slack account identifiers collide after normalization: ${normalized} (${existing}, ${configuredId})`,
+      "SLACK_ACCOUNT_ID_COLLISION",
+    )
+  }
+}
+import { failAccountCollision } from guard
+
+export type SlackAccountConfig = SlackAccountConfigBase & {
+  role?: SlackAccountRole
+  allowedChannelIds?: string[]
+  shouldIgnoreBotMessages?: boolean
+  shouldRespondOnlyToMentions?: boolean
+}
+
+export interface SlackMultiAccountConfig extends SlackAccountConfig {
+  accounts?: Record<string, SlackAccountConfig>
+}
+
+export interface ResolvedSlackAccount {
+  accountId: string
+  enabled: boolean
+  name?: string
+  role: SlackAccountRole
+  botToken?: string
+  appToken?: string
+  signingSecret?: string
+  userToken?: string
+  botTokenSource: SlackTokenSource
+  appTokenSource: SlackTokenSource
+  config: SlackAccountConfig
+  channels: Record<string, SlackChannelConfig>
+  dm?: SlackDmConfig
+  requireMention?: boolean
+  hasStructuredPolicy: boolean
+}
+
+export function normalizeAccountId(accountId?: string | null): string {
+  return normalizeConnectorAccountId(accountId)
+}
+
+function normalizeSlackToken(raw: string | null | undefined, prefix: string): string | undefined {
+  const trimmed = raw?.trim()
+  return trimmed?.startsWith(prefix) ? trimmed : undefined
+}
+
+export function resolveSlackBotToken(raw?: string | null): string | undefined {
+  return normalizeSlackToken(raw, "xoxb-")
+}
+
+export function resolveSlackAppToken(raw?: string | null): string | undefined {
+  return normalizeSlackToken(raw, "xapp-")
+}
+
+export function resolveSlackUserToken(raw?: string | null): string | undefined {
+  return normalizeSlackToken(raw, "xoxp-")
+}
+
+export function normalizeSlackAccountRole(raw: unknown): SlackAccountRole {
+  if (typeof raw !== "string") return "AGENT"
+  const upper = raw.trim().toUpperCase()
+  if (upper === "OWNER" || upper === "AGENT" || upper === "TEAM") return upper
+  return "AGENT"
+}
+
+function parseBoolSetting(raw: unknown): boolean | undefined {
+  if (typeof raw === "boolean") return raw
+  if (typeof raw !== "string") return undefined
+  const lower = raw.trim().toLowerCase()
+  if (lower === "true" || lower === "1" || lower === "yes") return true
+  if (lower === "false" || lower === "0" || lower === "no") return false
+  return undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function readPrivateCredentials(runtime: IAgentRuntime, accountId?: string): SlackMultiAccountConfig {
+  const result: SlackAccountConfig = {}
+  for (const field of SLACK_CREDENTIAL_KEYS) {
+    const key = accountId
+      ? `connector.slack.accounts.${accountId}.${field}`
+      : `connector.slack.${field}`
+    const value = runtime.getSetting(key)
+    if (typeof value === "string" && value.trim()) result[field] = value
+  }
+  return result
+}
+
+function getMultiAccountConfig(runtime: IAgentRuntime): SlackMultiAccountConfig {
+  const characterSlack = runtime.character?.settings?.slack as SlackMultiAccountConfig | undefined
+  const publicConfig = isRecord(characterSlack) ? characterSlack : {}
+  const publicAccounts = isRecord(publicConfig.accounts) ? publicConfig.accounts : {}
+  const accountIds = new Set(Object.keys(publicAccounts))
+  const accounts = Object.fromEntries(
+    Array.from(accountIds).map((accountId) => [
+      accountId,
+      {
+        ...(isRecord(publicAccounts[accountId]) ? publicAccounts[accountId] : {}),
+        ...readPrivateCredentials(runtime, accountId),
+      },
+    ]),
+  )
+  return {
+    ...publicConfig,
+    ...readPrivateCredentials(runtime),
+    ...(accountIds.size > 0 ? { accounts } : {}),
+  } as SlackMultiAccountConfig
+}
+
+function containsStructuredPolicy(config: SlackAccountConfig): boolean {
+  return [
+    "allowBots",
+    "requireMention",
+    "groupPolicy",
+    "dm",
+    "channels",
+    "actions",
+    "commands",
+    "configWrites",
+    "slashCommand",
+    "reactionNotifications",
+    "reactionAllowlist",
+  ].some((key) => Object.hasOwn(config, key))
+}
+
+export function listSlackAccountIds(runtime: IAgentRuntime): string[] {
+  const accounts = getMultiAccountConfig(runtime).accounts
+  if (!accounts || typeof accounts !== "object") return [DEFAULT_ACCOUNT_ID]
+  const normalizedToConfigured = new Map<string, string>()
+  for (const configuredId of Object.keys(accounts)) {
+    const normalized = normalizeAccountId(configuredId)
+    const existing = normalizedToConfigured.get(normalized)
+    if (existing !== undefined && existing !== configuredId) {
+      failAccountCollision(normalized, existing, configuredId)
+    }
+    normalizedToConfigured.set(normalized, configuredId)
+  }
+  const ids = Array.from(normalizedToConfigured.keys())
+  if (ids.length === 0) return [DEFAULT_ACCOUNT_ID]
+  return ids.slice().sort((a, b) => a.localeCompare(b))
+}
+
+export function resolveDefaultSlackAccountId(runtime: IAgentRuntime): string {
+  return selectDefaultConnectorAccountId(listSlackAccountIds(runtime))
+}
+
+function getAccountConfig(runtime: IAgentRuntime, accountId: string): SlackAccountConfig | undefined {
+  const accounts = getMultiAccountConfig(runtime).accounts
+  if (!accounts || typeof accounts !== "object") return undefined
+  return (
+    accounts[accountId] ??
+    Object.entries(accounts).find(([configuredId]) => normalizeAccountId(configuredId) === accountId)?.[1]
+  )
+}
+
+function filterDefined<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined)) as Partial<T>
+}
+
+function stripSlackCredentials<T extends SlackAccountConfig>(config: T): Partial<T> {
+  const next: Partial<T> = { ...config }
+  for (const key of SLACK_CREDENTIAL_KEYS) {
+    delete next[key]
+  }
+  return next
+}
+
+function mergeSlackAccountConfig(runtime: IAgentRuntime, accountId: string): SlackAccountConfig {
+  const multiConfig = getMultiAccountConfig(runtime)
+  const { accounts: _ignored, ...baseConfig } = multiConfig
+  const accountConfig = getAccountConfig(runtime, accountId) ?? {}
+  const envChannelIds = runtime.getSetting("SLACK_CHANNEL_IDS") as string | undefined
+  const envConfig: SlackAccountConfig = {
+    shouldIgnoreBotMessages: parseBoolSetting(runtime.getSetting("SLACK_SHOULD_IGNORE_BOT_MESSAGES")),
+    shouldRespondOnlyToMentions: parseBoolSetting(runtime.getSetting("SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS")),
+    allowedChannelIds: envChannelIds
+      ? envChannelIds
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined,
+  }
+  const inheritedBase =
+    accountId === DEFAULT_ACCOUNT_ID
+      ? filterDefined(baseConfig)
+      : filterDefined(stripSlackCredentials(baseConfig))
+  return {
+    ...filterDefined(envConfig),
+    ...inheritedBase,
+    ...filterDefined(accountConfig),
+  }
+}
+
+export function resolveSlackAccount(runtime: IAgentRuntime, accountId?: string | null): ResolvedSlackAccount {
+  const normalizedAccountId = normalizeAccountId(accountId)
+  const multiConfig = getMultiAccountConfig(runtime)
+  const configuredAccount = getAccountConfig(runtime, normalizedAccountId)
+  const baseEnabled = multiConfig.enabled !== false
+  const merged = mergeSlackAccountConfig(runtime, normalizedAccountId)
+  const enabled = baseEnabled && merged.enabled !== false
+  const allowEnv = normalizedAccountId === DEFAULT_ACCOUNT_ID
+
+  const envBotToken = allowEnv ? resolveSlackBotToken(runtime.getSetting("SLACK_BOT_TOKEN") as string) : undefined
+  const configBotToken = resolveSlackBotToken(merged.botToken)
+  const botToken = configBotToken ?? envBotToken
+  const botTokenSource: SlackTokenSource = configBotToken ? "config" : envBotToken ? "env" : "none"
+
+  const envAppToken = allowEnv ? resolveSlackAppToken(runtime.getSetting("SLACK_APP_TOKEN") as string) : undefined
+  const configAppToken = resolveSlackAppToken(merged.appToken)
+  const appToken = configAppToken ?? envAppToken
+  const appTokenSource: SlackTokenSource = configAppToken ? "config" : envAppToken ? "env" : "none"
+
+  const envSigningSecret = allowEnv ? (runtime.getSetting("SLACK_SIGNING_SECRET") as string) : undefined
+  const signingSecret = merged.signingSecret ?? envSigningSecret
+
+  const envUserToken = allowEnv ? resolveSlackUserToken(runtime.getSetting("SLACK_USER_TOKEN") as string) : undefined
+  const userToken = resolveSlackUserToken(merged.userToken) ?? envUserToken
+
+  const envRole = allowEnv ? (runtime.getSetting("SLACK_ACCOUNT_ROLE") as string | undefined) : undefined
+  const role = normalizeSlackAccountRole(merged.role ?? envRole)
+
+  const channels: Record<string, SlackChannelConfig> = {}
+  if (merged.channels && typeof merged.channels === "object") {
+    for (const [channelKey, channelConfig] of Object.entries(merged.channels)) {
+      if (!channelConfig || typeof channelConfig !== "object") continue
+      const trimmed = channelKey.trim()
+      if (!trimmed) continue
+      channels[trimmed] = channelConfig
+    }
+  }
+
+  return {
+    accountId: normalizedAccountId,
+    enabled,
+    name: merged.name?.trim() || undefined,
+    role,
+    botToken,
+    appToken,
+    signingSecret,
+    userToken,
+    botTokenSource,
+    appTokenSource,
+    config: merged,
+    channels,
+    dm: merged.dm,
+    requireMention: merged.requireMention,
+    hasStructuredPolicy:
+      containsStructuredPolicy(multiConfig) ||
+      (configuredAccount ? containsStructuredPolicy(configuredAccount) : false),
+  }
+}
+
+export function listEnabledSlackAccounts(runtime: IAgentRuntime): ResolvedSlackAccount[] {
+  return listSlackAccountIds(runtime)
+    .map((accountId) => resolveSlackAccount(runtime, accountId))
+    .filter((account) => account.enabled && Boolean(account.botToken))
+}
+
+export function isMultiAccountEnabled(runtime: IAgentRuntime): boolean {
+  return listEnabledSlackAccounts(runtime).length > 1
+}
+
+export function resolveSlackReplyToMode(
+  account: ResolvedSlackAccount,
+  chatType?: string | null,
+): "off" | "first" | "all" {
+  const normalized = chatType?.toLowerCase().trim()
+  const chatTypeKey =
+    normalized === "direct" || normalized === "group" || normalized === "channel" ? normalized : undefined
+  if (chatTypeKey && account.config.replyToModeByChatType?.[chatTypeKey] !== undefined) {
+    return account.config.replyToModeByChatType[chatTypeKey] ?? "off"
+  }
+  if ((normalized === "direct" || normalized === "im") && account.config.dm?.replyToMode !== undefined) {
+    return account.config.dm.replyToMode
+  }
+  return account.config.replyToMode ?? "off"
+}

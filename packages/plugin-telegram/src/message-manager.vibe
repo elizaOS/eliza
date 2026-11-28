@@ -1,0 +1,156 @@
+// spec/telegram/index.md, "An admitted command keeps its sender and a reply stays in its account, chat and topic"; spec/telegram/delivery.md, "A slot edits in place while visible, tolerates unchanged text, and reposts only after absence or deletion"
+import { Input, type Context, type Telegraf } from "telegraf"
+import { fetchRemoteMedia } from "@elizaos/core-node"
+import { convertMarkdownToTelegram, convertToTelegramButtons, splitTelegramMessage } from "./formatting.vibe"
+import { isTelegramMessageNotModifiedError } from "./task-board.vibe"
+import type { TelegramContent } from "./types.vibe"
+
+export type TelegramMediaKind = "photo" | "document" | "audio" | "voice" | "video" | "sticker"
+
+export interface TelegramSendOptions {
+  readonly threadId?: number
+  readonly replyToMessageId?: number
+  readonly parseMode?: "MarkdownV2" | "HTML"
+  readonly disableLinkPreview?: boolean
+}
+
+export interface TelegramSupergroupMigration {
+  readonly fromChatId: string
+  readonly toChatId: string
+}
+
+export class MessageManager {
+  private readonly migrations = new Map<string, string>()
+
+  constructor(private readonly bot: Telegraf<Context>) {}
+
+  recordSupergroupMigration(fromChatId: string | number, toChatId: string | number): TelegramSupergroupMigration {
+    const from = String(fromChatId)
+    const to = String(toChatId)
+    this.migrations.set(from, to)
+    return { fromChatId: from, toChatId: to }
+  }
+
+  resolveChatId(chatId: string | number): string {
+    const key = String(chatId)
+    return this.migrations.get(key) ?? key
+  }
+
+  async sendMessage(
+    chatId: string | number,
+    content: TelegramContent,
+    options: TelegramSendOptions = {},
+  ): Promise<{ readonly messageIds: readonly number[] }> {
+    const targetChat = this.resolveChatId(chatId)
+    const rawText = content.text?.trim() ?? ""
+    if (rawText === "") return { messageIds: [] }
+    const formatted = options.parseMode === "MarkdownV2" ? convertMarkdownToTelegram(rawText) : rawText
+    const chunks = splitTelegramMessage(formatted)
+    const keyboard = convertToTelegramButtons(content.buttons)
+    const messageIds: number[] = []
+    for (let i = 0; i < chunks.length; i++) {
+      const isLast = i === chunks.length - 1
+      const sent = await this.bot.telegram.sendMessage(targetChat, chunks[i] ?? "", {
+        ...(options.parseMode !== undefined ? { parse_mode: options.parseMode } : {}),
+        ...(options.threadId !== undefined ? { message_thread_id: options.threadId } : {}),
+        ...(options.replyToMessageId !== undefined && i === 0
+          ? { reply_parameters: { message_id: options.replyToMessageId, allow_sending_without_reply: false } }
+          : {}),
+        ...(options.disableLinkPreview !== false ? { link_preview_options: { is_disabled: true } } : {}),
+        ...(isLast && keyboard !== undefined ? keyboard : {}),
+      })
+      messageIds.push(sent.message_id)
+    }
+    return { messageIds }
+  }
+
+  async editMessage(
+    chatId: string | number,
+    messageId: number,
+    text: string,
+    options: Pick<TelegramSendOptions, "parseMode"> = {},
+  ): Promise<{ readonly status: "edited" | "unchanged" }> {
+    const targetChat = this.resolveChatId(chatId)
+    const formatted = options.parseMode === "MarkdownV2" ? convertMarkdownToTelegram(text) : text
+    const attempt = await Effect.runPromise(Effect.result(Effect.tryPromise(() =>
+      this.bot.telegram.editMessageText(
+        targetChat,
+        messageId,
+        undefined,
+        formatted,
+        options.parseMode === undefined ? undefined : { parse_mode: options.parseMode },
+      ),
+    )))
+    if (attempt._tag === "Success") return { status: "edited" }
+    if (isTelegramMessageNotModifiedError(attempt.failure)) return { status: "unchanged" }
+    throw attempt.failure
+  }
+
+  async sendMedia(
+    chatId: string | number,
+    media: { readonly kind: TelegramMediaKind; readonly url: string; readonly filename?: string; readonly caption?: string },
+    options: Pick<TelegramSendOptions, "threadId" | "replyToMessageId"> = {},
+  ): Promise<{ readonly messageId: number }> {
+    const targetChat = this.resolveChatId(chatId)
+    const extra = {
+      ...(media.caption !== undefined ? { caption: media.caption } : {}),
+      ...(options.threadId !== undefined ? { message_thread_id: options.threadId } : {}),
+      ...(options.replyToMessageId !== undefined
+        ? { reply_parameters: { message_id: options.replyToMessageId, allow_sending_without_reply: false } }
+        : {}),
+    }
+    const fetched = await fetchRemoteMedia({ url: media.url, maxBytes: 20 * 1024 * 1024 })
+    const input = Input.fromBuffer(fetched.buffer, fetched.fileName ?? media.filename ?? "attachment")
+    if (media.kind === "photo") {
+      const sent = await this.bot.telegram.sendPhoto(targetChat, input, extra)
+      return { messageId: sent.message_id }
+    }
+    if (media.kind === "audio") {
+      const sent = await this.bot.telegram.sendAudio(targetChat, input, extra)
+      return { messageId: sent.message_id }
+    }
+    if (media.kind === "voice") {
+      const sent = await this.bot.telegram.sendVoice(targetChat, input, extra)
+      return { messageId: sent.message_id }
+    }
+    if (media.kind === "video") {
+      const sent = await this.bot.telegram.sendVideo(targetChat, input, extra)
+      return { messageId: sent.message_id }
+    }
+    if (media.kind === "sticker") {
+      const sent = await this.bot.telegram.sendSticker(targetChat, input, {
+        ...(options.threadId !== undefined ? { message_thread_id: options.threadId } : {}),
+      })
+      return { messageId: sent.message_id }
+    }
+    const sent = await this.bot.telegram.sendDocument(targetChat, input, extra)
+    return { messageId: sent.message_id }
+  }
+
+  async sendTypingAction(chatId: string | number, threadId?: number): Promise<void> {
+    const targetChat = this.resolveChatId(chatId)
+    await this.bot.telegram.sendChatAction(
+      targetChat,
+      "typing",
+      threadId === undefined ? undefined : { message_thread_id: threadId },
+    )
+  }
+
+  async addReaction(chatId: string | number, messageId: number, emoji: string): Promise<void> {
+    const targetChat = this.resolveChatId(chatId)
+    await this.bot.telegram.callApi("setMessageReaction", {
+      chat_id: targetChat,
+      message_id: messageId,
+      reaction: [{ type: "emoji", emoji }],
+    } as never)
+  }
+
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    await this.bot.telegram.answerCbQuery(callbackQueryId, text)
+  }
+
+  async pinMessage(chatId: string | number, messageId: number): Promise<void> {
+    const targetChat = this.resolveChatId(chatId)
+    await this.bot.telegram.pinChatMessage(targetChat, messageId, { disable_notification: true })
+  }
+}

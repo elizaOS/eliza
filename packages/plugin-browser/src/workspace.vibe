@@ -1,0 +1,522 @@
+// spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/arbitration.md, "Story: Follow the browser the person can see"; spec/browser/paymentControl.md, "Story: Ask before guiding the person to a payment control"
+import { readTurnContext } from "@elizaos/agent"
+import { Service, type Action, type ActionResult, type HandlerCallback, type IAgentRuntime, type Provider } from "@elizaos/core"
+import { field, record } from "@elizaos/plugin-browser-client"
+import { createBrowserArbitrationSession, type BrowserArbitrationSession } from "./arbitration.vibe"
+import { createClipboardLeaseSession, type ClipboardLeaseSession } from "./clipboard-lease.vibe"
+import { createBrowserInferenceSession, type BrowserInferenceSession } from "./inference.vibe"
+import { ManualActivityTracker } from "./manual-activity.vibe"
+import { createWebsiteGoalSession, type WebsiteGoalSession } from "./website-goal.vibe"
+
+export const BROWSER_SERVICE_TYPE = "browser"
+export const WAIT_FOR_URL_DEFAULT_TIMEOUT_MS = 300_000
+export const WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS = 2_000
+const WAIT_FOR_URL_MIN_POLL_INTERVAL_MS = 50
+const WAIT_FOR_URL_MIN_TIMEOUT_MS = 1
+const MAX_SNAPSHOT_TEXT_CHARS = 8_000
+const MAX_WORKSPACE_COMMAND_DEPTH = 32
+const MAX_WORKSPACE_COMMANDS = 256
+
+export type BrowserWorkspaceMode = "desktop" | "web"
+
+export interface BrowserWorkspaceTab {
+  readonly id: string
+  readonly url: string
+  readonly title: string
+  readonly visible: boolean
+  readonly partition?: string
+  readonly snapshotText: string
+  readonly updatedAt: number
+}
+
+export interface BrowserWorkspaceSnapshot {
+  readonly mode: BrowserWorkspaceMode
+  readonly tabs: readonly BrowserWorkspaceTab[]
+}
+
+export type WaitForUrlStatus = "matched" | "timeout" | "cancelled"
+
+export interface WaitForUrlOutcome {
+  readonly status: WaitForUrlStatus
+  readonly matched: boolean
+  readonly pattern: string
+  readonly lastUrl: string | null
+  readonly polls: number
+  readonly elapsedMs: number
+  readonly message: string
+}
+
+export interface WaitForUrlOptions {
+  readonly pattern: string
+  readonly timeoutMs?: number
+  readonly pollIntervalMs?: number
+  readonly signal?: AbortSignal
+  readonly readUrl: () => Promise<string | null>
+  readonly now?: () => number
+  readonly sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
+  readonly onPoll?: (status: { readonly poll: number; readonly elapsedMs: number; readonly url: string | null }) => void | Promise<void>
+}
+
+export interface BrowserWorkspaceRouteRequest {
+  readonly method: "GET" | "POST" | "DELETE"
+  readonly pathname: string
+  readonly body?: unknown
+  readonly isOwner: boolean
+}
+
+export interface BrowserWorkspaceRouteResponse {
+  readonly status: number
+  readonly body: unknown
+}
+
+export interface BrowserWorkspaceRoute {
+  readonly method: "GET" | "POST" | "DELETE"
+  readonly path: string
+  readonly handler: (runtime: IAgentRuntime, request: Omit<BrowserWorkspaceRouteRequest, "method">) => BrowserWorkspaceRouteResponse
+}
+
+export function buildWaitForUrlPredicate(
+  pattern: string,
+): { readonly ok: true; readonly matches: (url: string) => boolean } | { readonly ok: false; readonly error: string } {
+  const trimmed = pattern.trim()
+  if (trimmed === "") return { ok: false, error: "URL pattern must not be empty." }
+  if (trimmed.length > 512) return { ok: false, error: "URL pattern exceeds maximum length." }
+  if (trimmed.startsWith("/") && trimmed.lastIndexOf("/") > 0) {
+    const lastSlash = trimmed.lastIndexOf("/")
+    const source = trimmed.slice(1, lastSlash)
+    const flags = trimmed.slice(lastSlash + 1)
+    if (!/^[im]*$/.test(flags) || /(\([^)]*[+*][^)]*\)[+*])/.test(source)) {
+      return { ok: false, error: "Unsafe or unsupported regex pattern." }
+    }
+    const compiled = Effect.runSync(Effect.result(Effect.try(() => new RegExp(source, flags))))
+    if (compiled._tag !== "Success") return { ok: false, error: "Invalid regex URL pattern." }
+    const regex = compiled.success
+    return { ok: true, matches: (url) => regex.test(url) }
+  }
+  const needle = trimmed.toLowerCase()
+  return { ok: true, matches: (url) => url.toLowerCase().includes(needle) }
+}
+
+export async function waitForUrl(options: WaitForUrlOptions): Promise<WaitForUrlOutcome> {
+  const predicate = buildWaitForUrlPredicate(options.pattern)
+  if (!predicate.ok) {
+    return {
+      status: "cancelled",
+      matched: false,
+      pattern: options.pattern,
+      lastUrl: null,
+      polls: 0,
+      elapsedMs: 0,
+      message: predicate.error,
+    }
+  }
+  const now = options.now ?? (() => Date.now())
+  const sleep = options.sleep ?? ((ms) => Effect.runPromise(Effect.sleep(`${ms} millis`)))
+  const timeoutMs = Math.max(WAIT_FOR_URL_MIN_TIMEOUT_MS, options.timeoutMs ?? WAIT_FOR_URL_DEFAULT_TIMEOUT_MS)
+  const pollIntervalMs = Math.max(WAIT_FOR_URL_MIN_POLL_INTERVAL_MS, options.pollIntervalMs ?? WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS)
+  const startedAt = now()
+  let polls = 0
+  let lastUrl: string | null = null
+
+  for (;;) {
+    if (options.signal?.aborted) {
+      const elapsedMs = Math.max(0, now() - startedAt)
+      return {
+        status: "cancelled",
+        matched: false,
+        pattern: options.pattern,
+        lastUrl,
+        polls,
+        elapsedMs,
+        message: `Cancelled waiting for URL matching "${options.pattern}".`,
+      }
+    }
+    polls += 1
+    const url = await options.readUrl()
+    lastUrl = url
+    const elapsedMs = Math.max(0, now() - startedAt)
+    if (options.onPoll !== undefined) {
+      await options.onPoll({ poll: polls, elapsedMs, url })
+    }
+    if (url !== null && predicate.matches(url)) {
+      return {
+        status: "matched",
+        matched: true,
+        pattern: options.pattern,
+        lastUrl: url,
+        polls,
+        elapsedMs,
+        message: `Matched URL ${url} after ${polls} poll(s).`,
+      }
+    }
+    if (elapsedMs >= timeoutMs) {
+      return {
+        status: "timeout",
+        matched: false,
+        pattern: options.pattern,
+        lastUrl,
+        polls,
+        elapsedMs,
+        message: `Timed out after ${elapsedMs}ms waiting for URL matching "${options.pattern}".`,
+      }
+    }
+    const remaining = timeoutMs - elapsedMs
+    await sleep(Math.min(pollIntervalMs, remaining), options.signal)
+  }
+}
+
+function isAllowedWorkspaceUrl(rawUrl: string): boolean {
+  const parsed = Effect.runSync(Effect.result(Effect.try(() => new URL(rawUrl))))
+  if (parsed._tag !== "Success") return false
+  return parsed.success.protocol === "https:" || parsed.success.protocol === "http:"
+}
+
+function boundText(text: string): { readonly text: string; readonly truncated: boolean } {
+  if (text.length <= MAX_SNAPSHOT_TEXT_CHARS) return { text, truncated: false }
+  return { text: text.slice(0, MAX_SNAPSHOT_TEXT_CHARS), truncated: true }
+}
+
+export class BrowserService extends Service {
+  static override serviceType = BROWSER_SERVICE_TYPE
+  override capabilityDescription = "Manages browser workspace tabs, arbitration, clipboard leases, bounded inference, payment controls, and website goals."
+
+  private mode: BrowserWorkspaceMode = "desktop"
+  private readonly tabs = new Map<string, BrowserWorkspaceTab>()
+  private nextTabNumber = 1
+  readonly arbitration: BrowserArbitrationSession = createBrowserArbitrationSession()
+  readonly clipboardLease: ClipboardLeaseSession = createClipboardLeaseSession()
+  readonly inference: BrowserInferenceSession = createBrowserInferenceSession()
+  readonly manualActivity: ManualActivityTracker = new ManualActivityTracker()
+  readonly websiteGoal: WebsiteGoalSession = createWebsiteGoalSession()
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<BrowserService> {
+    return Promise.resolve(new BrowserService(runtime))
+  }
+
+  override async stop(): Promise<void> {
+    await this.arbitration.stopTargets()
+    await this.inference.stopInference()
+    this.manualActivity.reset()
+    this.tabs.clear()
+  }
+
+  getMode(): BrowserWorkspaceMode {
+    return this.mode
+  }
+
+  setMode(mode: BrowserWorkspaceMode): void {
+    this.mode = mode
+  }
+
+  listTabs(): readonly BrowserWorkspaceTab[] {
+    return [...this.tabs.values()]
+  }
+
+  getTab(id: string): BrowserWorkspaceTab | undefined {
+    return this.tabs.get(id)
+  }
+
+  openTab(input: { readonly url: string; readonly title?: string; readonly show?: boolean; readonly partition?: string; readonly snapshotText?: string }): BrowserWorkspaceTab | undefined {
+    if (!isAllowedWorkspaceUrl(input.url)) return undefined
+    const id = `tab-${this.nextTabNumber++}`
+    const tab: BrowserWorkspaceTab = {
+      id,
+      url: input.url,
+      title: input.title?.trim() || input.url,
+      visible: input.show !== false,
+      ...(input.partition !== undefined ? { partition: input.partition } : {}),
+      snapshotText: boundText(input.snapshotText ?? "").text,
+      updatedAt: Date.now(),
+    }
+    this.tabs.set(id, tab)
+    return tab
+  }
+
+  navigateTab(id: string, url: string, snapshotText?: string): BrowserWorkspaceTab | undefined {
+    const existing = this.tabs.get(id)
+    if (existing === undefined || !isAllowedWorkspaceUrl(url)) return undefined
+    const next: BrowserWorkspaceTab = {
+      ...existing,
+      url,
+      snapshotText: snapshotText === undefined ? existing.snapshotText : boundText(snapshotText).text,
+      updatedAt: Date.now(),
+    }
+    this.tabs.set(id, next)
+    return next
+  }
+
+  setTabVisibility(id: string, visible: boolean): BrowserWorkspaceTab | undefined {
+    const existing = this.tabs.get(id)
+    if (existing === undefined) return undefined
+    const next: BrowserWorkspaceTab = { ...existing, visible, updatedAt: Date.now() }
+    this.tabs.set(id, next)
+    return next
+  }
+
+  closeTab(id: string): boolean {
+    return this.tabs.delete(id)
+  }
+
+  getSnapshot(): BrowserWorkspaceSnapshot {
+    return { mode: this.mode, tabs: this.listTabs() }
+  }
+}
+
+const CLIENT_DEVICE_NOTE =
+  "This is the agent's own browser workspace on its host, not the Browser on the device the owner is messaging from. Never describe these tabs as the page the owner has open; that page arrives only as clientDevice.browserPage."
+
+export const browserWorkspaceProvider: Provider = {
+  name: "browser_workspace",
+  description: "Live summary of the Eliza browser workspace — current dispatch mode and the complete open tab list.",
+  descriptionCompressed: "Browser workspace mode + open tab list.",
+  contexts: ["browser", "web"],
+  contextGate: { anyOf: ["browser", "web"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
+  get: async (runtime, message) => {
+    const context = readTurnContext(message)
+    if (context.browserPage !== undefined) {
+      return {
+        text: JSON.stringify({
+          browser_workspace: {
+            target: "native-client",
+            note: CLIENT_DEVICE_NOTE,
+            page: { tabId: context.browserPage.tabId, url: context.browserPage.url, title: context.browserPage.title },
+          },
+        }),
+      }
+    }
+    const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE)
+    if (service === null || service === undefined) {
+      return { text: "" }
+    }
+    const snapshot = service.getSnapshot()
+    return {
+      text: JSON.stringify({
+        browser_workspace: {
+          mode: snapshot.mode,
+          tabCount: snapshot.tabs.length,
+          tabs: snapshot.tabs.map((tab) => ({ id: tab.id, title: tab.title, url: tab.url, visible: tab.visible })),
+        },
+      }),
+    }
+  },
+}
+
+function strParam(params: object | undefined, key: string): string | undefined {
+  const value = params === undefined ? undefined : field(params, key)
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
+}
+
+function numParam(params: object | undefined, key: string): number | undefined {
+  const value = params === undefined ? undefined : field(params, key)
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function readActionParams(options: unknown): object | undefined {
+  const given = record(options)
+  if (given === undefined) return undefined
+  return record(field(given, "parameters")) ?? given
+}
+
+export function workspaceAvailable(runtime: IAgentRuntime): boolean {
+  const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE)
+  return service !== null && service !== undefined
+}
+
+const WORKSPACE_SUBACTIONS = ["close", "hide", "list", "navigate", "open", "show", "snapshot", "wait_for_url"] as const
+
+export const browserWorkspaceAction: Action = {
+  name: "BROWSER_WORKSPACE",
+  description: "Manage agent-owned browser workspace tabs (list, open, navigate, snapshot, show, hide, close, wait_for_url).",
+  descriptionCompressed: "Manage browser workspace tabs and bounded snapshots.",
+  similes: [],
+  examples: [],
+  roleGate: { minRole: "OWNER" },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [
+    { name: "action", description: "Workspace tab operation.", required: true, schema: { type: "string", enum: [...WORKSPACE_SUBACTIONS] } },
+    { name: "pattern", description: "URL substring or regex for wait_for_url.", required: false, schema: { type: "string" } },
+    { name: "tabId", description: "Target tab identifier.", required: false, schema: { type: "string" } },
+    { name: "timeoutMs", description: "Timeout in milliseconds for wait_for_url.", required: false, schema: { type: "number" } },
+    { name: "title", description: "Optional tab title when opening.", required: false, schema: { type: "string" } },
+    { name: "url", description: "Destination HTTP(S) URL for open or navigate.", required: false, schema: { type: "string" } },
+  ],
+  summarize: (result, params) => {
+    const data = record(result?.data)
+    const op = strParam(data, "operation") ?? strParam(params, "action") ?? "workspace"
+    return `BROWSER_WORKSPACE(${op}): ${result?.success ? "ok" : "failed"}`
+  },
+  validate: async (runtime) => workspaceAvailable(runtime),
+  handler: async (runtime, _message, _state, options, callback?: HandlerCallback): Promise<ActionResult> => {
+    const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE)
+    if (service === null || service === undefined) {
+      return { success: false, text: "Browser workspace service is unavailable." }
+    }
+    const params = readActionParams(options)
+    const op = strParam(params, "action")
+    if (op === "list") {
+      const tabs = service.listTabs().map((t) => ({ id: t.id, title: t.title, url: t.url, visible: t.visible }))
+      return { success: true, text: JSON.stringify({ mode: service.getMode(), tabs }), data: { operation: "list", tabs } }
+    }
+    if (op === "open") {
+      const url = strParam(params, "url")
+      if (url === undefined) return { success: false, text: "A valid http(s) url is required." }
+      const tab = service.openTab({ url, title: strParam(params, "title") })
+      if (tab === undefined) return { success: false, text: "Refused unsafe or invalid URL." }
+      return { success: true, text: `Opened workspace tab ${tab.id} at ${tab.url}.`, data: { operation: "open", tab } }
+    }
+    const tabId = strParam(params, "tabId")
+    if (tabId === undefined) return { success: false, text: "tabId is required for this workspace operation." }
+    if (op === "navigate") {
+      const url = strParam(params, "url")
+      if (url === undefined) return { success: false, text: "A valid http(s) url is required." }
+      const tab = service.navigateTab(tabId, url)
+      if (tab === undefined) return { success: false, text: "Tab not found or URL refused." }
+      return { success: true, text: `Navigated ${tab.id} to ${tab.url}.`, data: { operation: "navigate", tab } }
+    }
+    if (op === "snapshot") {
+      const tab = service.getTab(tabId)
+      if (tab === undefined) return { success: false, text: `Tab ${tabId} was not found.` }
+      const bounded = boundText(tab.snapshotText)
+      return { success: true, text: JSON.stringify({ id: tab.id, url: tab.url, title: tab.title, text: bounded.text, truncated: bounded.truncated }), data: { operation: "snapshot", tab } }
+    }
+    if (op === "show" || op === "hide") {
+      const tab = service.setTabVisibility(tabId, op === "show")
+      if (tab === undefined) return { success: false, text: `Tab ${tabId} was not found.` }
+      return { success: true, text: `${op === "show" ? "Shown" : "Hidden"} tab ${tab.id}.`, data: { operation: op, tab } }
+    }
+    if (op === "close") {
+      const closed = service.closeTab(tabId)
+      return closed
+        ? { success: true, text: `Closed tab ${tabId}.`, data: { operation: "close", tabId } }
+        : { success: false, text: `Tab ${tabId} was not found.` }
+    }
+    if (op === "wait_for_url") {
+      const pattern = strParam(params, "pattern")
+      if (pattern === undefined) return { success: false, text: "pattern is required for wait_for_url." }
+      const outcome = await waitForUrl({
+        pattern,
+        timeoutMs: numParam(params, "timeoutMs"),
+        readUrl: async () => service.getTab(tabId)?.url ?? null,
+        onPoll: callback === undefined ? undefined : async ({ poll, url }) => {
+          await callback({ text: `Polling tab ${tabId} (#${poll}): ${url ?? "unreadable"}` })
+        },
+      })
+      return { success: outcome.matched, text: outcome.message, data: { operation: "wait_for_url", outcome } }
+    }
+    return { success: false, text: "Unsupported browser workspace action." }
+  },
+}
+
+function countCommandNodes(value: unknown, depth: number): { readonly ok: boolean; readonly count: number } {
+  if (depth > MAX_WORKSPACE_COMMAND_DEPTH) return { ok: false, count: 0 }
+  if (Array.isArray(value)) {
+    let total = 0
+    for (const item of value) {
+      const sub = countCommandNodes(item, depth + 1)
+      total += sub.count
+      if (!sub.ok || total > MAX_WORKSPACE_COMMANDS) return { ok: false, count: total }
+    }
+    return { ok: true, count: total }
+  }
+  const obj = record(value)
+  if (obj === undefined) return { ok: true, count: 1 }
+  const steps = field(obj, "steps")
+  if (Array.isArray(steps)) {
+    const sub = countCommandNodes(steps, depth + 1)
+    return { ok: sub.ok && sub.count + 1 <= MAX_WORKSPACE_COMMANDS, count: sub.count + 1 }
+  }
+  return { ok: true, count: 1 }
+}
+
+export function handleBrowserWorkspaceRoute(
+  service: BrowserService,
+  request: BrowserWorkspaceRouteRequest,
+): BrowserWorkspaceRouteResponse {
+  if (!request.pathname.startsWith("/api/browser-workspace")) {
+    return { status: 404, body: { error: "Not found" } }
+  }
+  if (!request.isOwner) {
+    return { status: 403, body: { error: "Owner authorization required." } }
+  }
+  const body = record(request.body)
+  if (request.method === "GET" && (request.pathname === "/api/browser-workspace/tabs" || request.pathname === "/api/browser-workspace/status")) {
+    return { status: 200, body: service.getSnapshot() }
+  }
+  if (request.method === "POST" && request.pathname === "/api/browser-workspace/open") {
+    const url = strParam(body, "url")
+    if (url === undefined) return { status: 400, body: { error: "url is required." } }
+    const tab = service.openTab({
+      url,
+      title: strParam(body, "title"),
+      partition: strParam(body, "partition"),
+      show: field(body ?? {}, "show") !== false,
+    })
+    if (tab === undefined) return { status: 400, body: { error: "Unsafe or invalid URL." } }
+    return { status: 201, body: { tab } }
+  }
+  if (request.method === "POST" && request.pathname === "/api/browser-workspace/command") {
+    const bounds = countCommandNodes(request.body, 0)
+    if (!bounds.ok) return { status: 400, body: { error: "Workspace command exceeds depth or count bounds." } }
+    return { status: 200, body: { accepted: true, commandCount: bounds.count, mode: service.getMode() } }
+  }
+  if (!request.pathname.startsWith("/api/browser-workspace/tabs/")) {
+    return { status: 404, body: { error: "Tab route not found." } }
+  }
+  const suffix = request.pathname.slice("/api/browser-workspace/tabs/".length)
+  const parts = suffix.split("/").filter((s) => s.length > 0)
+  const tabId = parts[0]
+  const sub = parts[1]
+  if (tabId === undefined) return { status: 404, body: { error: "Tab route not found." } }
+  if (request.method === "DELETE" && sub === undefined) {
+    return service.closeTab(tabId) ? { status: 200, body: { closed: true, tabId } } : { status: 404, body: { error: "Tab not found." } }
+  }
+  if (request.method === "GET" && sub === "snapshot") {
+    const tab = service.getTab(tabId)
+    return tab === undefined ? { status: 404, body: { error: "Tab not found." } } : { status: 200, body: { tab } }
+  }
+  if (request.method === "POST" && sub === "navigate") {
+    const url = strParam(body, "url")
+    if (url === undefined) return { status: 400, body: { error: "url is required." } }
+    const tab = service.navigateTab(tabId, url)
+    return tab === undefined ? { status: 404, body: { error: "Tab not found or invalid URL." } } : { status: 200, body: { tab } }
+  }
+  if (request.method === "POST" && (sub === "show" || sub === "hide")) {
+    const tab = service.setTabVisibility(tabId, sub === "show")
+    return tab === undefined ? { status: 404, body: { error: "Tab not found." } } : { status: 200, body: { tab } }
+  }
+  return { status: 405, body: { error: "Method not allowed." } }
+}
+
+function makeWorkspaceRoute(method: "GET" | "POST" | "DELETE", routePath: string): BrowserWorkspaceRoute {
+  return {
+    method,
+    path: routePath,
+    handler: (runtime, request) => {
+      const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE)
+      if (service === null || service === undefined) {
+        return { status: 503, body: { error: "Browser workspace service is unavailable." } }
+      }
+      return handleBrowserWorkspaceRoute(service, { ...request, method })
+    },
+  }
+}
+
+export const browserWorkspaceRoutes: readonly BrowserWorkspaceRoute[] = [
+  makeWorkspaceRoute("GET", "/api/browser-workspace/tabs"),
+  makeWorkspaceRoute("GET", "/api/browser-workspace/status"),
+  makeWorkspaceRoute("POST", "/api/browser-workspace/open"),
+  makeWorkspaceRoute("POST", "/api/browser-workspace/command"),
+  makeWorkspaceRoute("DELETE", "/api/browser-workspace/tabs/:id"),
+  makeWorkspaceRoute("GET", "/api/browser-workspace/tabs/:id/snapshot"),
+  makeWorkspaceRoute("POST", "/api/browser-workspace/tabs/:id/navigate"),
+  makeWorkspaceRoute("POST", "/api/browser-workspace/tabs/:id/show"),
+  makeWorkspaceRoute("POST", "/api/browser-workspace/tabs/:id/hide"),
+]

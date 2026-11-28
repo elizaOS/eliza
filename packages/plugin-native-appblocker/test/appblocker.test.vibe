@@ -1,0 +1,115 @@
+// spec/nativeAppblocker/index.md, "Story: Block only the apps I selected for a chosen interval"
+import { assert, describe, expect, it } from "@effect/vitest"
+import {
+  AppBlockerWeb,
+  applyAppBlock,
+  createAppBlockerSession,
+  createNativeAppBlockerBackend,
+  validateBlockAppsOptions,
+  type AppBlockerPlugin,
+  type AppBlockerStatus,
+} from "../src/index.vibe"
+
+function grantedAndroidPort(): AppBlockerPlugin {
+  let blocked: string[] = []
+  const baseStatus = (): AppBlockerStatus => ({
+    status: blocked.length > 0 ? "active" : "inactive",
+    available: true,
+    active: blocked.length > 0,
+    platform: "android",
+    engine: "usage-stats-overlay",
+    capabilities: {
+      canSelectApps: true,
+      canBlockApps: true,
+      canScheduleTimedBlocks: true,
+      canUnblockEarly: true,
+      requiresFamilyControls: false,
+      requiresUsageAccess: true,
+      requiresOverlay: true,
+    },
+    blockedCount: blocked.length,
+    blockedPackageNames: [...blocked],
+    endsAt: null,
+    permissionStatus: "granted",
+    canRequest: false,
+    canOpenSettings: true,
+    settingsTarget: "usageAccess",
+  })
+  return {
+    async checkPermissions() {
+      return {
+        status: "granted",
+        canRequest: false,
+        canOpenSettings: true,
+        settingsTarget: "usageAccess",
+        engine: "usage-stats-overlay",
+        capabilities: baseStatus().capabilities,
+      }
+    },
+    async requestPermissions() {
+      return await this.checkPermissions()
+    },
+    async getInstalledApps() {
+      return { apps: [{ packageName: "com.example.social", displayName: "Social" }] }
+    },
+    async selectApps() {
+      return { apps: [{ packageName: "com.example.social", displayName: "Social" }], cancelled: false }
+    },
+    async blockApps(options) {
+      validateBlockAppsOptions(options)
+      blocked = [...(options.packageNames ?? [])]
+      return { success: true, endsAt: null, blockedCount: blocked.length }
+    },
+    async unblockApps() {
+      blocked = []
+      return { success: true }
+    },
+    async getStatus() {
+      return baseStatus()
+    },
+  }
+}
+
+describe('plugin-native-appblocker (spec/nativeAppblocker/index.md, "Story: Block only the apps I selected for a chosen interval")', () => {
+  it(`returns explicit unavailable fallback on web while validating inputs (spec/nativeAppblocker/index.md, "A block needs the selected app identities and its engine's current grants")`, async () => {
+    const web = new AppBlockerWeb()
+    const perms = await web.checkPermissions()
+    assert.strictEqual(perms.status, "not-applicable")
+    assert.strictEqual(perms.engine, "none")
+    assert.deepStrictEqual(await web.getInstalledApps(), { apps: [] })
+    assert.deepStrictEqual(await web.selectApps(), { apps: [], cancelled: true })
+    const res = await web.blockApps({ packageNames: ["com.example.social"], durationMinutes: 15 })
+    assert.strictEqual(res.success, false)
+    assert.strictEqual(res.blockedCount, 0)
+    await expect(web.blockApps({ packageNames: ["bad"] })).rejects.toThrow()
+    await expect(web.blockApps({ packageNames: ["com.example.social"], durationMinutes: 0 })).rejects.toThrow()
+  })
+
+  it('bridges plugin through createNativeAppBlockerBackend and tracks sessions (spec/nativeAppblocker/session.md, "Story: Track an active app block session from start through unblock or expiry")', async () => {
+    const port = grantedAndroidPort()
+    const backend = createNativeAppBlockerBackend(port)
+    const block = await backend.blockApps({ packageNames: ["com.example.social"] })
+    assert.strictEqual(block.success, true)
+    assert.strictEqual((await backend.getStatus()).active, true)
+    await backend.unblockApps()
+    assert.strictEqual((await backend.getStatus()).active, false)
+
+    const session = createAppBlockerSession()
+    assert.strictEqual(session.start(false, 1, 100, 0), false)
+    assert.strictEqual(session.start(true, 2, 100, 500), true)
+    assert.strictEqual(session.expire(400), false)
+    assert.strictEqual(session.expire(500), true)
+    assert.strictEqual(session.state().active, false)
+  })
+
+  it.effect(`enforces spec grants in applyAppBlock (spec/nativeAppblocker/index.md, "A block needs the selected app identities and its engine's current grants")`, effect () => {
+    const port = grantedAndroidPort()
+    const result = try applyAppBlock({ packageNames: ["com.example.social"], durationMinutes: 10 }, port)
+    try Effect.try(() => {
+      assert.strictEqual(result.success, true)
+      assert.strictEqual(result.blockedCount, 1)
+    })
+    const refused = try Effect.exit(applyAppBlock({ packageNames: ["com.example.social"] }, new AppBlockerWeb()))
+    try Effect.try(() => assert.strictEqual(refused._tag, "Failure"))
+  })
+})

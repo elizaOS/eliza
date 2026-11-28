@@ -1,0 +1,222 @@
+// spec/nativeWebsiteblocker/index.md, "Story: See which websites my device is actually blocking"
+import { WebPlugin } from "@capacitor/core"
+import type {
+  StartWebsiteBlockOptions,
+  StartWebsiteBlockResult,
+  StopWebsiteBlockResult,
+  WebsiteBlockerOpenSettingsResult,
+  WebsiteBlockerPermissionResult,
+  WebsiteBlockerPlugin,
+  WebsiteBlockerStatus,
+} from "./native-contract.vibe"
+
+const HOSTNAME_RE = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})$/
+
+module webBridge {
+  interface ElizaWindow extends Window {
+    __ELIZAOS_APP_BOOT_CONFIG__?: { apiBase?: string }
+    __ELIZA_API_TOKEN__?: string
+  }
+
+  export function fail(message: string): never {
+    throw new Error(message)
+  }
+
+  export function parseHostnameUrl(raw: string): string | null {
+    try {
+      return new URL(raw).hostname
+    } catch {
+      return null
+    }
+  }
+
+  export function readConfiguredApiBase(): string | undefined {
+    const win = (globalThis as { window?: ElizaWindow }).window
+    if (!win) return undefined
+    const base = win.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase
+    return typeof base === "string" && base.trim().length > 0 ? base.replace(/\/+$/, "") : undefined
+  }
+
+  export function readApiToken(): string | undefined {
+    const win = (globalThis as { window?: ElizaWindow }).window
+    if (!win) return undefined
+    const token = win.__ELIZA_API_TOKEN__
+    return typeof token === "string" && token.trim().length > 0 ? token.trim() : undefined
+  }
+
+  export function canReachWindowOrigin(): boolean {
+    const win = (globalThis as { window?: Window }).window
+    if (!win?.location) return false
+    return win.location.protocol === "http:" || win.location.protocol === "https:"
+  }
+
+  export async function fetchApiJson<T>(
+    url: string,
+    init?: RequestInit,
+    resolveFailureBody?: boolean,
+  ): Promise<T> {
+    const response = await fetch(url, init)
+    if (!response.ok) {
+      if (resolveFailureBody) {
+        const body: unknown = await response.json().catch(() => null)
+        if (
+          typeof body === "object" &&
+          body !== null &&
+          (body as { success?: unknown }).success === false &&
+          typeof (body as { error?: unknown }).error === "string"
+        ) {
+          return body as T
+        }
+      }
+      throw new Error(`Request failed (${response.status})`)
+    }
+    return (await response.json()) as T
+  }
+}
+import { canReachWindowOrigin, fail, fetchApiJson, parseHostnameUrl, readApiToken, readConfiguredApiBase } from webBridge
+
+export function normalizeWebsiteHostname(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    if (!/^https?:\/\//i.test(trimmed)) return null
+    const host = parseHostnameUrl(trimmed)
+    return host === null ? null : normalizeWebsiteHostname(host)
+  }
+  const cleaned = trimmed.replace(/^\*\./, "").replace(/\.$/, "").toLowerCase()
+  let ascii = cleaned
+  const hasNonAscii = [...ascii].some((ch) => (ch.codePointAt(0) ?? 0) > 0x7f)
+  if (hasNonAscii && !/[\s/\\:?#@]/.test(ascii)) {
+    const converted = parseHostnameUrl(`https://${ascii}`)
+    if (converted === null) return null
+    ascii = converted
+  }
+  return HOSTNAME_RE.test(ascii) ? ascii : null
+}
+
+export function validateStartWebsiteBlockOptions(options: StartWebsiteBlockOptions): { websites: string[]; durationMinutes: number | null } {
+  const candidates: unknown[] = [
+    ...(Array.isArray(options?.websites) ? options.websites : []),
+    ...(typeof options?.websites === "string" ? [options.websites] : []),
+  ]
+  if (typeof options?.text === "string") {
+    candidates.push(...options.text.split(/[\s,]+/))
+  }
+  const websites = [...new Set(candidates.map(normalizeWebsiteHostname).filter((v): v is string => typeof v === "string"))]
+  if (websites.length === 0) {
+    fail("Provide at least one public website hostname.")
+  }
+
+  let durationMinutes: number | null = null
+  if (options?.durationMinutes !== undefined && options.durationMinutes !== null) {
+    const token = typeof options.durationMinutes === "string" ? options.durationMinutes.trim().toLowerCase() : null
+    if (token === "indefinite" || token === "manual" || token === "until-unblocked") {
+      return { websites, durationMinutes: null }
+    }
+    const parsed = typeof options.durationMinutes === "number" ? options.durationMinutes : Number(options.durationMinutes)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      fail("durationMinutes must be a positive finite number")
+    }
+    durationMinutes = Math.trunc(parsed)
+    if (durationMinutes < 1) {
+      fail("durationMinutes must be at least 1 minute")
+    }
+  }
+  return { websites, durationMinutes }
+}
+
+interface RawPermissionReply {
+  status: WebsiteBlockerPermissionResult["status"]
+  canRequest: boolean
+  canOpenSettings?: boolean
+  settingsTarget?: WebsiteBlockerPermissionResult["settingsTarget"]
+  engine?: WebsiteBlockerPermissionResult["engine"]
+  reason?: string
+}
+
+function normalizePermissionReply(permission: RawPermissionReply): WebsiteBlockerPermissionResult {
+  return {
+    status: permission.status,
+    canRequest: permission.canRequest,
+    canOpenSettings: permission.canOpenSettings ?? true,
+    settingsTarget: permission.settingsTarget ?? "runtime",
+    engine: permission.engine ?? "hosts-file",
+    reason: permission.reason,
+  }
+}
+
+export class WebsiteBlockerWeb extends WebPlugin implements WebsiteBlockerPlugin {
+  private readonly explicitBase: string | undefined
+
+  constructor(options?: { apiBase?: string }) {
+    super()
+    this.explicitBase = options?.apiBase?.replace(/\/+$/, "")
+  }
+
+  private apiBase(): string {
+    return this.explicitBase ?? readConfiguredApiBase() ?? ""
+  }
+
+  private canReachApi(): boolean {
+    return Boolean(this.explicitBase || readConfiguredApiBase() || canReachWindowOrigin())
+  }
+
+  private async requestJson<T>(pathname: string, init?: RequestInit, resolveFailureBody?: boolean): Promise<T> {
+    if (!this.canReachApi()) fail("Eliza API not available")
+    const token = readApiToken()
+    const headers: Record<string, string> = {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+    return await fetchApiJson<T>(`${this.apiBase()}${pathname}`, { ...init, headers }, resolveFailureBody)
+  }
+
+  async getStatus(): Promise<WebsiteBlockerStatus> {
+    return await this.requestJson<WebsiteBlockerStatus>("/api/website-blocker")
+  }
+
+  async startBlock(options: StartWebsiteBlockOptions): Promise<StartWebsiteBlockResult> {
+    const body = validateStartWebsiteBlockOptions(options)
+    return await this.requestJson<StartWebsiteBlockResult>(
+      "/api/website-blocker",
+      { method: "PUT", body: JSON.stringify(body) },
+      true,
+    )
+  }
+
+  async stopBlock(): Promise<StopWebsiteBlockResult> {
+    return await this.requestJson<StopWebsiteBlockResult>("/api/website-blocker", { method: "DELETE" }, true)
+  }
+
+  async checkPermissions(): Promise<WebsiteBlockerPermissionResult> {
+    return normalizePermissionReply(await this.requestJson<RawPermissionReply>("/api/permissions/website-blocking"))
+  }
+
+  async requestPermissions(): Promise<WebsiteBlockerPermissionResult> {
+    return normalizePermissionReply(
+      await this.requestJson<RawPermissionReply>("/api/permissions/website-blocking/request", { method: "POST" }),
+    )
+  }
+
+  async openSettings(): Promise<WebsiteBlockerOpenSettingsResult> {
+    if (!this.canReachApi()) {
+      return {
+        opened: false,
+        target: "runtime",
+        actualTarget: "runtime",
+        reason: "Eliza API not available.",
+      }
+    }
+    const result = await this.requestJson<Partial<WebsiteBlockerOpenSettingsResult>>(
+      "/api/permissions/website-blocking/open-settings",
+      { method: "POST" },
+    )
+    return {
+      opened: result.opened ?? false,
+      target: result.target ?? "runtime",
+      actualTarget: result.actualTarget ?? result.target ?? "runtime",
+      reason: result.reason ?? null,
+    }
+  }
+}

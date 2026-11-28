@@ -1,0 +1,307 @@
+// spec/github/index.md, "Story: List pull requests and triage notifications under the selected account"; spec/github/index.md, "Story: Review the exact GitHub operation before it changes a repository"
+import type { ProviderDataRecord } from "@elizaos/core"
+
+export type GitHubIdentity = "user" | "agent"
+
+export interface GitHubUserSummary {
+  readonly login?: string | null
+}
+
+export interface GitHubPullRequestSummary {
+  readonly number: number
+  readonly title: string
+  readonly state: string
+  readonly html_url: string
+  readonly user?: GitHubUserSummary | null
+}
+
+export interface GitHubSearchIssueSummary {
+  readonly repository_url: string
+  readonly number: number
+  readonly title: string
+  readonly state: string
+  readonly html_url: string
+  readonly user?: GitHubUserSummary | null
+}
+
+export interface GitHubReviewResult {
+  readonly id: number
+}
+
+export type GitHubLabelSummary = string | { readonly name?: string | null }
+
+export interface GitHubIssueResult {
+  readonly number: number
+  readonly html_url: string
+  readonly labels?: readonly (GitHubLabelSummary | null)[] | null
+  readonly assignees?: readonly (GitHubUserSummary | null)[] | null
+}
+
+export interface GitHubAssigneesResult {
+  readonly assignees?: readonly (GitHubUserSummary | null)[] | null
+}
+
+export interface GitHubIssueDetail {
+  readonly number: number
+  readonly title: string
+  readonly state: string
+  readonly html_url: string
+  readonly body?: string | null
+  readonly labels?: readonly (GitHubLabelSummary | null)[] | null
+  readonly user?: GitHubUserSummary | null
+}
+
+export interface GitHubIssueCommentResult {
+  readonly id: number
+  readonly html_url: string
+}
+
+export type GitHubAddLabelsResult = readonly (GitHubLabelSummary | null)[]
+
+export interface GitHubNotificationSummary {
+  readonly id: string
+  readonly reason?: string | null
+  readonly repository?: {
+    readonly full_name?: string | null
+    readonly pushed_at?: string | null
+  }
+  readonly subject?: {
+    readonly title?: string | null
+    readonly type?: string | null
+    readonly url?: string | null
+  }
+  readonly updated_at: string
+}
+
+export interface GitHubOctokitClient {
+  readonly activity: {
+    readonly listNotificationsForAuthenticatedUser: (params?: {
+      readonly all?: boolean
+      readonly per_page?: number
+      readonly page?: number
+    }) => Promise<{ readonly data: GitHubNotificationSummary[] }>
+  }
+  readonly issues: {
+    readonly addAssignees: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly issue_number: number
+      readonly assignees?: readonly string[]
+    }) => Promise<{ readonly data: GitHubAssigneesResult }>
+    readonly addLabels: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly issue_number: number
+      readonly labels?: readonly string[]
+    }) => Promise<{ readonly data: GitHubAddLabelsResult }>
+    readonly create: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly title: string
+      readonly body?: string
+      readonly labels?: readonly string[]
+      readonly assignees?: readonly string[]
+    }) => Promise<{ readonly data: GitHubIssueResult }>
+    readonly createComment: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly issue_number: number
+      readonly body: string
+    }) => Promise<{ readonly data: GitHubIssueCommentResult }>
+    readonly get: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly issue_number: number
+    }) => Promise<{ readonly data: GitHubIssueDetail }>
+    readonly listForRepo: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly state?: "open" | "closed" | "all"
+      readonly per_page?: number
+      readonly page?: number
+    }) => Promise<{ readonly data: GitHubIssueDetail[] }>
+    readonly update: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly issue_number: number
+      readonly state?: "open" | "closed"
+      readonly title?: string
+      readonly body?: string
+    }) => Promise<{ readonly data: GitHubIssueDetail }>
+  }
+  readonly pulls: {
+    readonly createReview: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly pull_number: number
+      readonly event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
+      readonly body?: string
+    }) => Promise<{ readonly data: GitHubReviewResult }>
+    readonly list: (params: {
+      readonly owner: string
+      readonly repo: string
+      readonly state?: "open" | "closed" | "all"
+      readonly per_page?: number
+      readonly page?: number
+      readonly sort?: string
+      readonly direction?: string
+    }) => Promise<{ readonly data: GitHubPullRequestSummary[] }>
+  }
+  readonly search: {
+    readonly issuesAndPullRequests: (params: {
+      readonly q: string
+      readonly per_page?: number
+      readonly page?: number
+      readonly sort?: string
+      readonly order?: string
+    }) => Promise<{
+      readonly data: {
+        readonly items: GitHubSearchIssueSummary[]
+        readonly total_count?: number
+        readonly incomplete_results?: boolean
+      }
+    }>
+  }
+}
+
+export interface IGitHubService {
+  getOctokit(
+    selector:
+      | GitHubIdentity
+      | { readonly as?: GitHubIdentity; readonly role?: GitHubIdentity; readonly accountId?: string },
+  ): GitHubOctokitClient | null
+}
+
+export const GITHUB_SERVICE_TYPE = "github"
+
+export const GitHubActions = {
+  GITHUB_ISSUE_OP: "GITHUB_ISSUE",
+  GITHUB_PR_OP: "GITHUB_PR",
+  GITHUB_NOTIFICATION_TRIAGE: "GITHUB_NOTIFICATION_TRIAGE",
+} as const
+
+export type GitHubIssueOp = "create" | "assign" | "close" | "reopen" | "comment" | "label"
+export type GitHubPrOp = "list" | "review"
+
+export type GitHubActionResult<T = unknown> =
+  | { readonly success: true; readonly data: T; readonly text?: string; readonly promptData?: ProviderDataRecord; readonly promptDataMode?: "replace-data" }
+  | { readonly success: false; readonly error: string; readonly text?: string }
+  | {
+      readonly success: false
+      readonly requiresConfirmation: true
+      readonly preview: string
+      readonly text: string
+      readonly data: {
+        readonly requiresConfirmation: true
+        readonly preview: string
+        readonly awaitingUserInput: true
+      }
+    }
+
+export interface RateLimitError {
+  readonly kind: "rate-limit"
+  readonly resetAtMs: number | null
+  readonly message: string
+}
+
+export interface BaseActionOptions {
+  readonly as?: GitHubIdentity
+  readonly accountId?: string
+}
+
+module node {
+  import type { GitHubOctokitClient } from "./types.vibe"
+
+  const DEFAULT_API_BASE = "https://api.github.com"
+
+  class GitHubRestApiError extends Error {
+    readonly status: number
+    readonly response: { readonly headers: Record<string, string | undefined> }
+
+    constructor(message: string, status: number, headers: Record<string, string | undefined>) {
+      super(message)
+      this.name = "GitHubRestApiError"
+      this.status = status
+      this.response = { headers }
+    }
+  }
+
+  function queryString(entries: Record<string, string | number | boolean | undefined>): string {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(entries)) {
+      if (value !== undefined) params.set(key, String(value))
+    }
+    const encoded = params.toString()
+    return encoded ? `?${encoded}` : ""
+  }
+
+  export function createGitHubRestClient(
+    auth: string,
+    options: { readonly baseUrl?: string; readonly fetchImpl?: typeof fetch } = {},
+  ): GitHubOctokitClient {
+    const baseUrl = (options.baseUrl ?? DEFAULT_API_BASE).replace(/\/+$/, "")
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch
+
+    async function request<T>(method: "GET" | "POST" | "PATCH", apiPath: string, body?: unknown): Promise<{ readonly data: T }> {
+      const response = await fetchImpl(`${baseUrl}${apiPath}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${auth}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "elizaos-github",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        redirect: "error",
+        signal: AbortSignal.timeout(30_000),
+      })
+      const headers: Record<string, string | undefined> = {}
+      response.headers.forEach((value, key) => {
+        headers[key.toLowerCase()] = value
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => "")
+        throw new GitHubRestApiError(text || `GitHub API returned HTTP ${response.status}`, response.status, headers)
+      }
+      const data = (await response.json()) as T
+      return { data }
+    }
+
+    return {
+      activity: {
+        listNotificationsForAuthenticatedUser: (params = {}) =>
+          request("GET", `/notifications${queryString({ all: params.all, per_page: params.per_page, page: params.page })}`),
+      },
+      issues: {
+        addAssignees: ({ owner, repo, issue_number, assignees }) =>
+          request("POST", `/repos/${owner}/${repo}/issues/${issue_number}/assignees`, { assignees }),
+        addLabels: ({ owner, repo, issue_number, labels }) =>
+          request("POST", `/repos/${owner}/${repo}/issues/${issue_number}/labels`, { labels }),
+        create: ({ owner, repo, title, body, labels, assignees }) =>
+          request("POST", `/repos/${owner}/${repo}/issues`, { title, body, labels, assignees }),
+        createComment: ({ owner, repo, issue_number, body }) =>
+          request("POST", `/repos/${owner}/${repo}/issues/${issue_number}/comments`, { body }),
+        get: ({ owner, repo, issue_number }) =>
+          request("GET", `/repos/${owner}/${repo}/issues/${issue_number}`),
+        listForRepo: ({ owner, repo, state, per_page, page }) =>
+          request("GET", `/repos/${owner}/${repo}/issues${queryString({ state, per_page, page })}`),
+        update: ({ owner, repo, issue_number, state, title, body }) =>
+          request("PATCH", `/repos/${owner}/${repo}/issues/${issue_number}`, { state, title, body }),
+      },
+      pulls: {
+        createReview: ({ owner, repo, pull_number, event, body }) =>
+          request("POST", `/repos/${owner}/${repo}/pulls/${pull_number}/reviews`, { event, body }),
+        list: ({ owner, repo, state, per_page, page, sort, direction }) =>
+          request("GET", `/repos/${owner}/${repo}/pulls${queryString({ state, per_page, page, sort, direction })}`),
+      },
+      search: {
+        issuesAndPullRequests: ({ q, per_page, page, sort, order }) =>
+          request("GET", `/search/issues${queryString({ q, per_page, page, sort, order })}`),
+      },
+    }
+  }
+}
+
+import { createGitHubRestClient } from node
+export { createGitHubRestClient }

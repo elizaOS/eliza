@@ -1,0 +1,135 @@
+// spec/os/android/reminderAlarms.md, "Story: Get my reminder at its time, even after a reboot"; spec/os/android/reminderAlarms.md, "Story: Finish or put off a reminder without losing track of it"; spec/os/android/reminderAlarms.md, "A snoozed reminder returns ten minutes after the tap"; spec/os/android/reminderAlarms.md, "Done moves a repeating reminder to its first repeat whose alert is still ahead, and counts the dates it skipped"; spec/os/android/reminderAlarms.md, "A reminder keeps its newest 32 finished occurrences"
+import { assert, it } from "@effect/vitest"
+import {
+  APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
+  REMINDER_HISTORY_LIMIT,
+  REMINDER_SNOOZE_MS,
+  appleRemindersMacosBridgeCandidates,
+  completeReminderOccurrence,
+  initialReminderDue,
+  nextReminderOccurrence,
+  reminderStanding,
+  remindersClient,
+  snoozeReminderOccurrence,
+  type AndroidReminderRecord,
+  type AndroidRemindersPlugin,
+  type ReminderOccurrenceRow,
+} from "../../src/index.vibe"
+
+it.effect(`Schedule, stand, recur, snooze, and cap reminder history with macOS bridge candidates (spec/os/android/reminderAlarms.md, "Story: Get my reminder at its time, even after a reboot"; spec/os/android/reminderAlarms.md, "Story: Finish or put off a reminder without losing track of it"; spec/os/android/reminderAlarms.md, "A snoozed reminder returns ten minutes after the tap"; spec/os/android/reminderAlarms.md, "Done moves a repeating reminder to its first repeat whose alert is still ahead, and counts the dates it skipped"; spec/os/android/reminderAlarms.md, "A reminder keeps its newest 32 finished occurrences")`, effect () => {
+  const rows: AndroidReminderRecord[] = []
+  const targetFor = (id: string) => ({
+    sourceId: "local",
+    sourceRevision: "1",
+    reminderId: id,
+    occurrenceId: "occ-1",
+    revision: "rev-1",
+  })
+  const fakePlugin: AndroidRemindersPlugin = {
+    scheduleReminder: async (input) => {
+      rows.push({
+        id: input.id,
+        title: input.title,
+        body: input.body ?? "",
+        at: input.at,
+        dueAt: input.dueAt ?? input.at,
+        occurrenceId: "occ-1",
+        target: targetFor(input.id),
+        createdAt: 1_700_000_000_000,
+        status: "scheduled",
+        mode: "inexact",
+        history: [],
+      })
+      return { id: input.id, status: "scheduled", at: input.at, mode: "inexact", message: "Scheduled" }
+    },
+    listReminders: async () => ({ reminders: rows, notificationsEnabled: true }),
+    selectedReminder: async ({ id }) => targetFor(id),
+    operateReminder: async () => ({
+      status: "succeeded",
+      result: {
+        version: 1,
+        kind: "reminder_complete",
+        sourceId: "local",
+        sourceRevision: "1",
+        reminderId: "rem-1",
+        occurrenceId: "occ-1",
+        revision: "rev-2",
+        status: "completed",
+        at: 1_700_000_000_000,
+      },
+    }),
+    reminderOperationReceipt: async () => ({
+      status: "succeeded",
+      result: {
+        version: 1,
+        kind: "reminder_complete",
+        sourceId: "local",
+        sourceRevision: "1",
+        reminderId: "rem-1",
+        occurrenceId: "occ-1",
+        revision: "rev-2",
+        status: "completed",
+        at: 1_700_000_000_000,
+      },
+    }),
+    reminderDecision: async () => ({ status: "completed" }),
+    cancelReminder: async ({ id }) => ({ id, status: "cancelled", mode: "inexact", message: "Cancelled" }),
+    saveTodo: async (input) => ({ id: input.id, status: "saved", mode: "none", target: targetFor(input.id), message: "Saved" }),
+    todoDecision: async (input) => ({ id: input.target.reminderId, status: "completed", target: input.target }),
+    pendingReminderTap: async () => ({}),
+    consumeReminderTap: async () => undefined,
+    releaseReminderQuestion: async () => undefined,
+    dismissReminderTap: async () => undefined,
+    addListener: async () => ({ remove: async () => undefined }),
+    removeAllListeners: async () => undefined,
+  }
+
+  const client = remindersClient({ plugin: fakePlugin })
+  const scheduled = try tryPromise(() => client.schedule({ id: "rem-1", title: "Standup", body: "Daily sync", at: 1_700_000_600_000 }))
+  const listed = try tryPromise(() => client.list())
+  const cancelled = try tryPromise(() => client.cancel({ id: "rem-1", target: targetFor("rem-1"), operationId: "op-1", bindingHash: "hash-1" }))
+
+  const rule = { rule: "daily" as const, zone: "UTC", date: "2026-01-05", time: "09:00", leadMinutes: 15 }
+  const firstAt = Date.parse("2026-01-05T08:45:00Z")
+  const firstDue = initialReminderDue(rule, firstAt)
+  const nextOcc = nextReminderOccurrence(rule, Date.parse("2026-01-07T09:00:00Z"))
+
+  let seq = 2
+  const occRow: ReminderOccurrenceRow = {
+    status: "posted",
+    at: firstAt,
+    dueAt: firstDue,
+    recurrence: rule,
+    occurrenceId: "occ-1",
+    history: Array.from({ length: REMINDER_HISTORY_LIMIT }, (_, idx) => ({
+      occurrenceId: `old-${idx}`,
+      dueAt: firstDue - (idx + 1) * 86_400_000,
+      completedAt: firstDue - (idx + 1) * 86_400_000,
+      skippedDates: 0,
+    })),
+  }
+  const snoozeFirst = snoozeReminderOccurrence(occRow, { now: firstDue, alertStatus: "scheduled", nextOccurrenceId: () => `occ-${seq++}` })
+  const snoozeAgain = snoozeReminderOccurrence(occRow, { now: firstDue + 1_000, alertStatus: "scheduled", nextOccurrenceId: () => `occ-${seq++}` })
+  const doneStatus = completeReminderOccurrence(occRow, { now: Date.parse("2026-01-06T09:00:00Z"), alertStatus: "scheduled", nextOccurrenceId: () => `occ-${seq++}` })
+
+  const macCandidates = appleRemindersMacosBridgeCandidates({ envDylibPath: "/opt/custom.dylib" })
+
+  try Effect.try(() => {
+    assert.strictEqual(scheduled.status, "scheduled")
+    assert.strictEqual(listed.reminders.length, 1)
+    assert.strictEqual(reminderStanding(listed.reminders[0]).kind, "Stored")
+    assert.strictEqual(reminderStanding(undefined).kind, "Absent")
+    assert.strictEqual(cancelled.status, "cancelled")
+    assert.strictEqual(firstDue, Date.parse("2026-01-05T09:00:00Z"))
+    assert.strictEqual(nextOcc.date, "2026-01-08")
+    assert.strictEqual(nextOcc.skippedDates, 2)
+    assert.strictEqual(snoozeFirst, "scheduled")
+    assert.strictEqual(snoozeAgain, "unchanged")
+    assert.strictEqual(REMINDER_SNOOZE_MS, 600_000)
+    assert.strictEqual(doneStatus, "scheduled")
+    assert.strictEqual(occRow.history?.length, REMINDER_HISTORY_LIMIT)
+    assert.strictEqual(occRow.recurrence?.date, "2026-01-07")
+    assert.strictEqual(macCandidates.length, 2)
+    assert.include(macCandidates[1]?.path ?? "", APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME)
+  })
+})

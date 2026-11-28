@@ -1,0 +1,93 @@
+// spec/blocker/index.md, "Only the owner can request a block for an explicit set of targets and a future deadline"
+import {
+  checkSenderRole,
+  hasRoleAccess,
+  logger,
+  type IAgentRuntime,
+  type Memory,
+  type RoleCheckResult,
+} from "@elizaos/core"
+
+export const SELFCONTROL_ACCESS_ERROR = "Website blocking is restricted to OWNER users."
+export const APP_BLOCKER_ACCESS_ERROR = "App blocking is restricted to OWNER users."
+
+export interface BlockerAccessResult {
+  readonly allowed: boolean
+  readonly role: string | null
+  readonly reason?: string
+}
+
+function hasPrincipal(runtime: IAgentRuntime, message: Memory): boolean {
+  return (
+    typeof runtime.agentId === "string" &&
+    runtime.agentId.length > 0 &&
+    typeof message.entityId === "string" &&
+    message.entityId.length > 0
+  )
+}
+
+async function evaluateOwnerBlockerAccess(
+  runtime: IAgentRuntime,
+  message: Memory,
+  label: string,
+  tag: string,
+  deniedReason: string,
+): Promise<BlockerAccessResult> {
+  if (hasPrincipal(runtime, message) && (await hasRoleAccess(runtime, message, "OWNER"))) {
+    return { allowed: true, role: "OWNER" }
+  }
+
+  let roleCheck: RoleCheckResult | null
+  try {
+    roleCheck = await checkSenderRole(runtime, message)
+  } catch (err) {
+    logger.error(
+      { err, roomId: message.roomId, entityId: message.entityId },
+      `[${tag}] Role check failed`,
+    )
+    return {
+      allowed: false,
+      role: null,
+      reason: `${label} is unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+
+  if (roleCheck === null || !roleCheck.isOwner) {
+    return {
+      allowed: false,
+      role: roleCheck?.role ?? null,
+      reason: deniedReason,
+    }
+  }
+
+  return {
+    allowed: true,
+    role: roleCheck.role,
+  }
+}
+
+export async function getSelfControlAccess(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<BlockerAccessResult> {
+  return evaluateOwnerBlockerAccess(
+    runtime,
+    message,
+    "Website blocking",
+    "selfcontrol",
+    SELFCONTROL_ACCESS_ERROR,
+  )
+}
+
+export async function getAppBlockerAccess(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<BlockerAccessResult> {
+  return evaluateOwnerBlockerAccess(
+    runtime,
+    message,
+    "App blocking",
+    "app-blocker",
+    APP_BLOCKER_ACCESS_ERROR,
+  )
+}

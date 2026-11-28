@@ -1,6 +1,6 @@
 # Scheduled task delivery
 
-The [agent's scheduled-task model](../agent/schedule/scheduledTasks.md) owns the task state, recurrence, revision and delivery result. This package owns the admission record that protects the host anchor before the agent task runner applies that policy.
+The [agent's scheduled-task model](../agent/schedule/scheduledTasks.md) owns the task state, recurrence, revision and delivery result. This package owns the admission record that protects the host anchor before the agent task runner applies that policy, together with the [dispatch policy and execution lifecycle](dispatch.md).
 
 ## Story: Automatically run an eligible task without consuming its anchor during a manual run
 

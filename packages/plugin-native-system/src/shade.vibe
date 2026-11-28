@@ -1,0 +1,105 @@
+// spec/nativeSystem/index.md, "Story: Follow the device's authority for system controls"; spec/os/android/system.md, "The shade opens only from a focused launcher build that holds the status bar permission"
+export type ShadeSurface = "android" | "simulated" | "none"
+
+export type ShadeOutcome = "opened" | "not-in-front" | "standalone" | "unsupported"
+
+export interface ShadeFallbackCopy {
+  readonly notInFront: string
+  readonly standalone: string
+  readonly unavailable: string
+}
+
+export interface PullStart {
+  readonly home: boolean
+  readonly editable: boolean
+  readonly keyboard: boolean
+  readonly scrolled: boolean
+}
+
+export interface PullContext {
+  readonly launcher: boolean
+  readonly assistant: boolean
+  readonly screen: string
+  readonly view: unknown
+  readonly chat: string
+  readonly voice: string
+  readonly drawer: boolean
+  readonly secure: boolean
+  readonly shade: boolean
+}
+
+export interface ShadeHomeSelectors {
+  readonly home: string
+  readonly screen?: string
+  readonly canvasWidth?: number
+}
+
+export const STATUS_BAND = 44
+export const SHADE_PULL_THRESHOLD = 46
+export const PULL_SLOP = 6
+
+export function shadeSurface(options: { readonly native: boolean; readonly simulated: boolean }): ShadeSurface {
+  if (options.native) return "android"
+  return options.simulated ? "simulated" : "none"
+}
+
+export function defaultShadeFallbackCopy(appName: string): ShadeFallbackCopy {
+  const swipe = "Swipe down from the top edge of the screen for Android notifications."
+  return {
+    notInFront: `${appName} is not in front. ${swipe}`,
+    standalone: swipe,
+    unavailable: `Android did not open its notifications from ${appName}. Swipe down from the top edge of the screen instead.`,
+  }
+}
+
+export function shadeFallback(outcome: unknown, copy: ShadeFallbackCopy): string {
+  if (outcome === "opened") return ""
+  if (outcome === "not-in-front") return copy.notInFront
+  if (outcome === "standalone") return copy.standalone
+  return copy.unavailable
+}
+
+function emptyHomeStart(start: PullStart | null | undefined): boolean {
+  return Boolean(start?.home) && !start?.editable && !start?.keyboard && !start?.scrolled
+}
+
+export function emptyHomeShadePull(
+  context: PullContext,
+  start: PullStart | null | undefined,
+  startY: number,
+  dx: number,
+  dy: number,
+  threshold = SHADE_PULL_THRESHOLD,
+): boolean {
+  if (!context.launcher || context.assistant || context.secure || context.shade) return false
+  if (context.screen !== "home" || Boolean(context.view) || context.drawer || context.voice !== "off") return false
+  if (context.chat === "sheet" || context.chat === "full") return false
+  if (!(dy > threshold) || !(dy > Math.abs(dx) * 1.5)) return false
+  if (!(startY >= STATUS_BAND)) return false
+  return emptyHomeStart(start)
+}
+
+export function emptyHomePullEligible(context: PullContext): boolean {
+  return emptyHomeShadePull(
+    context,
+    { home: true, editable: false, keyboard: false, scrolled: false },
+    STATUS_BAND,
+    0,
+    Number.POSITIVE_INFINITY,
+  )
+}
+
+export function overflowPullDecision(
+  eligible: boolean,
+  dx: number,
+  dy: number,
+  slop = PULL_SLOP,
+): "claim" | "release" | "wait" {
+  if (!eligible) return "release"
+  if (Math.abs(dx) < slop && Math.abs(dy) < slop) return "wait"
+  return dy > 0 && dy > Math.abs(dx) ? "claim" : "release"
+}
+
+export function homeFits(home: { readonly scrollHeight: number; readonly clientHeight: number }): boolean {
+  return home.scrollHeight <= home.clientHeight + 1
+}

@@ -1,0 +1,170 @@
+// spec/calendar/autoJoin.md, "Story: Detect calendar conflicts honestly and schedule meeting auto-join by policy"; spec/calendar/autoJoin.md, "Auto-join task planning obeys policy, link recognition, and event end time"; spec/calendar/autoJoin.md, "Auto-join approval lifecycle joins only after owner approval or under all-policy"
+import type { CalendarEvent } from "@elizaos/plugin-calendar-client"
+import {
+  apply, initial, plannedAutoJoinTaskCount,
+  type AutoJoinMachine, type AutoJoinPolicy, type Event as AutoJoinMachineEvent, type Rejected,
+} from "../../gen/calendar__autoJoin.effect.vibe"
+
+export const AUTO_JOIN_METADATA_FLAG = "calendarAutoJoin"
+export const JOIN_OFFSET_MINUTES = -1
+export const APPROVAL_OFFSET_MINUTES = -15
+
+export type AutoJoinPolicyName = "off" | "ask" | "all"
+
+module node {
+  export type MeetingProvider = "google_meet" | "zoom" | "teams" | "webex" | "jitsi"
+
+  export interface ParsedMeetingLink {
+    readonly url: string
+    readonly provider: MeetingProvider
+  }
+
+  const httpsUrlPattern = /https:\/\/[^\s<>"{}|\\^`[\]]+/gu
+  const trailingPunctuation = /[).,;:\]!?]+$/u
+
+  function classifyMeetingHost(host: string, pathname: string): MeetingProvider | undefined {
+    const cleanPath = pathname.replace(/\/+$/u, "")
+    if (cleanPath === "" || cleanPath === "/") return undefined
+    if (host === "meet.google.com") return "google_meet"
+    if (host === "zoom.us" || host.endsWith(".zoom.us")) {
+      return /^\/(j|my|w)\/[^/]+/u.test(cleanPath) ? "zoom" : undefined
+    }
+    if (host === "teams.microsoft.com" || host === "teams.live.com") {
+      return /^\/(l\/meetup-join|meet)\/[^/]+/u.test(cleanPath) ? "teams" : undefined
+    }
+    if (host === "webex.com" || host.endsWith(".webex.com")) {
+      return /^\/(meet|join|wbxmjs)\/[^/]+/u.test(cleanPath) ? "webex" : undefined
+    }
+    if (host === "meet.jit.si") return "jitsi"
+    return undefined
+  }
+
+  /** @throws {never} */
+  export function parseMeetingUrl(input: string): ParsedMeetingLink | undefined {
+    const matches = input.match(httpsUrlPattern)
+    if (matches === null) return undefined
+    for (const raw of matches) {
+      const candidate = raw.replace(trailingPunctuation, "")
+      try {
+        const parsed = new URL(candidate)
+        if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") continue
+        const provider = classifyMeetingHost(parsed.hostname.toLowerCase(), parsed.pathname)
+        if (provider !== undefined) return { url: parsed.toString(), provider }
+      } catch {
+        continue
+      }
+    }
+    return undefined
+  }
+}
+
+import { parseMeetingUrl, type MeetingProvider, type ParsedMeetingLink } from node
+export { parseMeetingUrl, type MeetingProvider, type ParsedMeetingLink }
+
+export interface PlannedAutoJoinTask {
+  readonly kind: "approval" | "join"
+  readonly anchorKey: string
+  readonly eventId: string
+  readonly title: string
+  readonly meetingUrl: string
+  readonly provider: MeetingProvider
+  readonly scheduledAt: string
+  readonly offsetMinutes: number
+  readonly metadataFlag: typeof AUTO_JOIN_METADATA_FLAG
+  readonly dependsOnApproval: boolean
+}
+
+const policyMap: Readonly<Record<AutoJoinPolicyName, AutoJoinPolicy>> = {
+  off: "AutoJoinOff",
+  ask: "AutoJoinAsk",
+  all: "AutoJoinAll",
+}
+
+export function toAutoJoinPolicy(policy: AutoJoinPolicyName): AutoJoinPolicy {
+  return policyMap[policy]
+}
+
+export function eventStartAnchorKey(eventId: string): string {
+  return `calendar-event:${eventId.trim()}`
+}
+
+export function extractEventMeetingLink(event: CalendarEvent): ParsedMeetingLink | undefined {
+  for (const field of [event.conferenceLink ?? "", event.location, event.description]) {
+    if (field.trim() === "") continue
+    const parsed = parseMeetingUrl(field)
+    if (parsed !== undefined) return parsed
+  }
+  return undefined
+}
+
+export function planAutoJoinTasks(
+  event: CalendarEvent,
+  policy: AutoJoinPolicyName,
+  nowMs: number,
+): readonly PlannedAutoJoinTask[] {
+  const link = extractEventMeetingLink(event)
+  const startMs = Date.parse(event.startAt)
+  const endMs = Date.parse(event.endAt)
+  const ended = !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= nowMs || event.status === "cancelled"
+  const count = plannedAutoJoinTaskCount(toAutoJoinPolicy(policy), link !== undefined, ended)
+  if (count === 0 || link === undefined) return []
+  const anchorKey = eventStartAnchorKey(event.id)
+  const joinTask: PlannedAutoJoinTask = {
+    kind: "join",
+    anchorKey,
+    eventId: event.id,
+    title: event.title,
+    meetingUrl: link.url,
+    provider: link.provider,
+    scheduledAt: new Date(Math.max(nowMs, startMs + JOIN_OFFSET_MINUTES * 60_000)).toISOString(),
+    offsetMinutes: JOIN_OFFSET_MINUTES,
+    metadataFlag: AUTO_JOIN_METADATA_FLAG,
+    dependsOnApproval: count === 2,
+  }
+  if (count === 1) return [joinTask]
+  const approvalTask: PlannedAutoJoinTask = {
+    kind: "approval",
+    anchorKey,
+    eventId: event.id,
+    title: event.title,
+    meetingUrl: link.url,
+    provider: link.provider,
+    scheduledAt: new Date(Math.max(nowMs, startMs + APPROVAL_OFFSET_MINUTES * 60_000)).toISOString(),
+    offsetMinutes: APPROVAL_OFFSET_MINUTES,
+    metadataFlag: AUTO_JOIN_METADATA_FLAG,
+    dependsOnApproval: false,
+  }
+  return [approvalTask, joinTask]
+}
+
+export class MeetingAutoJoinTracker {
+  private readonly states = new Map<string, AutoJoinMachine>()
+
+  getState(eventId: string): AutoJoinMachine {
+    return this.states.get(eventId) ?? initial
+  }
+
+  effect stepEvent(eventId: string, event: AutoJoinMachineEvent): AutoJoinMachine!Rejected {
+    const next = try apply(this.getState(eventId), event)
+    this.states.set(eventId, next)
+    return next
+  }
+
+  effect armForEvent(
+    event: CalendarEvent,
+    policy: AutoJoinPolicyName,
+    nowMs: number,
+  ): { readonly state: AutoJoinMachine; readonly tasks: readonly PlannedAutoJoinTask[] }!Rejected {
+    const tasks = planAutoJoinTasks(event, policy, nowMs)
+    const link = extractEventMeetingLink(event)
+    const endMs = Date.parse(event.endAt)
+    const eventEnded = !Number.isFinite(endMs) || endMs <= nowMs || event.status === "cancelled"
+    const state = try this.stepEvent(event.id, {
+      type: "armAutoJoin",
+      policy: toAutoJoinPolicy(policy),
+      hasMeetingLink: link !== undefined,
+      eventEnded,
+    })
+    return { state, tasks }
+  }
+}

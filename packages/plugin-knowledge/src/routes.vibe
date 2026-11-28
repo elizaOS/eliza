@@ -1,0 +1,536 @@
+// spec/knowledge/index.md, "Story: Find and manage the documents I am allowed to use"; spec/knowledge/index.md, "Access follows the document owner, the resolved sharing audience, and the document's removal state"; spec/knowledge/index.md, "Ownership is required for changes to a document or its audience"
+import { resolveCanonicalOwnerId, validateUuid, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import {
+  documentManageable,
+  documentReadable,
+  maxDocumentUploadBytes,
+  searchableDocuments,
+  uploadAdmitted,
+  visibleDocuments,
+  type DocumentState,
+  type KnowledgeDocument,
+} from "../gen/knowledge.effect.vibe"
+import {
+  getDocumentDeleteability,
+  getDocumentEditability,
+  presentDocument,
+  scopeToSpec,
+  type DocumentProvenanceKind,
+  type PresentedDocument,
+} from "./presenter.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+
+  /** @throws {never} */
+  export function nextDocumentId(): string {
+    return randomUUID()
+  }
+}
+import { nextDocumentId } from node
+
+export const DOCUMENT_UPLOAD_MAX_BODY_BYTES = maxDocumentUploadBytes
+
+export interface DocumentAccessContext {
+  readonly requesterEntityId: string
+  readonly role: "OWNER" | "MEMBER" | "GUEST"
+  readonly isOwner: boolean
+  readonly source: string
+}
+
+export interface StoredKnowledgeDocument {
+  readonly docId: string
+  readonly documentOwner: string
+  readonly scope: "owner" | "shared" | "public"
+  readonly audience: readonly string[]
+  readonly state: DocumentState
+  readonly pinned: boolean
+  readonly tags: readonly string[]
+  readonly fragments: readonly string[]
+  readonly memory: Memory
+}
+
+export interface KnowledgeRouteRequest {
+  readonly method: "GET" | "POST" | "PATCH" | "DELETE"
+  readonly pathname: string
+  readonly searchParams?: Readonly<Record<string, string>>
+  readonly body?: unknown
+  readonly bodyBytes?: number
+  readonly accessContext?: DocumentAccessContext
+  readonly isTrustedLocal?: boolean
+  readonly runtime?: IAgentRuntime
+}
+
+export interface KnowledgeRouteResponse {
+  readonly status: number
+  readonly body: unknown
+}
+
+export error KnowledgeRouteFailure { reason: string }
+
+export service DocumentUrlFetcher {
+  fetch(url: string): { readonly content: string; readonly contentType: string; readonly filename: string }!KnowledgeRouteFailure
+}
+
+export interface KnowledgeRepository {
+  listAll(): readonly StoredKnowledgeDocument[]
+  get(docId: string): StoredKnowledgeDocument | undefined
+  upsert(doc: StoredKnowledgeDocument): StoredKnowledgeDocument
+  remove(docId: string): boolean
+}
+
+const SUPPORTED_CONTENT_TYPES = new Set([
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "text/html",
+  "text/xml",
+  "application/json",
+  "application/pdf",
+  "application/xml",
+  "application/yaml",
+  "application/x-yaml",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+])
+
+export function validateDocumentContentType(
+  contentType: unknown,
+): { readonly ok: true; readonly contentType: string } | { readonly ok: false; readonly error: string } {
+  if (contentType === undefined || contentType === null || contentType === "") {
+    return { ok: true, contentType: "text/plain" }
+  }
+  if (typeof contentType !== "string") return { ok: false, error: "Content type must be a string." }
+  const normalized = contentType.split(";")[0]?.trim().toLowerCase() ?? ""
+  if (normalized.startsWith("text/") || SUPPORTED_CONTENT_TYPES.has(normalized)) {
+    return { ok: true, contentType: normalized }
+  }
+  return { ok: false, error: `Unsupported document content type: ${normalized}` }
+}
+
+export function resolveTrustedLocalDocumentAccessContext(input: {
+  readonly accessContext?: DocumentAccessContext
+  readonly isTrustedLocal?: boolean
+  readonly runtime?: IAgentRuntime
+}): DocumentAccessContext | undefined {
+  if (input.accessContext !== undefined) return input.accessContext
+  if (!input.isTrustedLocal || input.runtime === undefined) return undefined
+  const ownerId = validateUuid(resolveCanonicalOwnerId(input.runtime)) ?? String(input.runtime.agentId)
+  return {
+    requesterEntityId: ownerId,
+    role: "OWNER",
+    isOwner: true,
+    source: "trusted-local",
+  }
+}
+
+function toSpecDoc(stored: StoredKnowledgeDocument): KnowledgeDocument {
+  return {
+    docId: stored.docId,
+    documentOwner: stored.documentOwner,
+    documentScope: scopeToSpec(stored.scope),
+    audience: [...stored.audience],
+    documentState: stored.state,
+    title: presentDocument(stored.memory, stored.fragments.length).filename,
+  }
+}
+
+function asObj(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined
+}
+
+function field(obj: Readonly<Record<string, unknown>> | undefined, key: string): unknown {
+  return obj === undefined ? undefined : Object.getOwnPropertyDescriptor(obj, key)?.value
+}
+
+function strField(obj: Readonly<Record<string, unknown>> | undefined, key: string): string | undefined {
+  const val = field(obj, key)
+  return typeof val === "string" ? val : undefined
+}
+
+function strArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "").map((s) => s.trim()) : []
+}
+
+function chunkText(text: string, maxChunk = 1000): string[] {
+  const trimmed = text.trim()
+  if (trimmed === "") return []
+  const chunks: string[] = []
+  for (let i = 0; i < trimmed.length; i += maxChunk) {
+    chunks.push(trimmed.slice(i, i + maxChunk))
+  }
+  return chunks
+}
+
+function makeStoredDocument(input: {
+  readonly docId: string
+  readonly ownerId: string
+  readonly filename: string
+  readonly content: string
+  readonly contentType: string
+  readonly source: DocumentProvenanceKind
+  readonly scope: "owner" | "shared" | "public"
+  readonly audience: readonly string[]
+  readonly state: DocumentState
+  readonly tags: readonly string[]
+  readonly url?: string
+  readonly textBacked?: boolean
+}): StoredKnowledgeDocument {
+  const now = Date.now()
+  const byteSize = new TextEncoder().encode(input.content).byteLength
+  const memory: Memory = {
+    id: input.docId as UUID,
+    entityId: input.ownerId as UUID,
+    roomId: input.ownerId as UUID,
+    agentId: input.ownerId as UUID,
+    createdAt: now,
+    content: { text: input.content },
+    metadata: {
+      type: "custom",
+      filename: input.filename,
+      contentType: input.contentType,
+      fileSize: byteSize,
+      source: input.source,
+      documentScope: input.scope,
+      addedBy: input.ownerId,
+      ...(input.url !== undefined ? { url: input.url } : {}),
+      ...(input.textBacked !== undefined ? { textBacked: input.textBacked } : {}),
+    },
+  }
+  return {
+    docId: input.docId,
+    documentOwner: input.ownerId,
+    scope: input.scope,
+    audience: input.audience,
+    state: input.state,
+    pinned: false,
+    tags: input.tags,
+    fragments: chunkText(input.content),
+    memory,
+  }
+}
+
+export class InMemoryKnowledgeRepository implements KnowledgeRepository {
+  private readonly rows = new Map<string, StoredKnowledgeDocument>()
+
+  listAll(): readonly StoredKnowledgeDocument[] {
+    return [...this.rows.values()]
+  }
+
+  get(docId: string): StoredKnowledgeDocument | undefined {
+    return this.rows.get(docId)
+  }
+
+  upsert(doc: StoredKnowledgeDocument): StoredKnowledgeDocument {
+    this.rows.set(doc.docId, doc)
+    return doc
+  }
+
+  remove(docId: string): boolean {
+    const existing = this.rows.get(docId)
+    if (existing === undefined) return false
+    this.rows.set(docId, { ...existing, state: "RemovedDocument" })
+    return true
+  }
+}
+
+function visibleStored(repo: KnowledgeRepository, viewerId: string): StoredKnowledgeDocument[] {
+  const all = repo.listAll()
+  const allowedIds = new Set(visibleDocuments(all.map(toSpecDoc), viewerId).map((d) => d.docId))
+  return all.filter((row) => allowedIds.has(row.docId))
+}
+
+function searchableStored(repo: KnowledgeRepository, viewerId: string): StoredKnowledgeDocument[] {
+  const all = repo.listAll()
+  const allowedIds = new Set(searchableDocuments(all.map(toSpecDoc), viewerId).map((d) => d.docId))
+  return all.filter((row) => allowedIds.has(row.docId))
+}
+
+function scoreMatch(doc: StoredKnowledgeDocument, presented: PresentedDocument, query: string): number {
+  const q = query.trim().toLowerCase()
+  if (q === "") return 0
+  const title = presented.filename.toLowerCase()
+  const text = (doc.memory.content.text ?? "").toLowerCase()
+  let score = 0
+  if (title.includes(q)) score += 3
+  if (text.includes(q)) score += 2
+  for (const token of q.split(/\s+/).filter((t) => t.length > 0)) {
+    if (title.includes(token)) score += 1
+    if (text.includes(token)) score += 0.5
+  }
+  return score
+}
+
+function parseScopeParam(raw: unknown): "owner" | "shared" | "public" | undefined {
+  if (raw === "owner" || raw === "shared" || raw === "public") return raw
+  return undefined
+}
+
+function parseSingleUpload(
+  repo: KnowledgeRepository,
+  actorId: string,
+  payload: Readonly<Record<string, unknown>> | undefined,
+  explicitBytes: number | undefined,
+  nextId: () => string,
+): { readonly ok: true; readonly doc: StoredKnowledgeDocument } | { readonly ok: false; readonly status: number; readonly error: string } {
+  const content = strField(payload, "content") ?? ""
+  const byteSize = explicitBytes ?? new TextEncoder().encode(content).byteLength
+  const ct = validateDocumentContentType(field(payload, "contentType"))
+  if (!ct.ok) return { ok: false, status: 400, error: ct.error }
+  if (!uploadAdmitted(byteSize, true)) {
+    const status = byteSize > DOCUMENT_UPLOAD_MAX_BODY_BYTES ? 413 : 400
+    return { ok: false, status, error: status === 413 ? "Document exceeds 32 MB upload limit." : "Document content must not be empty." }
+  }
+  const filename = strField(payload, "filename")?.trim() || "document.txt"
+  const scope = parseScopeParam(field(payload, "scope")) ?? "owner"
+  const audience = strArray(field(payload, "audience"))
+  const tags = strArray(field(payload, "tags"))
+  const stateRaw = strField(payload, "state")
+  const state: DocumentState = stateRaw === "IndexingDocument" ? "IndexingDocument" : "ReadyDocument"
+  const sourceRaw = strField(payload, "source")
+  const source: DocumentProvenanceKind =
+    sourceRaw === "bundled" || sourceRaw === "character" || sourceRaw === "url" || sourceRaw === "transcript" || sourceRaw === "note"
+      ? sourceRaw
+      : "uploaded"
+  const textBackedVal = field(payload, "textBacked")
+  const stored = makeStoredDocument({
+    docId: strField(payload, "id")?.trim() || nextId(),
+    ownerId: actorId,
+    filename,
+    content,
+    contentType: ct.contentType,
+    source,
+    scope,
+    audience,
+    state,
+    tags,
+    url: strField(payload, "url"),
+    textBacked: typeof textBackedVal === "boolean" ? textBackedVal : undefined,
+  })
+  return { ok: true, doc: repo.upsert(stored) }
+}
+
+function uploadResponse(
+  uploaded: { readonly ok: true; readonly doc: StoredKnowledgeDocument } | { readonly ok: false; readonly status: number; readonly error: string },
+): KnowledgeRouteResponse {
+  if (!uploaded.ok) return { status: uploaded.status, body: { error: uploaded.error } }
+  return { status: 201, body: { document: presentDocument(uploaded.doc.memory, uploaded.doc.fragments.length, { includeContent: true }) } }
+}
+
+export effect function handleKnowledgeRoute(
+  repo: KnowledgeRepository,
+  request: KnowledgeRouteRequest,
+  nextId: () => string = nextDocumentId,
+): KnowledgeRouteResponse!KnowledgeRouteFailure!DocumentUrlFetcher {
+  if (!request.pathname.startsWith("/api/documents")) {
+    return { status: 404, body: { error: "Not found" } }
+  }
+  const actor = resolveTrustedLocalDocumentAccessContext({
+    accessContext: request.accessContext,
+    isTrustedLocal: request.isTrustedLocal,
+    runtime: request.runtime,
+  })
+  if (actor === undefined || actor.requesterEntityId === "") {
+    return { status: 401, body: { error: "Authentication required." } }
+  }
+  const viewerId = actor.requesterEntityId
+  const params = request.searchParams ?? {}
+
+  if (request.method === "GET" && request.pathname === "/api/documents/stats") {
+    const visible = visibleStored(repo, viewerId)
+    const byScope: Record<string, number> = { owner: 0, shared: 0, public: 0 }
+    const byState: Record<string, number> = {}
+    let totalBytes = 0
+    let totalFragments = 0
+    for (const row of visible) {
+      byScope[row.scope] = (byScope[row.scope] ?? 0) + 1
+      byState[row.state] = (byState[row.state] ?? 0) + 1
+      totalFragments += row.fragments.length
+      totalBytes += presentDocument(row.memory, row.fragments.length).fileSize
+    }
+    return { status: 200, body: { totalDocuments: visible.length, totalFragments, totalBytes, byScope, byState } }
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/documents/facets") {
+    const visible = visibleStored(repo, viewerId)
+    const sources: Record<string, number> = {}
+    const contentTypes: Record<string, number> = {}
+    const scopes: Record<string, number> = {}
+    const tags: Record<string, number> = {}
+    for (const row of visible) {
+      const presented = presentDocument(row.memory, row.fragments.length)
+      sources[presented.source] = (sources[presented.source] ?? 0) + 1
+      contentTypes[presented.contentType] = (contentTypes[presented.contentType] ?? 0) + 1
+      scopes[row.scope] = (scopes[row.scope] ?? 0) + 1
+      for (const tag of row.tags) tags[tag] = (tags[tag] ?? 0) + 1
+    }
+    return { status: 200, body: { sources, contentTypes, scopes, tags } }
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/documents/search") {
+    const q = params.q ?? ""
+    const limit = Math.max(1, Math.min(100, Number.parseInt(params.limit ?? "20", 10) || 20))
+    const hits = searchableStored(repo, viewerId)
+      .map((row) => {
+        const presented = presentDocument(row.memory, row.fragments.length)
+        return { document: presented, score: scoreMatch(row, presented, q) }
+      })
+      .filter((entry) => q.trim() === "" || entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+    return { status: 200, body: { query: q, results: hits, total: hits.length } }
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/documents") {
+    const scopeFilter = params.scope
+    const sourceFilter = params.source
+    const tagFilter = params.tag
+    const limit = Math.max(1, Math.min(200, Number.parseInt(params.limit ?? "50", 10) || 50))
+    const offset = Math.max(0, Number.parseInt(params.offset ?? "0", 10) || 0)
+    const filtered = visibleStored(repo, viewerId).filter((row) => {
+      const presented = presentDocument(row.memory, row.fragments.length)
+      if (scopeFilter && row.scope !== scopeFilter) return false
+      if (sourceFilter && presented.source !== sourceFilter) return false
+      if (tagFilter && !row.tags.includes(tagFilter)) return false
+      return true
+    })
+    const page = filtered.slice(offset, offset + limit).map((row) => presentDocument(row.memory, row.fragments.length))
+    return { status: 200, body: { documents: page, total: filtered.length, offset, limit } }
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/documents") {
+    return uploadResponse(parseSingleUpload(repo, viewerId, asObj(request.body), request.bodyBytes, nextId))
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/documents/bulk") {
+    const payload = asObj(request.body)
+    const rawItems = field(payload, "documents")
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      return { status: 400, body: { error: "documents array is required." } }
+    }
+    const succeeded: PresentedDocument[] = []
+    const failed: { readonly index: number; readonly error: string }[] = []
+    for (let i = 0; i < rawItems.length; i++) {
+      const uploaded = parseSingleUpload(repo, viewerId, asObj(rawItems[i]), undefined, nextId)
+      if (uploaded.ok) {
+        succeeded.push(presentDocument(uploaded.doc.memory, uploaded.doc.fragments.length))
+      } else {
+        failed.push({ index: i, error: uploaded.error })
+      }
+    }
+    return { status: 200, body: { succeeded, failed } }
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/documents/url") {
+    const payload = asObj(request.body)
+    const rawUrl = strField(payload, "url")?.trim() ?? ""
+    if (!rawUrl.startsWith("https://") && !rawUrl.startsWith("http://")) {
+      return { status: 400, body: { error: "Only http and https URLs are supported." } }
+    }
+    const fetcher = try DocumentUrlFetcher
+    const fetched = try fetcher.fetch(rawUrl)
+    return uploadResponse(parseSingleUpload(
+      repo,
+      viewerId,
+      { ...payload, content: fetched.content, contentType: fetched.contentType, filename: strField(payload, "filename") ?? fetched.filename, source: "url", url: rawUrl },
+      undefined,
+      nextId,
+    ))
+  }
+
+  const subPath = request.pathname.slice("/api/documents/".length)
+  const segments = subPath.split("/").filter((s) => s.length > 0)
+  const rawDocId = segments[0]
+  if (rawDocId === undefined || rawDocId === "") return { status: 404, body: { error: "Not found" } }
+  const decodedDocId = try Effect.result(Effect.try(() => decodeURIComponent(rawDocId)))
+  if (decodedDocId._tag !== "Success" || decodedDocId.success === "") {
+    return { status: 400, body: { error: "Invalid document identifier." } }
+  }
+  const docId = decodedDocId.success
+  const subResource = segments[1]
+
+  const stored = repo.get(docId)
+  if (stored === undefined || !documentReadable(toSpecDoc(stored), viewerId)) {
+    return { status: 404, body: { error: "Document not found or access denied." } }
+  }
+
+  if (subResource === "fragments" && request.method === "GET") {
+    return { status: 200, body: { docId, fragments: stored.fragments.map((text, index) => ({ index, text })) } }
+  }
+
+  if (subResource === "pins") {
+    if (request.method === "GET") {
+      return { status: 200, body: { docId, pinned: stored.pinned } }
+    }
+    if (request.method === "PATCH") {
+      if (!documentManageable(toSpecDoc(stored), viewerId)) {
+        return { status: 403, body: { error: "Only the document owner can change pins." } }
+      }
+      const pinnedVal = field(asObj(request.body), "pinned")
+      if (typeof pinnedVal !== "boolean") return { status: 400, body: { error: "pinned boolean is required." } }
+      repo.upsert({ ...stored, pinned: pinnedVal })
+      return { status: 200, body: { docId, pinned: pinnedVal } }
+    }
+  }
+
+  if (subResource === "access") {
+    if (request.method === "GET") {
+      return { status: 200, body: { docId, scope: stored.scope, audience: stored.audience } }
+    }
+    if (request.method === "PATCH") {
+      if (!documentManageable(toSpecDoc(stored), viewerId)) {
+        return { status: 403, body: { error: "Only the document owner can update access." } }
+      }
+      const payload = asObj(request.body)
+      const nextScope = parseScopeParam(field(payload, "scope")) ?? stored.scope
+      const nextAudience = field(payload, "audience") !== undefined ? strArray(field(payload, "audience")) : stored.audience
+      const nextMemory: Memory = {
+        ...stored.memory,
+        metadata: { ...(stored.memory.metadata as Readonly<Record<string, unknown>>), documentScope: nextScope },
+      }
+      repo.upsert({ ...stored, scope: nextScope, audience: nextAudience, memory: nextMemory })
+      return { status: 200, body: { docId, scope: nextScope, audience: nextAudience } }
+    }
+  }
+
+  if (subResource === undefined && request.method === "GET") {
+    return { status: 200, body: { document: presentDocument(stored.memory, stored.fragments.length, { includeContent: true }) } }
+  }
+
+  if (subResource === undefined && request.method === "PATCH") {
+    if (!documentManageable(toSpecDoc(stored), viewerId)) {
+      return { status: 403, body: { error: "Only the document owner can edit this document." } }
+    }
+    const editability = getDocumentEditability(stored.memory)
+    if (!editability.canEditText) {
+      return { status: 403, body: { error: editability.reason ?? "Document cannot be edited." } }
+    }
+    const nextText = strField(asObj(request.body), "text")
+    if (nextText === undefined) return { status: 400, body: { error: "text string is required." } }
+    const nextMemory: Memory = {
+      ...stored.memory,
+      content: { ...stored.memory.content, text: nextText },
+      metadata: {
+        ...(stored.memory.metadata as Readonly<Record<string, unknown>>),
+        fileSize: new TextEncoder().encode(nextText).byteLength,
+      },
+    }
+    const updated = repo.upsert({ ...stored, fragments: chunkText(nextText), memory: nextMemory })
+    return { status: 200, body: { document: presentDocument(updated.memory, updated.fragments.length, { includeContent: true }) } }
+  }
+
+  if (subResource === undefined && request.method === "DELETE") {
+    if (!documentManageable(toSpecDoc(stored), viewerId)) {
+      return { status: 403, body: { error: "Only the document owner can delete this document." } }
+    }
+    const deleteability = getDocumentDeleteability(stored.memory)
+    if (!deleteability.canDelete) {
+      return { status: 403, body: { error: deleteability.reason ?? "Document cannot be deleted." } }
+    }
+    repo.remove(docId)
+    return { status: 200, body: { deleted: true, docId } }
+  }
+
+  return { status: 405, body: { error: "Method not allowed." } }
+}

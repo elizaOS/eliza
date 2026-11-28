@@ -1,0 +1,443 @@
+// spec/discord/coordination.md, "Owner pairing enforces per-user and map-capacity rate limits, and voice audio lanes honor interruptibility and priority"; spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"
+import { Service, logger, type IAgentRuntime } from "@elizaos/core"
+import type { ChatInputCommandInteraction } from "discord.js"
+import { discordPairAttemptAllowed } from "../gen/discord__coordination.effect.vibe"
+import {
+  DISCORD_OWNER_PAIRING_SERVICE_TYPE,
+  DISCORD_SERVICE_NAME,
+  isValidSnowflake,
+} from "./types.vibe"
+
+export const COMMAND_ARG_CUSTOM_ID_KEY = "eliza_cmd_arg"
+
+export interface CommandArgDefinition {
+  readonly name: string
+  readonly description: string
+  readonly type: "string" | "integer" | "boolean" | "number"
+  readonly required?: boolean
+  readonly choices?: readonly { readonly name: string; readonly value: string | number }[]
+}
+
+export interface NativeCommandSpec {
+  readonly name: string
+  readonly description: string
+  readonly args?: readonly CommandArgDefinition[]
+  readonly dmPermission?: boolean
+  readonly guildOnly?: boolean
+}
+
+export type CommandArgValues = Record<string, string | number | boolean | undefined>
+
+export interface CommandArgs {
+  readonly command: string
+  readonly values: CommandArgValues
+}
+
+export interface BuiltCommandOption {
+  readonly name: string
+  readonly description: string
+  readonly type: number
+  readonly required: boolean
+  readonly choices?: readonly { readonly name: string; readonly value: string | number }[]
+}
+
+export interface CommandArgButton {
+  readonly customId: string
+  readonly label: string
+  readonly value: string
+}
+
+export interface CommandArgButtonRow {
+  readonly buttons: readonly CommandArgButton[]
+}
+
+export interface CommandArgMenu {
+  readonly command: string
+  readonly argName: string
+  readonly rows: readonly CommandArgButtonRow[]
+}
+
+const OPTION_TYPE_CODE: Readonly<Record<CommandArgDefinition["type"], number>> = {
+  string: 3,
+  integer: 4,
+  boolean: 5,
+  number: 10,
+}
+
+export function buildDiscordCommandOptions(args: readonly CommandArgDefinition[] = []): BuiltCommandOption[] {
+  return args.map((arg) => ({
+    name: arg.name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 32),
+    description: arg.description.trim().slice(0, 100) || arg.name,
+    type: OPTION_TYPE_CODE[arg.type],
+    required: arg.required === true,
+    ...(arg.choices && arg.choices.length > 0 ? { choices: arg.choices.slice(0, 25) } : {}),
+  }))
+}
+
+export function buildDiscordSlashCommand(spec: NativeCommandSpec): {
+  readonly name: string
+  readonly description: string
+  readonly options: readonly BuiltCommandOption[]
+  readonly dm_permission: boolean
+} {
+  return {
+    name: spec.name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 32),
+    description: spec.description.trim().slice(0, 100) || spec.name,
+    options: buildDiscordCommandOptions(spec.args),
+    dm_permission: spec.guildOnly === true ? false : spec.dmPermission !== false,
+  }
+}
+
+export function encodeCommandArgValue(value: string): string {
+  return encodeURIComponent(value)
+}
+
+export function decodeCommandArgValue(encoded: string): string {
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    return encoded
+  }
+}
+
+export function buildCommandArgCustomId(command: string, argName: string, value: string): string {
+  return `${COMMAND_ARG_CUSTOM_ID_KEY}:${command}:${argName}:${encodeCommandArgValue(value)}`.slice(0, 100)
+}
+
+export function parseCommandArgCustomId(customId: string): { readonly command: string; readonly argName: string; readonly value: string } | null {
+  const prefix = `${COMMAND_ARG_CUSTOM_ID_KEY}:`
+  if (!customId.startsWith(prefix)) return null
+  const parts = customId.slice(prefix.length).split(":")
+  if (parts.length < 3) return null
+  const [command, argName, ...rest] = parts
+  if (!command || !argName) return null
+  return { command, argName, value: decodeCommandArgValue(rest.join(":")) }
+}
+
+export function buildCommandArgMenu(
+  command: string,
+  argName: string,
+  choices: readonly { readonly label: string; readonly value: string }[],
+): CommandArgMenu {
+  const rows: CommandArgButtonRow[] = []
+  for (let i = 0; i < choices.length; i += 5) {
+    rows.push({
+      buttons: choices.slice(i, i + 5).map((choice) => ({
+        customId: buildCommandArgCustomId(command, argName, choice.value),
+        label: choice.label.slice(0, 80),
+        value: choice.value,
+      })),
+    })
+  }
+  return { command, argName, rows }
+}
+
+export function createCommandArgs(command: string, values: CommandArgValues = {}): CommandArgs {
+  return { command, values: { ...values } }
+}
+
+export function serializeCommandArgs(args: CommandArgs): string {
+  const entries = Object.entries(args.values)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${String(v)}`)
+  return entries.length > 0 ? `/${args.command} ${entries.join(" ")}` : `/${args.command}`
+}
+
+export function buildCommandText(command: string, values: CommandArgValues = {}): string {
+  return serializeCommandArgs(createCommandArgs(command, values))
+}
+
+export function isUnknownInteractionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const code = (error as { readonly code?: unknown }).code
+  return code === 10062 || code === 40060
+}
+
+export async function safeInteractionCall<T>(fn: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (isUnknownInteractionError(error)) return undefined
+    throw error
+  }
+}
+
+export type SlashCommandRole = "everyone" | "user" | "moderator" | "admin" | "owner"
+
+export interface SlashCommandOption {
+  readonly name: string
+  readonly description: string
+  readonly type: "string" | "integer" | "boolean" | "number"
+  readonly required?: boolean
+  readonly autocomplete?: boolean
+  readonly choices?: readonly { readonly name: string; readonly value: string | number }[]
+}
+
+export interface SlashCommandContext {
+  readonly runtime: IAgentRuntime
+  readonly interaction: ChatInputCommandInteraction
+  readonly accountId?: string
+}
+
+export interface SlashCommand {
+  readonly name: string
+  readonly description: string
+  readonly role?: SlashCommandRole
+  readonly guildOnly?: boolean
+  readonly options?: readonly SlashCommandOption[]
+  readonly handler: (ctx: SlashCommandContext) => Promise<void>
+  readonly autocomplete?: (ctx: {
+    readonly runtime: IAgentRuntime
+    readonly focusedName: string
+    readonly focusedValue: string
+  }) => Promise<readonly { readonly name: string; readonly value: string }[]>
+}
+
+const slashCommandRegistry = new Map<string, SlashCommand>()
+
+export function addCommand(command: SlashCommand): void {
+  slashCommandRegistry.set(command.name.trim().toLowerCase(), command)
+}
+
+export function removeCommand(name: string): boolean {
+  return slashCommandRegistry.delete(name.trim().toLowerCase())
+}
+
+export function getRegisteredCommands(): SlashCommand[] {
+  return Array.from(slashCommandRegistry.values())
+}
+
+export function registerSlashCommands(commands: readonly SlashCommand[]): void {
+  for (const command of commands) addCommand(command)
+}
+
+export function isGuildOnlyCommand(command: Pick<SlashCommand, "guildOnly">): boolean {
+  return command.guildOnly === true
+}
+
+export function transformCommandToDiscordApi(command: SlashCommand): {
+  readonly name: string
+  readonly description: string
+  readonly options: readonly BuiltCommandOption[]
+  readonly dm_permission: boolean
+} {
+  return buildDiscordSlashCommand({
+    name: command.name,
+    description: command.description,
+    guildOnly: command.guildOnly,
+    args: command.options,
+  })
+}
+
+export async function handleSlashCommand(
+  interaction: ChatInputCommandInteraction,
+  runtime: IAgentRuntime,
+  accountId?: string,
+): Promise<boolean> {
+  const command = slashCommandRegistry.get(interaction.commandName.trim().toLowerCase())
+  if (!command) return false
+  if (command.guildOnly && !interaction.guildId) {
+    await safeInteractionCall(() => interaction.reply({ content: "This command can only be used in a server.", ephemeral: true }))
+    return true
+  }
+  await command.handler({ runtime, interaction, accountId })
+  return true
+}
+
+export async function handleAutocomplete(
+  commandName: string,
+  runtime: IAgentRuntime,
+  focusedName: string,
+  focusedValue: string,
+): Promise<readonly { readonly name: string; readonly value: string }[]> {
+  const command = slashCommandRegistry.get(commandName.trim().toLowerCase())
+  if (!command?.autocomplete) return []
+  return command.autocomplete({ runtime, focusedName, focusedValue })
+}
+
+const RATE_LIMIT_MAX_ATTEMPTS = 5
+const RATE_LIMIT_WINDOW_MS = 60_000
+const MAX_TRACKED_PAIR_USERS = 10_000
+const pairAttempts = new Map<string, number[]>()
+
+export function _resetRateLimitStateForTesting(): void {
+  pairAttempts.clear()
+}
+
+function isPairRateLimited(userId: string, now = Date.now()): boolean {
+  const windowStart = now - RATE_LIMIT_WINDOW_MS
+  if (pairAttempts.size >= MAX_TRACKED_PAIR_USERS) {
+    for (const [id, list] of pairAttempts) {
+      if (!list.some((ts) => ts > windowStart)) pairAttempts.delete(id)
+    }
+  }
+  const recent = (pairAttempts.get(userId) ?? []).filter((ts) => ts > windowStart)
+  if (recent.length === 0) pairAttempts.delete(userId)
+  else pairAttempts.set(userId, recent)
+  const alreadyTracked = pairAttempts.has(userId)
+  const allowed = discordPairAttemptAllowed(
+    recent.length,
+    pairAttempts.size,
+    RATE_LIMIT_MAX_ATTEMPTS,
+    MAX_TRACKED_PAIR_USERS,
+    alreadyTracked,
+  )
+  if (!allowed) return true
+  recent.push(now)
+  pairAttempts.set(userId, recent)
+  return false
+}
+
+interface OwnerBindVerifyService {
+  readonly verifyOwnerBindFromConnector: (params: {
+    readonly connector: "discord" | "telegram" | "wechat" | "matrix"
+    readonly externalId: string
+    readonly displayHandle: string
+    readonly code: string
+  }) => Promise<{ readonly success: boolean; readonly error?: string }>
+}
+
+function resolveVerifyService(runtime: IAgentRuntime): OwnerBindVerifyService | null {
+  try {
+    const svc = runtime.getService("OWNER_BIND_VERIFY") as unknown
+    if (
+      svc &&
+      typeof svc === "object" &&
+      typeof (svc as Record<string, unknown>).verifyOwnerBindFromConnector === "function"
+    ) {
+      return svc as OwnerBindVerifyService
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+async function emitPairAudit(
+  runtime: IAgentRuntime,
+  action: string,
+  outcome: "success" | "failure",
+  metadata: Record<string, string | number | boolean>,
+): Promise<void> {
+  try {
+    await runtime.emitEvent(["AUTH_AUDIT"] as string[], {
+      runtime,
+      action,
+      outcome,
+      metadata,
+      source: "discord",
+    } as never)
+  } catch {
+    return
+  }
+}
+
+export async function handleElizaPairCommand(
+  interaction: ChatInputCommandInteraction,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const userId = interaction.user.id
+  const displayHandle =
+    interaction.user.discriminator && interaction.user.discriminator !== "0"
+      ? `${interaction.user.username}#${interaction.user.discriminator}`
+      : interaction.user.username
+  if (isPairRateLimited(userId)) {
+    logger.warn({ src: "plugin:discord:owner-pairing", userId }, "Rate limit hit for /eliza-pair")
+    await emitPairAudit(runtime, "auth.owner.pair.discord.rate_limited", "failure", { externalId: userId })
+    await interaction.reply({ content: "Too many pairing attempts. Please wait a moment before trying again.", ephemeral: true })
+    return
+  }
+  const rawCode = interaction.options.getString("code")
+  if (!rawCode?.trim()) {
+    await interaction.reply({ content: "Usage: `/eliza-pair <code>` — enter the 6-digit code shown in the Eliza dashboard.", ephemeral: true })
+    return
+  }
+  const code = rawCode.trim()
+  if (!/^\d{6}$/.test(code)) {
+    await interaction.reply({ content: "The pairing code must be exactly 6 digits. Check the Eliza dashboard and try again.", ephemeral: true })
+    return
+  }
+  const verifySvc = resolveVerifyService(runtime)
+  if (!verifySvc) {
+    logger.error({ src: "plugin:discord:owner-pairing", userId }, "OWNER_BIND_VERIFY service not available")
+    await emitPairAudit(runtime, "auth.owner.pair.discord.service_unavailable", "failure", { externalId: userId })
+    await interaction.reply({ content: "Eliza could not reach the pairing service right now. Please try again in a moment.", ephemeral: true })
+    return
+  }
+  let result: { readonly success: boolean; readonly error?: string }
+  try {
+    result = await verifySvc.verifyOwnerBindFromConnector({
+      connector: "discord",
+      externalId: userId,
+      displayHandle,
+      code,
+    })
+  } catch (err) {
+    logger.error({ src: "plugin:discord:owner-pairing", userId, error: err instanceof Error ? err.message : String(err) }, "verifyOwnerBindFromConnector threw")
+    await emitPairAudit(runtime, "auth.owner.pair.discord.verify_error", "failure", { externalId: userId })
+    await interaction.reply({ content: "Something went wrong while verifying the pairing code. Please try again.", ephemeral: true })
+    return
+  }
+  if (result.success) {
+    await emitPairAudit(runtime, "auth.owner.pair.discord.success", "success", { externalId: userId, displayHandle })
+    await interaction.reply({ content: "Paired with Eliza. You can now log in via Discord.", ephemeral: true })
+  } else {
+    await emitPairAudit(runtime, "auth.owner.pair.discord.failure", "failure", { externalId: userId })
+    await interaction.reply({ content: "Pair code invalid or expired. Check the Eliza dashboard for a fresh code.", ephemeral: true })
+  }
+}
+
+export interface DiscordOwnerPairingService {
+  readonly sendOwnerLoginDmLink: (params: {
+    readonly externalId: string
+    readonly link: string
+  }) => Promise<{ readonly sent: boolean; readonly error?: string }>
+}
+
+export class DiscordOwnerPairingServiceImpl extends Service implements DiscordOwnerPairingService {
+  static override serviceType = DISCORD_OWNER_PAIRING_SERVICE_TYPE
+  override capabilityDescription = "Relays Discord /eliza-pair codes and sends owner login DM links."
+
+  static override async start(runtime: IAgentRuntime): Promise<DiscordOwnerPairingServiceImpl> {
+    addCommand({
+      name: "eliza-pair",
+      description: "Pair your Discord account with Eliza using a 6-digit code.",
+      options: [{ name: "code", description: "6-digit pairing code", type: "string", required: true }],
+      handler: ({ interaction, runtime: rt }) => handleElizaPairCommand(interaction, rt),
+    })
+    return new DiscordOwnerPairingServiceImpl(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    removeCommand("eliza-pair")
+  }
+
+  async sendOwnerLoginDmLink(params: {
+    readonly externalId: string
+    readonly link: string
+  }): Promise<{ readonly sent: boolean; readonly error?: string }> {
+    const externalId = params.externalId.trim()
+    if (!isValidSnowflake(externalId)) {
+      return { sent: false, error: "Invalid Discord user snowflake." }
+    }
+    const link = params.link.trim()
+    if (!/^https?:\/\//i.test(link)) {
+      return { sent: false, error: "Login link must be an HTTP(S) URL." }
+    }
+    const discordSvc = this.runtime.getService(DISCORD_SERVICE_NAME) as {
+      getClient?: () => { users?: { fetch: (id: string) => Promise<{ send: (text: string) => Promise<unknown> }> } } | null
+    } | null
+    const client = discordSvc?.getClient?.() ?? null
+    if (!client?.users) {
+      return { sent: false, error: "Discord client is not connected." }
+    }
+    try {
+      const user = await client.users.fetch(externalId)
+      await user.send(`Use this one-time link to sign in to Eliza:\n<${link}>`)
+      return { sent: true }
+    } catch (err) {
+      return { sent: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+}

@@ -1,0 +1,126 @@
+// spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"
+import type { IAgentRuntime } from "@elizaos/core"
+import { getApiKey, getBaseURL, isCloudTtsAvailable } from "./config.vibe"
+import { cloudJsonFetch } from "./http.vibe"
+
+const CACHE_TTL_MS = 3600000
+const FAILURE_TTL_MS = 30000
+
+const OPENAI_VOICE_ALIASES = new Set<string>([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "onyx",
+  "nova",
+  "sage",
+  "shimmer",
+  "verse",
+  "marin",
+  "cedar",
+])
+
+export function isOpenAiVoiceAlias(voice: string): boolean {
+  return OPENAI_VOICE_ALIASES.has(voice.trim().toLowerCase())
+}
+
+export interface CloudVoiceCatalogEntry {
+  readonly id: string
+  readonly name: string
+  readonly gender?: string
+  readonly preview?: string
+  readonly category?: string
+  readonly language?: string
+}
+
+type EndpointCacheEntry =
+  | { readonly kind: "success"; readonly fetchedAt: number; readonly voices: CloudVoiceCatalogEntry[] }
+  | { readonly kind: "failure"; readonly fetchedAt: number }
+
+const endpointCache = new Map<string, EndpointCacheEntry>()
+const inflightRequests = new Map<string, Promise<CloudVoiceCatalogEntry[]>>()
+
+export function clearCloudVoiceCatalogCache(): void {
+  endpointCache.clear()
+  inflightRequests.clear()
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function decodeVoices(payload: unknown): CloudVoiceCatalogEntry[] {
+  const root = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined
+  const rawList = Array.isArray(payload)
+    ? payload
+    : Array.isArray(root?.voices)
+      ? root.voices
+      : Array.isArray(root?.data)
+        ? root.data
+        : []
+  const entries: CloudVoiceCatalogEntry[] = []
+  for (const item of rawList) {
+    if (!item || typeof item !== "object") continue
+    const rec = item as Record<string, unknown>
+    const labels = rec.labels && typeof rec.labels === "object" ? (rec.labels as Record<string, unknown>) : undefined
+    const id = asString(rec.voice_id) ?? asString(rec.id)
+    const name = asString(rec.name)
+    if (!id || !name) continue
+    entries.push({
+      id,
+      name,
+      ...(asString(rec.gender) ?? asString(labels?.gender) ? { gender: asString(rec.gender) ?? asString(labels?.gender) } : {}),
+      ...(asString(rec.preview_url) ?? asString(rec.preview) ? { preview: asString(rec.preview_url) ?? asString(rec.preview) } : {}),
+      ...(asString(rec.category) ? { category: asString(rec.category) } : {}),
+      ...(asString(rec.language) ?? asString(labels?.language) ? { language: asString(rec.language) ?? asString(labels?.language) } : {}),
+    })
+  }
+  return entries
+}
+
+async function fetchVoiceEndpoint(runtime: IAgentRuntime, cacheKey: string, path: string, nowMs: number): Promise<CloudVoiceCatalogEntry[]> {
+  const cached = endpointCache.get(cacheKey)
+  if (cached) {
+    const ttl = cached.kind === "success" ? CACHE_TTL_MS : FAILURE_TTL_MS
+    if (nowMs - cached.fetchedAt < ttl) {
+      return cached.kind === "success" ? cached.voices : []
+    }
+  }
+  try {
+    const raw = await runPromise(cloudJsonFetch(runtime, { method: "GET", path, maxWarmingRetries: 1 }))
+    const voices = decodeVoices(raw)
+    endpointCache.set(cacheKey, { kind: "success", fetchedAt: nowMs, voices })
+    return voices
+  } catch {
+    endpointCache.set(cacheKey, { kind: "failure", fetchedAt: nowMs })
+    return []
+  }
+}
+
+export async function fetchCloudVoiceCatalog(runtime: IAgentRuntime, nowMs = Date.now()): Promise<CloudVoiceCatalogEntry[]> {
+  if (!isCloudTtsAvailable(runtime)) return []
+  const scope = `${getBaseURL(runtime)}|${getApiKey(runtime)}`
+  const existing = inflightRequests.get(scope)
+  if (existing) return existing
+  const promise = (async () => {
+    const [premade, user] = await Promise.all([
+      fetchVoiceEndpoint(runtime, `${scope}|premade`, "/api/elevenlabs/voices", nowMs),
+      fetchVoiceEndpoint(runtime, `${scope}|user`, "/api/elevenlabs/voices/user", nowMs),
+    ])
+    const merged = new Map<string, CloudVoiceCatalogEntry>()
+    for (const voice of [...premade, ...user]) {
+      merged.set(voice.id, voice)
+    }
+    return [...merged.values()]
+  })()
+  inflightRequests.set(scope, promise)
+  try {
+    return await promise
+  } finally {
+    if (inflightRequests.get(scope) === promise) {
+      inflightRequests.delete(scope)
+    }
+  }
+}

@@ -226,7 +226,7 @@ importers:
         version: 5.4.3
       jsdom:
         specifier: 'catalog:'
-        version: 31.0.1(@noble/hashes@1.8.0)
+        version: 31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0)
       knip:
         specifier: 'catalog:'
         version: 6.45.1
@@ -259,7 +259,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 5.1.0
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       yaml:
         specifier: 2.9.1
         version: 2.9.1
@@ -299,7 +299,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/agent-host:
@@ -358,7 +358,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/cloud:
@@ -393,7 +393,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/cloud-worker:
@@ -482,7 +482,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/core:
@@ -544,7 +544,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     publishDirectory: dist
 
   packages/core-node:
@@ -582,7 +582,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/design-system:
     devDependencies:
@@ -661,7 +661,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/os-bridges:
     dependencies:
@@ -695,7 +695,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-agent-orchestrator:
     dependencies:
@@ -726,7 +726,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-anthropic:
     dependencies:
@@ -757,7 +757,7 @@ importers:
         version: 0.0.13(vibelang@0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-assistant:
     dependencies:
@@ -803,7 +803,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-assistant-client:
     dependencies:
@@ -834,7 +834,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-blocker:
     dependencies:
@@ -844,6 +844,9 @@ importers:
       '@elizaos/capacitor-websiteblocker':
         specifier: workspace:*
         version: link:../plugin-native-websiteblocker
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -868,7 +871,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-browser:
     dependencies:
@@ -911,7 +914,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-browser-client:
     dependencies:
@@ -945,7 +948,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-calendar:
     dependencies:
@@ -988,7 +991,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-calendar-client:
     dependencies:
@@ -1022,7 +1025,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-coding-tools:
     dependencies:
@@ -1059,7 +1062,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-computeruse:
     dependencies:
@@ -1096,7 +1099,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-discord:
     dependencies:
@@ -1133,7 +1136,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-elizacloud:
     dependencies:
@@ -1149,10 +1152,16 @@ importers:
       effect:
         specifier: 4.1.1
         version: 4.1.1
+      js-tiktoken:
+        specifier: ^1.0.21
+        version: 1.0.21
       vibelang-runtime:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1162,6 +1171,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibelang-vite:
+        specifier: 0.0.13
+        version: 0.0.13(vibelang@0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-embeddings:
     dependencies:
@@ -1192,7 +1207,7 @@ importers:
         version: 0.0.13(vibelang@0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-files:
     dependencies:
@@ -1241,7 +1256,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-files-client:
     dependencies:
@@ -1287,10 +1302,13 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-form:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1298,6 +1316,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1307,6 +1328,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-github:
     dependencies:
@@ -1337,10 +1364,13 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-goals:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1348,6 +1378,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1357,9 +1393,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-google-workspace:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1367,6 +1412,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1376,9 +1427,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-health:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1386,6 +1446,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1395,6 +1458,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-imessage:
     dependencies:
@@ -1408,6 +1477,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1417,6 +1489,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-inbox:
     dependencies:
@@ -1456,7 +1534,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-inbox-client:
     dependencies:
@@ -1484,10 +1562,13 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-knowledge:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1495,6 +1576,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1504,6 +1588,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-localinference:
     dependencies:
@@ -1546,7 +1636,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-localinference-client:
     dependencies:
@@ -1574,7 +1664,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-maps:
     dependencies:
@@ -1620,7 +1710,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-maps-client:
     dependencies:
@@ -1651,7 +1741,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-mcp:
     dependencies:
@@ -1688,10 +1778,13 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-meetings:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -1699,6 +1792,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1708,6 +1807,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-action-journal:
     dependencies:
@@ -1721,6 +1826,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1730,6 +1838,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-activity-tracker:
     dependencies:
@@ -1760,7 +1874,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-appblocker:
     dependencies:
@@ -1777,6 +1891,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1786,6 +1903,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-canvas:
     dependencies:
@@ -1802,6 +1925,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1811,9 +1937,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-contacts:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -1824,6 +1959,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1833,6 +1971,43 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/plugin-native-desktop:
+    dependencies:
+      '@capacitor/core':
+        specifier: 8.4.0
+        version: 8.4.0
+      effect:
+        specifier: 4.1.1
+        version: 4.1.1
+      vibelang-runtime:
+        specifier: 0.0.13
+        version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vibelang:
+        specifier: 0.0.13
+        version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-eliza-tasks:
     dependencies:
@@ -1849,6 +2024,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1858,9 +2036,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-filesystem:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -1871,6 +2058,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1880,6 +2070,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-gateway:
     dependencies:
@@ -1896,6 +2092,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1905,6 +2104,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-location:
     dependencies:
@@ -1918,6 +2123,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1927,6 +2135,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-media:
     dependencies:
@@ -1940,6 +2154,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1949,9 +2166,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-messages:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -1962,6 +2188,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1971,6 +2200,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-mobile-signals:
     dependencies:
@@ -1987,6 +2222,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -1996,6 +2234,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-notifications:
     dependencies:
@@ -2009,6 +2253,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2018,6 +2265,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-passwords:
     dependencies:
@@ -2031,6 +2284,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2040,9 +2296,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-phone:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -2053,6 +2318,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2062,9 +2330,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-settings:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -2075,6 +2352,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2084,6 +2364,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-shared-types:
     dependencies:
@@ -2094,6 +2380,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2103,6 +2392,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-swabble:
     dependencies:
@@ -2116,6 +2411,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2125,6 +2423,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-system:
     dependencies:
@@ -2138,6 +2442,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2147,6 +2454,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-talkmode:
     dependencies:
@@ -2160,6 +2473,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2169,6 +2485,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-websiteblocker:
     dependencies:
@@ -2185,6 +2507,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2194,9 +2519,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-native-wifi:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       '@elizaos/os-bridges':
         specifier: workspace:*
         version: link:../os-bridges
@@ -2207,6 +2541,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2216,6 +2553,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-network:
     dependencies:
@@ -2249,7 +2592,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-notes:
     dependencies:
@@ -2292,7 +2635,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-notes-client:
     dependencies:
@@ -2323,7 +2666,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-openai:
     dependencies:
@@ -2360,7 +2703,7 @@ importers:
         version: 0.0.13(vibelang@0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-pdf:
     dependencies:
@@ -2380,6 +2723,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2389,6 +2735,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-pty:
     dependencies:
@@ -2425,10 +2777,13 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-relationships:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -2436,6 +2791,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2445,9 +2806,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-reminders:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -2455,6 +2825,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2464,9 +2840,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-scheduling:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -2474,6 +2859,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2483,6 +2874,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-slack:
     dependencies:
@@ -2519,32 +2916,56 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-sql:
     dependencies:
       '@electric-sql/pglite':
         specifier: 'catalog:'
         version: 0.4.6
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
       vibelang-runtime:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-sqlite:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -2572,7 +2993,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-telegram:
     dependencies:
@@ -2592,6 +3013,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2601,9 +3025,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-todos:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -2611,6 +3044,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2620,9 +3059,18 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-trajectory-logger:
     dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
@@ -2630,6 +3078,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2639,6 +3090,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-video:
     dependencies:
@@ -2672,7 +3129,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-vision:
     dependencies:
@@ -2689,6 +3146,12 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.1
+        version: 4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0)
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2698,6 +3161,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-wallet:
     dependencies:
@@ -2761,7 +3230,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-wallet-client:
     dependencies:
@@ -2789,7 +3258,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-web-search:
     dependencies:
@@ -2823,7 +3292,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-workflow-client:
     dependencies:
@@ -2851,7 +3320,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-workflow-worker:
     dependencies:
@@ -2882,7 +3351,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-workflows:
     dependencies:
@@ -2940,7 +3409,7 @@ importers:
         version: link:../..
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin-x:
     dependencies:
@@ -2957,6 +3426,9 @@ importers:
         specifier: 0.0.13
         version: 0.0.13(@effect/platform-node@4.1.1(bufferutil@4.2.0)(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))(utf-8-validate@6.1.0))(effect@4.1.1)
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.1
+        version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
@@ -2966,6 +3438,12 @@ importers:
       vibelang:
         specifier: 0.0.13
         version: 0.0.13(patch_hash=84f6bd90a8ff37080f66a93718a62ff76b42541194e36701abb285d694f59ee8)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibestack:
+        specifier: workspace:*
+        version: link:../..
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/ui:
     dependencies:
@@ -3050,7 +3528,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   vibestack/studio:
     dependencies:
@@ -3105,7 +3583,7 @@ importers:
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: 'catalog:'
-        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
 packages:
 
@@ -10225,7 +10703,7 @@ snapshots:
   '@effect/vitest@4.1.1(effect@4.1.1)(vitest@5.1.0)':
     dependencies:
       effect: 4.1.1
-      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   '@electric-sql/pglite-socket@0.1.6(@electric-sql/pglite@0.4.6)':
     dependencies:
@@ -12120,7 +12598,7 @@ snapshots:
     optionalDependencies:
       '@vitest/browser': 5.1.0(bufferutil@4.2.0)(utf-8-validate@6.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
       '@vitest/browser-playwright': 5.1.0(bufferutil@4.2.0)(playwright@1.65.0)(utf-8-validate@6.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
-      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     transitivePeerDependencies:
       - react
 
@@ -12683,7 +13161,7 @@ snapshots:
       '@vitest/mocker': 5.1.0(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       playwright: 1.65.0
       tinyrainbow: 3.2.0
-      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
     transitivePeerDependencies:
       - bufferutil
       - msw
@@ -12700,7 +13178,7 @@ snapshots:
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       ws: 8.23.0(bufferutil@4.2.0)(utf-8-validate@6.1.0)
     transitivePeerDependencies:
       - bufferutil
@@ -12747,7 +13225,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      vitest: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   '@vitest/utils@3.2.4':
     dependencies:
@@ -14340,7 +14818,7 @@ snapshots:
       jscpd-windows-arm64-msvc: 5.4.3
       jscpd-windows-x64-msvc: 5.4.3
 
-  jsdom@31.0.1(@noble/hashes@1.8.0):
+  jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0):
     dependencies:
       '@exodus/bytes': 1.16.0(@noble/hashes@1.8.0)
       bcp-47: 2.1.2
@@ -14360,6 +14838,8 @@ snapshots:
       whatwg-mimetype: 5.0.0
       whatwg-url: 17.3.0(@noble/hashes@1.8.0)
       xml-name-validator: 5.0.0
+    optionalDependencies:
+      '@napi-rs/canvas': 0.1.100
     transitivePeerDependencies:
       - '@noble/hashes'
 
@@ -15992,7 +16472,7 @@ snapshots:
       jiti: 2.7.0
       yaml: 2.9.1
 
-  vitest@5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
+  vitest@5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/ui@5.1.0)(happy-dom@21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0))(jsdom@31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.1.0(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -16014,7 +16494,7 @@ snapshots:
       '@vitest/browser-playwright': 5.1.0(bufferutil@4.2.0)(playwright@1.65.0)(utf-8-validate@6.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))(vitest@5.1.0)
       '@vitest/ui': 5.1.0(vitest@5.1.0)
       happy-dom: 21.0.4(bufferutil@4.2.0)(utf-8-validate@6.1.0)
-      jsdom: 31.0.1(@noble/hashes@1.8.0)
+      jsdom: 31.0.1(@napi-rs/canvas@0.1.100)(@noble/hashes@1.8.0)
     transitivePeerDependencies:
       - msw
 

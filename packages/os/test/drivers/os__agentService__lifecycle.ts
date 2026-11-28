@@ -43,6 +43,7 @@ export interface LifecycleView {
 interface AdapterState extends LifecycleView {
   readonly account: string | null;
   readonly child: boolean;
+  readonly spec: AgentService;
 }
 
 const nativeView = (state: AdapterState): LifecycleView => ({
@@ -68,26 +69,50 @@ function expectedHold(hold: AgentService["hold"]): LifecycleView["hold"] {
 
 function nativeEffects(output: unknown, state: AdapterState): ServiceEffect[] {
   if (!Array.isArray(output)) throw new Error("The native lifecycle adapter did not return an effect list");
-  return output.map((value: unknown) => {
+  const effects: ServiceEffect[] = [];
+  for (const value of output) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid native lifecycle effect");
-    const { tag, epoch, delayMs, account } = value as Record<string, unknown>;
-    if (tag !== "Check" && tag !== "Kill") throw new Error(`Unsupported native lifecycle effect ${JSON.stringify(tag)}`);
-    if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1) throw new Error("Invalid native lifecycle effect epoch");
+    const { tag, epoch, delayMs, account, version, token } = value as Record<string, unknown>;
+    if (tag === "RecoveryReview") continue;
     if (tag === "Kill") {
+      if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1) throw new Error("Invalid native lifecycle effect epoch");
       if (epoch !== state.epoch || state.child !== true) throw new Error("Native kill does not own the observed launch");
-      return { tag: "KillChild" };
+      effects.push({ tag: "KillChild" });
+      continue;
     }
-    if (typeof delayMs !== "number" || !Number.isSafeInteger(delayMs) || delayMs < 0
-      || (typeof account !== "string" && account !== null) || account !== state.account) {
-      throw new Error("Invalid native lifecycle check effect");
+    if (tag === "Check") {
+      if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1) throw new Error("Invalid native lifecycle effect epoch");
+      if (typeof delayMs !== "number" || !Number.isSafeInteger(delayMs) || delayMs < 0
+        || (typeof account !== "string" && account !== null) || account !== state.account) {
+        throw new Error("Invalid native lifecycle check effect");
+      }
+      effects.push({ tag: "BeginCheck", epoch, delayMs });
+      continue;
     }
-    return { tag: "BeginCheck", epoch, delayMs };
-  });
+    if (tag === "PushCredential") {
+      if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch < 1 || typeof version !== "number" || !Number.isSafeInteger(version) || version < 1)
+        throw new Error("Invalid native push credential effect");
+      effects.push({ tag: "PushCredential", pushEpoch: epoch, version });
+      continue;
+    }
+    if (tag === "Archive") {
+      if (token === null || typeof token !== "object" || Array.isArray(token)) throw new Error("Invalid native archive effect");
+      const { epoch: archiveEpoch, nonce } = token as Record<string, unknown>;
+      const parsedToken = typeof nonce === "string" ? Number(nonce) : NaN;
+      if (typeof archiveEpoch !== "number" || !Number.isSafeInteger(archiveEpoch) || !Number.isSafeInteger(parsedToken))
+        throw new Error("Invalid native archive effect token");
+      effects.push({ tag: "ArchiveData", token: parsedToken, archiveEpoch });
+      continue;
+    }
+    throw new Error(`Unsupported native lifecycle effect ${JSON.stringify(tag)}`);
+  }
+  return effects;
 }
 
 const adapter = jvmDriver<LifecycleEvent, AdapterState>("ai.eliza.os.agent.LifecycleAdapter", {
   receives: true,
-  recreateAfter: (event) => typeof event === "object" && event !== null && "type" in event && event.type === "processRestarted",
+  recreateAfter: (event) => typeof event === "object" && event !== null && "type" in event
+    && (event.type === "processRestarted" || event.type === "processRestartedWithReservedEpoch"),
 });
 
 export const driver: Driver<LifecycleEvent, LifecycleView> & AsyncDisposable = {
@@ -111,4 +136,9 @@ export const options: Options<LifecycleView> = {
   }),
 };
 
-if (import.meta.main) await answerDriverLines(driver, KEY, (key) => adapter.observeOutput?.(key));
+const specDriver = {
+  ...adapter,
+  observe: async (key: string) => (await adapter.observe(key)).spec,
+};
+
+if (import.meta.main) await answerDriverLines(specDriver, KEY, (key) => driver.observeOutput?.(key));

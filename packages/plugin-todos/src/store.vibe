@@ -1,0 +1,767 @@
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"; spec/todos/store.md, "Batch writes reject duplicate identifiers and missing room scope"; spec/todos/store.md, "List limits must be positive integers and exact matches outrank paraphrases"
+import { batchWriteAdmitted, validListLimit } from "../gen/todos__store.effect.vibe"
+import { isOpenTodo, matchTodosByContent, sameTodoContent, swapsWords, todoRefSync } from "./match.vibe"
+import type {
+  CreateTodoInput,
+  ListTodosInput,
+  RuntimeTodoStore,
+  Todo,
+  TodoCutoverState,
+  TodoInput,
+  TodoLocator,
+  TodoMutationExecution,
+  TodoMutationOutcome,
+  TodoMutationRecord,
+  TodoMutationRequest,
+  TodoScope,
+  TodoStatus,
+  TodoTargetMiss,
+  UpdateTodoInput,
+  WriteListInput,
+} from "./types.vibe"
+
+module node {
+  import { createHash, randomUUID } from "node:crypto"
+  import { DatabaseSync } from "node:sqlite"
+
+  export interface SqliteStatement {
+    all(...params: unknown[]): unknown[]
+    get(...params: unknown[]): unknown
+    run(...params: unknown[]): { changes: number | bigint }
+  }
+
+  export interface SqliteDb {
+    readonly openError: string | null
+    exec(sql: string): void
+    prepare(sql: string): SqliteStatement
+    close(): void
+  }
+
+  /** @throws {never} */
+  export function generateUuid(): string {
+    return randomUUID()
+  }
+
+  /** @throws {never} */
+  export function sha256Hex(text: string): string {
+    return createHash("sha256").update(text).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function openTodoSqlite(dbPath: string): SqliteDb {
+    try {
+      const db = new DatabaseSync(dbPath) as unknown as Omit<SqliteDb, "openError">
+      return {
+        openError: null,
+        exec: (sql: string) => db.exec(sql),
+        prepare: (sql: string) => db.prepare(sql),
+        close: () => db.close(),
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        openError: message,
+        exec: () => {},
+        prepare: () => ({ all: () => [], get: () => undefined, run: () => ({ changes: 0 }) }),
+        close: () => {},
+      }
+    }
+  }
+}
+import { generateUuid, openTodoSqlite, sha256Hex, type SqliteDb } from node
+
+export interface SqliteTodoStoreHandle extends RuntimeTodoStore {
+  readonly close: () => void
+}
+
+interface SerializedTodo {
+  readonly id: string
+  readonly entityId: string
+  readonly agentId: string
+  readonly roomId: string | null
+  readonly worldId: string | null
+  readonly content: string
+  readonly activeForm: string
+  readonly status: TodoStatus
+  readonly parentTodoId: string | null
+  readonly parentTrajectoryStepId: string | null
+  readonly metadata: Record<string, unknown>
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly completedAt: string | null
+}
+
+interface TodoDbRow {
+  readonly id: string
+  readonly entity_id: string
+  readonly agent_id: string
+  readonly room_id: string | null
+  readonly world_id: string | null
+  readonly content: string
+  readonly active_form: string
+  readonly status: string
+  readonly parent_todo_id: string | null
+  readonly parent_trajectory_step_id: string | null
+  readonly metadata_json: string
+  readonly created_at: string
+  readonly updated_at: string
+  readonly completed_at: string | null
+}
+
+export function findDuplicateTodoId(items: readonly TodoInput[]): string | null {
+  const seen = new Set<string>()
+  for (const item of items) {
+    if (!item.id) continue
+    if (seen.has(item.id)) return item.id
+    seen.add(item.id)
+  }
+  return null
+}
+
+export function isValidTodoListLimit(limit: unknown): limit is number {
+  return typeof limit === "number" && Number.isSafeInteger(limit) && validListLimit(limit)
+}
+
+export function isTodoStore(value: unknown): value is RuntimeTodoStore {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.applyMutation === "function" &&
+    typeof candidate.list === "function" &&
+    typeof candidate.create === "function" &&
+    typeof candidate.get === "function"
+  )
+}
+
+function serializeTodo(todo: Todo): SerializedTodo {
+  return {
+    ...todo,
+    createdAt: todo.createdAt.toISOString(),
+    updatedAt: todo.updatedAt.toISOString(),
+    completedAt: todo.completedAt ? todo.completedAt.toISOString() : null,
+  }
+}
+
+function deserializeTodo(raw: SerializedTodo): Todo {
+  return {
+    ...raw,
+    createdAt: new Date(raw.createdAt),
+    updatedAt: new Date(raw.updatedAt),
+    completedAt: raw.completedAt ? new Date(raw.completedAt) : null,
+  }
+}
+
+function serializeMissField(miss: TodoTargetMiss | undefined): Record<string, unknown> {
+  if (!miss) return {}
+  return {
+    miss:
+      miss.kind === "ambiguous"
+        ? { kind: "ambiguous", candidates: miss.candidates.map(serializeTodo) }
+        : { kind: "not_found" },
+  }
+}
+
+function serializeOutcome(outcome: TodoMutationOutcome): string {
+  if (outcome.action === "write") {
+    return JSON.stringify({
+      action: "write",
+      before: outcome.before.map(serializeTodo),
+      after: outcome.after.map(serializeTodo),
+    })
+  }
+  if (outcome.action === "create") {
+    return JSON.stringify({
+      action: "create",
+      todo: serializeTodo(outcome.todo),
+      ...(outcome.duplicate ? { duplicate: true } : {}),
+    })
+  }
+  if (outcome.action === "update" || outcome.action === "complete" || outcome.action === "cancel") {
+    return JSON.stringify({
+      action: outcome.action,
+      todo: outcome.todo ? serializeTodo(outcome.todo) : null,
+      ...(outcome.alreadySet ? { alreadySet: true } : {}),
+      ...serializeMissField(outcome.miss),
+    })
+  }
+  if (outcome.action === "delete") {
+    return JSON.stringify({
+      action: "delete",
+      deleted: outcome.deleted ? serializeTodo(outcome.deleted) : null,
+      ...serializeMissField(outcome.miss),
+    })
+  }
+  return JSON.stringify(outcome)
+}
+
+function safeJsonParse<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+function deserializeOutcome(json: string): TodoMutationOutcome {
+  const parsed = safeJsonParse<Record<string, unknown>>(json, {})
+  const action = parsed.action as TodoMutationOutcome["action"]
+  const parseMiss = (raw: unknown): TodoTargetMiss | undefined => {
+    if (typeof raw !== "object" || raw === null) return undefined
+    const rec = raw as { kind?: string; candidates?: SerializedTodo[] }
+    if (rec.kind === "ambiguous" && Array.isArray(rec.candidates)) {
+      return { kind: "ambiguous", candidates: rec.candidates.map(deserializeTodo) }
+    }
+    return { kind: "not_found" }
+  }
+  if (action === "write") {
+    return {
+      action: "write",
+      before: ((parsed.before as SerializedTodo[]) ?? []).map(deserializeTodo),
+      after: ((parsed.after as SerializedTodo[]) ?? []).map(deserializeTodo),
+    }
+  }
+  if (action === "create") {
+    return {
+      action: "create",
+      todo: deserializeTodo(parsed.todo as SerializedTodo),
+      ...(parsed.duplicate === true ? { duplicate: true } : {}),
+    }
+  }
+  if (action === "update" || action === "complete" || action === "cancel") {
+    const miss = parseMiss(parsed.miss)
+    return {
+      action,
+      todo: parsed.todo ? deserializeTodo(parsed.todo as SerializedTodo) : null,
+      ...(parsed.alreadySet === true ? { alreadySet: true } : {}),
+      ...(miss ? { miss } : {}),
+    }
+  }
+  if (action === "delete") {
+    const miss = parseMiss(parsed.miss)
+    return {
+      action: "delete",
+      deleted: parsed.deleted ? deserializeTodo(parsed.deleted as SerializedTodo) : null,
+      ...(miss ? { miss } : {}),
+    }
+  }
+  return parsed as unknown as TodoMutationOutcome
+}
+
+function rowToTodo(row: TodoDbRow): Todo {
+  return {
+    id: row.id,
+    entityId: row.entity_id,
+    agentId: row.agent_id,
+    roomId: row.room_id,
+    worldId: row.world_id,
+    content: row.content,
+    activeForm: row.active_form,
+    status: row.status as TodoStatus,
+    parentTodoId: row.parent_todo_id,
+    parentTrajectoryStepId: row.parent_trajectory_step_id,
+    metadata: safeJsonParse<Record<string, unknown>>(row.metadata_json || "{}", {}),
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    completedAt: row.completed_at ? new Date(row.completed_at) : null,
+  }
+}
+
+function listAllSync(db: SqliteDb, scope: TodoScope): Todo[] {
+  const rows = db
+    .prepare("SELECT * FROM todos WHERE agent_id = ? AND entity_id = ? ORDER BY created_at ASC, id ASC")
+    .all(scope.agentId, scope.entityId) as TodoDbRow[]
+  return rows.map(rowToTodo)
+}
+
+function insertTodoSync(db: SqliteDb, todo: Todo): void {
+  db.prepare(
+    `INSERT INTO todos (id, entity_id, agent_id, room_id, world_id, content, active_form, status, parent_todo_id, parent_trajectory_step_id, metadata_json, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    todo.id,
+    todo.entityId,
+    todo.agentId,
+    todo.roomId,
+    todo.worldId,
+    todo.content,
+    todo.activeForm,
+    todo.status,
+    todo.parentTodoId,
+    todo.parentTrajectoryStepId,
+    JSON.stringify(todo.metadata),
+    todo.createdAt.toISOString(),
+    todo.updatedAt.toISOString(),
+    todo.completedAt ? todo.completedAt.toISOString() : null,
+  )
+}
+
+function resolveTargetSync(
+  db: SqliteDb,
+  scope: TodoScope,
+  locator: TodoLocator,
+): { readonly hit: Todo } | { readonly miss: TodoTargetMiss } {
+  const rows = listAllSync(db, scope)
+  if (locator.id !== undefined) {
+    const found = rows.find((t) => t.id === locator.id)
+    return found ? { hit: found } : { miss: { kind: "not_found" } }
+  }
+  if (locator.ref !== undefined) {
+    const needle = locator.ref.trim().toLowerCase()
+    const found = rows.find((t) => todoRefSync(t.id) === needle)
+    return found ? { hit: found } : { miss: { kind: "not_found" } }
+  }
+  const matches = matchTodosByContent(locator.match, rows)
+  if (matches.length === 0) return { miss: { kind: "not_found" } }
+  if (matches.length === 1) {
+    const only = matches[0]!
+    if (!sameTodoContent(locator.match, only.content) && swapsWords(locator.match, only.content)) {
+      return { miss: { kind: "ambiguous", candidates: [only] } }
+    }
+    return { hit: only }
+  }
+  return { miss: { kind: "ambiguous", candidates: matches } }
+}
+
+function runWriteOrCreate(
+  db: SqliteDb,
+  request: TodoMutationRequest,
+  now: Date,
+): { readonly applied: boolean; readonly outcome: TodoMutationOutcome } | { readonly error: string } {
+  const mut = request.mutation
+  if (mut.action === "write") {
+    const dup = findDuplicateTodoId(mut.input.todos)
+    const allNonEmpty = mut.input.todos.every((item) => item.content.trim().length > 0)
+    if (!batchWriteAdmitted(Boolean(mut.input.roomId), allNonEmpty, dup !== null)) {
+      return { error: dup ? `duplicate todo id ${dup}` : "invalid batch write input" }
+    }
+    const before = listAllSync(db, request.scope)
+    db.prepare("DELETE FROM todos WHERE agent_id = ? AND entity_id = ?").run(
+      request.scope.agentId,
+      request.scope.entityId,
+    )
+    const after: Todo[] = []
+    for (const item of mut.input.todos) {
+      const todo: Todo = {
+        id: item.id ?? generateUuid(),
+        entityId: request.scope.entityId,
+        agentId: request.scope.agentId,
+        roomId: mut.input.roomId,
+        worldId: mut.input.worldId,
+        content: item.content.trim(),
+        activeForm: item.activeForm?.trim() || item.content.trim(),
+        status: item.status,
+        parentTodoId: item.parentTodoId ?? null,
+        parentTrajectoryStepId: mut.input.parentTrajectoryStepId ?? null,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+        completedAt: item.status === "completed" ? now : null,
+      }
+      insertTodoSync(db, todo)
+      after.push(todo)
+    }
+    return { applied: true, outcome: { action: "write", before, after } }
+  }
+  if (mut.action === "create") {
+    const content = mut.input.content.trim()
+    const current = listAllSync(db, request.scope)
+    const existingOpen = current.find((t) => isOpenTodo(t) && sameTodoContent(t.content, content))
+    if (existingOpen && mut.reply !== "affirmative") {
+      return { applied: false, outcome: { action: "create", todo: existingOpen, duplicate: true } }
+    }
+    const status = mut.input.status ?? "pending"
+    const todo: Todo = {
+      id: generateUuid(),
+      entityId: request.scope.entityId,
+      agentId: request.scope.agentId,
+      roomId: mut.input.roomId,
+      worldId: mut.input.worldId,
+      content,
+      activeForm: mut.input.activeForm?.trim() || content,
+      status,
+      parentTodoId: mut.input.parentTodoId ?? null,
+      parentTrajectoryStepId: mut.input.parentTrajectoryStepId ?? null,
+      metadata: mut.input.metadata ?? {},
+      createdAt: now,
+      updatedAt: now,
+      completedAt: status === "completed" ? now : null,
+    }
+    insertTodoSync(db, todo)
+    return { applied: true, outcome: { action: "create", todo } }
+  }
+  return { error: "unsupported write/create mutation" }
+}
+
+function updateTodoRowSync(db: SqliteDb, updated: Todo): void {
+  db.prepare(
+    "UPDATE todos SET content = ?, active_form = ?, status = ?, parent_todo_id = ?, updated_at = ?, completed_at = ? WHERE id = ?",
+  ).run(
+    updated.content,
+    updated.activeForm,
+    updated.status,
+    updated.parentTodoId,
+    updated.updatedAt.toISOString(),
+    updated.completedAt ? updated.completedAt.toISOString() : null,
+    updated.id,
+  )
+}
+
+function runTargetMutation(
+  db: SqliteDb,
+  request: TodoMutationRequest,
+  now: Date,
+): { readonly applied: boolean; readonly outcome: TodoMutationOutcome } {
+  const mut = request.mutation
+  if (mut.action === "update") {
+    const resolved = resolveTargetSync(db, request.scope, mut.locator)
+    if ("miss" in resolved) return { applied: false, outcome: { action: "update", todo: null, miss: resolved.miss } }
+    const hit = resolved.hit
+    const nextContent = mut.patch.content?.trim() ?? hit.content
+    const nextActiveForm = mut.patch.activeForm?.trim() ?? (mut.patch.content ? nextContent : hit.activeForm)
+    const nextStatus = mut.patch.status ?? hit.status
+    const nextParent = mut.patch.parentTodoId !== undefined ? mut.patch.parentTodoId : hit.parentTodoId
+    if (
+      nextContent === hit.content &&
+      nextActiveForm === hit.activeForm &&
+      nextStatus === hit.status &&
+      nextParent === hit.parentTodoId
+    ) {
+      return { applied: false, outcome: { action: "update", todo: hit, alreadySet: true } }
+    }
+    const completedAt = nextStatus === "completed" ? (hit.completedAt ?? now) : null
+    const updated: Todo = {
+      ...hit,
+      content: nextContent,
+      activeForm: nextActiveForm,
+      status: nextStatus,
+      parentTodoId: nextParent,
+      updatedAt: now,
+      completedAt,
+    }
+    updateTodoRowSync(db, updated)
+    return { applied: true, outcome: { action: "update", todo: updated } }
+  }
+  if (mut.action === "complete" || mut.action === "cancel") {
+    const targetStatus: TodoStatus = mut.action === "complete" ? "completed" : "cancelled"
+    const resolved = resolveTargetSync(db, request.scope, mut.locator)
+    if ("miss" in resolved) {
+      return { applied: false, outcome: { action: mut.action, todo: null, miss: resolved.miss } }
+    }
+    const hit = resolved.hit
+    if (hit.status === targetStatus) {
+      return { applied: false, outcome: { action: mut.action, todo: hit, alreadySet: true } }
+    }
+    const completedAt = targetStatus === "completed" ? now : null
+    const updated: Todo = { ...hit, status: targetStatus, updatedAt: now, completedAt }
+    db.prepare("UPDATE todos SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?").run(
+      updated.status,
+      updated.updatedAt.toISOString(),
+      updated.completedAt ? updated.completedAt.toISOString() : null,
+      updated.id,
+    )
+    return { applied: true, outcome: { action: mut.action, todo: updated } }
+  }
+  if (mut.action === "delete") {
+    const resolved = resolveTargetSync(db, request.scope, mut.locator)
+    if ("miss" in resolved) return { applied: false, outcome: { action: "delete", deleted: null, miss: resolved.miss } }
+    db.prepare("DELETE FROM todos WHERE id = ?").run(resolved.hit.id)
+    return { applied: true, outcome: { action: "delete", deleted: resolved.hit } }
+  }
+  const previewRow = db
+    .prepare("SELECT preview_ids_json FROM todo_clear_previews WHERE agent_id = ? AND entity_id = ?")
+    .get(request.scope.agentId, request.scope.entityId) as { preview_ids_json: string } | undefined
+  if (!previewRow) {
+    const currentIds = listAllSync(db, request.scope).map((t) => t.id)
+    db.prepare(
+      "INSERT OR REPLACE INTO todo_clear_previews (agent_id, entity_id, preview_ids_json, created_at) VALUES (?, ?, ?, ?)",
+    ).run(request.scope.agentId, request.scope.entityId, JSON.stringify(currentIds), now.toISOString())
+    return { applied: false, outcome: { action: "clear", clearedCount: 0, previewed: true, previewCount: currentIds.length } }
+  }
+  db.prepare("DELETE FROM todo_clear_previews WHERE agent_id = ? AND entity_id = ?").run(
+    request.scope.agentId,
+    request.scope.entityId,
+  )
+  if (mut.action === "clear" && mut.reply !== "affirmative") {
+    return { applied: false, outcome: { action: "clear", clearedCount: 0, cancelled: true } }
+  }
+  const previewIds = safeJsonParse<string[]>(previewRow.preview_ids_json, [])
+  let clearedCount = 0
+  for (const id of previewIds) {
+    const res = db
+      .prepare("DELETE FROM todos WHERE agent_id = ? AND entity_id = ? AND id = ?")
+      .run(request.scope.agentId, request.scope.entityId, id)
+    clearedCount += Number(res.changes)
+  }
+  return { applied: true, outcome: { action: "clear", clearedCount } }
+}
+
+function saveMutationSync(
+  db: SqliteDb,
+  scope: TodoScope,
+  idempotencyKey: string,
+  requestDigest: string,
+  applied: boolean,
+  outcome: TodoMutationOutcome,
+  now: Date,
+): TodoMutationExecution {
+  const mutationId = generateUuid()
+  db.prepare(
+    `INSERT INTO todo_mutations (id, entity_id, agent_id, idempotency_key, request_digest, applied, result_json, committed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    mutationId,
+    scope.entityId,
+    scope.agentId,
+    idempotencyKey,
+    requestDigest,
+    applied ? 1 : 0,
+    serializeOutcome(outcome),
+    now.toISOString(),
+  )
+  return { mutationId, idempotencyKey, applied, replayed: false, committedAt: now, result: outcome }
+}
+
+function initTodoTables(db: SqliteDb): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      entity_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      room_id TEXT,
+      world_id TEXT,
+      content TEXT NOT NULL,
+      active_form TEXT NOT NULL,
+      status TEXT NOT NULL,
+      parent_todo_id TEXT,
+      parent_trajectory_step_id TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_todos_scope ON todos(agent_id, entity_id, status);
+    CREATE TABLE IF NOT EXISTS todo_mutations (
+      id TEXT PRIMARY KEY,
+      entity_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      request_digest TEXT NOT NULL,
+      applied INTEGER NOT NULL,
+      result_json TEXT NOT NULL,
+      committed_at TEXT NOT NULL,
+      UNIQUE(agent_id, entity_id, idempotency_key)
+    );
+    CREATE TABLE IF NOT EXISTS todo_clear_previews (
+      agent_id TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      preview_ids_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (agent_id, entity_id)
+    );
+  `)
+}
+
+export function createTodosSqliteStore(dbPath: string): SqliteTodoStoreHandle {
+  const db = openTodoSqlite(dbPath)
+  initTodoTables(db)
+
+  const store: SqliteTodoStoreHandle = {
+    close: () => db.close(),
+
+    async applyMutation(request: TodoMutationRequest): Promise<TodoMutationExecution> {
+      const digest = sha256Hex(JSON.stringify({ scope: request.scope, mutation: request.mutation }))
+      db.exec("BEGIN IMMEDIATE")
+      try {
+        const existing = db
+          .prepare(
+            "SELECT id, request_digest, applied, result_json, committed_at FROM todo_mutations WHERE agent_id = ? AND entity_id = ? AND idempotency_key = ?",
+          )
+          .get(request.scope.agentId, request.scope.entityId, request.idempotencyKey) as
+          | { id: string; request_digest: string; applied: number; result_json: string; committed_at: string }
+          | undefined
+        if (existing) {
+          if (existing.request_digest !== digest) {
+            throw new Error(`idempotency key ${request.idempotencyKey} already used for a different mutation`)
+          }
+          db.exec("COMMIT")
+          return {
+            mutationId: existing.id,
+            idempotencyKey: request.idempotencyKey,
+            applied: existing.applied === 1,
+            replayed: true,
+            committedAt: new Date(existing.committed_at),
+            result: deserializeOutcome(existing.result_json),
+          }
+        }
+        const now = new Date()
+        const step =
+          request.mutation.action === "write" || request.mutation.action === "create"
+            ? runWriteOrCreate(db, request, now)
+            : runTargetMutation(db, request, now)
+        if ("error" in step) {
+          throw new Error(step.error)
+        }
+        const exec = saveMutationSync(db, request.scope, request.idempotencyKey, digest, step.applied, step.outcome, now)
+        db.exec("COMMIT")
+        return exec
+      } catch (err) {
+        db.exec("ROLLBACK")
+        throw err
+      }
+    },
+
+    async readCutoverState(scope: TodoScope): Promise<TodoCutoverState> {
+      const t = db
+        .prepare("SELECT COUNT(*) AS c FROM todos WHERE agent_id = ? AND entity_id = ?")
+        .get(scope.agentId, scope.entityId) as { c: number }
+      const m = db
+        .prepare("SELECT COUNT(*) AS c FROM todo_mutations WHERE agent_id = ? AND entity_id = ?")
+        .get(scope.agentId, scope.entityId) as { c: number }
+      return { todoCount: Number(t.c), mutationCount: Number(m.c) }
+    },
+
+    async listMutationRecords(scope: TodoScope): Promise<TodoMutationRecord[]> {
+      const rows = db
+        .prepare(
+          "SELECT id, entity_id, agent_id, idempotency_key, request_digest, applied, result_json, committed_at FROM todo_mutations WHERE agent_id = ? AND entity_id = ? ORDER BY committed_at ASC",
+        )
+        .all(scope.agentId, scope.entityId) as Array<{
+        id: string
+        entity_id: string
+        agent_id: string
+        idempotency_key: string
+        request_digest: string
+        applied: number
+        result_json: string
+        committed_at: string
+      }>
+      return rows.map((r) => ({
+        id: r.id,
+        entityId: r.entity_id,
+        agentId: r.agent_id,
+        idempotencyKey: r.idempotency_key,
+        requestDigest: r.request_digest,
+        applied: r.applied === 1,
+        resultJson: r.result_json,
+        committedAt: r.committed_at,
+      }))
+    },
+
+    async importMutationRecords(scope: TodoScope, records: readonly TodoMutationRecord[]): Promise<number> {
+      let imported = 0
+      db.exec("BEGIN IMMEDIATE")
+      try {
+        for (const rec of records) {
+          if (rec.agentId !== scope.agentId || rec.entityId !== scope.entityId) continue
+          const res = db
+            .prepare(
+              `INSERT OR IGNORE INTO todo_mutations (id, entity_id, agent_id, idempotency_key, request_digest, applied, result_json, committed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              rec.id,
+              rec.entityId,
+              rec.agentId,
+              rec.idempotencyKey,
+              rec.requestDigest,
+              rec.applied ? 1 : 0,
+              rec.resultJson,
+              rec.committedAt,
+            )
+          imported += Number(res.changes)
+        }
+        db.exec("COMMIT")
+      } catch (err) {
+        db.exec("ROLLBACK")
+        throw err
+      }
+      return imported
+    },
+
+    async create(input: CreateTodoInput): Promise<Todo> {
+      const now = new Date()
+      const status = input.status ?? "pending"
+      const todo: Todo = {
+        id: generateUuid(),
+        entityId: input.entityId,
+        agentId: input.agentId,
+        roomId: input.roomId,
+        worldId: input.worldId,
+        content: input.content.trim(),
+        activeForm: input.activeForm?.trim() || input.content.trim(),
+        status,
+        parentTodoId: input.parentTodoId ?? null,
+        parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
+        metadata: input.metadata ?? {},
+        createdAt: now,
+        updatedAt: now,
+        completedAt: status === "completed" ? now : null,
+      }
+      insertTodoSync(db, todo)
+      return todo
+    },
+
+    async get(scope: TodoScope, id: string): Promise<Todo | null> {
+      const row = db
+        .prepare("SELECT * FROM todos WHERE agent_id = ? AND entity_id = ? AND id = ?")
+        .get(scope.agentId, scope.entityId, id) as TodoDbRow | undefined
+      return row ? rowToTodo(row) : null
+    },
+
+    async list(input: ListTodosInput): Promise<Todo[]> {
+      if (input.limit !== undefined && !isValidTodoListLimit(input.limit)) {
+        throw new Error("limit must be a positive integer")
+      }
+      const rows = listAllSync(db, { entityId: input.entityId, agentId: input.agentId })
+      const filtered = input.includeCompleted ? rows : rows.filter(isOpenTodo)
+      return input.limit !== undefined ? filtered.slice(0, input.limit) : filtered
+    },
+
+    async update(scope: TodoScope, id: string, patch: UpdateTodoInput): Promise<Todo | null> {
+      const existing = await store.get(scope, id)
+      if (!existing) return null
+      const now = new Date()
+      const nextContent = patch.content?.trim() ?? existing.content
+      const nextStatus = patch.status ?? existing.status
+      const updated: Todo = {
+        ...existing,
+        content: nextContent,
+        activeForm: patch.activeForm?.trim() ?? existing.activeForm,
+        status: nextStatus,
+        parentTodoId: patch.parentTodoId !== undefined ? patch.parentTodoId : existing.parentTodoId,
+        updatedAt: now,
+        completedAt: nextStatus === "completed" ? (existing.completedAt ?? now) : null,
+      }
+      updateTodoRowSync(db, updated)
+      return updated
+    },
+
+    async delete(scope: TodoScope, id: string): Promise<boolean> {
+      const res = db
+        .prepare("DELETE FROM todos WHERE agent_id = ? AND entity_id = ? AND id = ?")
+        .run(scope.agentId, scope.entityId, id)
+      return Number(res.changes) > 0
+    },
+
+    async writeList(scope: TodoScope, input: WriteListInput): Promise<{ before: Todo[]; after: Todo[] }> {
+      const exec = await store.applyMutation({
+        scope,
+        idempotencyKey: `direct-write:${generateUuid()}`,
+        mutation: { action: "write", input },
+      })
+      if (exec.result.action !== "write") {
+        throw new Error("writeList failed")
+      }
+      return { before: exec.result.before, after: exec.result.after }
+    },
+
+    async clear(scope: TodoScope): Promise<number> {
+      const res = db
+        .prepare("DELETE FROM todos WHERE agent_id = ? AND entity_id = ?")
+        .run(scope.agentId, scope.entityId)
+      return Number(res.changes)
+    },
+  }
+
+  return store
+}

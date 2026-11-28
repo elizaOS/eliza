@@ -1,0 +1,200 @@
+// spec/calendar/actions.md, "A read with no connected calendar account says that none is connected, never only that the calendar is empty"; spec/calendar/autoJoin.md, "Conflict scans classify overlap severity and require complete reads to be definitive"
+import { showsApp } from "@elizaos/agent-host"
+import {
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type Action, type ActionResult, type Provider, type ProviderDataRecord,
+} from "@elizaos/core"
+import type { CalendarSummary } from "@elizaos/plugin-calendar-client"
+import { calendarContext, calendarServiceOf } from "./actions.vibe"
+import type { CalendarHost } from "./host.vibe"
+
+export const calendarSourcesActionName = "CALENDAR_SOURCES"
+export const calendarSourcesProviderName = "CALENDAR_SOURCES"
+
+export interface CalendarSourceOverview {
+  readonly calendarId: string
+  readonly provider: string
+  readonly summary: string
+  readonly accessRole: string
+  readonly primary: boolean
+  readonly writable: boolean
+}
+
+const sourceOperations = ["connect", "list", "reconnect", "sync_status"] as const
+const SourceParams = Schema.Struct({
+  operation: Schema.Literals(sourceOperations),
+  provider: Schema.optionalKey(Schema.String),
+})
+const decodeSourceParams = Schema.decodeUnknownOption(SourceParams)
+
+export function sanitizeSourceLabel(raw: string): string {
+  let cleaned = ""
+  for (let i = 0; i < raw.length; i += 1) {
+    const code = raw.charCodeAt(i)
+    cleaned += code <= 31 || code === 127 ? " " : raw[i] ?? ""
+  }
+  return cleaned.replace(/\s+/gu, " ").trim().slice(0, 120) || "(unnamed)"
+}
+
+function toOverview(row: CalendarSummary): CalendarSourceOverview {
+  return {
+    calendarId: row.calendarId,
+    provider: row.provider,
+    summary: sanitizeSourceLabel(row.summary),
+    accessRole: row.accessRole,
+    primary: row.primary,
+    writable: row.accessRole === "owner" || row.accessRole === "writer",
+  }
+}
+
+export function renderCalendarSourcesText(sources: readonly CalendarSourceOverview[], available: boolean): string {
+  if (!available) return "Calendar sources are unavailable right now."
+  if (sources.length === 0) return "No calendar sources are currently listed."
+  const externalCount = sources.filter((source) => source.provider !== "eliza").length
+  const note = externalCount === 0 ? "\nNo external calendar account is connected." : ""
+  const lines = sources.map((source) =>
+    `- ${source.summary} (${source.provider}, ${source.accessRole}${source.primary ? ", primary" : ""})`,
+  )
+  return `Calendar sources (${sources.length}):\n${lines.join("\n")}${note}`
+}
+
+export effect function runCalendarSourcesAction(host: CalendarHost | undefined, input: unknown): ActionResult!! {
+  const decoded = decodeSourceParams(input)
+  if (Option.isNone(decoded)) {
+    return {
+      success: false,
+      text: `${calendarSourcesActionName} requires operation: ${sourceOperations.join(", ")}.`,
+    }
+  }
+  const { operation, provider } = decoded.value
+  if (operation === "connect" || operation === "reconnect") {
+    const label = provider === undefined || provider.trim() === "" ? "calendar provider" : sanitizeSourceLabel(provider)
+    const handoffPath = "/settings/connectors/calendar"
+    return {
+      success: true,
+      text: `To ${operation} ${label} securely without sharing OAuth credentials or private ICS URLs in chat, complete the setup in Settings (${handoffPath}).`,
+      data: {
+        operation,
+        provider: label,
+        requiresOwnerHandoff: true,
+        handoffPath,
+      },
+    }
+  }
+  if (host === undefined) {
+    return {
+      success: false,
+      text: "Calendar sources are unavailable right now.",
+      data: { operation, status: "unavailable", sources: [] },
+    }
+  }
+  if (operation === "list") {
+    const rows = try host.calendars()
+    if (rows === undefined) {
+      return {
+        success: false,
+        text: "No calendar account is active right now.",
+        data: { operation, status: "unavailable", sources: [] },
+      }
+    }
+    const sources = rows.map(toOverview)
+    const data: ProviderDataRecord = {
+      operation,
+      status: "connected",
+      externalConnected: sources.some((source) => source.provider !== "eliza"),
+      sources: sources.map((source) => ({ ...source })),
+    }
+    return { success: true, text: renderCalendarSourcesText(sources, true), data }
+  }
+  const now = try Clock.currentTimeMillis
+  const found = try host.search({ timeMin: now, timeMax: now + 86_400_000 })
+  if (found === undefined) {
+    return {
+      success: false,
+      text: "Calendar sync status is unavailable right now.",
+      data: { operation, status: "unavailable", sources: [] },
+    }
+  }
+  const health = found.sources.map((source) => ({
+    calendarId: source.key.calendarId,
+    provider: source.key.provider,
+    summary: sanitizeSourceLabel(source.summary),
+    status: source.status,
+    syncedAt: source.syncedAt ?? "",
+  }))
+  const summaryLines = health.map((item) => `- ${item.summary} (${item.provider}): ${item.status}`)
+  const degraded = found.unavailable.length > 0 ? `\nUnavailable providers: ${found.unavailable.join(", ")}.` : ""
+  return {
+    success: true,
+    text: `Calendar sync status (${found.complete ? "complete" : "degraded"}):\n${summaryLines.join("\n")}${degraded}`,
+    data: {
+      operation,
+      complete: found.complete,
+      unavailable: [...found.unavailable],
+      sources: health,
+    },
+  }
+}
+
+export const calendarSourcesAction: Action = {
+  name: calendarSourcesActionName,
+  description: "List connected calendar sources, inspect sync health, or hand off securely to Settings to connect or reconnect a calendar provider or ICS feed.",
+  descriptionCompressed: "List calendar sources, check sync status, or hand off provider connect.",
+  similes: ["LIST_CALENDARS", "CALENDAR_SYNC_STATUS", "CONNECT_CALENDAR"],
+  tags: ["capability:schedule"],
+  contexts: ["calendar"],
+  contextGate: { anyOf: ["calendar"] },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  parameters: [
+    { name: "operation", required: true, description: "Source operation.", schema: { type: "string", enum: [...sourceOperations] } },
+    { name: "provider", required: false, description: "Provider name for connect/reconnect handoff (google, apple, outlook, ics).", schema: { type: "string" } },
+  ],
+  summarize: (result) => result?.text ?? "Calendar sources checked.",
+  validate: async () => true,
+  handler: async (runtime, _message, _state, options) => {
+    const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+    return runPromise(runCalendarSourcesAction(calendarServiceOf(runtime), input))
+  },
+}
+
+showsApp(calendarSourcesAction, calendarContext.id)
+
+export const calendarSourcesProvider: Provider = {
+  name: calendarSourcesProviderName,
+  description: "Connected calendar sources and availability state for the active owner account.",
+  descriptionCompressed: "Connected calendar sources.",
+  dynamic: true,
+  cacheStable: false,
+  contexts: ["calendar"],
+  contextGate: { anyOf: ["calendar"] },
+  roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  get: async (runtime) => {
+    const host = calendarServiceOf(runtime)
+    if (host === undefined) {
+      return {
+        text: renderCalendarSourcesText([], false),
+        data: { status: "unavailable", sources: [] },
+      }
+    }
+    const rows = await runPromise(host.calendars())
+    if (rows === undefined) {
+      return {
+        text: renderCalendarSourcesText([], false),
+        data: { status: "unavailable", sources: [] },
+      }
+    }
+    const sources = rows.map(toOverview)
+    return {
+      text: renderCalendarSourcesText(sources, true),
+      data: {
+        status: "connected",
+        externalConnected: sources.some((source) => source.provider !== "eliza"),
+        sources: sources.map((source) => ({ ...source })),
+      },
+    }
+  },
+}

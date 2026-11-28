@@ -1,7 +1,98 @@
-// spec/sql/index.md, "Story: Attach a SQL adapter only after its schema is ready"
-import { classifyMigration, sqlReady, sqlScopeAllows, type MigrationEntry, type SqlActor, type SqlRecordScope } from "../gen/sql.effect.vibe"
+// spec/sql/index.md, "Story: Attach a SQL adapter only after its schema is ready"; spec/sql/connectionLifecycle.md, "Adapter lifecycle transitions preserve transaction, RLS, schema, and embedding invariants"
 import { PGlite, type Transaction } from "@electric-sql/pglite"
 import { vector } from "@electric-sql/pglite/vector"
+import type { Plugin, UUID } from "@elizaos/core"
+import {
+  classifyMigration,
+  sqlReady,
+  sqlScopeAllows,
+  type MigrationEntry,
+  type SqlActor,
+  type SqlRecordScope,
+} from "../gen/sql.effect.vibe"
+import { createDatabaseAdapter } from "./adapter.vibe"
+import {
+  AdvancedMemoryStorageService,
+  SqlMembershipService,
+  SqlPrincipalService,
+} from "./services.vibe"
+
+export {
+  BaseSqlDatabaseAdapter,
+  PgDatabaseAdapter,
+  PgliteDatabaseAdapter,
+  createDatabaseAdapter,
+} from "./adapter.vibe"
+export {
+  DEFAULT_MEMORY_SETTINGS,
+  MEMORY_SETTINGS_ENV,
+  PGliteClientManager,
+  PostgresConnectionManager,
+  buildMemoryStartParams,
+  closePgliteSingleton,
+  dropActivePgliteManager,
+  getActivePgliteManager,
+  getOrCreatePgliteManagerForAgent,
+  pgliteManagerCacheKey,
+  type PgliteManagerCache,
+  type ReusablePgliteManager,
+} from "./managers.vibe"
+export {
+  MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
+  MAX_SQL_JSON_SANITIZE_BYTES,
+  MAX_SQL_JSON_SANITIZE_DEPTH,
+  MAX_SQL_JSON_SANITIZE_KEY_BYTES,
+  MAX_SQL_JSON_SANITIZE_NODES,
+  MAX_SQL_JSON_SANITIZE_STRING_BYTES,
+  SQL_JSON_SANITIZE_UNBOUNDED,
+  assertJsonbStorable,
+  expandTildePath,
+  isUnsupportedJsonTextError,
+  normalizePgSslMode,
+  resolveEnvFile,
+  resolvePgliteDir,
+  sanitizeJsonObject,
+  stripNulFromString,
+} from "./sanitize.vibe"
+export {
+  SQL_SCHEMA_MIGRATIONS,
+  SUPPORTED_EMBEDDING_DIMENSIONS,
+  assertEmbeddingWrite,
+  captureEmbeddingTarget,
+  cosineSimilarity,
+  embeddingColumnForDimension,
+  embeddingIdentityHelpers,
+  getOrCreateRlsServer,
+  installRLSFunctions,
+  readEmbeddingVector,
+  type EmbeddingDimensionColumn,
+  type EmbeddingWriteContext,
+  type SqlSchemaMigration,
+} from "./schema.vibe"
+export {
+  AdvancedMemoryStorageService,
+  SqlMembershipService,
+  SqlPrincipalService,
+  type IdentityClaimRecord,
+  type LongTermMemoryRecord,
+  type MembershipScopeKey,
+  type MembershipStateRecord,
+  type PrincipalRecord,
+  type SessionSummaryRecord,
+} from "./services.vibe"
+export {
+  PGLITE_ERROR_CODES,
+  PgliteInitError,
+  SqlConnectionLifecycleController,
+  createPgliteInitError,
+  getPgliteErrorCode,
+  isFatalPgliteErrorCode,
+  type ClosePgliteSingletonResult,
+  type PgliteErrorCode,
+  type SqlAdapterConfig,
+  type SqlExecutor,
+  type SqlQueryResult,
+} from "./types.vibe"
 
 export error SqlMigrationFailed { reason: string }
 
@@ -21,61 +112,97 @@ export service SqlMigrationStore {
 }
 
 export effect function prepareSqlStore(desired: readonly SqlMigration[]) {
-  if (desired.some((migration, index) => migration.revision !== index + 1 || migration.checksum === "" || migration.sql === "")) {
+  if (
+    desired.some(
+      (migration, index) =>
+        migration.revision !== index + 1 || migration.checksum === "" || migration.sql === "",
+    )
+  ) {
     throw new SqlMigrationFailed({ reason: "invalid migration sequence" })
   }
   const store = try SqlMigrationStore
-  return try store.exclusive(effect (transaction) => {
-    const expected = desired.map(({ revision, checksum }) => ({ revision, checksum }))
-    const applied = try transaction.ledger()
-    const status = classifyMigration(applied, expected)
-    if (status === "MigrationConflict") throw new SqlMigrationFailed({ reason: "applied migrations differ from the requested history" })
-    for (const migration of desired.slice(applied.length)) {
-      try transaction.apply(migration)
-    }
-    const settled = try transaction.ledger()
-    if (!sqlReady(settled, expected, try transaction.vectorInstalled(), try transaction.tenantPoliciesReady())) {
-      throw new SqlMigrationFailed({ reason: "schema, extension, or tenant policy is not ready" })
-    }
-    return settled
-  })
+  return try store.exclusive(
+    effect (transaction) => {
+      const expected = desired.map(({ revision, checksum }) => ({ revision, checksum }))
+      const applied = try transaction.ledger()
+      const status = classifyMigration(applied, expected)
+      if (status === "MigrationConflict") {
+        throw new SqlMigrationFailed({
+          reason: "applied migrations differ from the requested history",
+        })
+      }
+      for (const migration of desired.slice(applied.length)) {
+        try transaction.apply(migration)
+      }
+      const settled = try transaction.ledger()
+      if (
+        !sqlReady(
+          settled,
+          expected,
+          try transaction.vectorInstalled(),
+          try transaction.tenantPoliciesReady(),
+        )
+      ) {
+        throw new SqlMigrationFailed({ reason: "schema, extension, or tenant policy is not ready" })
+      }
+      return settled
+    },
+  )
 }
 
 export function sqlRecordVisible(actor: SqlActor, record: SqlRecordScope) {
   return sqlScopeAllows(actor, record)
 }
 
-const ledgerSchema = Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({
-  revision: Schema.Int,
-  checksum: Schema.NonEmptyString,
-})))
+const ledgerSchema = Schema.decodeUnknownEffect(
+  Schema.Array(
+    Schema.Struct({
+      revision: Schema.Int,
+      checksum: Schema.NonEmptyString,
+    }),
+  ),
+)
 
-const countsSchema = Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ matched: Schema.Int })))
+const countsSchema = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ matched: Schema.Int })),
+)
 
-function embeddedTransaction(tx: Transaction, tenantTables: readonly string[]): MigrationTransaction {
+function embeddedTransaction(
+  tx: Transaction,
+  tenantTables: readonly string[],
+): MigrationTransaction {
   return {
     effect ledger() {
       const stored = try tryPromise({
-        try: () => tx.query("SELECT revision, checksum FROM eliza_plugin_sql_migrations ORDER BY revision"),
+        try: () =>
+          tx.query("SELECT revision, checksum FROM eliza_plugin_sql_migrations ORDER BY revision"),
         catch: () => new SqlMigrationFailed({ reason: "migration ledger read failed" }),
       })
-      const entries = ledgerSchema(stored.rows) catch effect () => {
-        throw new SqlMigrationFailed({ reason: "migration ledger has malformed rows" })
-      }
+      const entries =
+        ledgerSchema(stored.rows) catch
+        effect () => {
+          throw new SqlMigrationFailed({ reason: "migration ledger has malformed rows" })
+        }
       return [...entries]
     },
     effect apply(migration) {
       try tryPromise({
         try: async () => {
           await tx.exec(migration.sql)
-          await tx.query("INSERT INTO eliza_plugin_sql_migrations (revision, checksum) VALUES ($1, $2)", [migration.revision, migration.checksum])
+          await tx.query(
+            "INSERT INTO eliza_plugin_sql_migrations (revision, checksum) VALUES ($1, $2)",
+            [migration.revision, migration.checksum],
+          )
         },
         catch: () => new SqlMigrationFailed({ reason: "migration statement failed" }),
       })
     },
     effect vectorInstalled() {
       const result = try tryPromise({
-        try: () => tx.query("SELECT count(*)::int AS matched FROM pg_catalog.pg_extension WHERE extname = 'vector'"),
+        try: () =>
+          tx.query(
+            "SELECT count(*)::int AS matched FROM pg_catalog.pg_extension WHERE extname = 'vector'",
+          ),
         catch: () => new SqlMigrationFailed({ reason: "extension catalog read failed" }),
       })
       const decoded = countsSchema(result.rows) catch () => []
@@ -85,10 +212,11 @@ function embeddedTransaction(tx: Transaction, tenantTables: readonly string[]): 
       const expected = [...new Set(tenantTables)]
       if (expected.length === 0) return true
       const result = try tryPromise({
-        try: () => tx.query(
-          "SELECT count(*)::int AS matched FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname = ANY($1::text[]) AND c.relrowsecurity AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid = c.oid)",
-          [expected],
-        ),
+        try: () =>
+          tx.query(
+            "SELECT count(*)::int AS matched FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname = ANY($1::text[]) AND c.relrowsecurity AND EXISTS (SELECT 1 FROM pg_catalog.pg_policy p WHERE p.polrelid = c.oid)",
+            [expected],
+          ),
         catch: () => new SqlMigrationFailed({ reason: "tenant policy catalog read failed" }),
       })
       const decoded = countsSchema(result.rows) catch () => []
@@ -97,19 +225,52 @@ function embeddedTransaction(tx: Transaction, tenantTables: readonly string[]): 
   }
 }
 
-export effect function prepareEmbeddedPostgres(dataDir: string, tenantTables: readonly string[], desired: readonly SqlMigration[]) {
+export effect function prepareEmbeddedPostgres(
+  dataDir: string,
+  tenantTables: readonly string[],
+  desired: readonly SqlMigration[],
+) {
   const db = try tryPromise({
     try: () => PGlite.create({ dataDir, extensions: { vector } }),
     catch: () => new SqlMigrationFailed({ reason: "PGlite open failed" }),
   })
-  return try ensuring(tryPromise({
-    try: () => db.transaction(async (tx) => {
-      await tx.exec("CREATE EXTENSION IF NOT EXISTS vector")
-      await tx.exec("CREATE TABLE IF NOT EXISTS eliza_plugin_sql_migrations (revision integer PRIMARY KEY, checksum text NOT NULL)")
-      const transaction = embeddedTransaction(tx, tenantTables)
-      const store: SqlMigrationStore.Shape = { exclusive: (run) => run(transaction) }
-      return await runPromise(Effect.provideService(prepareSqlStore(desired), SqlMigrationStore, store))
+  return try ensuring(
+    tryPromise({
+      try: () =>
+        db.transaction(async (tx) => {
+          await tx.exec("CREATE EXTENSION IF NOT EXISTS vector")
+          await tx.exec(
+            "CREATE TABLE IF NOT EXISTS eliza_plugin_sql_migrations (revision integer PRIMARY KEY, checksum text NOT NULL)",
+          )
+          const transaction = embeddedTransaction(tx, tenantTables)
+          const store: SqlMigrationStore.Shape = { exclusive: (run) => run(transaction) }
+          return await runPromise(
+            Effect.provideService(prepareSqlStore(desired), SqlMigrationStore, store),
+          )
+        }),
+      catch: () => new SqlMigrationFailed({ reason: "PGlite preparation failed" }),
     }),
-    catch: () => new SqlMigrationFailed({ reason: "PGlite preparation failed" }),
-  }), effect { tryPromise(() => db.close()) catch () => undefined })
+    effect {
+      tryPromise(() => db.close()) catch () => undefined
+    },
+  )
 }
+
+export const sqlPlugin: Plugin = {
+  name: "@elizaos/plugin-sql",
+  description:
+    "PostgreSQL and embedded PGlite persistence adapter with verified migrations, RLS, pgvector, connector account storage, and identity/membership authority services.",
+  databaseBackends: ["postgres", "pglite"],
+  services: [AdvancedMemoryStorageService, SqlPrincipalService, SqlMembershipService],
+  adapter: (agentId: UUID, settings: Record<string, string>) =>
+    createDatabaseAdapter(
+      {
+        postgresUrl: settings.POSTGRES_URL || undefined,
+        dataDir: settings.PGLITE_DATA_DIR || "memory://",
+      },
+      agentId,
+    ),
+}
+
+export const plugin = sqlPlugin
+export default sqlPlugin

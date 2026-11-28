@@ -1,86 +1,74 @@
 // spec/sqlite/index.md, "Story: Reopen my agent's SQLite database in the owning runtime"
-import { mayApplySqliteMigration, mayOpenSqlite, type DatabaseOwner, type SqliteLease } from "../gen/sqlite.effect.vibe"
+export { BackupPublicationSession } from "./backup-publication.vibe"
+export {
+  dataContainsFilter,
+  INMEMORY_FILTER_UNBOUNDED,
+  MAX_INMEMORY_FILTER_DEPTH,
+  MAX_INMEMORY_FILTER_NODES,
+} from "./data-contains-filter.vibe"
+export { EphemeralHNSW } from "./hnsw.vibe"
+export { decodeRecord, encodeRecord, RECORD_CODEC } from "./record-codec.vibe"
+export { SQLiteRecordAdapter } from "./records.vibe"
+export { SQLiteAdapterBase, SQLiteDatabaseAdapter } from "./adapter.vibe"
+export {
+  assertSupportedRuntime,
+  nativeSQLiteDriver,
+  openSqlite,
+  SQLiteCollection,
+  SqliteFailure,
+  SQLiteStorage,
+  SQLiteStorageBase,
+} from "./storage.vibe"
+export {
+  COLLECTIONS,
+  type CollectionName,
+  type IStorage,
+  type IVectorStorage,
+  type SqlDatabase,
+  type SQLiteDriver,
+  type SqliteMigration,
+  type SqlRow,
+  type SqlStatement,
+  type SqlValue,
+  type VectorSearchResult,
+} from "./types.vibe"
 
-export error SqliteFailure { reason: string }
+module sqlitePluginModule {
+  import { ElizaError, type IAgentRuntime, type IDatabaseAdapter, type Plugin } from "@elizaos/core"
+  import { SQLiteDatabaseAdapter } from "./adapter.vibe"
 
-module node {
-  import { isAbsolute } from "node:path"
-  import { DatabaseSync } from "node:sqlite"
-
-  export interface SqliteMigration {
-    readonly revision: number
-    readonly sql: string
-  }
-
-  export function openSqliteFile(path: string) {
-    if (!isAbsolute(path)) throw new Error("SQLite requires an absolute path")
-    const database = new DatabaseSync(path)
-    try {
-      database.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE")
-      return database
-    } catch (error) {
-      database.close()
-      throw error
-    }
-  }
-
-  export function sqliteVersion(database: DatabaseSync): number {
-    const row = database.prepare("PRAGMA user_version").get()
-    if (typeof row?.user_version !== "number" || !Number.isSafeInteger(row.user_version)) throw new Error("Invalid SQLite schema version")
-    return row.user_version
-  }
-
-  export function sqliteOwner(database: DatabaseSync): string | undefined {
-    database.exec("CREATE TABLE IF NOT EXISTS eliza_sqlite_owner (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), agent_id TEXT NOT NULL)")
-    const row = database.prepare("SELECT agent_id FROM eliza_sqlite_owner WHERE singleton = 1").get()
-    if (row === undefined) return undefined
-    if (typeof row.agent_id !== "string" || row.agent_id === "") throw new Error("Invalid SQLite owner marker")
-    return row.agent_id
-  }
-
-  export function bindSqliteOwner(database: DatabaseSync, agentId: string): void {
-    database.prepare("INSERT INTO eliza_sqlite_owner (singleton, agent_id) VALUES (1, ?)").run(agentId)
-  }
-
-  export function applySqliteVersion(database: DatabaseSync, migration: SqliteMigration): void {
-    database.exec(migration.sql)
-    database.exec("PRAGMA user_version = " + migration.revision)
+  export const sqlitePlugin: Plugin = {
+    name: "@elizaos/plugin-sqlite",
+    description: "Durable per-agent SQLite storage with atomic transactions, HNSW recall, and restart recovery",
+    async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+      const path = runtime.getSetting("SQLITE_DATABASE_PATH")
+      if (typeof path !== "string" || !path) {
+        throw new ElizaError("Set an absolute SQLITE_DATABASE_PATH before enabling SQLite storage", {
+          code: "SQLITE_PATH_REQUIRED",
+        })
+      }
+      const host = runtime as IAgentRuntime & {
+        registerDatabaseAdapter?: (adapter: IDatabaseAdapter) => void
+        hasDatabaseAdapter?: () => boolean
+      }
+      if (typeof host.registerDatabaseAdapter !== "function") {
+        throw new ElizaError("Runtime cannot register a database adapter", {
+          code: "SQLITE_ADAPTER_REGISTRATION_UNAVAILABLE",
+        })
+      }
+      if (runtime.adapter !== undefined || host.hasDatabaseAdapter?.()) {
+        throw new ElizaError("SQLite must be selected before another database adapter", {
+          code: "SQLITE_ADAPTER_ALREADY_REGISTERED",
+        })
+      }
+      const adapter = SQLiteDatabaseAdapter.create(path, runtime.agentId)
+      await adapter.initialize()
+      host.registerDatabaseAdapter(adapter)
+    },
   }
 }
-import { openSqliteFile, sqliteVersion, sqliteOwner, bindSqliteOwner, applySqliteVersion, type SqliteMigration } from node
-export { type SqliteMigration } from node
 
-export effect function openSqlite(path: string, agentId: string, lease: SqliteLease, migrations: readonly SqliteMigration[]) {
-  const database = try Effect.try({ try: () => openSqliteFile(path), catch: () => new SqliteFailure({ reason: "database could not be opened exclusively" }) })
-  let prepared = false
-  return try ensuring(effect {
-    const actual = try Effect.try({ try: () => sqliteOwner(database), catch: () => new SqliteFailure({ reason: "owner marker is unreadable" }) })
-    const owner: DatabaseOwner = actual === undefined ? { tag: "UnboundSqlite" } : { tag: "BoundSqlite", agent: actual }
-    if (!mayOpenSqlite(owner, lease, { requestedAgent: agentId, requestingProcess: lease.processKey, observedGeneration: lease.leaseGeneration, absolutePath: true })) {
-      throw new SqliteFailure({ reason: "database belongs to another agent or the process lease is invalid" })
-    }
-    try Effect.try({
-      try: () => {
-        if (actual === undefined) bindSqliteOwner(database, agentId)
-      },
-      catch: () => new SqliteFailure({ reason: "owner marker could not be saved" }),
-    })
-    let version = try Effect.try({ try: () => sqliteVersion(database), catch: () => new SqliteFailure({ reason: "schema version is unreadable" }) })
-    const desired = migrations.length
-    if (version > desired || migrations.some((migration, index) => migration.revision !== index + 1)) {
-      throw new SqliteFailure({ reason: "schema version conflicts with the migration sequence" })
-    }
-    for (const migration of migrations.slice(version)) {
-      if (!mayApplySqliteMigration(version, desired, migration.revision)) throw new SqliteFailure({ reason: "migration is out of order" })
-      try Effect.try({ try: () => applySqliteVersion(database, migration), catch: () => new SqliteFailure({ reason: "migration failed" }) })
-      version = migration.revision
-    }
-    try Effect.try({ try: () => database.exec("COMMIT"), catch: () => new SqliteFailure({ reason: "could not commit database preparation" }) })
-    prepared = true
-    return database
-  }, effect {
-    if (!prepared) {
-      Effect.try(() => database.close()) catch () => undefined
-    }
-  })
-}
+import { sqlitePlugin } from sqlitePluginModule
+export const plugin = sqlitePlugin
+export { sqlitePlugin }
+export default sqlitePlugin

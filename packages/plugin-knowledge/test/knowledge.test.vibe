@@ -1,0 +1,173 @@
+// spec/knowledge/index.md, "Story: Find and manage the documents I am allowed to use"; spec/knowledge/index.md, "Access follows the document owner, the resolved sharing audience, and the document's removal state"; spec/knowledge/index.md, "Ownership is required for changes to a document or its audience"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime, UUID } from "@elizaos/core"
+import {
+  DOCUMENT_UPLOAD_MAX_BODY_BYTES,
+  DocumentUrlFetcher,
+  handleKnowledgeRoute,
+  InMemoryKnowledgeRepository,
+  knowledgePlugin,
+  KnowledgeService,
+  KnowledgeStore,
+  listDocuments,
+  pinDocument,
+  readDocument,
+  type DocumentAccessContext,
+  type PresentedDocument,
+} from "../src/index.vibe"
+
+const OWNER_ID = "00000000-0000-4000-8000-000000000001"
+const PEER_ID = "00000000-0000-4000-8000-000000000002"
+const STRANGER_ID = "00000000-0000-4000-8000-000000000003"
+
+const ownerCtx: DocumentAccessContext = { requesterEntityId: OWNER_ID, role: "OWNER", isOwner: true, source: "test" }
+const peerCtx: DocumentAccessContext = { requesterEntityId: PEER_ID, role: "MEMBER", isOwner: false, source: "test" }
+const strangerCtx: DocumentAccessContext = { requesterEntityId: STRANGER_ID, role: "GUEST", isOwner: false, source: "test" }
+
+function runtimeStub(): IAgentRuntime {
+  return {
+    agentId: OWNER_ID as UUID,
+    getSetting: () => undefined,
+  } as unknown as IAgentRuntime
+}
+
+describe("plugin-knowledge end-to-end journeys", () => {
+  it.effect(`Enforce owner, shared, public, and indexing vs ready retrieval rules through KnowledgeStore and /api/documents routes (spec/knowledge/index.md, "Story: Find and manage the documents I am allowed to use"; spec/knowledge/index.md, "Access follows the document owner, the resolved sharing audience, and the document's removal state")`, effect () => {
+    const storeLayer = Layer.succeed(KnowledgeStore, {
+      list: () => effect {
+        return [
+          { docId: "d1", documentOwner: OWNER_ID, documentScope: "OwnerDocument" as const, audience: [], documentState: "ReadyDocument" as const, title: "Private" },
+          { docId: "d2", documentOwner: OWNER_ID, documentScope: "SharedDocument" as const, audience: [PEER_ID], documentState: "IndexingDocument" as const, title: "Shared Indexing" },
+          { docId: "d3", documentOwner: OWNER_ID, documentScope: "PublicDocument" as const, audience: [], documentState: "RemovedDocument" as const, title: "Deleted" },
+        ]
+      },
+      document: (_viewerId, docId) => effect {
+        if (docId === "d1") return { docId: "d1", documentOwner: OWNER_ID, documentScope: "OwnerDocument" as const, audience: [], documentState: "ReadyDocument" as const, title: "Private" }
+        if (docId === "d2") return { docId: "d2", documentOwner: OWNER_ID, documentScope: "SharedDocument" as const, audience: [PEER_ID], documentState: "IndexingDocument" as const, title: "Shared Indexing" }
+        return undefined
+      },
+      setPinned: () => effect { return true },
+    })
+
+    provide storeLayer {
+      const peerVisible = try listDocuments(PEER_ID, false)
+      assert.deepStrictEqual(peerVisible.map((d) => d.docId), ["d2"])
+      const peerSearchable = try listDocuments(PEER_ID, true)
+      assert.deepStrictEqual(peerSearchable, [])
+      const opened = try readDocument(PEER_ID, "d2")
+      assert.strictEqual(opened.docId, "d2")
+      const peerPin = try Effect.result(pinDocument(PEER_ID, "d2", true))
+      assert.strictEqual(peerPin._tag, "Failure")
+      assert.strictEqual(try pinDocument(OWNER_ID, "d1", true), true)
+    }
+
+    const repo = new InMemoryKnowledgeRepository()
+    const urlFetcher = Layer.succeed(DocumentUrlFetcher, {
+      fetch: (url) => effect {
+        return { content: `Fetched content from ${url}`, contentType: "text/markdown", filename: "remote.md" }
+      },
+    })
+
+    provide urlFetcher {
+      const uploadPrivate = try handleKnowledgeRoute(repo, {
+        method: "POST",
+        pathname: "/api/documents",
+        accessContext: ownerCtx,
+        body: { id: "doc-priv", filename: "notes.md", content: "  Keep leading whitespace\n", contentType: "text/markdown", scope: "owner", tags: ["work"] },
+      })
+      assert.strictEqual(uploadPrivate.status, 201)
+
+      const uploadIndexing = try handleKnowledgeRoute(repo, {
+        method: "POST",
+        pathname: "/api/documents",
+        accessContext: ownerCtx,
+        body: { id: "doc-idx", filename: "shared.txt", content: "shared body", scope: "shared", audience: [PEER_ID], state: "IndexingDocument" },
+      })
+      assert.strictEqual(uploadIndexing.status, 201)
+
+      const peerDetail = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/doc-idx", accessContext: peerCtx })
+      assert.strictEqual(peerDetail.status, 200)
+      const strangerDetail = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/doc-idx", accessContext: strangerCtx })
+      assert.strictEqual(strangerDetail.status, 404)
+
+      const peerSearch = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/search", searchParams: { q: "shared" }, accessContext: peerCtx })
+      assert.strictEqual((peerSearch.body as { readonly total: number }).total, 0)
+
+      const ownerDetail = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/doc-priv", accessContext: ownerCtx })
+      const presented = (ownerDetail.body as { readonly document: PresentedDocument }).document
+      assert.strictEqual(presented.content?.text, "  Keep leading whitespace\n")
+
+      const stats = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/stats", accessContext: ownerCtx })
+      assert.strictEqual((stats.body as { readonly totalDocuments: number }).totalDocuments, 2)
+      const facets = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/facets", accessContext: ownerCtx })
+      assert.strictEqual((facets.body as { readonly tags: Record<string, number> }).tags.work, 1)
+      const frags = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/doc-priv/fragments", accessContext: ownerCtx })
+      assert.strictEqual((frags.body as { readonly fragments: unknown[] }).fragments.length, 1)
+
+      const urlIngest = try handleKnowledgeRoute(repo, { method: "POST", pathname: "/api/documents/url", accessContext: ownerCtx, body: { url: "https://example.com/guide.md" } })
+      assert.strictEqual(urlIngest.status, 201)
+      const badScheme = try handleKnowledgeRoute(repo, { method: "POST", pathname: "/api/documents/url", accessContext: ownerCtx, body: { url: "file:///etc/passwd" } })
+      assert.strictEqual(badScheme.status, 400)
+    }
+  })
+
+  it.effect(`Require ownership for pins, sharing, edits, and deletion; refuse bundled/character edits and oversized uploads (spec/knowledge/index.md, "Ownership is required for changes to a document or its audience")`, effect () => {
+    const repo = new InMemoryKnowledgeRepository()
+    const svc = new KnowledgeService(runtimeStub(), repo)
+    assert.strictEqual(knowledgePlugin.name, "@elizaos/plugin-knowledge")
+
+    const noFetcher = Layer.succeed(DocumentUrlFetcher, {
+      fetch: () => effect { return { content: "", contentType: "text/plain", filename: "empty.txt" } },
+    })
+
+    provide noFetcher {
+      const bulk = try handleKnowledgeRoute(repo, {
+        method: "POST",
+        pathname: "/api/documents/bulk",
+        accessContext: ownerCtx,
+        body: {
+          documents: [
+            { id: "d-edit", filename: "draft.txt", content: "v1", scope: "shared", audience: [PEER_ID] },
+            { id: "d-bundled", filename: "seed.md", content: "seeded", source: "bundled", scope: "public" },
+            { id: "d-bin", filename: "scan.pdf", content: "binary-placeholder", contentType: "application/pdf", textBacked: false },
+          ],
+        },
+      })
+      assert.strictEqual((bulk.body as { readonly succeeded: unknown[] }).succeeded.length, 3)
+
+      const peerPin = try handleKnowledgeRoute(repo, { method: "PATCH", pathname: "/api/documents/d-edit/pins", accessContext: peerCtx, body: { pinned: true } })
+      assert.strictEqual(peerPin.status, 403)
+      const ownerPin = try handleKnowledgeRoute(repo, { method: "PATCH", pathname: "/api/documents/d-edit/pins", accessContext: ownerCtx, body: { pinned: true } })
+      assert.strictEqual(ownerPin.status, 200)
+
+      const peerAccess = try handleKnowledgeRoute(repo, { method: "PATCH", pathname: "/api/documents/d-edit/access", accessContext: peerCtx, body: { scope: "public" } })
+      assert.strictEqual(peerAccess.status, 403)
+      const ownerAccess = try handleKnowledgeRoute(repo, { method: "PATCH", pathname: "/api/documents/d-edit/access", accessContext: ownerCtx, body: { scope: "public" } })
+      assert.strictEqual(ownerAccess.status, 200)
+
+      const bundledEdit = try handleKnowledgeRoute(repo, { method: "PATCH", pathname: "/api/documents/d-bundled", accessContext: ownerCtx, body: { text: "hacked" } })
+      assert.strictEqual(bundledEdit.status, 403)
+      const bundledDelete = try handleKnowledgeRoute(repo, { method: "DELETE", pathname: "/api/documents/d-bundled", accessContext: ownerCtx })
+      assert.strictEqual(bundledDelete.status, 403)
+      const binEdit = try handleKnowledgeRoute(repo, { method: "PATCH", pathname: "/api/documents/d-bin", accessContext: ownerCtx, body: { text: "hacked" } })
+      assert.strictEqual(binEdit.status, 403)
+
+      const tooBig = try handleKnowledgeRoute(repo, { method: "POST", pathname: "/api/documents", accessContext: ownerCtx, body: { filename: "huge.txt", content: "x" }, bodyBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES + 1 })
+      assert.strictEqual(tooBig.status, 413)
+      const badType = try handleKnowledgeRoute(repo, { method: "POST", pathname: "/api/documents", accessContext: ownerCtx, body: { filename: "exe.bin", content: "x", contentType: "application/x-msdownload" } })
+      assert.strictEqual(badType.status, 400)
+
+      const ownerEdit = try handleKnowledgeRoute(repo, { method: "PATCH", pathname: "/api/documents/d-edit", accessContext: ownerCtx, body: { text: "v2 exact  " } })
+      assert.strictEqual(ownerEdit.status, 200)
+      assert.strictEqual(((ownerEdit.body as { readonly document: PresentedDocument }).document).content?.text, "v2 exact  ")
+
+      const ownerDel = try handleKnowledgeRoute(repo, { method: "DELETE", pathname: "/api/documents/d-edit", accessContext: ownerCtx })
+      assert.strictEqual(ownerDel.status, 200)
+      const gone = try handleKnowledgeRoute(repo, { method: "GET", pathname: "/api/documents/d-edit", accessContext: ownerCtx })
+      assert.strictEqual(gone.status, 404)
+    }
+
+    const trusted = try tryPromise(() => svc.handleRoute({ method: "GET", pathname: "/api/documents", isTrustedLocal: true }))
+    assert.strictEqual(trusted.status, 200)
+  })
+})

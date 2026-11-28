@@ -1,0 +1,244 @@
+// spec/imessage/index.md, "Story: Store incoming iMessages without sending unsolicited replies"
+import type { Service } from "@elizaos/core"
+
+export const MAX_IMESSAGE_MESSAGE_LENGTH = 4000
+export const DEFAULT_POLL_INTERVAL_MS = 5000
+export const IMESSAGE_SERVICE_NAME = "imessage"
+
+export const IMessageEventTypes = {
+  MESSAGE_RECEIVED: "IMESSAGE_MESSAGE_RECEIVED",
+  MESSAGE_SENT: "IMESSAGE_MESSAGE_SENT",
+  REACTION_RECEIVED: "IMESSAGE_REACTION_RECEIVED",
+  SYSTEM_EVENT: "IMESSAGE_SYSTEM_EVENT",
+  CONNECTION_READY: "IMESSAGE_CONNECTION_READY",
+  ERROR: "IMESSAGE_ERROR",
+} as const
+
+export type IMessageEventType = (typeof IMessageEventTypes)[keyof typeof IMessageEventTypes]
+export type IMessageChatType = "direct" | "group"
+
+export interface IMessageSettings {
+  transport: "native" | "blooio"
+  dbPath?: string
+  pollIntervalMs: number
+  heartbeatIntervalMs: number
+  dmPolicy: "open" | "pairing" | "allowlist" | "disabled"
+  groupPolicy: "open" | "allowlist" | "disabled"
+  allowFrom: string[]
+  enabled: boolean
+  blooioApiKey?: string
+  blooioWebhookSecret?: string
+  blooioFromNumber?: string
+  blooioChannelId?: string
+  blooioApiBaseUrl?: string
+}
+
+export interface IMessageContact {
+  handle: string
+  displayName?: string
+  isPhoneNumber: boolean
+}
+
+export interface IMessageChat {
+  chatId: string
+  chatType: IMessageChatType
+  displayName?: string
+  participants: IMessageContact[]
+}
+
+export interface IMessageMessage {
+  id: string
+  text: string
+  handle: string
+  chatId: string
+  timestamp: number
+  isFromMe: boolean
+  hasAttachments: boolean
+  attachmentPaths?: string[]
+  chatType?: IMessageChatType
+  guid?: string
+  replyToGuid?: string
+}
+
+export interface IMessageListMessagesOptions {
+  chatId?: string
+  limit?: number
+}
+
+export interface IMessageSendOptions {
+  accountId?: string
+  mediaUrl?: string
+  mediaUrls?: string[]
+  maxBytes?: number
+  idempotencyKey?: string
+}
+
+export interface IMessageSendResult {
+  success: boolean
+  messageId?: string
+  messageIds?: string[]
+  localEffectIds?: string[]
+  chatId?: string
+  error?: string
+}
+
+export interface IMessagePermissionAction {
+  type: "full_disk_access"
+  label: string
+  url: string
+  instructions: string[]
+}
+
+export interface IMessageServiceStatus {
+  transport: "native" | "blooio"
+  available: boolean
+  connected: boolean
+  chatDbAvailable: boolean
+  sendOnly: boolean
+  chatDbPath: string
+  reason: string | null
+  permissionAction: IMessagePermissionAction | null
+  webhookPath: string | null
+  channelId: string | null
+}
+
+export interface IIMessageService extends Service {
+  isConnected(): boolean
+  getStatus(): IMessageServiceStatus
+  isMacOS(): boolean
+  sendMessage(to: string, text: string, options?: IMessageSendOptions): Promise<IMessageSendResult>
+  getRecentMessages(limit?: number): Promise<IMessageMessage[]>
+  getMessages(options?: IMessageListMessagesOptions): Promise<IMessageMessage[]>
+  getChats(): Promise<IMessageChat[]>
+  handleBlooioWebhook(rawBody: string, signature: string | undefined): Promise<"accepted" | "ignored" | "unauthorized">
+}
+
+module guard {
+  export class IMessagePluginError extends Error {
+    readonly code: string
+    readonly details?: Record<string, unknown>
+    constructor(message: string, code: string, details?: Record<string, unknown>) {
+      super(message)
+      this.name = "IMessagePluginError"
+      this.code = code
+      this.details = details
+    }
+  }
+
+  export class IMessageConfigurationError extends IMessagePluginError {
+    constructor(message: string, setting?: string) {
+      super(message, "CONFIGURATION_ERROR", setting ? { setting } : undefined)
+      this.name = "IMessageConfigurationError"
+    }
+  }
+
+  export class IMessageNotSupportedError extends IMessagePluginError {
+    constructor(message = "iMessage is only supported on macOS") {
+      super(message, "NOT_SUPPORTED")
+      this.name = "IMessageNotSupportedError"
+    }
+  }
+
+  export function failSplit(maxLength: number): never {
+    throw new Error(`splitMessageForIMessage: maxLength must be a positive finite number, got ${maxLength}`)
+  }
+}
+import { failSplit, IMessageConfigurationError, IMessageNotSupportedError, IMessagePluginError } from guard
+export { IMessageConfigurationError, IMessageNotSupportedError, IMessagePluginError }
+
+export function isPhoneNumber(input: string): boolean {
+  const cleaned = input.replace(/[\s\-().]/g, "")
+  return /^\+?\d{10,15}$/.test(cleaned)
+}
+
+export function isEmail(input: string): boolean {
+  const at = input.indexOf("@")
+  if (at <= 0 || at !== input.lastIndexOf("@")) return false
+  const dot = input.indexOf(".", at + 2)
+  if (dot < 0 || dot === input.length - 1) return false
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index]
+    if (character !== "@" && character.trim() === "") return false
+  }
+  return true
+}
+
+export function isValidIMessageTarget(target: string): boolean {
+  const trimmed = target.trim()
+  return isPhoneNumber(trimmed) || isEmail(trimmed) || trimmed.startsWith("chat_id:")
+}
+
+export function normalizeIMessageTarget(target: string): string | null {
+  const trimmed = target.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith("chat_id:")) return trimmed
+  if (trimmed.toLowerCase().startsWith("imessage:")) return trimmed.slice(9).trim()
+  return trimmed
+}
+
+export function formatPhoneNumber(phone: string): string {
+  let cleaned = phone.replace(/[\s\-().]/g, "")
+  if (cleaned.length > 10 && !cleaned.startsWith("+") && !cleaned.startsWith("0")) {
+    cleaned = `+${cleaned}`
+  }
+  return cleaned
+}
+
+export function truncateWellFormed(text: string, maxLength: number): string {
+  if (maxLength <= 0) return ""
+  if (text.length <= maxLength) return text
+  const code = text.charCodeAt(maxLength - 1)
+  if (code >= 0xd800 && code <= 0xdbff) return text.slice(0, maxLength - 1)
+  return text.slice(0, maxLength)
+}
+
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (locale: string, options: { granularity: "grapheme" }) => {
+      segment(text: string): Iterable<{ segment: string }>
+    }
+  }
+).Segmenter
+
+const graphemeSegmenter = new GraphemeSegmenter("en", { granularity: "grapheme" })
+
+function truncateGraphemeSafe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text
+  let end = 0
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) break
+    end += segment.length
+  }
+  return end > 0 ? text.slice(0, end) : truncateWellFormed(text, maxLength)
+}
+
+function takeAtLeastOneUnit(text: string, limit: number): string {
+  const chunk = truncateGraphemeSafe(text, limit)
+  return chunk.length > 0 ? chunk : truncateWellFormed(text, limit + 1)
+}
+
+export function splitMessageForIMessage(text: string, maxLength: number = MAX_IMESSAGE_MESSAGE_LENGTH): string[] {
+  if (!Number.isFinite(maxLength) || maxLength < 1) failSplit(maxLength)
+  const limit = Math.floor(maxLength)
+  if (text.length <= limit) return [text]
+  const chunks: string[] = []
+  let remaining = text
+  while (remaining.length > 0) {
+    if (remaining.length <= limit) {
+      chunks.push(remaining)
+      break
+    }
+    let breakPoint = limit
+    const newlineIdx = remaining.lastIndexOf("\n", limit)
+    if (newlineIdx > limit / 2) {
+      breakPoint = newlineIdx + 1
+    } else {
+      const spaceIdx = remaining.lastIndexOf(" ", limit)
+      if (spaceIdx > limit / 2) breakPoint = spaceIdx + 1
+    }
+    const head = takeAtLeastOneUnit(remaining, breakPoint)
+    chunks.push(head.trimEnd())
+    remaining = remaining.slice(head.length).trimStart()
+  }
+  return chunks
+}

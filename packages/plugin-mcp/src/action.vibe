@@ -1,0 +1,602 @@
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "An invocation can be sent once only after its original schema accepts the arguments"
+import {
+  ContentType,
+  ModelType,
+  createUniqueUuid,
+  logger,
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Media,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+} from "@elizaos/core"
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
+import { evaluateSchemaWithWorkerLifecycle } from "./compatibility.vibe"
+import {
+  createMcpResourceSelectionFeedback,
+  errorAnalysisTemplate,
+  formatMcpProviderForPrompt,
+  parseStructuredModelOutput,
+  renderMcpTemplate,
+  resourceAnalysisTemplate,
+  resourceSelectionTemplate,
+  toolReasoningTemplate,
+  toolSelectionArgumentTemplate,
+  toolSelectionNameTemplate,
+  validateJsonSchema,
+  validateMcpResourceSelection,
+} from "./protocol.vibe"
+import type { McpService } from "./service.vibe"
+import {
+  DEFAULT_MAX_RETRIES,
+  MCP_SERVICE_NAME,
+  McpError,
+  isMcpSettings,
+  type McpProvider,
+  type McpProviderData,
+  type McpResourceContent,
+  type McpServerInfo,
+  type McpServerRecord,
+  type ResourceSelection,
+  type ToolSelectionArgument,
+  type ToolSelectionName,
+  type ValidationResult,
+} from "./types.vibe"
+
+export const MCP_ACTION_CONTEXT = "mcp"
+export type McpOp = "call_tool" | "read_resource"
+const MAX_PROMPT_OUTPUT_CHARS = 4000
+
+function contentTypeFromMime(mimeType: string | undefined): ContentType | undefined {
+  if (!mimeType) return undefined
+  const lower = mimeType.toLowerCase()
+  if (lower.startsWith("image/")) return ContentType.IMAGE
+  if (lower.startsWith("video/")) return ContentType.VIDEO
+  if (lower.startsWith("audio/")) return ContentType.AUDIO
+  if (lower.includes("pdf") || lower.includes("document")) return ContentType.DOCUMENT
+  return undefined
+}
+
+function makeResourceAttachment(resource: McpResourceContent, runtime: IAgentRuntime, source: string, entityId: string, index: number): Media {
+  const mimeType = resource.mimeType ?? "application/octet-stream"
+  return {
+    id: createUniqueUuid(runtime, `${entityId}:${source}:${index}:${resource.uri}:${resource.blob}`),
+    url: `data:${mimeType};base64,${resource.blob}`,
+    mimeType,
+    contentType: contentTypeFromMime(mimeType),
+    title: resource.uri,
+    source: resource.uri,
+    description: `MCP resource from ${source}`,
+  }
+}
+
+export function processResourceResult(
+  result: { readonly contents: readonly McpResourceContent[] },
+  uri: string,
+  runtime: IAgentRuntime,
+  serverName: string,
+  entityId: string,
+): { readonly resourceContent: string; readonly resourceMeta: string; readonly attachments: Media[] } {
+  let resourceContent = ""
+  let resourceMeta = ""
+  const attachments: Media[] = []
+  for (const content of result.contents) {
+    if (content.text) {
+      resourceContent += `${resourceContent ? "\n" : ""}${content.text}`
+    } else if (typeof content.blob === "string") {
+      attachments.push(makeResourceAttachment(content, runtime, serverName, entityId, attachments.length))
+      resourceContent += `${resourceContent ? "\n" : ""}[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`
+    }
+    resourceMeta += `Resource: ${content.uri ?? uri}\n`
+    if (content.mimeType) resourceMeta += `Type: ${content.mimeType}\n`
+  }
+  return { resourceContent, resourceMeta, attachments }
+}
+
+export function processToolResult(
+  result: Pick<CallToolResult, "content" | "structuredContent" | "isError">,
+  serverName: string,
+  toolName: string,
+  runtime: IAgentRuntime,
+  entityId: string,
+): { readonly toolOutput: string; readonly hasAttachments: boolean; readonly attachments: Media[]; readonly isError: boolean } {
+  let toolOutput = ""
+  let hasAttachments = false
+  const attachments: Media[] = []
+  let mediaIndex = 0
+  for (const content of result.content) {
+    if (content.type === "text" && content.text) {
+      toolOutput += `${toolOutput ? "\n" : ""}${content.text}`
+    } else if (content.type === "resource_link") {
+      toolOutput += `\n\nResource link:\n${JSON.stringify(content)}`
+    } else if ((content.type === "image" || content.type === "audio") && content.data && content.mimeType) {
+      hasAttachments = true
+      const kind = content.type === "audio" ? "audio" : "image"
+      attachments.push({
+        contentType: contentTypeFromMime(content.mimeType),
+        url: `data:${content.mimeType};base64,${content.data}`,
+        id: createUniqueUuid(runtime, `${entityId}:${serverName}/${toolName}:${mediaIndex++}:${content.data}`),
+        title: `Generated ${kind}`,
+        source: `${serverName}/${toolName}`,
+        description: `Tool-generated ${kind}`,
+        text: `Generated ${kind}`,
+      })
+    } else if (content.type === "resource" && content.resource) {
+      const resource = content.resource
+      if ("text" in resource && resource.text) {
+        toolOutput += `\n\nResource (${resource.uri}):\n${resource.text}`
+      } else if ("blob" in resource && typeof resource.blob === "string") {
+        attachments.push(makeResourceAttachment(resource, runtime, `${serverName}/${toolName}`, entityId, mediaIndex++))
+        hasAttachments = true
+        toolOutput += `\n\nResource (${resource.uri}): [Binary data]`
+      }
+    }
+  }
+  if (result.structuredContent !== undefined) {
+    const serialized = JSON.stringify(result.structuredContent)
+    const hasTextCopy = result.content.some((c) => {
+      if (c.type !== "text") return false
+      try {
+        return JSON.stringify(JSON.parse(c.text)) === serialized
+      } catch {
+        return false
+      }
+    })
+    if (!hasTextCopy) toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${serialized}`
+  }
+  return { toolOutput, hasAttachments, attachments, isError: result.isError === true }
+}
+
+async function createMcpMemory(
+  runtime: IAgentRuntime,
+  message: Memory,
+  type: "tool" | "resource",
+  serverName: string,
+  content: string,
+  metadata: Readonly<Record<string, unknown>>,
+  attachments: readonly Media[] = [],
+): Promise<void> {
+  const memory: Memory = {
+    entityId: message.entityId,
+    agentId: runtime.agentId,
+    roomId: message.roomId,
+    content: {
+      text: `Used the "${type}" from "${serverName}" server.\nContent: ${content}`,
+      ...(attachments.length ? { attachments: [...attachments] } : {}),
+      metadata: { ...metadata, serverName },
+    },
+  }
+  const hasEmbed = typeof runtime.getModel === "function" && runtime.getModel(ModelType.TEXT_EMBEDDING)
+  const persisted = hasEmbed && typeof runtime.addEmbeddingToMemory === "function" ? await runtime.addEmbeddingToMemory(memory) : memory
+  if (typeof runtime.createMemory === "function") {
+    await runtime.createMemory(persisted, type === "resource" ? "resources" : "tools", true)
+  }
+}
+
+export const mcpProvider: Provider = {
+  name: "MCP",
+  description: "Information about connected MCP servers, tools, and resources",
+  dynamic: true,
+  contexts: ["connectors", "settings"],
+  contextGate: { anyOf: ["connectors", "settings"] },
+  cacheStable: true,
+  cacheScope: "turn",
+  get: async (runtime: IAgentRuntime): Promise<ProviderResult> => {
+    const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME)
+    if (!mcpService) return { values: {}, data: {}, text: "No MCP servers are available." }
+    try {
+      const providerData = mcpService.getProviderData()
+      const text = formatMcpProviderForPrompt(providerData.values.mcp)
+      const count = Object.keys(providerData.data.mcp).length
+      return { values: { mcpServers: text }, data: { mcpServerCount: count, shownMcpServerCount: count }, text }
+    } catch (error) {
+      const runtimeWithReport = runtime as { reportError?: (tag: string, err: unknown) => void }
+      runtimeWithReport.reportError?.("MCP.provider", error)
+      const message = error instanceof Error ? error.message : String(error)
+      const text = `MCP server status is unavailable (error reading MCP state: ${message}).`
+      return { values: { mcpServers: text }, data: { error: message }, text }
+    }
+  },
+}
+
+function readOptions(options?: HandlerOptions | Record<string, unknown>): Record<string, unknown> {
+  const direct = (options ?? {}) as Record<string, unknown>
+  const params = direct.parameters && typeof direct.parameters === "object" ? (direct.parameters as Record<string, unknown>) : {}
+  return { ...direct, ...params }
+}
+
+function normalizeOp(value: unknown): McpOp | null {
+  if (typeof value !== "string") return null
+  const v = value.trim().toLowerCase()
+  if (v === "call_tool" || v === "tool" || v === "call") return "call_tool"
+  if (v === "read_resource" || v === "resource" || v === "read") return "read_resource"
+  return null
+}
+
+function inferOpFromText(text: string): McpOp | null {
+  if (/\b(read|get|fetch|access|open|list)\b.*\b(resource|resources|document|docs?|file)\b/i.test(text)) return "read_resource"
+  if (/\b(call|use|run|execute|invoke|search|query)\b.*\b(tool|tools|mcp)\b/i.test(text)) return "call_tool"
+  return null
+}
+
+function inferOpFromSelection(params: Record<string, unknown>): McpOp | null {
+  if (typeof params.toolName === "string" && params.toolName.trim() !== "") return "call_tool"
+  if (typeof params.uri === "string" && params.uri.trim() !== "") return "read_resource"
+  return null
+}
+
+export interface DirectToolSelection {
+  readonly serverName: string
+  readonly toolName: string
+  readonly toolArguments?: Readonly<Record<string, unknown>>
+  readonly reasoning: string
+}
+
+export function getDirectToolSelection(options?: unknown): DirectToolSelection | null {
+  const params = readOptions(options as HandlerOptions)
+  const serverName = typeof params.serverName === "string" ? params.serverName.trim() : ""
+  const toolName = typeof params.toolName === "string" ? params.toolName.trim() : ""
+  if (!serverName || !toolName) return null
+  let toolArguments: Record<string, unknown> | undefined
+  const rawArgs = params.arguments ?? params.toolArguments
+  if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+    toolArguments = rawArgs as Record<string, unknown>
+  } else if (typeof rawArgs === "string" && rawArgs.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(rawArgs)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) toolArguments = parsed as Record<string, unknown>
+    } catch {
+      toolArguments = undefined
+    }
+  }
+  return {
+    serverName,
+    toolName,
+    ...(toolArguments !== undefined ? { toolArguments } : {}),
+    reasoning: typeof params.reasoning === "string" && params.reasoning.trim() ? params.reasoning.trim() : "Selected from structured MCP call_tool parameters.",
+  }
+}
+
+function getDirectResourceSelection(options?: unknown): ResourceSelection | null {
+  const params = readOptions(options as HandlerOptions)
+  const serverName = typeof params.serverName === "string" ? params.serverName.trim() : ""
+  const uri = typeof params.uri === "string" ? params.uri.trim() : ""
+  if (!serverName || !uri) return null
+  return {
+    serverName,
+    uri,
+    reasoning: typeof params.reasoning === "string" && params.reasoning.trim() ? params.reasoning.trim() : "Selected from structured MCP read_resource parameters.",
+  }
+}
+
+function incompleteSelectionReason(op: McpOp, params: Record<string, unknown>): string | null {
+  const given = (key: string) => typeof params[key] === "string" && (params[key] as string).trim() !== ""
+  const hasServer = given("serverName")
+  if (op === "read_resource") {
+    const hasUri = given("uri")
+    if (hasUri && !hasServer) return "MCP read_resource needs serverName together with uri."
+    if (hasServer && !hasUri) return "MCP read_resource needs uri together with serverName. Omit serverName to select the resource from the request text."
+    return null
+  }
+  const hasTool = given("toolName")
+  if (hasTool && !hasServer) return "MCP call_tool needs serverName together with toolName."
+  if (!hasTool && given("uri")) return "MCP call_tool does not take uri. Use action=read_resource with serverName and uri."
+  if (hasServer && !hasTool) return "MCP call_tool needs toolName together with serverName. Omit serverName to select the tool from the request text."
+  if (!hasTool && params.arguments !== undefined) return "MCP call_tool needs serverName and toolName together with arguments."
+  return null
+}
+
+function getMaxRetries(runtime: IAgentRuntime): number {
+  const raw = runtime.getSetting("mcp")
+  return isMcpSettings(raw) && typeof raw.maxRetries === "number" && raw.maxRetries >= 0 ? raw.maxRetries : DEFAULT_MAX_RETRIES
+}
+
+async function withModelRetry<T>(params: {
+  readonly runtime: IAgentRuntime
+  readonly message: Memory
+  readonly input: string | Record<string, unknown>
+  readonly validate: (data: string | Record<string, unknown>) => Promise<ValidationResult<T>> | ValidationResult<T>
+  readonly feedback: (orig: string | Record<string, unknown>, err: string) => string
+  readonly callback?: HandlerCallback
+  readonly failureMsg: string
+  readonly retryCount?: number
+}): Promise<T | null> {
+  const attempt = params.retryCount ?? 0
+  let result: ValidationResult<T>
+  try {
+    const parsed = typeof params.input === "string" ? parseStructuredModelOutput<Record<string, unknown>>(params.input) : params.input
+    result = await params.validate(parsed)
+  } catch (err) {
+    result = { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+  if (result.success) return result.data
+  if (attempt < getMaxRetries(params.runtime)) {
+    const nextInput = (await params.runtime.useModel(ModelType.TEXT_LARGE, { prompt: params.feedback(params.input, result.error) })) as string
+    return withModelRetry({ ...params, input: nextInput, retryCount: attempt + 1 })
+  }
+  if (params.callback) await params.callback({ text: params.failureMsg, actions: ["REPLY"] })
+  return null
+}
+
+function validateToolName(raw: unknown, mcpData: McpProviderData): ValidationResult<ToolSelectionName> {
+  if (typeof raw !== "object" || raw === null) return { success: false, error: "Tool selection must be an object" }
+  const rec = raw as Record<string, unknown>
+  if (rec.noToolAvailable === true) return { success: true, data: { serverName: "", toolName: "", noToolAvailable: true, reasoning: typeof rec.reasoning === "string" ? rec.reasoning : undefined } }
+  const check = validateJsonSchema<ToolSelectionName>(rec, {
+    type: "object",
+    required: ["serverName", "toolName"],
+    properties: { serverName: { type: "string", minLength: 1 }, toolName: { type: "string", minLength: 1 }, reasoning: { type: "string" }, noToolAvailable: { type: "boolean" } },
+  })
+  if (!check.success) return check
+  const server = mcpData[check.data.serverName]
+  if (!server || server.status !== "connected") return { success: false, error: `Server "${check.data.serverName}" is not connected` }
+  if (!server.tools[check.data.toolName]) return { success: false, error: `Tool "${check.data.toolName}" not found on server "${check.data.serverName}"` }
+  return check
+}
+
+async function selectToolArgs(
+  runtime: IAgentRuntime,
+  message: Memory,
+  mcpService: McpService,
+  mcpProviderData: McpProvider,
+  selection: ToolSelectionName,
+  callback: HandlerCallback | undefined,
+): Promise<ToolSelectionArgument | null> {
+  const toolInfo = mcpProviderData.data.mcp[selection.serverName]?.tools[selection.toolName]
+  const schema = (toolInfo?.inputSchema ?? {}) as Readonly<Record<string, unknown>>
+  const promptSchema = mcpService.applyToolCompatibility(schema)
+  const prompt = renderMcpTemplate(toolSelectionArgumentTemplate, {
+    recentMessages: message.content?.text ?? "",
+    toolSelectionName: selection,
+    toolInputSchema: JSON.stringify(promptSchema),
+  })
+  const raw = (await runtime.useModel(ModelType.TEXT_LARGE, { prompt })) as string
+  return withModelRetry<ToolSelectionArgument>({
+    runtime,
+    message,
+    input: raw,
+    callback,
+    failureMsg: "I'm having trouble figuring out the best way to help with your request.",
+    validate: async (parsed) => {
+      if (typeof parsed !== "object" || parsed === null || typeof (parsed as Record<string, unknown>).toolArguments !== "object" || (parsed as Record<string, unknown>).toolArguments === null) {
+        return { success: false, error: "Expected toolArguments object" }
+      }
+      const args = (parsed as { toolArguments: Record<string, unknown> }).toolArguments
+      const evaluated = await runPromise(evaluateSchemaWithWorkerLifecycle(args, schema))
+      return evaluated.success ? { success: true, data: { toolArguments: args } } : { success: false, error: evaluated.error }
+    },
+    feedback: (orig, err) => `${prompt}\n\nPrevious error: ${err}\nPrevious response: ${typeof orig === "string" ? orig : JSON.stringify(orig)}`,
+  })
+}
+
+async function handleMcpFailure(
+  mcpProviderData: McpProvider,
+  error: unknown,
+  runtime: IAgentRuntime,
+  message: Memory,
+  type: "tool" | "resource",
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const errMsg = error instanceof Error ? error.message : String(error)
+  logger.error({ error, mcpType: type }, `Error executing MCP ${type}: ${errMsg}`)
+  if (callback && typeof runtime.useModel === "function") {
+    const prompt = renderMcpTemplate(errorAnalysisTemplate, { mcpProvider: mcpProviderData, recentMessages: "", userMessage: message.content?.text ?? "", error: errMsg })
+    const reply = (await runtime.useModel(ModelType.TEXT_SMALL, { prompt })) as string
+    await callback({ text: reply, actions: ["REPLY"] })
+  }
+  return {
+    text: `Failed to execute MCP ${type}`,
+    values: { success: false, error: errMsg, errorType: type },
+    data: { actionName: "MCP", op: type === "tool" ? "call_tool" : "read_resource", error: errMsg, mcpType: type },
+    success: false,
+    error: error instanceof Error ? error : new Error(errMsg),
+  }
+}
+
+async function withMcpService(
+  runtime: IAgentRuntime,
+  message: Memory,
+  type: "tool" | "resource",
+  callback: HandlerCallback | undefined,
+  run: (mcpService: McpService, mcpData: McpProvider) => Promise<ActionResult>,
+): Promise<ActionResult> {
+  const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME)
+  if (!mcpService) return { success: false, text: "MCP service not available", error: new McpError("MCP service not available", "SERVICE_UNAVAILABLE") }
+  const mcpData = mcpService.getProviderData()
+  try {
+    return await run(mcpService, mcpData)
+  } catch (error) {
+    return handleMcpFailure(mcpData, error, runtime, message, type, callback)
+  }
+}
+
+async function handleCallTool(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  return withMcpService(runtime, message, "tool", callback, async (mcpService, mcpData) => {
+    const direct = getDirectToolSelection(options)
+    let selection: { readonly serverName: string; readonly toolName: string; readonly reasoning?: string }
+    let toolArguments: Readonly<Record<string, unknown>>
+    if (direct) {
+      selection = direct
+      if (direct.toolArguments) {
+        const schema = (mcpData.data.mcp[direct.serverName]?.tools[direct.toolName]?.inputSchema ?? {}) as Readonly<Record<string, unknown>>
+        if (Object.keys(schema).length > 0) {
+          const check = await runPromise(evaluateSchemaWithWorkerLifecycle(direct.toolArguments, schema))
+          if (!check.success) {
+            return { success: false, text: `Invalid tool arguments: ${check.error}`, error: McpError.validationError(check.error) }
+          }
+        }
+        toolArguments = direct.toolArguments
+      } else {
+        const derived = await selectToolArgs(runtime, message, mcpService, mcpData, direct, callback)
+        if (!derived) return { success: true, text: "I don't have a specific tool that can help with that request. Let me try to assist you directly instead.", data: { actionName: "MCP", op: "call_tool", noToolAvailable: true } }
+        toolArguments = derived.toolArguments
+      }
+    } else {
+      const namePrompt = renderMcpTemplate(toolSelectionNameTemplate, { mcpProvider: mcpData, recentMessages: message.content?.text ?? "" })
+      const rawName = (await runtime.useModel(ModelType.TEXT_LARGE, { prompt: namePrompt })) as string
+      const picked = await withModelRetry<ToolSelectionName>({
+        runtime,
+        message,
+        input: rawName,
+        callback,
+        failureMsg: "I'm having trouble figuring out the best way to help with your request.",
+        validate: (parsed) => validateToolName(parsed, mcpData.data.mcp),
+        feedback: (orig, err) => `${namePrompt}\n\nError: ${err}\nPrevious: ${typeof orig === "string" ? orig : JSON.stringify(orig)}`,
+      })
+      if (!picked || picked.noToolAvailable) {
+        const responseText = "I don't have a specific tool that can help with that request. Let me try to assist you directly instead."
+        if (callback && picked?.noToolAvailable) await callback({ text: responseText, actions: ["REPLY"] })
+        return { success: true, text: responseText, values: { success: true, noToolAvailable: true, fallbackToDirectAssistance: true }, data: { actionName: "MCP", op: "call_tool", noToolAvailable: true, reason: picked?.reasoning ?? "No appropriate tool available" } }
+      }
+      const derived = await selectToolArgs(runtime, message, mcpService, mcpData, picked, callback)
+      if (!derived) return { success: true, text: "I don't have a specific tool that can help with that request. Let me try to assist you directly instead.", data: { actionName: "MCP", op: "call_tool", noToolAvailable: true } }
+      selection = picked
+      toolArguments = derived.toolArguments
+    }
+    const { serverName, toolName } = selection
+    const result = await mcpService.callTool(serverName, toolName, toolArguments)
+    const { toolOutput, hasAttachments, attachments, isError } = processToolResult(result, serverName, toolName, runtime, message.entityId)
+    await createMcpMemory(runtime, message, "tool", serverName, toolOutput, { toolName, arguments: toolArguments, isToolCall: true }, attachments)
+    const reasoned = typeof runtime.useModel === "function"
+      ? (await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: renderMcpTemplate(toolReasoningTemplate, { mcpProvider: mcpData, recentMessages: "", toolName, serverName, userMessage: message.content?.text ?? "", toolOutput, hasAttachments, toolErrored: isError }),
+        })) as string
+      : toolOutput
+    if (callback) await callback({ text: reasoned, actions: ["CALL_MCP_TOOL"], attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined })
+    const boundedOutput = toolOutput.length > MAX_PROMPT_OUTPUT_CHARS ? `${toolOutput.slice(0, MAX_PROMPT_OUTPUT_CHARS)}...` : toolOutput
+    const data = { actionName: "MCP", op: "call_tool" as const, serverName, toolName, toolArgumentsJson: JSON.stringify(toolArguments), reasoning: selection.reasoning, output: toolOutput, attachmentCount: attachments.length, isError }
+    const promptData = { actionName: "MCP", op: "call_tool", serverName, toolName, output: boundedOutput, truncated: toolOutput.length > MAX_PROMPT_OUTPUT_CHARS, isError }
+    if (isError) {
+      return {
+        text: `Tool ${serverName}/${toolName} reported an error. Reasoned response: ${reasoned}`,
+        values: { success: false, toolExecuted: true, toolErrored: true, serverName, toolName, hasAttachments, output: toolOutput },
+        data,
+        promptData,
+        promptDataMode: "replace-data",
+        success: false,
+        error: new McpError(`MCP tool '${serverName}/${toolName}' returned an error result: ${toolOutput}`, "TOOL_EXECUTION_ERROR"),
+      }
+    }
+    return {
+      text: `Successfully called tool: ${serverName}/${toolName}. Reasoned response: ${reasoned}`,
+      values: { success: true, toolExecuted: true, serverName, toolName, hasAttachments, output: toolOutput },
+      data,
+      promptData,
+      promptDataMode: "replace-data",
+      success: true,
+    }
+  })
+}
+
+async function handleReadResource(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  return withMcpService(runtime, message, "resource", callback, async (mcpService, mcpData) => {
+    let parsedSelection = getDirectResourceSelection(options)
+    if (!parsedSelection) {
+      const selPrompt = renderMcpTemplate(resourceSelectionTemplate, { mcpProvider: mcpData, recentMessages: message.content?.text ?? "" })
+      const rawSel = (await runtime.useModel(ModelType.TEXT_SMALL, { prompt: selPrompt })) as string
+      const retried = await withModelRetry<ResourceSelection>({
+        runtime,
+        message,
+        input: rawSel,
+        callback,
+        failureMsg: "I'm having trouble finding the resource you're looking for. Could you provide more details about what you need?",
+        validate: (data) => {
+          const check = validateMcpResourceSelection(data)
+          if (!check.success) return check
+          if (check.data.noResourceAvailable) return { success: true, data: { serverName: "", uri: "", noResourceAvailable: true, reasoning: check.data.reasoning } }
+          const srv = mcpData.data.mcp[check.data.serverName ?? ""] as McpServerInfo | undefined
+          if (!srv || srv.status !== "connected") return { success: false, error: `Server "${check.data.serverName}" is not connected` }
+          return { success: true, data: { serverName: check.data.serverName ?? "", uri: check.data.uri ?? "", reasoning: check.data.reasoning, noResourceAvailable: false } }
+        },
+        feedback: (orig, err) => createMcpResourceSelectionFeedback({ originalResponse: typeof orig === "string" ? orig : JSON.stringify(orig), errorMessage: err, providerData: mcpData.data.mcp, userMessage: message.content?.text ?? "" }),
+      })
+      parsedSelection = retried
+    }
+    if (!parsedSelection || parsedSelection.noResourceAvailable) {
+      const responseText = "I don't have a specific resource that contains the information you're looking for. Let me try to assist you directly instead."
+      if (callback && parsedSelection?.noResourceAvailable) await callback({ text: responseText, actions: ["REPLY"] })
+      return { success: true, text: responseText, values: { success: true, noResourceAvailable: true, fallbackToDirectAssistance: true }, data: { actionName: "MCP", op: "read_resource", noResourceAvailable: true, reason: parsedSelection?.reasoning ?? "No appropriate resource available" } }
+    }
+    const { serverName, uri } = parsedSelection
+    const result = await mcpService.readResource(serverName, uri)
+    const { resourceContent, resourceMeta, attachments } = processResourceResult(result, uri, runtime, serverName, message.entityId)
+    await createMcpMemory(runtime, message, "resource", serverName, resourceContent, { uri, isResourceAccess: true }, attachments)
+    if (callback && typeof runtime.useModel === "function") {
+      const analyzed = (await runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: renderMcpTemplate(resourceAnalysisTemplate, { mcpProvider: mcpData, recentMessages: "", uri, userMessage: message.content?.text ?? "", resourceContent, resourceMeta }),
+      })) as string
+      await callback({ text: analyzed, attachments: attachments.length ? [...attachments] : undefined, actions: ["READ_MCP_RESOURCE"] })
+    }
+    const bounded = resourceContent.length > MAX_PROMPT_OUTPUT_CHARS ? `${resourceContent.slice(0, MAX_PROMPT_OUTPUT_CHARS)}...` : resourceContent
+    return {
+      text: `Successfully read resource: ${uri}`,
+      values: { success: true, resourceRead: true, serverName, uri },
+      data: { actionName: "MCP", op: "read_resource", serverName, uri, reasoning: parsedSelection.reasoning, resourceMeta, attachments, attachmentCount: attachments.length, output: resourceContent, contentLength: resourceContent.length },
+      promptData: { actionName: "MCP", op: "read_resource", serverName, uri, output: bounded, truncated: resourceContent.length > MAX_PROMPT_OUTPUT_CHARS },
+      promptDataMode: "replace-data",
+      success: true,
+    }
+  })
+}
+
+export function getMcpRouteForTest(message: Memory, options?: HandlerOptions | Record<string, unknown>): McpOp | null {
+  const opts = readOptions(options)
+  const requested = normalizeOp(opts.op ?? opts.operation)
+  return requested ?? inferOpFromText(typeof message.content?.text === "string" ? message.content.text : "")
+}
+
+export const mcpAction: Action = {
+  name: "MCP",
+  contexts: ["general", "automation", "knowledge", "connectors", MCP_ACTION_CONTEXT, "files"],
+  contextGate: { anyOf: ["general", "automation", "knowledge", "connectors", MCP_ACTION_CONTEXT, "files"] },
+  roleGate: { minRole: "USER" },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  summarize: (result) => {
+    if (!result) return "MCP operation completed."
+    if (result.text) return result.text.length > 240 ? `${result.text.slice(0, 237)}...` : result.text
+    return result.success ? "MCP operation succeeded." : "MCP operation failed."
+  },
+  similes: ["MCP_ACTION", "MCP_ROUTER", "USE_MCP", "CALL_MCP_TOOL", "CALL_TOOL", "USE_MCP_TOOL", "EXECUTE_MCP_TOOL", "RUN_MCP_TOOL", "INVOKE_MCP_TOOL", "READ_MCP_RESOURCE", "READ_RESOURCE", "GET_MCP_RESOURCE", "FETCH_MCP_RESOURCE", "ACCESS_MCP_RESOURCE"],
+  description: "Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource.",
+  descriptionCompressed: "MCP call_tool read_resource",
+  routingHint: "call a tool or read a resource on a connected external MCP server -> MCP; do NOT use to invoke an agent skill -> USE_SKILL, or to run a local shell command / edit files -> BASH / FILE",
+  parameters: [
+    { name: "action", description: "MCP operation: call_tool | read_resource", required: false, schema: { type: "string", enum: ["call_tool", "read_resource"] } },
+    { name: "arguments", description: "For action=call_tool: JSON arguments to pass to toolName. Requires serverName and toolName.", required: false, schema: { type: "object", additionalProperties: true } },
+    { name: "serverName", description: "MCP server name that owns the tool or resource. Give it together with toolName (call_tool) or uri (read_resource). Omit all three to select from the request text.", required: false, schema: { type: "string" } },
+    { name: "toolName", description: "For action=call_tool: exact MCP tool name on serverName. Requires serverName.", required: false, schema: { type: "string" } },
+    { name: "uri", description: "For action=read_resource: exact MCP resource URI on serverName. Requires serverName.", required: false, schema: { type: "string" } },
+  ],
+  validate: async (runtime) => {
+    const svc = runtime.getService<McpService>(MCP_SERVICE_NAME)
+    if (!svc) return false
+    return svc.getServers().some((server: McpServerRecord) => server.status === "connected" && ((server.tools?.length ?? 0) > 0 || (server.resources?.length ?? 0) > 0))
+  },
+  handler: async (runtime, message, _state, options, callback): Promise<ActionResult> => {
+    const opts = readOptions(options)
+    const requested = normalizeOp(opts.action ?? opts.subaction ?? opts.op ?? opts.operation)
+    const text = typeof message.content?.text === "string" ? message.content.text : ""
+    const op = requested ?? inferOpFromSelection(opts) ?? inferOpFromText(text) ?? "call_tool"
+    const incomplete = incompleteSelectionReason(op, opts)
+    if (incomplete) {
+      await callback?.({ text: incomplete, source: message.content?.source })
+      return { success: false, text: incomplete, values: { error: "INCOMPLETE_SELECTION" }, data: { actionName: "MCP", op }, error: new McpError(incomplete, "INCOMPLETE_SELECTION") }
+    }
+    return op === "read_resource" ? handleReadResource(runtime, message, options, callback) : handleCallTool(runtime, message, options, callback)
+  },
+}

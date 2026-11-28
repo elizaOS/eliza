@@ -1,0 +1,56 @@
+// spec/nativeSettings/index.md, "Story: Adjust the device settings from the local overlay"
+import { assert, describe, it } from "@effect/vitest"
+import type { SystemClient } from "@elizaos/os-bridges"
+import {
+  DEVICE_SETTINGS_APP_NAME,
+  DEVICE_SETTINGS_ROLES,
+  appDeviceSettingsPlugin,
+  applyBrightness,
+  applyVolume,
+  openNativeSettingsShortcut,
+  requestAndroidRoleShortcut,
+} from "../src/index.vibe"
+
+module node {
+  export async function captureRejection(fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await fn()
+      return undefined
+    } catch (error) {
+      return error
+    }
+  }
+}
+import { captureRejection } from node
+
+describe("Native settings (spec/nativeSettings/index.md, \"Story: Adjust the device settings from the local overlay\")", () => {
+  it("Enforces brightness/volume bounds, readback verification, and native handoff outcomes (spec/nativeSettings/index.md, \"A setting write is admitted by its current capability and valid level\")", async () => {
+    assert.strictEqual(appDeviceSettingsPlugin.name, DEVICE_SETTINGS_APP_NAME)
+    assert.include(DEVICE_SETTINGS_ROLES, "assistant")
+
+    const device = {
+      getDeviceSettings: async () => ({
+        canWriteSettings: true,
+        volumes: [{ stream: "music" as const, current: 5, min: 0, max: 15 }],
+      }),
+      setScreenBrightness: async ({ brightness }: { brightness: number }) => ({
+        reading: { kind: "reported" as const, level: Math.round(brightness * 255) },
+      }),
+      setVolume: async ({ volume }: { volume: number }) => ({
+        reading: { kind: "reported" as const, level: volume },
+      }),
+      openSettingsPage: async () => ({ kind: "opened" as const }),
+      requestRole: async () => ({ kind: "requested" as const }),
+    } as unknown as SystemClient
+
+    assert.strictEqual(await runPromise(applyBrightness(128, device)), "SettingApplied")
+    assert.strictEqual(await runPromise(applyVolume("music", 10, device)), "SettingApplied")
+    assert.isDefined(await captureRejection(() => runPromise(applyBrightness(300, device))))
+    assert.isDefined(await captureRejection(() => runPromise(applyVolume("music", 20, device))))
+
+    const settingsResult = await runPromise(openNativeSettingsShortcut("display", device))
+    assert.strictEqual(settingsResult.outcome, "SettingsOpened")
+    const roleResult = await runPromise(requestAndroidRoleShortcut("assistant", device))
+    assert.strictEqual(roleResult.outcome, "SettingsOpened")
+  })
+})

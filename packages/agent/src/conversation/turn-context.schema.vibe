@@ -323,7 +323,6 @@ function stated<None, Allowed, Other>(value: unknown, allowed: string, none: Non
 
 const viewIdPattern = /^[a-z][a-z0-9_-]{0,63}$/u
 
-/** The views a renderer says it can show now: a list of 1 to 64 distinct declared-view ids, or undefined for any other value. */
 function screenViewsOf(value: unknown): readonly string[] | undefined {
   if (!Array.isArray(value) || value.length === 0 || value.length > 64) return undefined
   const ids = value.filter((id): id is string => typeof id === "string" && viewIdPattern.test(id))

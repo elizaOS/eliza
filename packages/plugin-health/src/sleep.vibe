@@ -1,0 +1,276 @@
+// spec/health/lifecycle.md, "Sleep regularity windows and wake alerts stay within safe bounds"
+import { sleepAlertEligible, sleepRegularityWindowValid } from "../gen/health__lifecycle.effect.vibe"
+import type { HealthDefaultPack, HealthSleepEpisode } from "./types.vibe"
+
+export type SleepRegularityClass = "insufficient_data" | "irregular" | "moderate" | "regular"
+
+export interface SleepRegularityReport {
+  readonly windowDays: number
+  readonly validWindow: boolean
+  readonly qualifyingNights: number
+  readonly sriScore: number | null
+  readonly bedtimeStddevMinutes: number
+  readonly wakeStddevMinutes: number
+  readonly avgDurationMinutes: number | null
+  readonly classification: SleepRegularityClass
+}
+
+export interface PersonalBaselineReport {
+  readonly windowDays: number
+  readonly validWindow: boolean
+  readonly qualifyingNights: number
+  readonly medianBedtimeMinute: number | null
+  readonly medianWakeMinute: number | null
+  readonly medianDurationMinutes: number | null
+  readonly timezone: string
+}
+
+export interface ActivitySignalSample {
+  readonly source: string
+  readonly observedAt: string
+  readonly weight: number
+  readonly isActive: boolean
+}
+
+export interface AwakeProbabilityReport {
+  readonly probability: number
+  readonly probabilityPct: number
+  readonly state: "likely_awake" | "likely_asleep" | "uncertain"
+  readonly alertEligible: boolean
+  readonly quietHours: boolean
+  readonly signalCount: number
+}
+
+export interface CircadianInsight {
+  readonly timezone: string
+  readonly regularity: SleepRegularityReport
+  readonly baseline: PersonalBaselineReport
+  readonly awake: AwakeProbabilityReport
+}
+
+export const HEALTH_DEFAULT_PACKS: readonly HealthDefaultPack[] = [
+  {
+    key: "bedtime",
+    title: "Bedtime wind-down",
+    anchor: "bedtime.target",
+    offsetMinutes: -30,
+    description: "Gentle wind-down reminder 30 minutes before the owner's personal bedtime target.",
+  },
+  {
+    key: "wake-up",
+    title: "Morning wake-up check-in",
+    anchor: "wake.confirmed",
+    offsetMinutes: 10,
+    description: "Morning check-in after wake is confirmed and outside quiet hours.",
+  },
+  {
+    key: "sleep-recap",
+    title: "Daily sleep recap",
+    anchor: "wake.confirmed",
+    offsetMinutes: 30,
+    description: "Concise sleep duration, regularity, and recovery summary after waking.",
+  },
+]
+
+const dayMs = 86_400_000
+
+function round2(value: number): number {
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : 0
+}
+
+function localMinuteOfDay(ms: number, timezone: string): number {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    const parts = fmt.formatToParts(new Date(ms))
+    const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24
+    const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0")
+    return hour * 60 + minute
+  } catch {
+    const date = new Date(ms)
+    return date.getUTCHours() * 60 + date.getUTCMinutes()
+  }
+}
+
+function circularStddevMinutes(minutes: readonly number[]): number {
+  if (minutes.length <= 1) return 0
+  const scale = (2 * Math.PI) / 1440
+  let sumSin = 0
+  let sumCos = 0
+  for (const m of minutes) {
+    const angle = m * scale
+    sumSin += Math.sin(angle)
+    sumCos += Math.cos(angle)
+  }
+  const r = Math.sqrt((sumSin / minutes.length) ** 2 + (sumCos / minutes.length) ** 2)
+  if (r <= 0.0001) return 720
+  const clipped = Math.min(1, r)
+  return round2(Math.sqrt(-2 * Math.log(clipped)) / scale)
+}
+
+function medianOf(values: readonly number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const high = sorted[mid]
+  if (high === undefined) return null
+  if (sorted.length % 2 === 1) return high
+  const low = sorted[mid - 1]
+  return low === undefined ? high : Math.round((low + high) / 2)
+}
+
+function qualifyingEpisodes(
+  episodes: readonly HealthSleepEpisode[],
+  nowMs: number,
+  windowDays: number,
+): readonly { readonly episode: HealthSleepEpisode; readonly startMs: number; readonly endMs: number }[] {
+  const cutoff = nowMs - windowDays * dayMs
+  const result: { readonly episode: HealthSleepEpisode; readonly startMs: number; readonly endMs: number }[] = []
+  for (const episode of episodes) {
+    if (episode.cycleType === "nap") continue
+    const startMs = Date.parse(episode.startAt)
+    const endMs = Date.parse(episode.endAt)
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue
+    if (endMs <= startMs || endMs > nowMs || endMs <= cutoff) continue
+    if (Math.round((endMs - startMs) / 60_000) < 180) continue
+    result.push({ episode, startMs, endMs })
+  }
+  return result
+}
+
+export function computeSleepRegularity(
+  episodes: readonly HealthSleepEpisode[],
+  nowMs: number,
+  windowDays = 14,
+  timezone = "UTC",
+): SleepRegularityReport {
+  const validWindow = sleepRegularityWindowValid(windowDays)
+  if (!validWindow) {
+    return {
+      windowDays,
+      validWindow: false,
+      qualifyingNights: 0,
+      sriScore: null,
+      bedtimeStddevMinutes: 0,
+      wakeStddevMinutes: 0,
+      avgDurationMinutes: null,
+      classification: "insufficient_data",
+    }
+  }
+  const nights = qualifyingEpisodes(episodes, nowMs, windowDays)
+  if (nights.length < 3) {
+    const avg = nights.length === 0
+      ? null
+      : Math.round(nights.reduce((sum, n) => sum + n.episode.durationMinutes, 0) / nights.length)
+    return {
+      windowDays,
+      validWindow: true,
+      qualifyingNights: nights.length,
+      sriScore: null,
+      bedtimeStddevMinutes: 0,
+      wakeStddevMinutes: 0,
+      avgDurationMinutes: avg,
+      classification: "insufficient_data",
+    }
+  }
+  const bedMinutes = nights.map((n) => localMinuteOfDay(n.startMs, timezone))
+  const wakeMinutes = nights.map((n) => localMinuteOfDay(n.endMs, timezone))
+  const bedtimeStddevMinutes = circularStddevMinutes(bedMinutes)
+  const wakeStddevMinutes = circularStddevMinutes(wakeMinutes)
+  const avgDurationMinutes = Math.round(nights.reduce((sum, n) => sum + n.episode.durationMinutes, 0) / nights.length)
+  const combinedJitter = (bedtimeStddevMinutes + wakeStddevMinutes) / 2
+  const sriScore = Math.max(0, Math.min(100, Math.round(100 - combinedJitter * 0.6)))
+  const classification: SleepRegularityClass = sriScore >= 75 ? "regular" : sriScore >= 50 ? "moderate" : "irregular"
+  return {
+    windowDays,
+    validWindow: true,
+    qualifyingNights: nights.length,
+    sriScore,
+    bedtimeStddevMinutes,
+    wakeStddevMinutes,
+    avgDurationMinutes,
+    classification,
+  }
+}
+
+export function computePersonalBaseline(
+  episodes: readonly HealthSleepEpisode[],
+  nowMs: number,
+  windowDays = 21,
+  timezone = "UTC",
+): PersonalBaselineReport {
+  const validWindow = sleepRegularityWindowValid(windowDays)
+  if (!validWindow) {
+    return {
+      windowDays,
+      validWindow: false,
+      qualifyingNights: 0,
+      medianBedtimeMinute: null,
+      medianWakeMinute: null,
+      medianDurationMinutes: null,
+      timezone,
+    }
+  }
+  const nights = qualifyingEpisodes(episodes, nowMs, windowDays)
+  return {
+    windowDays,
+    validWindow: true,
+    qualifyingNights: nights.length,
+    medianBedtimeMinute: medianOf(nights.map((n) => localMinuteOfDay(n.startMs, timezone))),
+    medianWakeMinute: medianOf(nights.map((n) => localMinuteOfDay(n.endMs, timezone))),
+    medianDurationMinutes: medianOf(nights.map((n) => n.episode.durationMinutes)),
+    timezone,
+  }
+}
+
+export function computeAwakeProbability(
+  signals: readonly ActivitySignalSample[],
+  nowMs: number,
+  timezone = "UTC",
+  quietHours = false,
+): AwakeProbabilityReport {
+  const minute = localMinuteOfDay(nowMs, timezone)
+  const hour = minute / 60
+  let logit = hour >= 7 && hour < 22 ? 1.1 : -1.2
+  let recentCount = 0
+  for (const signal of signals) {
+    const ts = Date.parse(signal.observedAt)
+    if (!Number.isFinite(ts) || ts > nowMs) continue
+    const ageMinutes = (nowMs - ts) / 60_000
+    if (ageMinutes > 180) continue
+    recentCount += 1
+    const decay = Math.exp(-ageMinutes / 45)
+    logit += (signal.isActive ? 1.8 : -1.4) * Math.max(0.1, Math.min(2, signal.weight)) * decay
+  }
+  const probability = round2(1 / (1 + Math.exp(-logit)))
+  const probabilityPct = Math.round(probability * 100)
+  const state = probabilityPct >= 60 ? "likely_awake" : probabilityPct <= 40 ? "likely_asleep" : "uncertain"
+  return {
+    probability,
+    probabilityPct,
+    state,
+    alertEligible: sleepAlertEligible(probabilityPct, quietHours),
+    quietHours,
+    signalCount: recentCount,
+  }
+}
+
+export function buildSleepRecapText(
+  episodes: readonly HealthSleepEpisode[],
+  regularity: SleepRegularityReport,
+  baseline: PersonalBaselineReport,
+): string {
+  if (episodes.length === 0) return "No recorded sleep episodes in this window."
+  const latest = episodes[0]
+  if (latest === undefined) return "No recorded sleep episodes in this window."
+  const latestHours = (latest.durationMinutes / 60).toFixed(1)
+  const sriText = regularity.sriScore === null ? "insufficient data" : `${regularity.sriScore}/100 (${regularity.classification})`
+  const baselineText = baseline.medianDurationMinutes === null
+    ? "no baseline yet"
+    : `${(baseline.medianDurationMinutes / 60).toFixed(1)}h median`
+  return `Latest sleep: ${latestHours}h (${latest.provider}). Regularity: ${sriText} across ${regularity.qualifyingNights} night(s). Baseline: ${baselineText}.`
+}

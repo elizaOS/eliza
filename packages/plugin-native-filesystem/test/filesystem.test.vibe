@@ -1,0 +1,82 @@
+// spec/nativeFilesystem/index.md, "Story: Work with device files inside the directory I granted"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  DeviceFilesystemBridge,
+  deviceFilesystemPlugin,
+  evaluateDeviceFilesystemFence,
+  normalizeDevicePath,
+} from "../src/index.vibe"
+
+module node {
+  import fs from "node:fs"
+  import os from "node:os"
+  import path from "node:path"
+
+  export function createTempWorkspace(): { readonly root: string; readonly outsideFile: string; readonly cleanup: () => void } {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "native-fs-test-"))
+    const root = path.join(base, "workspace")
+    const outsideFile = path.join(base, "secret.txt")
+    fs.mkdirSync(root, { recursive: true })
+    fs.writeFileSync(outsideFile, "top-secret")
+    fs.symlinkSync(outsideFile, path.join(root, "escape-link.txt"))
+    return {
+      root,
+      outsideFile,
+      cleanup: () => fs.rmSync(base, { recursive: true, force: true }),
+    }
+  }
+
+  export function captureThrow(fn: () => unknown): unknown {
+    try {
+      fn()
+      return undefined
+    } catch (error) {
+      return error
+    }
+  }
+
+  export async function captureRejection(fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await fn()
+      return undefined
+    } catch (error) {
+      return error
+    }
+  }
+}
+import { captureRejection, captureThrow, createTempWorkspace } from node
+
+describe("Native filesystem (spec/nativeFilesystem/index.md, \"Story: Work with device files inside the directory I granted\")", () => {
+  it("Sanitizes paths, enforces root containment against symlinks, and round-trips UTF-8 and base64 files (spec/nativeFilesystem/index.md, \"A native request stays within the selected root and its operation grant\")", async () => {
+    assert.strictEqual(deviceFilesystemPlugin.name, "device-filesystem")
+    assert.deepStrictEqual(normalizeDevicePath("notes/./daily\\today.md"), {
+      relative: "notes/daily/today.md",
+      segments: ["notes", "daily", "today.md"],
+    })
+    assert.deepStrictEqual(normalizeDevicePath("", { allowRoot: true }), { relative: "", segments: [] })
+    assert.isDefined(captureThrow(() => normalizeDevicePath("../escape")))
+    assert.isDefined(captureThrow(() => normalizeDevicePath("/etc/passwd")))
+    assert.isDefined(captureThrow(() => normalizeDevicePath("C:\\Windows\\system32")))
+    assert.isDefined(captureThrow(() => normalizeDevicePath("bad\0name")))
+
+    assert.strictEqual(evaluateDeviceFilesystemFence({ openedRoot: true, withinRoot: false, noFollowTraversal: true, readable: true, writable: true }, "DeviceWrite"), false)
+    assert.strictEqual(evaluateDeviceFilesystemFence({ openedRoot: true, withinRoot: true, noFollowTraversal: true, readable: true, writable: false }, "DeviceRead"), true)
+    assert.strictEqual(evaluateDeviceFilesystemFence({ openedRoot: true, withinRoot: true, noFollowTraversal: true, readable: true, writable: false }, "DeviceWrite"), false)
+
+    const ws = createTempWorkspace()
+    try {
+      const bridge = DeviceFilesystemBridge.forNodeRoot(ws.root)
+      await bridge.write("nested/hello.txt", "こんにちは世界", "utf8")
+      assert.strictEqual(await bridge.read("nested/hello.txt", "utf8"), "こんにちは世界")
+      const binB64 = "AAEC/w=="
+      await bridge.write("nested/bin.dat", binB64, "base64")
+      assert.strictEqual(await bridge.read("nested/bin.dat", "base64"), binB64)
+      const entries = await bridge.list("nested")
+      assert.deepStrictEqual(entries.map((e) => e.name).sort(), ["bin.dat", "hello.txt"])
+      assert.isDefined(await captureRejection(() => bridge.read("escape-link.txt")))
+      assert.isDefined(await captureRejection(() => bridge.write("escape-link.txt", "overwrite")))
+    } finally {
+      ws.cleanup()
+    }
+  })
+})

@@ -1,0 +1,177 @@
+// spec/telegram/index.md, "Story: Read a Telegram chat and reply under its account and topic rules"
+import {
+  ElizaError,
+  type ConnectorAccount,
+  type ConnectorAccountPatch,
+  type ConnectorAccountProvider,
+  type DeliveryResult,
+  type DispatchSensitiveRequest,
+  type IAgentRuntime,
+  type SensitiveRequest,
+  type SensitiveRequestDeliveryAdapter,
+} from "@elizaos/core"
+import { DEFAULT_ACCOUNT_ID, listEnabledTelegramAccounts, resolveTelegramAccount, telegramPersonalEnabled } from "./policy.vibe"
+import { getTelegramPollerClaim } from "./poller-lock.vibe"
+import { TELEGRAM_SERVICE_NAME } from "./types.vibe"
+
+export function createTelegramConnectorAccountProvider(runtime: IAgentRuntime): ConnectorAccountProvider {
+  const customAccounts = new Map<string, ConnectorAccount>()
+
+  const buildAccount = async (accountId: string): Promise<ConnectorAccount | undefined> => {
+    const stored = customAccounts.get(accountId)
+    if (stored !== undefined) return stored
+    const resolved = resolveTelegramAccount(runtime, accountId)
+    if (resolved.botToken === undefined && !telegramPersonalEnabled(resolved.config)) return undefined
+    const claim = resolved.botToken === undefined ? undefined : await getTelegramPollerClaim(resolved.botToken)
+    const now = Date.now()
+    return {
+      id: resolved.accountId,
+      provider: "telegram",
+      accountKey: resolved.accountId,
+      role: "AGENT",
+      purpose: ["messaging"],
+      accessGate: "owner_only",
+      label: resolved.name ?? resolved.accountId,
+      status: claim?.connected ? "connected" : "pending",
+      createdAt: now,
+      updatedAt: now,
+    }
+  }
+
+  return {
+    provider: "telegram",
+    statusAuthority: "provider",
+    label: "Telegram",
+    listAccounts: async () => {
+      const enabled = listEnabledTelegramAccounts(runtime)
+      const ids = new Set<string>([...enabled.map((a) => a.accountId), ...customAccounts.keys()])
+      if (ids.size === 0) ids.add(DEFAULT_ACCOUNT_ID)
+      const results: ConnectorAccount[] = []
+      for (const id of ids) {
+        const account = await buildAccount(id)
+        if (account !== undefined) results.push(account)
+      }
+      return results
+    },
+    createAccount: async (input: ConnectorAccountPatch) => {
+      const now = Date.now()
+      const id = input.accountKey ?? DEFAULT_ACCOUNT_ID
+      const created: ConnectorAccount = {
+        id,
+        provider: "telegram",
+        accountKey: id,
+        role: input.role ?? "AGENT",
+        purpose: Array.isArray(input.purpose) ? input.purpose : input.purpose !== undefined ? [input.purpose] : ["messaging"],
+        accessGate: input.accessGate ?? "owner_only",
+        label: input.label ?? id,
+        status: input.status ?? "pending",
+        createdAt: now,
+        updatedAt: now,
+      }
+      customAccounts.set(id, created)
+      return created
+    },
+    patchAccount: async (accountId: string, patch: ConnectorAccountPatch) => {
+      const existing = (await buildAccount(accountId)) ?? customAccounts.get(accountId)
+      if (existing === undefined) {
+        throw new ElizaError(`Telegram account ${accountId} was not found.`, { code: "TELEGRAM_ACCOUNT_NOT_FOUND" })
+      }
+      const updated: ConnectorAccount = {
+        ...existing,
+        ...(patch.label !== undefined ? { label: patch.label } : {}),
+        ...(patch.role !== undefined ? { role: patch.role } : {}),
+        ...(patch.status !== undefined ? { status: patch.status } : {}),
+        updatedAt: Date.now(),
+      }
+      customAccounts.set(accountId, updated)
+      return updated
+    },
+    deleteAccount: async (accountId: string) => {
+      customAccounts.delete(accountId)
+    },
+  }
+}
+
+type TelegramDispatchRequest = DispatchSensitiveRequest & Partial<SensitiveRequest>
+
+export async function deliverTelegramSensitiveRequestDm(
+  runtime: IAgentRuntime,
+  request: TelegramDispatchRequest,
+  channelId: string,
+): Promise<DeliveryResult> {
+  const link = request.callback?.url ?? request.delivery?.linkBaseUrl
+  const svc = runtime.getService(TELEGRAM_SERVICE_NAME) as
+    | { readonly sendDmLink?: (chatId: string, text: string, linkUrl?: string) => Promise<void> }
+    | null
+    | undefined
+  if (svc?.sendDmLink === undefined || !/^-?\d+$/.test(channelId)) {
+    return { delivered: false, target: "dm", channelId, error: "Telegram DM delivery service or numeric chat ID is unavailable." }
+  }
+  const reason = request.delivery?.reason ?? "A sensitive value is required."
+  const lines = ["A sensitive value is needed to continue.", reason]
+  if (link === undefined) {
+    lines.push(request.delivery?.instruction ?? "Please open the Eliza app to provide this value.")
+  }
+  if (request.expiresAt !== undefined) {
+    lines.push(`This request expires at ${request.expiresAt}.`)
+  }
+  const sent = await Effect.runPromise(Effect.result(Effect.tryPromise(() => svc.sendDmLink!(channelId, lines.join("\n"), link))))
+  return sent._tag === "Success"
+    ? { delivered: true, target: "dm", channelId, ...(link !== undefined ? { url: link } : {}) }
+    : { delivered: false, target: "dm", channelId, error: "Failed to send Telegram sensitive-request DM." }
+}
+
+export function createTelegramDmSensitiveRequestAdapter(): SensitiveRequestDeliveryAdapter {
+  return {
+    target: "dm",
+    supportsChannel: (channelId: string | undefined) => typeof channelId === "string" && /^-?\d+$/.test(channelId.trim()),
+    deliver: async ({ request, channelId, runtime }) =>
+      deliverTelegramSensitiveRequestDm(runtime as IAgentRuntime, request as TelegramDispatchRequest, channelId ?? ""),
+  }
+}
+
+export function registerTelegramDmSensitiveRequestAdapter(runtime: IAgentRuntime): boolean {
+  const registry = runtime.getService("SensitiveRequestDispatchRegistry") as
+    | { readonly register?: (adapter: SensitiveRequestDeliveryAdapter) => void }
+    | null
+    | undefined
+  if (registry?.register === undefined) return false
+  registry.register(createTelegramDmSensitiveRequestAdapter())
+  return true
+}
+
+export interface TelegramTriageAdapter {
+  readonly source: "telegram"
+  isAvailable(runtime: IAgentRuntime): boolean
+  capabilities(): {
+    readonly list: boolean
+    readonly search: boolean
+    readonly worlds: "single"
+    readonly channels: "explicit"
+  }
+}
+
+export class TelegramMessageAdapter implements TelegramTriageAdapter {
+  readonly source = "telegram" as const
+
+  isAvailable(runtime: IAgentRuntime): boolean {
+    return runtime.getService(TELEGRAM_SERVICE_NAME) !== null && runtime.getService(TELEGRAM_SERVICE_NAME) !== undefined
+  }
+
+  capabilities() {
+    return {
+      list: false,
+      search: false,
+      worlds: "single" as const,
+      channels: "explicit" as const,
+    }
+  }
+}
+
+export function registerTelegramTriageAdapter(
+  registrar?: { readonly register: (adapter: TelegramTriageAdapter) => void },
+): TelegramMessageAdapter {
+  const adapter = new TelegramMessageAdapter()
+  registrar?.register(adapter)
+  return adapter
+}

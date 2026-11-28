@@ -1,0 +1,307 @@
+// spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "Story: Inspect wallet holdings and venue quotes before making changes"; spec/wallet/policy.md, "Story: Enforce spend policy, slippage limits, and a tamper-evident audit chain"
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE, type Action, type ActionResult } from "@elizaos/core"
+import { type BirdeyeService, type DexScreenerService, KaminoService, NewsDataService, SteerLiquidityService, TokenInfoService } from "./analytics.vibe"
+import { BridgeModule, PaymentRouter } from "./sdk.vibe"
+import { DexInteractionService, StewardTradingService, YieldOptimizationService, type LpProtocolName } from "./trading.vibe"
+
+type Params = Readonly<Record<string, unknown>>
+
+function paramsOf(options: unknown): Params {
+  const raw = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : options
+  return typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw as Params : {}
+}
+
+function strParam(params: Params, key: string, fallback = ""): string {
+  const value = params[key]
+  return typeof value === "string" ? value.trim() : fallback
+}
+
+function numParam(params: Params, key: string, fallback: number): number {
+  const value = params[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback
+}
+
+export interface WalletParityActionsDeps {
+  readonly trading?: StewardTradingService
+  readonly tokenInfo?: TokenInfoService
+  readonly birdeye?: BirdeyeService
+  readonly dexscreener?: DexScreenerService
+  readonly news?: NewsDataService
+  readonly kamino?: KaminoService
+  readonly steer?: SteerLiquidityService
+  readonly dex?: DexInteractionService
+  readonly yieldOptimizer?: YieldOptimizationService
+  readonly bridge?: BridgeModule
+}
+
+function strictWalletAction(spec: {
+  readonly name: string
+  readonly similes: string[]
+  readonly description: string
+  readonly descriptionCompressed: string
+  readonly ownerOnly?: boolean
+  readonly tags: string[]
+  readonly parameters: NonNullable<Action["parameters"]>
+  readonly run: (params: Params) => Promise<ActionResult>
+}): Action {
+  return {
+    name: spec.name,
+    similes: spec.similes,
+    description: spec.description,
+    descriptionCompressed: spec.descriptionCompressed,
+    toolSchemaStrict: true,
+    cacheStable: true,
+    contexts: ["wallet", "finance", "crypto"],
+    ...(spec.ownerOnly === false ? {} : { roleGate: { minRole: "OWNER" as const }, disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE }),
+    tags: spec.tags,
+    parameters: spec.parameters,
+    summarize: (result) => result?.text?.slice(0, 220) ?? "",
+    validate: async () => true,
+    handler: (_runtime, _message, _state, options) => spec.run(paramsOf(options)),
+  }
+}
+
+export function createTradeRouterAction(deps: WalletParityActionsDeps = {}): Action {
+  const trading = deps.trading ?? new StewardTradingService()
+  const bridge = deps.bridge ?? new BridgeModule()
+  const router = new PaymentRouter()
+  return strictWalletAction({
+    name: "TRADE",
+    similes: ["EVM_SWAP", "SOLANA_SWAP", "CROSS_CHAIN_TRANSFER", "SWAP_TOKENS", "BRIDGE_TOKENS"],
+    description: "Quote, simulate, or execute policy-gated token swaps and cross-chain CCTP bridges across EVM and Solana. Always quote before executing; execution requires owner confirmation or active autonomous policy within spend and slippage caps.",
+    descriptionCompressed: "Quote/execute EVM & Solana swaps and CCTP bridges.",
+    tags: ["domain:wallet", "capability:read", "capability:write", "effect:receipt-required"],
+    parameters: [
+      { name: "account", required: false, description: "Source wallet address.", schema: { type: "string" } },
+      { name: "amount", required: false, description: "Human or atomic input amount.", schema: { type: "string" } },
+      { name: "chain", required: false, description: "Source chain (ethereum, base, arbitrum, solana).", schema: { type: "string" } },
+      { name: "destinationChain", required: false, description: "Destination chain for cross-chain bridge.", schema: { type: "string" } },
+      { name: "inputToken", required: false, description: "Input token symbol or address.", schema: { type: "string" } },
+      { name: "outputToken", required: false, description: "Output token symbol or address.", schema: { type: "string" } },
+      { name: "slippageBps", required: false, description: "Max slippage in basis points (default 50).", schema: { type: "integer", minimum: 1, maximum: 5000 } },
+      { name: "subaction", required: true, description: "Trade operation to perform.", schema: { type: "string", enum: ["bridge", "evm_swap", "history", "quote", "route", "solana_swap", "swap"] } },
+    ],
+    run: async (params): Promise<ActionResult> => {
+      const subaction = strParam(params, "subaction")
+      const chain = strParam(params, "chain", subaction === "solana_swap" ? "solana" : "base")
+      const destinationChain = strParam(params, "destinationChain", chain)
+      const inputToken = strParam(params, "inputToken", chain === "solana" ? "SOL" : "ETH")
+      const outputToken = strParam(params, "outputToken", "USDC")
+      const amount = strParam(params, "amount", "0")
+      const account = strParam(params, "account", "owner-account")
+      const slippageBps = numParam(params, "slippageBps", 50)
+      if (subaction === "history") {
+        const items = trading.history().slice(-10)
+        return { success: true, text: `Recorded trades: ${items.length}.`, data: { trades: [...items] } }
+      }
+      if (subaction === "route") {
+        const decision = router.route({ sourceChain: chain, destinationChain })
+        return { success: true, text: `Selected rail: ${decision.rail} (${decision.reason})`, data: { ...decision } }
+      }
+      if (subaction === "bridge") {
+        const quote = bridge.quoteCctp({ sourceChain: chain, destinationChain, amountAtomic: amount })
+        return {
+          success: true,
+          text: `CCTP bridge quote: ${quote.amountAtomic} ${quote.asset} from ${quote.sourceChain} to ${quote.destinationChain} (est. fee ${quote.estimatedFeeAtomic}).`,
+          data: { quote },
+        }
+      }
+      const quote = await trading.quoteSwap({ chain, inputToken, outputToken, amount, slippageBps, account })
+      if (subaction === "quote") {
+        return {
+          success: true,
+          text: `Swap quote ${quote.quoteId}: ${quote.inputAmount} ${quote.inputToken} -> ${quote.expectedOutputAmount} ${quote.outputToken} on ${chain} (max slippage ${quote.slippageBps} bps).`,
+          data: { quote },
+        }
+      }
+      const simulated = await trading.executeQuotedSwap({
+        quote,
+        intent: quote.intent,
+        amountUsd: Number(amount) || 1,
+        ownerConfirmed: false,
+        simulateOnly: true,
+      })
+      return {
+        success: true,
+        text: `Prepared ${subaction} simulation (${simulated.idempotencyKey}): expected ${simulated.outputAmount ?? "0"} ${outputToken}. Confirm in wallet to execute.`,
+        data: { quote, execution: simulated },
+      }
+    },
+  })
+}
+
+export function createLiquidityAction(deps: WalletParityActionsDeps = {}): Action {
+  const dex = deps.dex ?? new DexInteractionService()
+  const kamino = deps.kamino ?? new KaminoService()
+  const steer = deps.steer ?? new SteerLiquidityService()
+  const optimizer = deps.yieldOptimizer ?? new YieldOptimizationService()
+  return strictWalletAction({
+    name: "LIQUIDITY",
+    similes: ["KAMINO_POOLS", "STEER_LIQUIDITY", "OPEN_LP", "CLOSE_LP", "REPOSITION_LP"],
+    description: "Inspect concentrated liquidity pools and manage EVM/Solana LP positions across Uniswap v3, Aerodrome, PancakeSwap v3, Raydium, Orca, Meteora, Kamino, and Steer.",
+    descriptionCompressed: "Inspect LP pools/yields and manage positions.",
+    tags: ["domain:wallet", "capability:read", "capability:write"],
+    parameters: [
+      { name: "chain", required: false, description: "Chain name (solana, base, ethereum).", schema: { type: "string" } },
+      { name: "liquidityUsd", required: false, description: "Position size in USD.", schema: { type: "number", minimum: 1 } },
+      { name: "lowerTick", required: false, description: "Lower price tick.", schema: { type: "integer" } },
+      { name: "poolId", required: false, description: "Target pool address or identifier.", schema: { type: "string" } },
+      { name: "positionId", required: false, description: "Existing position ID.", schema: { type: "string" } },
+      { name: "protocol", required: false, description: "LP protocol.", schema: { type: "string", enum: ["aerodrome", "kamino", "meteora", "orca", "pancakeswap-v3", "raydium", "steer", "uniswap-v3"] } },
+      { name: "subaction", required: true, description: "LP operation.", schema: { type: "string", enum: ["close", "open", "pools", "positions", "reposition", "yields"] } },
+      { name: "tokenA", required: false, description: "Token A symbol.", schema: { type: "string" } },
+      { name: "tokenB", required: false, description: "Token B symbol.", schema: { type: "string" } },
+      { name: "upperTick", required: false, description: "Upper price tick.", schema: { type: "integer" } },
+    ],
+    run: async (params): Promise<ActionResult> => {
+      const subaction = strParam(params, "subaction")
+      const protocol = strParam(params, "protocol", "uniswap-v3")
+      if (subaction === "pools" || subaction === "yields") {
+        const pools = protocol === "kamino"
+          ? await kamino.listPools(10)
+          : protocol === "steer"
+            ? await steer.listVaults(strParam(params, "chain", "base"), 10)
+            : [...(await kamino.listPools(5)), ...(await steer.listVaults(strParam(params, "chain", "base"), 5))]
+        const ranked = optimizer.rankOpportunities(
+          pools.map((p) => ({
+            protocol: p.protocol === "kamino" ? "raydium" : "aerodrome",
+            chain: p.chain,
+            poolId: p.poolId,
+            tokenA: p.tokenA,
+            tokenB: p.tokenB,
+            tvlUsd: p.tvlUsd,
+            aprPct: p.aprPct,
+          })),
+          0,
+        )
+        return { success: true, text: `Found ${pools.length} liquidity pools.`, data: { pools, ranked } }
+      }
+      if (subaction === "positions") {
+        const positions = dex.allPositions()
+        return { success: true, text: `Open LP positions: ${positions.length}.`, data: { positions } }
+      }
+      const lpProto: LpProtocolName = (protocol === "kamino" ? "raydium" : protocol === "steer" ? "aerodrome" : protocol) as LpProtocolName
+      const adapter = dex.adapter(lpProto)
+      if (subaction === "open") {
+        const opened = adapter.openPosition({
+          poolId: strParam(params, "poolId", "pool-default"),
+          tokenA: strParam(params, "tokenA", "ETH"),
+          tokenB: strParam(params, "tokenB", "USDC"),
+          liquidityUsd: numParam(params, "liquidityUsd", 100),
+          lowerTick: numParam(params, "lowerTick", -1000),
+          upperTick: numParam(params, "upperTick", 1000),
+        })
+        return { success: true, text: `Opened ${opened.protocol} position ${opened.id} ($${opened.liquidityUsd}).`, data: { position: opened } }
+      }
+      if (subaction === "reposition") {
+        const moved = adapter.reposition(strParam(params, "positionId"), numParam(params, "lowerTick", -500), numParam(params, "upperTick", 500))
+        return moved === undefined
+          ? { success: false, text: "LP position not found." }
+          : { success: true, text: `Repositioned ${moved.id} to [${moved.lowerTick}, ${moved.upperTick}].`, data: { position: moved } }
+      }
+      const closed = adapter.closePosition(strParam(params, "positionId"))
+      return closed === undefined
+        ? { success: false, text: "LP position not found." }
+        : { success: true, text: `Closed ${closed.id}.`, data: { position: closed } }
+    },
+  })
+}
+
+export function createGovernanceAction(): Action {
+  const proposals: { readonly id: string; readonly dao: string; readonly title: string; readonly status: string; votes: Record<string, string> }[] = []
+  return strictWalletAction({
+    name: "WALLET_GOV",
+    similes: ["DAO_VOTE", "GOVERNANCE_VOTE", "DELEGATE_VOTES"],
+    description: "Inspect DAO governance proposals, prepare owner-reviewed votes, and delegate voting power.",
+    descriptionCompressed: "Inspect DAO proposals and prepare governance votes.",
+    tags: ["domain:wallet", "capability:read", "capability:write"],
+    parameters: [
+      { name: "dao", required: false, description: "DAO or governor identifier.", schema: { type: "string" } },
+      { name: "delegatee", required: false, description: "Address to delegate voting power to.", schema: { type: "string" } },
+      { name: "proposalId", required: false, description: "Proposal identifier.", schema: { type: "string" } },
+      { name: "subaction", required: true, description: "Governance operation.", schema: { type: "string", enum: ["delegate", "proposals", "queue", "vote"] } },
+      { name: "support", required: false, description: "Vote direction.", schema: { type: "string", enum: ["abstain", "against", "for"] } },
+    ],
+    run: async (params): Promise<ActionResult> => {
+      const subaction = strParam(params, "subaction")
+      const dao = strParam(params, "dao", "default-dao")
+      const proposalId = strParam(params, "proposalId", "prop-1")
+      if (subaction === "proposals") {
+        return { success: true, text: `Tracked governance proposals: ${proposals.length}.`, data: { proposals: [...proposals] } }
+      }
+      if (subaction === "queue") {
+        const entry = { id: proposalId, dao, title: `Proposal ${proposalId}`, status: "queued", votes: {} }
+        proposals.push(entry)
+        return { success: true, text: `Queued proposal ${proposalId} for ${dao} (awaits owner signature).`, data: { proposal: entry } }
+      }
+      if (subaction === "delegate") {
+        const delegatee = strParam(params, "delegatee")
+        if (delegatee.length === 0) return { success: false, text: "Specify a delegatee address." }
+        return { success: true, text: `Prepared delegation to ${delegatee} on ${dao} (awaits owner review).`, data: { dao, delegatee } }
+      }
+      const support = strParam(params, "support", "for")
+      return { success: true, text: `Prepared governance vote "${support}" on ${proposalId} (${dao}) for owner review.`, data: { dao, proposalId, support } }
+    },
+  })
+}
+
+export function createTokenInfoAction(deps: WalletParityActionsDeps = {}): Action {
+  const tokenInfo = deps.tokenInfo ?? new TokenInfoService(undefined, { birdeye: deps.birdeye, dexscreener: deps.dexscreener })
+  const news = deps.news ?? new NewsDataService()
+  return strictWalletAction({
+    name: "TOKEN_INFO",
+    similes: ["BIRDEYE_TOKEN_OVERVIEW", "BIRDEYE_TRENDING", "DEXSCREENER_SEARCH", "DEFI_NEWS", "MARKET_OVERVIEW"],
+    description: "Look up token prices, liquidity pairs, Birdeye trending tokens, and DeFi market news across EVM and Solana.",
+    descriptionCompressed: "Token price, DEX pairs, trending, and DeFi news.",
+    ownerOnly: false,
+    tags: ["domain:wallet", "capability:read"],
+    parameters: [
+      { name: "chain", required: false, description: "Chain name (solana, ethereum, base).", schema: { type: "string" } },
+      { name: "limit", required: false, description: "Max items to return (1-20).", schema: { type: "integer", minimum: 1, maximum: 20 } },
+      { name: "query", required: false, description: "Token symbol, name, or contract/mint address.", schema: { type: "string" } },
+      { name: "subaction", required: true, description: "Analytics lookup type.", schema: { type: "string", enum: ["news", "overview", "pairs", "price", "trending"] } },
+    ],
+    run: async (params): Promise<ActionResult> => {
+      const subaction = strParam(params, "subaction")
+      const chain = strParam(params, "chain", "solana")
+      const query = strParam(params, "query")
+      const limit = Math.min(20, Math.max(1, numParam(params, "limit", 10)))
+      if (subaction === "news") {
+        const snapshot = await news.getMarketSnapshot()
+        return {
+          success: true,
+          text: `DeFi market cap: $${Math.round(snapshot.totalMarketCapUsd).toLocaleString()} (${snapshot.articles.length} articles).`,
+          data: { snapshot },
+        }
+      }
+      if (subaction === "trending") {
+        const tokens = await tokenInfo.birdeye.getTrendingTokens(chain, limit)
+        return {
+          success: true,
+          text: tokens.length === 0 ? "No trending tokens returned." : tokens.map((t) => `#${t.rank} ${t.symbol} ($${t.priceUsd.toFixed(4)})`).join(", "),
+          data: { tokens },
+        }
+      }
+      if (subaction === "pairs") {
+        const pairs = await tokenInfo.dexscreener.searchPairs(query)
+        return {
+          success: true,
+          text: `Found ${pairs.length} DEX pairs for "${query}".`,
+          data: { pairs: pairs.slice(0, limit) },
+        }
+      }
+      const snapshot = await tokenInfo.resolveTokenInfo(query, chain)
+      if (snapshot === null) return { success: false, text: `No token data found for "${query}".` }
+      return {
+        success: true,
+        text: `${snapshot.symbol} (${snapshot.chain}): $${snapshot.priceUsd.toFixed(4)} via ${snapshot.source}.`,
+        data: { token: snapshot },
+      }
+    },
+  })
+}
+
+export const tradeRouterAction: Action = createTradeRouterAction()
+export const liquidityAction: Action = createLiquidityAction()
+export const governanceAction: Action = createGovernanceAction()
+export const tokenInfoAction: Action = createTokenInfoAction()

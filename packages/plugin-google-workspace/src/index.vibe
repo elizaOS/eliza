@@ -1,71 +1,49 @@
-// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
-import { selectRecipient, workspaceAllowed, type GoogleScope, type MailboxClaim, type WorkspaceAccount } from "../gen/googleWorkspace.effect.vibe"
+// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"; spec/googleWorkspace/oauth.md, "Story: Connect, refresh, and disconnect a Google Workspace account without leaving stale grants active"
+import { getConnectorAccountManager, logger, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { readEnv } from "./boundary.vibe"
+import { GoogleChatService, createGoogleChatConnectorAccountProvider } from "./chat.vibe"
+import { GoogleWorkspaceService, createGoogleConnectorAccountProvider } from "./service.vibe"
+import { GOOGLE_SERVICE_NAME } from "./types.vibe"
 
-export error WorkspaceAccessRefused { accountId: string }
-export error GoogleWorkspaceFailure { source: string; status: number }
+export * from "./auth.vibe"
+export * from "./calendar.vibe"
+export * from "./chat.vibe"
+export * from "./drive-people-meet.vibe"
+export * from "./gmail.vibe"
+export * from "./scopes.vibe"
+export * from "./service.vibe"
+export * from "./types.vibe"
 
-export interface WorkspaceCredential {
-  readonly account: WorkspaceAccount
-  readonly token: Redacted.Redacted<string>
+export const googlePlugin: Plugin = {
+  name: GOOGLE_SERVICE_NAME,
+  description: "Google Workspace integration for Gmail, Calendar, Drive, Meet, People, and Chat with account-scoped OAuth and service-account Chat auth",
+  services: [GoogleWorkspaceService, GoogleChatService],
+  connectorSources: [
+    {
+      source: "google-chat",
+      aliases: ["google-chat", "googlechat"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
+  actions: [],
+  providers: [],
+  tests: [],
+  autoEnable: {
+    connectorKeys: ["googlechat"],
+  },
+  async dispose(runtime: IAgentRuntime): Promise<void> {
+    const chat = runtime.getService<GoogleChatService>(GoogleChatService.serviceType)
+    if (chat !== null && chat !== undefined) await chat.stop()
+  },
+  async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+    const hasClient = Boolean(config.GOOGLE_CLIENT_ID || readEnv("GOOGLE_CLIENT_ID"))
+    const hasSecret = Boolean(config.GOOGLE_CLIENT_SECRET || readEnv("GOOGLE_CLIENT_SECRET"))
+    logger.info({ hasClient, hasSecret }, "Initializing Google Workspace plugin")
+    const manager = getConnectorAccountManager(runtime)
+    manager.registerProvider(createGoogleConnectorAccountProvider(runtime))
+    manager.registerProvider(createGoogleChatConnectorAccountProvider(runtime))
+  },
 }
 
-export service WorkspaceCredentials {
-  account(ownerId: string, accountId: string): (WorkspaceCredential | undefined)!WorkspaceAccessRefused
-}
-
-export type WorkspaceQuery =
-  | { readonly kind: "gmail"; readonly query: string }
-  | { readonly kind: "calendar"; readonly calendarId: string; readonly updatedMin?: string }
-  | { readonly kind: "drive"; readonly query: string }
-  | { readonly kind: "meet"; readonly meetingCode: string }
-  | { readonly kind: "contacts"; readonly query: string }
-
-export interface WorkspacePrincipal {
-  readonly ownerId: string
-  readonly accountId: string
-  readonly seenEpoch: number
-}
-
-export effect function queryWorkspace(principal: WorkspacePrincipal, query: WorkspaceQuery) {
-  const target = workspaceQuery(query)
-  const credentials = try WorkspaceCredentials
-  const credential = try credentials.account(principal.ownerId, principal.accountId)
-  if (credential === undefined || !workspaceAllowed(credential.account, {
-    callerId: principal.ownerId,
-    requestedAccount: principal.accountId,
-    seenEpoch: principal.seenEpoch,
-    permissions: [target.scope],
-  })) throw new WorkspaceAccessRefused({ accountId: principal.accountId })
-  const request = HttpClientRequest.get(target.url, { urlParams: target.parameters }).pipe(
-    HttpClientRequest.bearerToken(Redacted.value(credential.token)),
-    HttpClientRequest.acceptJson,
-  )
-  const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
-    throw new GoogleWorkspaceFailure({ source: query.kind, status: 0 })
-  }
-  if (response.status < 200 || response.status >= 300) throw new GoogleWorkspaceFailure({ source: query.kind, status: response.status })
-  const data = response.json catch effect () => { throw new GoogleWorkspaceFailure({ source: query.kind, status: response.status }) }
-  const current = try credentials.account(principal.ownerId, principal.accountId)
-  if (current === undefined || !workspaceAllowed(current.account, {
-    callerId: principal.ownerId,
-    requestedAccount: principal.accountId,
-    seenEpoch: principal.seenEpoch,
-    permissions: [target.scope],
-  })) throw new WorkspaceAccessRefused({ accountId: principal.accountId })
-  return data
-}
-
-export function confirmedMailRecipient(claim: MailboxClaim, contactAddress: string, exactAddresses: readonly string[]) {
-  return selectRecipient(claim, contactAddress, [...new Set(exactAddresses)])
-}
-
-function workspaceQuery(query: WorkspaceQuery): { scope: GoogleScope; url: string; parameters: Record<string, string> } {
-  switch (query.kind) {
-    case "gmail": return { scope: "GmailRead", url: "https://gmail.googleapis.com/gmail/v1/users/me/messages", parameters: { q: query.query } }
-    case "calendar": return { scope: "CalendarRead", url: "https://www.googleapis.com/calendar/v3/calendars/" + encodeURIComponent(query.calendarId) + "/events", parameters: query.updatedMin ? { updatedMin: query.updatedMin } : {} }
-    case "drive": return { scope: "DriveRead", url: "https://www.googleapis.com/drive/v3/files", parameters: { q: query.query } }
-    case "meet": return { scope: "MeetRead", url: "https://meet.googleapis.com/v2/spaces/" + encodeURIComponent(query.meetingCode), parameters: {} }
-    case "contacts": return { scope: "ContactsRead", url: "https://people.googleapis.com/v1/people:searchContacts", parameters: { query: query.query, readMask: "names,emailAddresses,phoneNumbers" } }
-  }
-}
+export default googlePlugin

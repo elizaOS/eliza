@@ -1,0 +1,451 @@
+// spec/sql/index.md, "Story: Attach a SQL adapter only after its schema is ready"; spec/sql/index.md, "A scoped read or mutation must name the active tenant and agent"
+import {
+  ElizaError,
+  getEmbeddingVectorSpaceIdentity,
+  identifyEmbeddingVector,
+} from "@elizaos/core"
+import type { SqlExecutor } from "./types.vibe"
+
+export type EmbeddingDimensionColumn =
+  | "dim_384"
+  | "dim_512"
+  | "dim_768"
+  | "dim_1024"
+  | "dim_1536"
+  | "dim_2048"
+  | "dim_3072"
+
+export const SUPPORTED_EMBEDDING_DIMENSIONS = [384, 512, 768, 1024, 1536, 2048, 3072] as const
+
+export interface SqlSchemaMigration {
+  readonly revision: number
+  readonly checksum: string
+  readonly sql: string
+}
+
+export const SQL_SCHEMA_MIGRATIONS: readonly SqlSchemaMigration[] = [
+  {
+    revision: 1,
+    checksum: "eliza-sql-schema-v1-core",
+    sql: `
+      CREATE TABLE IF NOT EXISTS servers (
+        id UUID PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS agents (
+        id UUID PRIMARY KEY,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        status TEXT NOT NULL DEFAULT 'active',
+        name TEXT NOT NULL,
+        username TEXT,
+        system TEXT,
+        bio JSONB NOT NULL DEFAULT '[]'::jsonb,
+        message_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+        post_examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+        topics JSONB NOT NULL DEFAULT '[]'::jsonb,
+        adjectives JSONB NOT NULL DEFAULT '[]'::jsonb,
+        knowledge JSONB NOT NULL DEFAULT '[]'::jsonb,
+        plugins JSONB NOT NULL DEFAULT '[]'::jsonb,
+        settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        style JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS worlds (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        name TEXT NOT NULL,
+        message_server_id UUID,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS entities (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        names JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS rooms (
+        id UUID PRIMARY KEY,
+        agent_id UUID,
+        name TEXT,
+        source TEXT NOT NULL,
+        type TEXT NOT NULL,
+        channel_id TEXT,
+        message_server_id UUID,
+        world_id UUID,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS participants (
+        id UUID PRIMARY KEY,
+        entity_id UUID NOT NULL,
+        room_id UUID NOT NULL,
+        agent_id UUID NOT NULL,
+        room_state TEXT,
+        created_at BIGINT NOT NULL,
+        UNIQUE(entity_id, room_id, agent_id)
+      );
+      CREATE TABLE IF NOT EXISTS memories (
+        id UUID PRIMARY KEY,
+        type TEXT NOT NULL,
+        agent_id UUID NOT NULL,
+        entity_id UUID NOT NULL,
+        room_id UUID NOT NULL,
+        world_id UUID,
+        content JSONB NOT NULL DEFAULT '{}'::jsonb,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        embedding JSONB,
+        embedding_space TEXT,
+        is_unique BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at BIGINT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_memories_room_type ON memories(room_id, type, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_memories_agent_type ON memories(agent_id, type, created_at DESC);
+      CREATE TABLE IF NOT EXISTS components (
+        id UUID PRIMARY KEY,
+        entity_id UUID NOT NULL,
+        agent_id UUID NOT NULL,
+        room_id UUID NOT NULL,
+        world_id UUID NOT NULL,
+        source_entity_id UUID NOT NULL,
+        type TEXT NOT NULL,
+        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS relationships (
+        id UUID PRIMARY KEY,
+        source_entity_id UUID NOT NULL,
+        target_entity_id UUID NOT NULL,
+        agent_id UUID NOT NULL,
+        tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        UNIQUE(source_entity_id, target_entity_id, agent_id)
+      );
+      CREATE TABLE IF NOT EXISTS logs (
+        id UUID PRIMARY KEY,
+        entity_id UUID NOT NULL,
+        room_id UUID NOT NULL,
+        type TEXT NOT NULL,
+        body JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS cache (
+        key TEXT NOT NULL,
+        agent_id UUID NOT NULL,
+        value JSONB NOT NULL,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT,
+        PRIMARY KEY (key, agent_id)
+      );
+      CREATE TABLE IF NOT EXISTS tasks (
+        id UUID PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        room_id UUID,
+        world_id UUID,
+        entity_id UUID,
+        agent_id UUID NOT NULL,
+        tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
+    `,
+  },
+  {
+    revision: 2,
+    checksum: "eliza-sql-schema-v2-connectors-authority",
+    sql: `
+      CREATE TABLE IF NOT EXISTS pairing_requests (
+        id UUID PRIMARY KEY,
+        channel TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        code TEXT NOT NULL,
+        agent_id UUID NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        last_seen_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS pairing_allowlist (
+        id UUID PRIMARY KEY,
+        channel TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        agent_id UUID NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS connector_accounts (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        connector_id TEXT NOT NULL,
+        account_key TEXT NOT NULL,
+        display_name TEXT,
+        status TEXT NOT NULL,
+        provider_account_id TEXT,
+        capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        UNIQUE(agent_id, connector_id, account_key)
+      );
+      CREATE TABLE IF NOT EXISTS connector_account_credentials (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        connector_account_id UUID NOT NULL,
+        credential_key TEXT NOT NULL,
+        secret_ref TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        UNIQUE(agent_id, connector_account_id, credential_key)
+      );
+      CREATE TABLE IF NOT EXISTS connector_account_audit_events (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        connector_account_id UUID NOT NULL,
+        action TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        actor_id TEXT,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS oauth_flows (
+        state_hash TEXT PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        connector_id TEXT NOT NULL,
+        account_key TEXT NOT NULL,
+        code_verifier_ref TEXT,
+        redirect_uri TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        consumed_at BIGINT
+      );
+      CREATE TABLE IF NOT EXISTS session_summaries (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        room_id UUID NOT NULL,
+        entity_id UUID,
+        summary TEXT NOT NULL,
+        message_count INTEGER NOT NULL DEFAULT 0,
+        last_message_offset INTEGER NOT NULL DEFAULT 0,
+        start_time BIGINT NOT NULL,
+        end_time BIGINT NOT NULL,
+        topics JSONB NOT NULL DEFAULT '[]'::jsonb,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS long_term_memories (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        entity_id UUID NOT NULL,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        embedding JSONB,
+        confidence DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+        source TEXT,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        last_accessed_at BIGINT,
+        access_count INTEGER NOT NULL DEFAULT 0,
+        similarity DOUBLE PRECISION
+      );
+      CREATE TABLE IF NOT EXISTS identity_principals (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        canonical_id UUID NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS identity_claims (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        principal_id UUID NOT NULL,
+        connector_id TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        verified BOOLEAN NOT NULL DEFAULT FALSE,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        UNIQUE(agent_id, connector_id, external_id)
+      );
+      CREATE TABLE IF NOT EXISTS membership_records (
+        id UUID PRIMARY KEY,
+        agent_id UUID NOT NULL,
+        connector_id TEXT NOT NULL,
+        connector_account_id TEXT NOT NULL,
+        external_world_id TEXT NOT NULL,
+        external_room_id TEXT NOT NULL,
+        principal_id UUID NOT NULL,
+        status TEXT NOT NULL,
+        roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+        permission_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+        observed_at BIGINT NOT NULL,
+        expires_at BIGINT,
+        UNIQUE(agent_id, connector_id, connector_account_id, external_world_id, external_room_id, principal_id)
+      );
+      CREATE TABLE IF NOT EXISTS embedding_spaces (
+        agent_id UUID PRIMARY KEY,
+        space_id TEXT,
+        dimension INTEGER NOT NULL,
+        updated_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS message_content_segments (
+        memory_id UUID NOT NULL,
+        segment_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        PRIMARY KEY (memory_id, segment_index)
+      );
+    `,
+  },
+]
+
+export function embeddingColumnForDimension(dimension: number): EmbeddingDimensionColumn {
+  if (dimension === 384) return "dim_384"
+  if (dimension === 512) return "dim_512"
+  if (dimension === 768) return "dim_768"
+  if (dimension === 1024) return "dim_1024"
+  if (dimension === 1536) return "dim_1536"
+  if (dimension === 2048) return "dim_2048"
+  return "dim_3072"
+}
+
+export interface EmbeddingWriteContext {
+  readonly column: EmbeddingDimensionColumn
+  readonly spaceId: string | null
+}
+
+module embeddingSpaceImpl {
+  import {
+    ElizaError,
+    getEmbeddingVectorSpaceIdentity,
+    identifyEmbeddingVector,
+  } from "@elizaos/core"
+  import type { EmbeddingDimensionColumn, EmbeddingWriteContext } from "./schema.vibe"
+
+  export function assertEmbeddingWrite(
+    context: EmbeddingWriteContext,
+    column: EmbeddingDimensionColumn,
+    activeSpace: string | null,
+  ): void {
+    if (context.spaceId !== activeSpace || context.column !== column) {
+      throw new ElizaError("Embedding representation changed before the vector could be stored", {
+        code: "EMBEDDING_SPACE_MISMATCH",
+        context: {
+          expectedSpace: context.spaceId,
+          activeSpace,
+          expectedColumn: context.column,
+          activeColumn: column,
+        },
+      })
+    }
+  }
+
+  export function captureEmbeddingTarget(
+    embedding: number[],
+    column: EmbeddingDimensionColumn,
+    activeSpace: string | null,
+  ): EmbeddingWriteContext {
+    const identity = getEmbeddingVectorSpaceIdentity(embedding)
+    const context: EmbeddingWriteContext = { column, spaceId: identity ?? null }
+    assertEmbeddingWrite(context, column, activeSpace)
+    if (activeSpace !== null) {
+      const expectedDim = Number(column.slice(4))
+      if (embedding.length !== expectedDim) {
+        throw new ElizaError("Embedding vector does not match the active dimension", {
+          code: "EMBEDDING_DIMENSION_MISMATCH",
+        })
+      }
+      for (const value of embedding) {
+        if (!Number.isFinite(value)) {
+          throw new ElizaError("Embedding vector contains a non-finite value", {
+            code: "EMBEDDING_VECTOR_INVALID",
+          })
+        }
+      }
+    }
+    return context
+  }
+
+  export function readEmbeddingVector(
+    embedding: ArrayLike<number> | null | undefined,
+    spaceId: string | null,
+  ): number[] | undefined {
+    return embedding ? identifyEmbeddingVector(Array.from(embedding), spaceId) : undefined
+  }
+}
+import {
+  assertEmbeddingWrite,
+  captureEmbeddingTarget,
+  readEmbeddingVector,
+} from embeddingSpaceImpl
+export { assertEmbeddingWrite, captureEmbeddingTarget, readEmbeddingVector }
+
+export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+  if (a.length === 0 || a.length !== b.length) return 0
+  let dot = 0
+  let magA = 0
+  let magB = 0
+  for (let i = 0; i < a.length; i += 1) {
+    const va = a[i] ?? 0
+    const vb = b[i] ?? 0
+    dot += va * vb
+    magA += va * va
+    magB += vb * vb
+  }
+  const denom = Math.sqrt(magA) * Math.sqrt(magB)
+  return denom > 0 ? dot / denom : 0
+}
+
+export async function installRLSFunctions(executor: SqlExecutor): Promise<void> {
+  await executor.exec(`
+    CREATE OR REPLACE FUNCTION current_server_id() RETURNS UUID AS $$
+    DECLARE app_name TEXT;
+    BEGIN
+      app_name := NULLIF(current_setting('application_name', TRUE), '');
+      BEGIN
+        RETURN app_name::UUID;
+      EXCEPTION WHEN OTHERS THEN
+        RETURN NULL;
+      END;
+    END;
+    $$ LANGUAGE plpgsql STABLE;
+  `)
+  await executor.exec(`
+    CREATE OR REPLACE FUNCTION current_entity_id() RETURNS UUID AS $$
+    DECLARE raw_id TEXT;
+    BEGIN
+      raw_id := NULLIF(current_setting('app.entity_id', TRUE), '');
+      BEGIN
+        RETURN raw_id::UUID;
+      EXCEPTION WHEN OTHERS THEN
+        RETURN NULL;
+      END;
+    END;
+    $$ LANGUAGE plpgsql STABLE;
+  `)
+}
+
+export async function getOrCreateRlsServer(
+  executor: SqlExecutor,
+  serverId: string,
+): Promise<string> {
+  await executor.query(
+    "INSERT INTO servers (id) VALUES ($1::uuid) ON CONFLICT (id) DO NOTHING",
+    [serverId],
+  )
+  return serverId
+}
+
+export const embeddingIdentityHelpers = {
+  ElizaError,
+  getEmbeddingVectorSpaceIdentity,
+  identifyEmbeddingVector,
+}

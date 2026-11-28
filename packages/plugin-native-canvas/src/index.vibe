@@ -2,12 +2,16 @@
 import type { CanvasPlugin } from "./native-contract.vibe"
 
 export type * from "./native-contract.vibe"
+export { CanvasWeb, assertCanvasSize } from "./web.vibe"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { CanvasPlugin } from "./native-contract.vibe"
+  import { CanvasWeb } from "./web.vibe"
 
-  export const native = registerPlugin<CanvasPlugin>("ElizaCanvas")
+  export const native = registerPlugin<CanvasPlugin>("ElizaCanvas", {
+    web: () => Promise.resolve(new CanvasWeb()),
+  })
 }
 import { native } from capacitor
 
@@ -15,11 +19,74 @@ export const Canvas = native
 
 import { nativeCall, nativeReply } from "@elizaos/os-bridges"
 import { mayUseCanvas, type CanvasFrame } from "../gen/nativeCanvas.effect.vibe"
+import {
+  addCanvasLayer,
+  attachCanvasSession,
+  canAddCanvasLayer,
+  canAttachCanvasSession,
+  canCreateCanvasSession,
+  canDestroyCanvasSession,
+  canDetachCanvasSession,
+  canRemoveCanvasLayer,
+  createCanvasSession as transitionCreateCanvas,
+  destroyCanvasSession,
+  detachCanvasSession,
+  initial as initialCanvasSession,
+  removeCanvasLayer,
+  type CanvasSessionState,
+} from "../gen/nativeCanvas__session.effect.vibe"
 import type { CanvasDrawBatchCommand } from "./native-contract.vibe"
 
 const Layers = Schema.Struct({ layers: Schema.Array(Schema.Struct({ id: Schema.String })) })
 
 export error CanvasLayerUnavailable { canvasId: string; layerId: string }
+
+export interface CanvasLifecycleSession {
+  readonly state: () => CanvasSessionState
+  readonly create: (widthPx: number, heightPx: number) => boolean
+  readonly attach: () => boolean
+  readonly detach: () => boolean
+  readonly addLayer: () => boolean
+  readonly removeLayer: () => boolean
+  readonly destroy: () => boolean
+}
+
+export function createCanvasLifecycleSession(): CanvasLifecycleSession {
+  let current: CanvasSessionState = initialCanvasSession
+  return {
+    state: () => current,
+    create(widthPx, heightPx) {
+      if (!canCreateCanvasSession(current, widthPx, heightPx)) return false
+      current = transitionCreateCanvas(current, widthPx, heightPx)
+      return true
+    },
+    attach() {
+      if (!canAttachCanvasSession(current)) return false
+      current = attachCanvasSession(current)
+      return true
+    },
+    detach() {
+      if (!canDetachCanvasSession(current)) return false
+      current = detachCanvasSession(current)
+      return true
+    },
+    addLayer() {
+      if (!canAddCanvasLayer(current)) return false
+      current = addCanvasLayer(current)
+      return true
+    },
+    removeLayer() {
+      if (!canRemoveCanvasLayer(current)) return false
+      current = removeCanvasLayer(current)
+      return true
+    },
+    destroy() {
+      if (!canDestroyCanvasSession(current)) return false
+      current = destroyCanvasSession(current)
+      return true
+    },
+  }
+}
 
 function targetsLayer(command: CanvasDrawBatchCommand, layerId: string): boolean {
   return command.type === "clear" ? command.args.layerId === layerId : command.args.drawOptions?.layerId === layerId

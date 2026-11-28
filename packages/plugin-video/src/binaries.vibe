@@ -1,0 +1,464 @@
+// spec/video/index.md, "Media and caption sources have separate byte limits"; spec/video/index.md, "A stable source and format own the metadata download or conversion result"
+export interface YtDlpFlags {
+  readonly dumpJson?: boolean
+  readonly dumpSingleJson?: boolean
+  readonly skipDownload?: boolean
+  readonly noPlaylist?: boolean
+  readonly noConfig?: boolean
+  readonly verbose?: boolean
+  readonly callHome?: boolean
+  readonly noCheckCertificates?: boolean
+  readonly preferFreeFormats?: boolean
+  readonly youtubeSkipDashManifest?: boolean
+  readonly writeSub?: boolean
+  readonly writeAutoSub?: boolean
+  readonly subLang?: string
+  readonly embedSubs?: boolean
+  readonly extractAudio?: boolean
+  readonly audioFormat?: string
+  readonly format?: string
+  readonly output?: string
+  readonly writeInfoJson?: boolean
+}
+
+export type YtDlpRunner = (url: string, flags?: YtDlpFlags, signal?: AbortSignal) => Promise<unknown>
+
+export interface BinaryResolverOptions {
+  readonly binariesDir?: string
+  readonly releaseUrl?: string
+  readonly fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  readonly now?: () => number
+  readonly disableAutoUpdate?: boolean
+  readonly preferSystemPath?: boolean
+  readonly updateThrottleMs?: number
+  readonly envOverridePath?: string | null
+  readonly ffmpegEnvOverridePath?: string | null
+  readonly runnerFactory?: (binaryPath: string) => YtDlpRunner
+}
+
+export interface YtDlpMeta {
+  readonly version: string
+  readonly sha256: string
+  readonly assetName: string
+  readonly downloadedAt: number
+  readonly lastUpdateAttemptedAt: number
+}
+
+module node {
+  import { execFile } from "node:child_process"
+  import { createHash } from "node:crypto"
+  import { constants as fsConstants, createWriteStream, promises as fsp } from "node:fs"
+  import path from "node:path"
+  import { Readable } from "node:stream"
+  import { pipeline } from "node:stream/promises"
+  import { promisify } from "node:util"
+  import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core"
+  import { resolveStateDir } from "@elizaos/core-node"
+  import type { BinaryResolverOptions, YtDlpFlags, YtDlpMeta, YtDlpRunner } from "./binaries.vibe"
+
+  const execFileAsync = promisify(execFile)
+  const YT_DLP_RELEASE_URL = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
+  const YT_DLP_UPDATE_THROTTLE_MS = 60 * 60 * 1000
+  const YT_DLP_META_FILENAME = "yt-dlp.meta.json"
+  const EXTRACTOR_BROKEN_PATTERNS: readonly RegExp[] = [
+    /Unable to extract/i,
+    /Sign in to confirm/i,
+    /nsig extraction failed/i,
+    /n_param signature/i,
+    /Failed to parse JSON/i,
+    /HTTP Error 403/i,
+    /This video is unavailable/i,
+    /Got error: HTTP Error 429/i,
+  ]
+
+  type YtDlpSource = "env" | "path" | "cache"
+  interface GitHubRelease {
+    readonly tag_name: string
+    readonly assets: readonly { readonly name: string; readonly browser_download_url: string; readonly size: number }[]
+  }
+
+  function extractErrorText(err: unknown): string {
+    if (!err) return ""
+    if (typeof err === "string") return err
+    const rec = err as { stderr?: unknown; message?: unknown }
+    if (typeof rec.stderr === "string" && rec.stderr.length > 0) return rec.stderr
+    if (typeof rec.message === "string") return rec.message
+    try {
+      return JSON.stringify(err)
+    } catch {
+      return String(err)
+    }
+  }
+
+  export function formatInstallErrorReason(err: unknown): string {
+    return `ffmpeg-static install failed: ${truncateWellFormed(toWellFormedUnicode(extractErrorText(err) || "(no message)"), 160)}`
+  }
+
+  export function ytDlpArgsFromFlags(url: string, flags: YtDlpFlags = {}): string[] {
+    const args: string[] = []
+    if (flags.noPlaylist) args.push("--no-playlist")
+    if (flags.noConfig) args.push("--no-config")
+    if (flags.dumpSingleJson) args.push("--dump-single-json")
+    else if (flags.dumpJson) args.push("--dump-json")
+    if (flags.skipDownload) args.push("--skip-download")
+    if (flags.verbose) args.push("--verbose")
+    if (flags.callHome === false) args.push("--no-call-home")
+    if (flags.noCheckCertificates) args.push("--no-check-certificates")
+    if (flags.preferFreeFormats) args.push("--prefer-free-formats")
+    if (flags.youtubeSkipDashManifest) args.push("--youtube-skip-dash-manifest")
+    if (flags.writeSub) args.push("--write-subs")
+    if (flags.writeAutoSub) args.push("--write-auto-subs")
+    if (flags.subLang) args.push("--sub-langs", flags.subLang)
+    if (flags.embedSubs) args.push("--embed-subs")
+    if (flags.extractAudio) args.push("-x")
+    if (flags.audioFormat) args.push("--audio-format", flags.audioFormat)
+    if (flags.format) args.push("-f", flags.format)
+    if (flags.output) args.push("-o", flags.output)
+    if (flags.writeInfoJson) args.push("--write-info-json")
+    args.push("--", url)
+    return args
+  }
+
+  function defaultBinariesDir(): string {
+    const explicit = process.env.ELIZA_BINARIES_DIR
+    return explicit ? explicit : path.join(resolveStateDir(), "binaries")
+  }
+
+  export function ytDlpAssetName(): string {
+    const platform = process.platform
+    const arch = process.arch
+    if (platform === "darwin") return "yt-dlp_macos"
+    if (platform === "win32") return arch === "ia32" ? "yt-dlp_x86.exe" : "yt-dlp.exe"
+    if (platform === "linux") {
+      if (arch === "arm64") return "yt-dlp_linux_aarch64"
+      if (arch === "arm") return "yt-dlp_linux_armv7l"
+      return "yt-dlp_linux"
+    }
+    throw new Error(`Unsupported platform for yt-dlp: ${platform}/${arch}`)
+  }
+
+  export function ytDlpFileName(): string {
+    return process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp"
+  }
+
+  export function ffmpegStaticExecutableName(platform: NodeJS.Platform = process.platform): string {
+    return platform === "win32" ? "ffmpeg.exe" : "ffmpeg"
+  }
+
+  export function resolveNodeInstallRunner({ env = process.env, execPath = process.execPath }: { env?: NodeJS.ProcessEnv; execPath?: string } = {}): string {
+    const configured = env.ELIZA_NODE_BIN?.trim() || env.NODE_BINARY?.trim()
+    if (configured) return configured
+    const posixName = path.basename(execPath)
+    const winName = path.win32.basename(execPath)
+    return /^(node|nodejs)(\.exe)?$/i.test(posixName) || /^(node|nodejs)(\.exe)?$/i.test(winName) ? execPath : "node"
+  }
+
+  export function resolveFfmpegStaticCandidatePath({ packageRoot = null, platform = process.platform }: { packageRoot?: string | null; platform?: NodeJS.Platform } = {}): string | null {
+    const pathApi = platform === "win32" ? path.win32 : path
+    return packageRoot === null ? null : pathApi.join(packageRoot, ffmpegStaticExecutableName(platform))
+  }
+
+  function envBool(name: string): boolean {
+    const value = process.env[name]
+    return value ? value === "1" || value.toLowerCase() === "true" : false
+  }
+
+  function envString(name: string): string | null {
+    return process.env[name] ?? null
+  }
+
+  async function isExecutable(candidate: string): Promise<boolean> {
+    try {
+      await fsp.access(candidate, fsConstants.X_OK)
+      const stat = await fsp.stat(candidate)
+      return stat.isFile()
+    } catch {
+      return false
+    }
+  }
+
+  async function lookupOnPath(name: string): Promise<string | null> {
+    const pathEnv = process.env.PATH
+    if (!pathEnv) return null
+    const exts = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").map((entry) => entry.toLowerCase()) : [""]
+    for (const dir of pathEnv.split(path.delimiter)) {
+      if (!dir) continue
+      for (const ext of exts) {
+        const candidate = path.join(dir, `${name}${ext}`)
+        if (await isExecutable(candidate)) return candidate
+      }
+    }
+    return null
+  }
+
+  function parseSha256Sums(text: string, assetName: string): string {
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      const parts = trimmed.split(/\s+/)
+      if (parts.length >= 2 && parts[parts.length - 1] === assetName) return parts[0].toLowerCase()
+    }
+    throw new Error(`SHA2-256SUMS missing entry for ${assetName}`)
+  }
+
+  async function downloadAndInstallAtomically(
+    fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+    url: string,
+    binariesDir: string,
+    destPath: string,
+    expectedSha: string,
+  ): Promise<void> {
+    await fsp.mkdir(binariesDir, { recursive: true })
+    const tmpPath = `${destPath}.tmp.${process.pid}.${Date.now()}`
+    const response = await fetchImpl(url)
+    if (!response.ok || !response.body) throw new Error(`yt-dlp binary fetch failed: ${response.status} ${response.statusText}`)
+    const nodeStream = Readable.fromWeb(response.body as unknown as Parameters<typeof Readable.fromWeb>[0])
+    await pipeline(nodeStream, createWriteStream(tmpPath))
+    const hash = createHash("sha256")
+    const fd = await fsp.open(tmpPath, "r")
+    try {
+      for await (const chunk of fd.createReadStream()) hash.update(chunk as Buffer)
+    } finally {
+      await fd.close()
+    }
+    const actualSha = hash.digest("hex")
+    if (actualSha !== expectedSha) {
+      await fsp.unlink(tmpPath).catch(() => undefined)
+      throw new Error(`yt-dlp SHA256 mismatch: expected ${expectedSha}, got ${actualSha}`)
+    }
+    await fsp.chmod(tmpPath, 0o755)
+    await fsp.rename(tmpPath, destPath)
+  }
+
+  export async function execBinary(binaryPath: string, args: readonly string[], options: { readonly maxBuffer?: number; readonly timeout?: number; readonly signal?: AbortSignal } = {}): Promise<string> {
+    const { stdout } = await execFileAsync(binaryPath, [...args], {
+      maxBuffer: options.maxBuffer ?? 8 * 1024 * 1024,
+      timeout: options.timeout ?? 120_000,
+      signal: options.signal,
+    })
+    return stdout
+  }
+
+  export class BinaryResolver {
+    private static _instance: BinaryResolver | null = null
+
+    static instance(): BinaryResolver {
+      if (!BinaryResolver._instance) BinaryResolver._instance = new BinaryResolver()
+      return BinaryResolver._instance
+    }
+
+    static resetForTests(): void {
+      BinaryResolver._instance = null
+    }
+
+    private readonly binariesDir: string
+    private readonly releaseUrl: string
+    private readonly fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    private readonly now: () => number
+    private readonly disableAutoUpdate: boolean
+    private readonly preferSystemPath: boolean
+    private readonly updateThrottleMs: number
+    private readonly envOverridePath: string | null
+    private readonly ffmpegEnvOverridePath: string | null
+    private readonly runnerFactory: (binaryPath: string) => YtDlpRunner
+
+    private resolvedYtDlpPath: string | null = null
+    private resolvedYtDlpSource: YtDlpSource | null = null
+    private cachedRunner: YtDlpRunner | null = null
+    private resolvedFfmpegPath: string | null | undefined = undefined
+    private updateInFlight: Promise<boolean> | null = null
+
+    constructor(opts: BinaryResolverOptions = {}) {
+      this.binariesDir = opts.binariesDir ?? defaultBinariesDir()
+      this.releaseUrl = opts.releaseUrl ?? YT_DLP_RELEASE_URL
+      this.fetchImpl = opts.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
+      this.now = opts.now ?? (() => Date.now())
+      this.disableAutoUpdate = opts.disableAutoUpdate ?? envBool("ELIZA_DISABLE_YTDLP_AUTOUPDATE")
+      this.preferSystemPath = opts.preferSystemPath ?? envBool("ELIZA_YT_DLP_PREFER_PATH")
+      this.updateThrottleMs = opts.updateThrottleMs ?? YT_DLP_UPDATE_THROTTLE_MS
+      this.envOverridePath = opts.envOverridePath !== undefined ? opts.envOverridePath : envString("ELIZA_YT_DLP_PATH")
+      this.ffmpegEnvOverridePath = opts.ffmpegEnvOverridePath !== undefined ? opts.ffmpegEnvOverridePath : envString("ELIZA_FFMPEG_PATH")
+      this.runnerFactory = opts.runnerFactory ?? ((binaryPath) => async (url, flags = {}, signal) => {
+        const stdout = await execBinary(binaryPath, ytDlpArgsFromFlags(url, flags), { maxBuffer: 8 * 1024 * 1024, timeout: 120_000, signal })
+        return flags.dumpJson || flags.dumpSingleJson ? JSON.parse(stdout) : stdout
+      })
+    }
+
+    get cacheDir(): string {
+      return this.binariesDir
+    }
+
+    get cachedYtDlpPath(): string {
+      return path.join(this.binariesDir, ytDlpFileName())
+    }
+
+    get metaPath(): string {
+      return path.join(this.binariesDir, YT_DLP_META_FILENAME)
+    }
+
+    async getYtDlpPath(): Promise<string> {
+      if (this.resolvedYtDlpPath) return this.resolvedYtDlpPath
+      if (this.envOverridePath && (await isExecutable(this.envOverridePath))) {
+        this.resolvedYtDlpPath = this.envOverridePath
+        this.resolvedYtDlpSource = "env"
+        return this.envOverridePath
+      }
+      if (this.preferSystemPath) {
+        const sys = await lookupOnPath("yt-dlp")
+        if (sys) {
+          this.resolvedYtDlpPath = sys
+          this.resolvedYtDlpSource = "path"
+          return sys
+        }
+      }
+      const cachePath = this.cachedYtDlpPath
+      if (await isExecutable(cachePath)) {
+        this.resolvedYtDlpPath = cachePath
+        this.resolvedYtDlpSource = "cache"
+        return cachePath
+      }
+      const sys = await lookupOnPath("yt-dlp")
+      if (sys) {
+        this.resolvedYtDlpPath = sys
+        this.resolvedYtDlpSource = "path"
+        return sys
+      }
+      await this.downloadYtDlp()
+      this.resolvedYtDlpPath = cachePath
+      this.resolvedYtDlpSource = "cache"
+      return cachePath
+    }
+
+    async getFfmpegPath(): Promise<string | null> {
+      if (this.resolvedFfmpegPath !== undefined) return this.resolvedFfmpegPath
+      if (this.ffmpegEnvOverridePath && (await isExecutable(this.ffmpegEnvOverridePath))) {
+        this.resolvedFfmpegPath = this.ffmpegEnvOverridePath
+        return this.ffmpegEnvOverridePath
+      }
+      const sys = await lookupOnPath("ffmpeg")
+      if (sys) {
+        this.resolvedFfmpegPath = sys
+        return sys
+      }
+      this.resolvedFfmpegPath = null
+      return null
+    }
+
+    async getYtDlpRunner(): Promise<YtDlpRunner> {
+      if (this.cachedRunner) return this.cachedRunner
+      const binPath = await this.getYtDlpPath()
+      this.cachedRunner = this.runnerFactory(binPath)
+      return this.cachedRunner
+    }
+
+    async runYtDlp(url: string, flags: YtDlpFlags = {}, signal?: AbortSignal): Promise<unknown> {
+      const runner = await this.getYtDlpRunner()
+      try {
+        return await runner(url, flags, signal)
+      } catch (err) {
+        if (!this.shouldRetryWithUpdate(err)) throw err
+        const updated = await this.tryUpdate()
+        if (!updated) throw err
+        const refreshed = await this.getYtDlpRunner()
+        return await refreshed(url, flags, signal)
+      }
+    }
+
+    private shouldRetryWithUpdate(err: unknown): boolean {
+      if (this.disableAutoUpdate || this.resolvedYtDlpSource !== "cache") return false
+      const msg = extractErrorText(err)
+      return EXTRACTOR_BROKEN_PATTERNS.some((pattern) => pattern.test(msg))
+    }
+
+    private tryUpdate(): Promise<boolean> {
+      if (!this.updateInFlight) {
+        this.updateInFlight = this.runUpdate().finally(() => {
+          this.updateInFlight = null
+        })
+      }
+      return this.updateInFlight
+    }
+
+    private async runUpdate(): Promise<boolean> {
+      const meta = await this.readMeta()
+      if (meta && this.now() - meta.lastUpdateAttemptedAt < this.updateThrottleMs) return false
+      try {
+        await this.writeMeta(meta ? { ...meta, lastUpdateAttemptedAt: this.now() } : { version: "", sha256: "", assetName: "", downloadedAt: 0, lastUpdateAttemptedAt: this.now() })
+        await this.downloadYtDlp()
+        this.resetRunnerCache()
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    private resetRunnerCache(): void {
+      this.cachedRunner = null
+      this.resolvedYtDlpPath = null
+      this.resolvedYtDlpSource = null
+    }
+
+    async forceUpdateYtDlp(): Promise<{ readonly version: string; readonly path: string }> {
+      const meta = await this.downloadYtDlp()
+      this.resetRunnerCache()
+      await this.getYtDlpPath()
+      return { version: meta.version, path: this.cachedYtDlpPath }
+    }
+
+    private async readMeta(): Promise<YtDlpMeta | null> {
+      try {
+        const raw = await fsp.readFile(this.metaPath, "utf8")
+        return JSON.parse(raw) as YtDlpMeta
+      } catch {
+        return null
+      }
+    }
+
+    private async writeMeta(meta: YtDlpMeta): Promise<void> {
+      await fsp.mkdir(this.binariesDir, { recursive: true })
+      await fsp.writeFile(this.metaPath, JSON.stringify(meta, null, 2))
+    }
+
+    async downloadYtDlp(): Promise<YtDlpMeta> {
+      const releaseRes = await this.fetchImpl(this.releaseUrl, { headers: { Accept: "application/vnd.github+json" } })
+      if (!releaseRes.ok) throw new Error(`yt-dlp release fetch failed: ${releaseRes.status} ${releaseRes.statusText}`)
+      const release = (await releaseRes.json()) as GitHubRelease
+      const assetName = ytDlpAssetName()
+      const asset = release.assets.find((candidate) => candidate.name === assetName)
+      if (!asset) throw new Error(`yt-dlp release ${release.tag_name} has no asset named '${assetName}'`)
+      const sumsAsset = release.assets.find((candidate) => candidate.name === "SHA2-256SUMS")
+      if (!sumsAsset) throw new Error(`yt-dlp release ${release.tag_name} has no SHA2-256SUMS asset`)
+      const sumsRes = await this.fetchImpl(sumsAsset.browser_download_url)
+      if (!sumsRes.ok) throw new Error(`SHA2-256SUMS fetch failed: ${sumsRes.status} ${sumsRes.statusText}`)
+      const expectedSha = parseSha256Sums(await sumsRes.text(), assetName)
+      await downloadAndInstallAtomically(this.fetchImpl, asset.browser_download_url, this.binariesDir, this.cachedYtDlpPath, expectedSha)
+      const meta: YtDlpMeta = { version: release.tag_name, sha256: expectedSha, assetName, downloadedAt: this.now(), lastUpdateAttemptedAt: this.now() }
+      await this.writeMeta(meta)
+      return meta
+    }
+  }
+}
+
+import {
+  BinaryResolver,
+  execBinary,
+  ffmpegStaticExecutableName,
+  formatInstallErrorReason,
+  resolveFfmpegStaticCandidatePath,
+  resolveNodeInstallRunner,
+  ytDlpArgsFromFlags,
+  ytDlpAssetName,
+  ytDlpFileName,
+} from node
+
+export {
+  BinaryResolver,
+  execBinary,
+  ffmpegStaticExecutableName,
+  formatInstallErrorReason,
+  resolveFfmpegStaticCandidatePath,
+  resolveNodeInstallRunner,
+  ytDlpArgsFromFlags,
+  ytDlpAssetName,
+  ytDlpFileName,
+}

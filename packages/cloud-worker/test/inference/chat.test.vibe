@@ -437,7 +437,7 @@ module node {
 
 import { workerChatJourney } from node
 
-it.live('Worker streams complete frames and settles the original hold, and a Workers AI call the caller left uncapped is sent the model\'s configured maximum (spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A request is admitted only for a live caller under its plan limit, held under the policy\'s lane at its quote, and otherwise refused well formed"; spec/cloud/services/inference.md, "A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported")', () => effect {
+it.live(`Worker streams complete frames and settles the original hold, and a Workers AI call the caller left uncapped is sent the model's configured maximum (spec/cloud/index.md, "A streamed answer sends complete OpenAI frames and settles the same hold"; spec/cloud/services/inference.md, "A request is admitted only for a live caller under its plan limit, held under the policy's lane at its quote, and otherwise refused well formed"; spec/cloud/services/inference.md, "A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported")`, () => effect {
   const got = try tryPromise(() => workerChatJourney((profile, organization, databaseUrl) =>
     runPromise(Effect.provide(fundWorkerChat(profile, organization), storeLayer({ kind: "pg", url: databaseUrl })))))
   const answer = { status: 200, content: replyText, models: ["test-chat"], usage: 0, errors: 0, done: 1, terminal: true, complete: true }

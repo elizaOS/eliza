@@ -1,0 +1,239 @@
+// spec/blocker/index.md, "A requested app is named by the id its device installed, whatever its letter case"
+import {
+  logger,
+  Service,
+  thrown,
+  type IAgentRuntime,
+} from "@elizaos/core"
+import type {
+  AppBlockerPlugin,
+  AppBlockerStatus as NativeAppBlockerStatus,
+  BlockAppsOptions as NativeBlockAppsOptions,
+  BlockAppsResult as NativeBlockAppsResult,
+  InstalledApp as NativeInstalledApp,
+  SelectAppsResult as NativeSelectAppsResult,
+  UnblockAppsResult as NativeUnblockAppsResult,
+} from "@elizaos/capacitor-appblocker"
+import { APP_BLOCKER_SERVICE_TYPE, BLOCKER_LOG_PREFIX } from "./types.vibe"
+
+export type AppBlockerPermissionStatus =
+  | "granted"
+  | "denied"
+  | "not-determined"
+  | "not-applicable"
+
+export interface AppBlockerPermissionResult {
+  readonly status: AppBlockerPermissionStatus
+  readonly canRequest: boolean
+  readonly reason?: string
+}
+
+export type InstalledApp = NativeInstalledApp
+export type SelectAppsResult = NativeSelectAppsResult
+export type BlockAppsOptions = NativeBlockAppsOptions
+export type BlockAppsResult = NativeBlockAppsResult
+export type UnblockAppsResult = NativeUnblockAppsResult
+
+export interface AppBlockerStatus {
+  readonly available: boolean
+  readonly active: boolean
+  readonly platform: string
+  readonly engine: "family-controls" | "usage-stats-overlay" | "none"
+  readonly blockedCount: number
+  readonly blockedPackageNames: readonly string[]
+  readonly endsAt: string | null
+  readonly permissionStatus: AppBlockerPermissionStatus
+  readonly reason?: string
+}
+
+export interface AppBlockerPluginLike {
+  checkPermissions(): Promise<AppBlockerPermissionResult>
+  requestPermissions(): Promise<AppBlockerPermissionResult>
+  getInstalledApps(): Promise<{ readonly apps: readonly InstalledApp[] }>
+  selectApps(): Promise<SelectAppsResult>
+  blockApps(options: BlockAppsOptions): Promise<BlockAppsResult>
+  unblockApps(): Promise<UnblockAppsResult>
+  getStatus(): Promise<AppBlockerStatus | NativeAppBlockerStatus>
+}
+
+export type NativeAppBlockerBackend = AppBlockerPluginLike | AppBlockerPlugin
+
+const STATUS_CACHE_TTL_MS = 5_000
+
+let statusCache: { readonly expiresAt: number; readonly value: AppBlockerStatus } | null = null
+let statusGeneration = 0
+let nativeBackend: NativeAppBlockerBackend | null = null
+
+function invalidateStatusCache(): void {
+  statusGeneration += 1
+  statusCache = null
+}
+
+export function resetAppBlockerStatusCache(): void {
+  invalidateStatusCache()
+}
+
+export function registerNativeAppBlockerBackend(backend: NativeAppBlockerBackend | null): void {
+  nativeBackend = backend
+  invalidateStatusCache()
+}
+
+export function getNativeAppBlockerBackend(): NativeAppBlockerBackend | null {
+  return nativeBackend
+}
+
+export error AppBlockerUnavailable { message: string }
+
+effect function appBlockerUnavailableEffect(): never!AppBlockerUnavailable {
+  throw new AppBlockerUnavailable({
+    message: "[app-blocker] AppBlocker native backend is not available. App blocking is mobile-only.",
+  })
+}
+
+function normalizePermissionStatus(status: string): AppBlockerPermissionStatus {
+  if (
+    status === "granted" ||
+    status === "denied" ||
+    status === "not-determined" ||
+    status === "not-applicable"
+  ) {
+    return status
+  }
+  return "not-determined"
+}
+
+function normalizeEngine(engine: string): AppBlockerStatus["engine"] {
+  if (engine === "family-controls" || engine === "usage-stats-overlay") {
+    return engine
+  }
+  return "none"
+}
+
+function normalizeStatus(raw: AppBlockerStatus | NativeAppBlockerStatus): AppBlockerStatus {
+  return {
+    available: raw.available,
+    active: raw.active,
+    platform: raw.platform,
+    engine: normalizeEngine(raw.engine),
+    blockedCount: raw.blockedCount,
+    blockedPackageNames: [...raw.blockedPackageNames],
+    endsAt: raw.endsAt,
+    permissionStatus: normalizePermissionStatus(raw.permissionStatus),
+    ...(raw.reason !== undefined ? { reason: raw.reason } : {}),
+  }
+}
+
+module node {
+  export function findGlobalAppBlockerPlugin(): unknown {
+    const holder = globalThis as {
+      readonly Capacitor?: { readonly Plugins?: Readonly<Record<string, unknown>> }
+    }
+    const plugins = holder.Capacitor?.Plugins
+    return plugins?.ElizaAppBlocker ?? plugins?.AppBlocker ?? null
+  }
+}
+
+import { findGlobalAppBlockerPlugin } from node
+
+function resolveGlobalCapacitorPlugin(): NativeAppBlockerBackend | null {
+  const candidate = findGlobalAppBlockerPlugin()
+  if (
+    candidate !== null &&
+    typeof candidate === "object" &&
+    typeof (candidate as { readonly getStatus?: unknown }).getStatus === "function"
+  ) {
+    return candidate as NativeAppBlockerBackend
+  }
+  return null
+}
+
+function requirePlugin(): NativeAppBlockerBackend {
+  const plugin = nativeBackend ?? resolveGlobalCapacitorPlugin()
+  if (plugin === null) {
+    return thrown(appBlockerUnavailableEffect)()
+  }
+  return plugin
+}
+
+export async function getAppBlockerStatus(): Promise<AppBlockerStatus> {
+  const raw = await requirePlugin().getStatus()
+  return normalizeStatus(raw)
+}
+
+export async function getCachedAppBlockerStatus(): Promise<AppBlockerStatus> {
+  const now = Date.now()
+  if (statusCache !== null && statusCache.expiresAt > now) {
+    return statusCache.value
+  }
+  const generation = statusGeneration
+  const status = await getAppBlockerStatus()
+  if (generation === statusGeneration) {
+    statusCache = { expiresAt: now + STATUS_CACHE_TTL_MS, value: status }
+  }
+  return status
+}
+
+export async function getAppBlockerPermissionState(): Promise<AppBlockerPermissionResult> {
+  const raw = await requirePlugin().checkPermissions()
+  return {
+    status: normalizePermissionStatus(raw.status),
+    canRequest: raw.canRequest,
+    ...(raw.reason !== undefined ? { reason: raw.reason } : {}),
+  }
+}
+
+export async function requestAppBlockerPermission(): Promise<AppBlockerPermissionResult> {
+  const raw = await requirePlugin().requestPermissions()
+  return {
+    status: normalizePermissionStatus(raw.status),
+    canRequest: raw.canRequest,
+    ...(raw.reason !== undefined ? { reason: raw.reason } : {}),
+  }
+}
+
+export async function getInstalledApps(): Promise<readonly InstalledApp[]> {
+  const result = await requirePlugin().getInstalledApps()
+  return result.apps
+}
+
+export async function selectAppsForBlocking(): Promise<SelectAppsResult> {
+  return requirePlugin().selectApps()
+}
+
+export async function startAppBlock(options: BlockAppsOptions): Promise<BlockAppsResult> {
+  invalidateStatusCache()
+  try {
+    return await requirePlugin().blockApps(options)
+  } finally {
+    invalidateStatusCache()
+  }
+}
+
+export async function stopAppBlock(): Promise<UnblockAppsResult> {
+  invalidateStatusCache()
+  try {
+    return await requirePlugin().unblockApps()
+  } finally {
+    invalidateStatusCache()
+  }
+}
+
+export class AppBlockerService extends Service {
+  static override readonly serviceType = APP_BLOCKER_SERVICE_TYPE
+
+  override capabilityDescription =
+    "Native app blocking surface. Schedules block sessions for specific bundle ids and manages allow-lists."
+
+  static async start(runtime: IAgentRuntime): Promise<AppBlockerService> {
+    logger.info(`${BLOCKER_LOG_PREFIX} starting AppBlockerService`)
+    return new AppBlockerService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    logger.info(`${BLOCKER_LOG_PREFIX} stopping AppBlockerService`)
+  }
+
+  async getStatus(): Promise<AppBlockerStatus> {
+    return getAppBlockerStatus()
+  }
+}

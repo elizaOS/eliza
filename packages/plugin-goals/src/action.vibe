@@ -1,0 +1,335 @@
+// spec/goals/index.md, "Story: Review my goals and check-in history"; spec/goals/lifecycle.md, "Story: Keep goal evaluation prompts safe and goal metadata well formed"
+import {
+  type Action,
+  type ActionResult,
+  type EffectReceipt,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core"
+import {
+  GOAL_ACTIONS,
+  GOAL_REVIEW_STATES,
+  GOAL_STATUSES,
+  GOALS_CONTEXTS,
+  type GoalActionName,
+  type GoalCadence,
+  type GoalReviewState,
+  type GoalStatus,
+} from "./types.vibe"
+import { getGoalsService, goalToItem, type GoalsService } from "./store.vibe"
+import {
+  goalsErrorMessage,
+  isRecord,
+  makeGoalsError,
+  normalizeOptionalString,
+  validateEnumValue,
+  validateNonEmptyString,
+} from "./normalize.vibe"
+
+export const GOALS_ACTION_NAME = "OWNER_GOALS" as const
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+  if (!options || !isRecord(options)) return {}
+  if (isRecord(options.parameters)) return options.parameters
+  return options
+}
+
+function resolveOwnerId(runtime: IAgentRuntime, message: Memory, params: Record<string, unknown>): string {
+  const fromParams = normalizeOptionalString(params.ownerId)
+  if (fromParams) return fromParams
+  if (typeof message.entityId === "string" && message.entityId.trim().length > 0) {
+    return message.entityId.trim()
+  }
+  return runtime.agentId
+}
+
+function makeReceipt(action: GoalActionName, targetId: string): EffectReceipt {
+  const now = new Date().toISOString()
+  return {
+    outcome: "applied",
+    receiptId: `goals:${action}:${targetId}:${now}`,
+    operation: `${GOALS_ACTION_NAME}.${action}`,
+    resource: { kind: "goals.goal", id: targetId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: now,
+    commit: { kind: "durable", id: targetId, committedAt: now },
+  }
+}
+
+function resolveGoalByIdOrTitle(service: GoalsService, ownerId: string, params: Record<string, unknown>): string | null {
+  const explicitId = normalizeOptionalString(params.goalId)
+  if (explicitId) return explicitId
+  const title = normalizeOptionalString(params.title)
+  if (!title) return null
+  const all = service.listGoals(ownerId)
+  const exact = all.find((record) => record.goal.title.toLowerCase() === title.toLowerCase())
+  if (exact) return exact.goal.id
+  const similar = service.findSimilarGoals(ownerId, title, 0.5)
+  if (similar.length === 1) return similar[0]!.goal.id
+  return null
+}
+
+function readOptionalGoalFields(params: Record<string, unknown>): {
+  readonly cadence?: GoalCadence
+  readonly successCriteria?: Record<string, unknown>
+  readonly metadata?: Record<string, unknown>
+} {
+  return {
+    cadence: isRecord(params.cadence) ? (params.cadence as unknown as GoalCadence) : undefined,
+    successCriteria: isRecord(params.successCriteria) ? params.successCriteria : undefined,
+    metadata: isRecord(params.metadata) ? params.metadata : undefined,
+  }
+}
+
+async function handleGoalAction(
+  service: GoalsService,
+  ownerId: string,
+  action: GoalActionName,
+  params: Record<string, unknown>,
+): Promise<ActionResult> {
+  if (action === "create") {
+    const titleRes = validateNonEmptyString(params.title, "title")
+    if (!titleRes.ok) throw titleRes.error
+    let status: GoalStatus | undefined
+    if (params.status !== undefined) {
+      const sRes = validateEnumValue(params.status, "status", GOAL_STATUSES)
+      if (!sRes.ok) throw sRes.error
+      status = sRes.value
+    }
+    const record = await service.createGoal({
+      ownerId,
+      title: titleRes.value,
+      description: normalizeOptionalString(params.description),
+      status,
+      ...readOptionalGoalFields(params),
+    })
+    const item = goalToItem(record)
+    return {
+      success: true,
+      text: `Created goal "${item.title}" (${item.id}).`,
+      data: { action, goal: item },
+      effectReceipts: [makeReceipt(action, item.id)],
+    }
+  }
+  if (action === "update") {
+    const goalId = resolveGoalByIdOrTitle(service, ownerId, params)
+    if (!goalId) throw makeGoalsError(404, "goal not found")
+    let status: GoalStatus | undefined
+    if (params.status !== undefined) {
+      const sRes = validateEnumValue(params.status, "status", GOAL_STATUSES)
+      if (!sRes.ok) throw sRes.error
+      status = sRes.value
+    }
+    let reviewState: GoalReviewState | undefined
+    if (params.reviewState !== undefined) {
+      const rRes = validateEnumValue(params.reviewState, "reviewState", GOAL_REVIEW_STATES)
+      if (!rRes.ok) throw rRes.error
+      reviewState = rRes.value
+    }
+    const record = await service.updateGoal(ownerId, goalId, {
+      title: normalizeOptionalString(params.newTitle ?? params.title),
+      description: params.description !== undefined ? (normalizeOptionalString(params.description) ?? "") : undefined,
+      status,
+      reviewState,
+      ...readOptionalGoalFields(params),
+    })
+    const item = goalToItem(record)
+    return {
+      success: true,
+      text: `Updated goal "${item.title}" (${item.status}, ${item.reviewState}).`,
+      data: { action, goal: item },
+      effectReceipts: [makeReceipt(action, item.id)],
+    }
+  }
+  if (action === "delete") {
+    const goalId = resolveGoalByIdOrTitle(service, ownerId, params)
+    if (!goalId) throw makeGoalsError(404, "goal not found")
+    const deleted = service.deleteGoal(ownerId, goalId)
+    return {
+      success: deleted,
+      text: deleted ? `Deleted goal ${goalId}.` : `Goal ${goalId} not found.`,
+      data: { action, goalId, deleted },
+      ...(deleted ? { effectReceipts: [makeReceipt(action, goalId)] } : {}),
+    }
+  }
+  if (action === "checkin") {
+    const goalId = resolveGoalByIdOrTitle(service, ownerId, params)
+    if (!goalId) throw makeGoalsError(404, "goal not found")
+    const progressRes = validateEnumValue(
+      params.progress ?? params.reviewState,
+      "progress",
+      GOAL_REVIEW_STATES,
+      "on_track",
+    )
+    if (!progressRes.ok) throw progressRes.error
+    const slot = typeof params.slot === "number" && Number.isInteger(params.slot) ? params.slot : 0
+    const result = await service.recordCheckin({
+      ownerId,
+      goalId,
+      slot,
+      progress: progressRes.value,
+      note: normalizeOptionalString(params.note),
+    })
+    return {
+      success: true,
+      text: `Recorded ${progressRes.value} check-in for "${result.goal.title}".`,
+      data: { action, checkin: result.checkin, goalId },
+      effectReceipts: [makeReceipt(action, goalId)],
+    }
+  }
+  if (action === "review") {
+    const summary = service.buildWeeklyReview(ownerId)
+    return {
+      success: true,
+      text: `Reviewed ${summary.total} goals (${summary.byReviewState.on_track} on track, ${summary.byReviewState.needs_attention} needs attention, ${summary.byReviewState.at_risk} at risk).`,
+      data: { action, review: summary },
+    }
+  }
+  let statusFilter: GoalStatus | undefined
+  if (params.status !== undefined) {
+    const sRes = validateEnumValue(params.status, "status", GOAL_STATUSES)
+    if (!sRes.ok) throw sRes.error
+    statusFilter = sRes.value
+  }
+  const items = service.listGoals(ownerId, statusFilter).slice(0, 40).map(goalToItem)
+  const summaryText =
+    items.length === 0
+      ? "No goals found."
+      : items.map((item) => `- ${item.title} [${item.status}/${item.reviewState}]`).join("\n")
+  return {
+    success: true,
+    text: summaryText,
+    data: { action, goals: items, count: items.length },
+  }
+}
+
+export const ownerGoalsAction: Action = {
+  name: GOALS_ACTION_NAME,
+  similes: ["GOAL", "GOALS", "LIFE_GOALS", "TRACK_GOAL", "REVIEW_GOALS"],
+  description: "Create, update, delete, list, check in on, or review the owner's private goals.",
+  descriptionCompressed: "Manage owner goals (create/update/delete/list/review/checkin).",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  contexts: [...GOALS_CONTEXTS],
+  contextGate: { anyOf: [...GOALS_CONTEXTS] },
+  parameters: [
+    {
+      name: "action",
+      description: "Goal operation: create, update, delete, list, review, or checkin",
+      required: true,
+      schema: { type: "string", enum: [...GOAL_ACTIONS] },
+    },
+    {
+      name: "cadence",
+      description: "Optional check-in cadence object ({ kind, slots })",
+      required: false,
+      schema: { type: "object" },
+    },
+    {
+      name: "description",
+      description: "Optional goal description",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "goalId",
+      description: "Target goal ID for update, delete, or checkin",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "metadata",
+      description: "Optional metadata object (private by default)",
+      required: false,
+      schema: { type: "object" },
+    },
+    {
+      name: "newTitle",
+      description: "Replacement title for update",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "note",
+      description: "Check-in note text",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "ownerId",
+      description: "Owner identifier override",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "progress",
+      description: "Check-in review state: idle, needs_attention, on_track, or at_risk",
+      required: false,
+      schema: { type: "string", enum: [...GOAL_REVIEW_STATES] },
+    },
+    {
+      name: "reviewState",
+      description: "Goal review state for update",
+      required: false,
+      schema: { type: "string", enum: [...GOAL_REVIEW_STATES] },
+    },
+    {
+      name: "slot",
+      description: "Numeric check-in slot index",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "status",
+      description: "Goal lifecycle status: active, paused, archived, or satisfied",
+      required: false,
+      schema: { type: "string", enum: [...GOAL_STATUSES] },
+    },
+    {
+      name: "successCriteria",
+      description: "Optional structured success criteria",
+      required: false,
+      schema: { type: "object" },
+    },
+    {
+      name: "title",
+      description: "Goal title for create or target lookup",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+    return getGoalsService(runtime) !== null
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    const service = getGoalsService(runtime)
+    if (!service) {
+      return { success: false, text: "GoalsService is unavailable.", error: "GOALS_SERVICE_UNAVAILABLE" }
+    }
+    const params = readParams(options)
+    try {
+      const actionRes = validateEnumValue(params.action, "action", GOAL_ACTIONS, "list")
+      if (!actionRes.ok) throw actionRes.error
+      const ownerId = resolveOwnerId(runtime, message, params)
+      const result = await handleGoalAction(service, ownerId, actionRes.value, params)
+      if (callback && result.text) {
+        await callback({ text: result.text, action: GOALS_ACTION_NAME })
+      }
+      return result
+    } catch (error) {
+      const messageText = goalsErrorMessage(error)
+      return { success: false, text: messageText, error: messageText }
+    }
+  },
+}

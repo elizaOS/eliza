@@ -1,0 +1,490 @@
+// spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"
+import { slackEntityText } from "../gen/slack.effect.vibe"
+import {
+  parseSlackArchivesUrl,
+  type SlackChannel,
+  type SlackUser,
+} from "./types.vibe"
+
+module guard {
+  import { SlackPluginError } from "./types.vibe"
+
+  export function failChunkLimit(fnName: string, maxChars: number): never {
+    throw new SlackPluginError(
+      `${fnName}: maxChars must be a positive integer, got ${maxChars}`,
+      "SLACK_CHUNK_LIMIT_INVALID",
+    )
+  }
+
+  export function failChunkTooSmall(fnName: string, effectiveLimit: number, maxChars: number, reason: string): never {
+    throw new SlackPluginError(
+      `${fnName}: a chunk limit of ${effectiveLimit} (from maxChars=${maxChars}) ${reason}`,
+      "SLACK_CHUNK_LIMIT_TOO_SMALL",
+    )
+  }
+}
+import { failChunkLimit, failChunkTooSmall } from guard
+
+const BOLD_DELIM = "\u0000"
+const CODE_DELIM = "\u0001"
+const BOLD_SENTINEL = `${BOLD_DELIM}BOLD${BOLD_DELIM}`
+const CODE_SENTINEL_PREFIX = `${CODE_DELIM}CODE`
+const CODE_SENTINEL_SUFFIX = CODE_DELIM
+const DEFAULT_MAX_CHARS = 40_000
+const REOPEN_FENCE = "```\n"
+
+export interface ChunkSlackTextOpts {
+  maxChars?: number
+}
+
+function escapeSlackMrkdwnSegment(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function escapeSlackLinkUrl(url: string): string {
+  return escapeSlackMrkdwnSegment(url.replaceAll("|", "%7C"))
+}
+
+function isAllowedSlackAngleToken(token: string): boolean {
+  if (!token.startsWith("<") || !token.endsWith(">")) return false
+  const inner = token.slice(1, -1)
+  return (
+    inner.startsWith("@") ||
+    inner.startsWith("#") ||
+    inner.startsWith("!") ||
+    inner.startsWith("mailto:") ||
+    inner.startsWith("tel:") ||
+    inner.startsWith("http://") ||
+    inner.startsWith("https://") ||
+    inner.startsWith("slack://")
+  )
+}
+
+function escapeSlackMrkdwnContent(text: string): string {
+  if (!text.includes("&") && !text.includes("<") && !text.includes(">")) return text
+  const out: string[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const tokenStart = text.indexOf("<", cursor)
+    if (tokenStart < 0) break
+    out.push(escapeSlackMrkdwnSegment(text.slice(cursor, tokenStart)))
+    const lineEnd = text.indexOf("\n", tokenStart + 1)
+    const tokenEnd = text.indexOf(">", tokenStart + 1)
+    if (tokenEnd < 0 || (lineEnd >= 0 && lineEnd < tokenEnd)) {
+      const plainEnd = lineEnd < 0 ? text.length : lineEnd + 1
+      out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, plainEnd)))
+      cursor = plainEnd
+      continue
+    }
+    const nextOpen = text.indexOf("<", tokenStart + 1)
+    if (nextOpen >= 0 && nextOpen < tokenEnd) {
+      out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, nextOpen)))
+      cursor = nextOpen
+      continue
+    }
+    const token = text.slice(tokenStart, tokenEnd + 1)
+    out.push(isAllowedSlackAngleToken(token) ? token : escapeSlackMrkdwnSegment(token))
+    cursor = tokenEnd + 1
+  }
+  out.push(escapeSlackMrkdwnSegment(text.slice(cursor)))
+  return out.join("")
+}
+
+export function escapeSlackMrkdwn(text: string): string {
+  if (!text.includes("&") && !text.includes("<") && !text.includes(">")) return text
+  return text
+    .split("\n")
+    .map((line) => {
+      const marker = /^>+/.exec(line)?.[0]
+      return marker ? `${marker}${escapeSlackMrkdwnContent(line.slice(marker.length))}` : escapeSlackMrkdwnContent(line)
+    })
+    .join("\n")
+}
+
+function stripSentinelDelimiters(text: string): string {
+  if (!text.includes(BOLD_DELIM) && !text.includes(CODE_DELIM)) return text
+  return text.split(BOLD_DELIM).join("").split(CODE_DELIM).join("")
+}
+
+function holdAside(body: string, codeSink: string[]): string {
+  codeSink.push(body)
+  return `${CODE_SENTINEL_PREFIX}${codeSink.length - 1}${CODE_SENTINEL_SUFFIX}`
+}
+
+function guardLinkToken(token: string): string {
+  return isAllowedSlackAngleToken(token) && !token.includes("\n") ? token : escapeSlackMrkdwnSegment(token)
+}
+
+function convertBold(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, `${BOLD_SENTINEL}$1${BOLD_SENTINEL}`)
+}
+
+function convertItalic(text: string): string {
+  const converted = text.replace(/(?<!\*)\*(?!\*)(?!\s)(.+?)(?<!\s)(?<!\*)\*(?!\*)/g, "_$1_")
+  return converted.replaceAll(BOLD_SENTINEL, "*")
+}
+
+function convertStrikethrough(text: string): string {
+  return text.replace(/~~(.+?)~~/g, "~$1~")
+}
+
+function convertCodeBlocks(text: string, codeSink: string[]): string {
+  const out: string[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const opener = text.indexOf("```", cursor)
+    if (opener < 0) break
+    const afterOpener = opener + 3
+    const closerAt = text.indexOf("```", afterOpener)
+    const newlineAt = text.slice(afterOpener, closerAt < 0 ? undefined : closerAt).indexOf("\n")
+    const bodyStart = newlineAt >= 0 ? afterOpener + newlineAt + 1 : afterOpener
+    const closer = text.indexOf("```", bodyStart)
+    if (closer < 0) {
+      out.push(text.slice(cursor, opener), holdAside(`\`\`\`\n${escapeSlackMrkdwnSegment(text.slice(bodyStart))}`, codeSink))
+      cursor = text.length
+      break
+    }
+    out.push(text.slice(cursor, opener), holdAside(`\`\`\`\n${escapeSlackMrkdwnSegment(text.slice(bodyStart, closer))}\`\`\``, codeSink))
+    cursor = closer + 3
+  }
+  out.push(text.slice(cursor))
+  return out.join("")
+}
+
+function convertLinks(text: string, codeSink: string[]): string {
+  return text.replace(
+    /(`[^`\n]+`)|\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
+    (match, inlineCode: string | undefined, linkText: string, url: string) => {
+      if (inlineCode) return match
+      const trimmedUrl = url.trim()
+      const trimmedText = linkText.trim()
+      if (trimmedText === trimmedUrl || trimmedText === trimmedUrl.replace(/^mailto:/, "")) {
+        return holdAside(guardLinkToken(`<${escapeSlackLinkUrl(trimmedUrl)}>`), codeSink)
+      }
+      const label = convertStrikethrough(convertItalic(convertBold(escapeSlackMrkdwnSegment(trimmedText))))
+      return holdAside(guardLinkToken(`<${escapeSlackLinkUrl(trimmedUrl)}|${label}>`), codeSink)
+    },
+  )
+}
+
+function convertInlineCode(text: string, codeSink: string[]): string {
+  return text.replace(new RegExp(`\`[^\`\n${CODE_DELIM}]+\``, "g"), (span) =>
+    holdAside(escapeSlackMrkdwnSegment(span), codeSink),
+  )
+}
+
+function convertBareUrls(text: string, codeSink: string[]): string {
+  return text.replace(
+    /(?<![<|\w])https?:\/\/(?:[^\s<>()]|\([^\s()]*\))*(?:[^\s<>().,;:!?*_~'"]|\([^\s()]*\))/g,
+    (url) => holdAside(guardLinkToken(`<${escapeSlackLinkUrl(url)}>`), codeSink),
+  )
+}
+
+function convertHeadings(text: string): string {
+  return text.replace(/^#{1,6}\s+(.+)$/gm, (_match, content: string) => {
+    const flattened = content.replace(/\*\*(.+?)\*\*/g, "$1")
+    return `${BOLD_SENTINEL}${flattened}${BOLD_SENTINEL}`
+  })
+}
+
+function restoreCodeBlocks(text: string, codeSink: string[]): string {
+  if (codeSink.length === 0) return text
+  const out: string[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const start = text.indexOf(CODE_SENTINEL_PREFIX, cursor)
+    if (start < 0) break
+    const digitsStart = start + CODE_SENTINEL_PREFIX.length
+    const end = text.indexOf(CODE_SENTINEL_SUFFIX, digitsStart)
+    if (end < 0) break
+    const digits = text.slice(digitsStart, end)
+    const body = /^[0-9]+$/.test(digits) ? codeSink[Number(digits)] : undefined
+    out.push(text.slice(cursor, start), body ?? text.slice(start, end + 1))
+    cursor = end + 1
+  }
+  out.push(text.slice(cursor))
+  return out.join("")
+}
+
+export function markdownToSlackMrkdwn(markdown: string): string {
+  if (!markdown) return ""
+  const codeSink: string[] = []
+  let result = convertCodeBlocks(stripSentinelDelimiters(markdown), codeSink)
+  result = convertLinks(result, codeSink)
+  result = convertInlineCode(result, codeSink)
+  result = convertBareUrls(result, codeSink)
+  result = convertHeadings(result)
+  result = convertBold(result)
+  result = convertItalic(result)
+  result = convertStrikethrough(result)
+  result = escapeSlackMrkdwn(result)
+  return restoreCodeBlocks(result, codeSink)
+}
+
+function truncateWellFormedLocal(text: string, maxLength: number): string {
+  if (maxLength <= 0) return ""
+  if (text.length <= maxLength) return text
+  const code = text.charCodeAt(maxLength - 1)
+  if (code >= 0xd800 && code <= 0xdbff) return text.slice(0, maxLength - 1)
+  return text.slice(0, maxLength)
+}
+
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (locale: string, options: { granularity: "grapheme" }) => {
+      segment(text: string): Iterable<{ segment: string }>
+    }
+  }
+).Segmenter
+const graphemeSegmenter = new GraphemeSegmenter("en", { granularity: "grapheme" })
+
+function truncateGraphemeSafe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text
+  let end = 0
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) break
+    end += segment.length
+  }
+  return end > 0 ? text.slice(0, end) : truncateWellFormedLocal(text, maxLength)
+}
+
+function requireValidChunkLimit(maxChars: number, fnName: string): void {
+  if (!Number.isInteger(maxChars) || maxChars < 1) failChunkLimit(fnName, maxChars)
+}
+
+function fenceStraddling(text: string, index: number): number {
+  for (let start = index - 2; start < index; start += 1) {
+    if (start >= 0 && text.startsWith("```", start)) return start
+  }
+  return -1
+}
+
+export function splitSlackText(text: string, maxChars: number = DEFAULT_MAX_CHARS): string[] {
+  requireValidChunkLimit(maxChars, "splitSlackText")
+  if (text.length <= maxChars) return [text]
+  const messages: string[] = []
+  let remaining = text
+  while (remaining.length > 0) {
+    if (remaining.length <= maxChars) {
+      messages.push(remaining)
+      break
+    }
+    let splitIndex = maxChars
+    const lastNewline = remaining.lastIndexOf("\n", maxChars)
+    if (lastNewline > maxChars / 2) {
+      splitIndex = lastNewline + 1
+    } else {
+      const lastSpace = remaining.lastIndexOf(" ", maxChars)
+      if (lastSpace > maxChars / 2) splitIndex = lastSpace + 1
+    }
+    splitIndex = Math.min(splitIndex, maxChars)
+    const chunk = truncateGraphemeSafe(remaining, splitIndex)
+    if (chunk.length === 0) {
+      failChunkTooSmall("splitSlackText", splitIndex, maxChars, "cannot hold the next well-formed character")
+    }
+    messages.push(chunk)
+    remaining = remaining.slice(chunk.length)
+  }
+  return messages
+}
+
+export function chunkSlackText(text: string, maxChars: number = DEFAULT_MAX_CHARS): string[] {
+  requireValidChunkLimit(maxChars, "chunkSlackText")
+  if (!text) return []
+  if (text.length <= maxChars) return [text]
+  const chunks: string[] = []
+  let remaining = text
+  let reopenedFence = false
+  while (remaining.length > 0) {
+    if (remaining.length <= maxChars) {
+      chunks.push(remaining)
+      break
+    }
+    const hardLimit = Math.max(maxChars - 4, 1)
+    let breakPoint = hardLimit
+    const newlineIndex = remaining.lastIndexOf("\n", hardLimit)
+    if (newlineIndex > maxChars * 0.5) {
+      breakPoint = newlineIndex + 1
+    } else {
+      const spaceIndex = remaining.lastIndexOf(" ", hardLimit)
+      if (spaceIndex > maxChars * 0.5) breakPoint = spaceIndex + 1
+    }
+    breakPoint = Math.min(breakPoint, hardLimit)
+    const straddledFence = fenceStraddling(remaining, breakPoint)
+    if (straddledFence > 0) breakPoint = straddledFence
+    let chunk = truncateWellFormedLocal(remaining, breakPoint)
+    if (chunk.length === 0) {
+      failChunkTooSmall("chunkSlackText", breakPoint, maxChars, "cannot hold the next well-formed character")
+    }
+    let consumedLength = chunk.length
+    if (reopenedFence && consumedLength <= REOPEN_FENCE.length) {
+      failChunkTooSmall("chunkSlackText", breakPoint, maxChars, "cannot hold a reopened code fence")
+    }
+    let inCodeBlock = (chunk.match(/```/g) || []).length % 2 !== 0
+    let emitChunk = true
+    if (inCodeBlock) {
+      const opener = chunk.lastIndexOf("```")
+      if (chunk.slice(opener + 3).trim() === "") {
+        if (opener === 0) {
+          emitChunk = consumedLength <= REOPEN_FENCE.length
+        } else if (chunk.slice(0, opener).trim() === "") {
+          remaining = remaining.slice(opener)
+          reopenedFence = false
+          continue
+        } else {
+          chunk = chunk.slice(0, opener)
+          consumedLength = opener
+          inCodeBlock = false
+        }
+      }
+    }
+    if (emitChunk) {
+      if (inCodeBlock) chunk += "\n```"
+      chunks.push(chunk)
+    }
+    remaining = remaining.slice(consumedLength)
+    if (inCodeBlock) {
+      const closer = remaining.match(/^\s*(?:```|$)/)
+      reopenedFence = !closer
+      remaining = closer
+        ? remaining.slice(closer[0].length).replace(/^\r?\n/, "").replace(/^\s+$/, "")
+        : `${REOPEN_FENCE}${remaining}`
+    } else {
+      reopenedFence = false
+    }
+  }
+  return chunks
+}
+
+export function markdownToSlackMrkdwnChunks(markdown: string, limit: number): string[] {
+  return chunkSlackText(markdownToSlackMrkdwn(markdown), limit)
+}
+
+export function formatSlackUserMention(userId: string): string {
+  return `<@${userId}>`
+}
+
+export function formatSlackChannelMention(channelId: string): string {
+  return `<#${channelId}>`
+}
+
+export function formatSlackUserGroupMention(groupId: string): string {
+  return `<!subteam^${groupId}>`
+}
+
+export function formatSlackSpecialMention(type: "here" | "channel" | "everyone"): string {
+  return `<!${type}>`
+}
+
+export function formatSlackLink(url: string, text?: string): string {
+  const safeUrl = escapeSlackLinkUrl(url)
+  return text && text !== url ? `<${safeUrl}|${escapeSlackMrkdwnSegment(text)}>` : `<${safeUrl}>`
+}
+
+export function formatSlackDate(
+  timestamp: number | Date,
+  format = "{date_short_pretty} at {time}",
+  fallbackText?: string,
+): string {
+  const timeMs = typeof timestamp === "number" ? timestamp : timestamp.getTime()
+  const date = new Date(timeMs)
+  if (!Number.isFinite(date.getTime())) return fallbackText || "Invalid date"
+  const unix = Math.floor(timeMs / 1000)
+  return `<!date^${unix}^${format}|${fallbackText || date.toISOString()}>`
+}
+
+export function extractUserIdFromMention(mention: string): string | null {
+  const match = mention.match(/^<@([UW][A-Z0-9]+)(?:\|[^>]*)?>$/i)
+  return match ? match[1]! : null
+}
+
+export function extractChannelIdFromMention(mention: string): string | null {
+  const match = mention.match(/^<#([CGD][A-Z0-9]+)(?:\|[^>]*)?>$/i)
+  return match ? match[1]! : null
+}
+
+export function extractUrlFromSlackLink(link: string): string | null {
+  const match = link.match(/^<((?:https?|slack|mailto|tel):[^|>]+)(?:\|[^>]*)?>$/)
+  return match ? match[1]! : null
+}
+
+export function formatSlackUserDisplayName(user: SlackUser): string {
+  return user.profile.displayName || user.profile.realName || user.name
+}
+
+export function formatSlackChannel(channel: SlackChannel): string {
+  if (channel.isIm) return "Direct Message"
+  if (channel.isMpim) return `Group DM: ${channel.name}`
+  return `#${channel.name}`
+}
+
+export function getChannelTypeString(channel: SlackChannel): string {
+  if (channel.isIm) return "DM"
+  if (channel.isMpim) return "Group DM"
+  if (channel.isPrivate || channel.isGroup) return "Private Channel"
+  return "Channel"
+}
+
+export function resolveSlackSystemLocation(channel: SlackChannel, teamName?: string): string {
+  const channelType = getChannelTypeString(channel)
+  const channelName = formatSlackChannel(channel)
+  return teamName ? `${teamName} - ${channelType}: ${channelName}` : `${channelType}: ${channelName}`
+}
+
+export function isDirectMessage(channel: SlackChannel): boolean {
+  return channel.isIm
+}
+
+export function isGroupDm(channel: SlackChannel): boolean {
+  return channel.isMpim
+}
+
+export function isPrivateChannel(channel: SlackChannel): boolean {
+  return channel.isPrivate || channel.isGroup
+}
+
+export function truncateText(text: string, maxLength: number, ellipsis = "…"): string {
+  const wellFormed = text.toWellFormed()
+  if (wellFormed.length <= maxLength) return wellFormed
+  const boundedEllipsis = truncateWellFormedLocal(ellipsis.toWellFormed(), maxLength)
+  const budget = Math.max(0, maxLength - boundedEllipsis.length)
+  return `${truncateWellFormedLocal(wellFormed, budget)}${boundedEllipsis}`
+}
+
+export function decodeSlackText(text: string): string {
+  return text.replace(/&(amp|lt|gt);/g, (_entity, name: string) => slackEntityText(name))
+}
+
+export function decodeSlackEntities(text: string): string {
+  return decodeSlackText(text)
+}
+
+export function stripSlackFormatting(text: string): string {
+  const withoutMarkup = text
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/~([^~]+)~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/<@[UW][A-Z0-9]+(?:\|[^>]*)?>/gi, "")
+    .replace(/<#[CGD][A-Z0-9]+(?:\|[^>]*)?>/gi, "")
+    .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]*)?>/gi, "")
+    .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "")
+    .replace(/<((?:https?|slack|mailto|tel):[^|>]+)\|([^>]*)>/g, "$2")
+    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1")
+  return decodeSlackEntities(withoutMarkup).trim()
+}
+
+export function buildSlackMessagePermalink(
+  workspaceDomain: string,
+  channelId: string,
+  messageTs: string,
+): string {
+  return `https://${workspaceDomain}.slack.com/archives/${channelId}/p${messageTs.replace(".", "")}`
+}
+
+export function parseSlackMessagePermalink(
+  link: string,
+): { workspaceDomain: string; channelId: string; messageTs: string } | null {
+  return parseSlackArchivesUrl(link)
+}

@@ -1,0 +1,314 @@
+// spec/inbox/triage.md, "Story: Triage my unified cross-channel inbox and safely manage subscriptions"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { Result } from "effect"
+import {
+  apply as applyTriageItem,
+  initial as initialTriageItem,
+  triageFeedComplete,
+  triageWindowAllowed,
+  type Event as TriageItemEvent,
+  type InboxTriageItem,
+} from "../../gen/inbox__triage.effect.vibe"
+import {
+  buildDeepLink,
+  canExecuteUnsubscribeUrl,
+  extractAsciiEmailAddress,
+  parseListUnsubscribeHeaders,
+  scoreInboxMessage,
+  type InboxMessageRecord,
+  type InboxPlatform,
+  type PriorityScore,
+  type UnsubscribeMetadata,
+} from "./helpers.vibe"
+
+export const INBOX_TRIAGE_SERVICE_TYPE = "INBOX_TRIAGE"
+
+export interface InboxDegradedPlatform {
+  readonly platform: InboxPlatform
+  readonly reason: string
+}
+
+export type InboxFetcher = (options: { readonly query?: string; readonly limit: number }) => Promise<readonly InboxMessageRecord[]>
+
+export type InboxFetchers = Partial<Record<InboxPlatform, InboxFetcher>>
+
+export interface TriagedInboxItem {
+  readonly message: InboxMessageRecord
+  readonly score: PriorityScore
+  readonly deepLink: string | null
+  readonly state: InboxTriageItem
+  readonly draftReply?: string
+}
+
+export interface UnifiedInboxSnapshot {
+  readonly items: readonly TriagedInboxItem[]
+  readonly degraded: readonly InboxDegradedPlatform[]
+  readonly complete: boolean
+  readonly totalSources: number
+  readonly countsByPriority: Readonly<Record<string, number>>
+  readonly countsByPlatform: Readonly<Record<string, number>>
+}
+
+export interface EmailSubscriptionSenderSummary {
+  readonly senderAddress: string
+  readonly senderDisplay: string
+  readonly messageCount: number
+  readonly unsubscribe: UnsubscribeMetadata
+  readonly sampleSubject: string
+}
+
+export interface UnsubscribeOutcome {
+  readonly senderAddress: string
+  readonly executed: boolean
+  readonly status: "unsubscribed" | "refused" | "failed"
+  readonly reason?: string
+}
+
+let customFetchers: InboxFetchers = {}
+
+export function setInboxFetchers(fetchers: InboxFetchers): void {
+  customFetchers = { ...fetchers }
+}
+
+export function resetInboxFetchers(): void {
+  customFetchers = {}
+}
+
+module node {
+  import { lookup } from "node:dns/promises"
+
+  function isPrivateIp(addr: string): boolean {
+    return addr === "127.0.0.1"
+      || addr === "::1"
+      || addr.startsWith("10.")
+      || addr.startsWith("192.168.")
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(addr)
+      || addr.startsWith("169.254.")
+      || /^fc00:|^fd|^fe80:/i.test(addr)
+  }
+
+  export async function dispatchUnsubscribeHttp(url: string, oneClick: boolean): Promise<{ readonly ok: boolean; readonly status: number }> {
+    const parsed = new URL(url)
+    const resolved = await lookup(parsed.hostname, { all: true })
+    if (resolved.length === 0 || resolved.some((entry) => isPrivateIp(entry.address))) {
+      throw new Error("ssrf_private_address_blocked")
+    }
+    const response = await globalThis.fetch(url, {
+      method: oneClick ? "POST" : "GET",
+      redirect: "error",
+      signal: AbortSignal.timeout(15000),
+      ...(oneClick ? { headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" } : {}),
+    })
+    return { ok: response.ok, status: response.status }
+  }
+}
+import { dispatchUnsubscribeHttp } from node
+
+export class InboxTriageService extends Service {
+  static override serviceType = INBOX_TRIAGE_SERVICE_TYPE
+  override capabilityDescription = "Aggregates, scores, triages cross-channel inbox messages and manages safe email unsubscribes."
+
+  private readonly itemStates = new Map<string, InboxTriageItem>()
+  private readonly itemsById = new Map<string, TriagedInboxItem>()
+  private readonly unsubscribeHistory = new Map<string, UnsubscribeOutcome>()
+  private lastSnapshot: UnifiedInboxSnapshot | undefined = undefined
+
+  static override async start(runtime: IAgentRuntime): Promise<InboxTriageService> {
+    return new InboxTriageService(runtime)
+  }
+
+  stepItemMachine(id: string, event: TriageItemEvent): { readonly accepted: boolean; readonly state: InboxTriageItem } {
+    const current = this.itemStates.get(id) ?? initialTriageItem
+    const outcome = runSync(Effect.result(applyTriageItem(current, event)))
+    if (Result.isFailure(outcome)) {
+      return { accepted: false, state: current }
+    }
+    this.itemStates.set(id, outcome.success)
+    const existing = this.itemsById.get(id)
+    if (existing) {
+      this.itemsById.set(id, { ...existing, state: outcome.success })
+    }
+    return { accepted: true, state: outcome.success }
+  }
+
+  getItemState(id: string): InboxTriageItem {
+    return this.itemStates.get(id) ?? initialTriageItem
+  }
+
+  getLastSnapshot(): UnifiedInboxSnapshot | undefined {
+    return this.lastSnapshot
+  }
+
+  setDraftReply(id: string, draftReply: string): boolean {
+    const existing = this.itemsById.get(id)
+    if (!existing) return false
+    this.itemsById.set(id, { ...existing, draftReply })
+    return true
+  }
+
+  async fetchUnified(options?: {
+    readonly platforms?: readonly InboxPlatform[]
+    readonly query?: string
+    readonly limit?: number
+    readonly vipSenders?: readonly string[]
+  }): Promise<UnifiedInboxSnapshot> {
+    const limit = options?.limit ?? 25
+    if (!triageWindowAllowed(limit)) {
+      return {
+        items: [],
+        degraded: [],
+        complete: false,
+        totalSources: 0,
+        countsByPriority: {},
+        countsByPlatform: {},
+      }
+    }
+    const availablePlatforms = (Object.keys(customFetchers) as InboxPlatform[]).filter((p) => typeof customFetchers[p] === "function")
+    const selected = options?.platforms && options.platforms.length > 0
+      ? options.platforms.filter((p) => typeof customFetchers[p] === "function")
+      : availablePlatforms
+    const degraded: InboxDegradedPlatform[] = []
+    const seenIds = new Set<string>()
+    const seenThreads = new Set<string>()
+    const merged: TriagedInboxItem[] = []
+
+    const results = await Promise.all(selected.map(async (platform) => {
+      const fetcher = customFetchers[platform]
+      if (!fetcher) return { platform, ok: false as const, reason: "fetcher_missing" }
+      try {
+        const list = await fetcher({ ...(options?.query ? { query: options.query } : {}), limit })
+        return { platform, ok: true as const, list }
+      } catch (err) {
+        return { platform, ok: false as const, reason: err instanceof Error ? err.message : String(err) }
+      }
+    }))
+
+    for (const res of results) {
+      if (!res.ok) {
+        degraded.push({ platform: res.platform, reason: res.reason })
+        continue
+      }
+      for (const msg of res.list) {
+        if (seenIds.has(msg.id)) continue
+        const threadKey = msg.threadId ? `${msg.platform}:${msg.threadId}` : undefined
+        if (threadKey && seenThreads.has(threadKey)) continue
+        seenIds.add(msg.id)
+        if (threadKey) seenThreads.add(threadKey)
+        const score = scoreInboxMessage(msg, { ...(options?.vipSenders ? { vipSenders: options.vipSenders } : {}) })
+        const deepLink = buildDeepLink(msg.platform, { messageId: msg.id, roomMeta: msg.roomMeta, worldMeta: msg.worldMeta })
+        const state = this.getItemState(msg.id)
+        const triaged: TriagedInboxItem = { message: msg, score, deepLink, state }
+        this.itemsById.set(msg.id, triaged)
+        merged.push(triaged)
+      }
+    }
+
+    const queryLower = options?.query?.trim().toLowerCase() ?? ""
+    const filtered = queryLower
+      ? merged.filter((entry) =>
+          entry.message.sender.toLowerCase().includes(queryLower)
+          || (entry.message.subject ?? "").toLowerCase().includes(queryLower)
+          || entry.message.snippet.toLowerCase().includes(queryLower))
+      : merged
+
+    filtered.sort((a, b) => {
+      if (b.score.score !== a.score.score) return b.score.score - a.score.score
+      return Date.parse(b.message.receivedAt) - Date.parse(a.message.receivedAt)
+    })
+
+    const bounded = filtered.slice(0, limit)
+    const countsByPriority: Record<string, number> = {}
+    const countsByPlatform: Record<string, number> = {}
+    for (const entry of bounded) {
+      countsByPriority[entry.score.priority] = (countsByPriority[entry.score.priority] ?? 0) + 1
+      countsByPlatform[entry.message.platform] = (countsByPlatform[entry.message.platform] ?? 0) + 1
+    }
+
+    const snapshot: UnifiedInboxSnapshot = {
+      items: bounded,
+      degraded,
+      complete: triageFeedComplete(selected.length, degraded.length),
+      totalSources: selected.length,
+      countsByPriority,
+      countsByPlatform,
+    }
+    this.lastSnapshot = snapshot
+    return snapshot
+  }
+
+  scanSubscriptions(messages?: readonly InboxMessageRecord[]): readonly EmailSubscriptionSenderSummary[] {
+    const source = messages ?? [...this.itemsById.values()].map((entry) => entry.message)
+    const grouped = new Map<string, { display: string; count: number; unsubscribe: UnsubscribeMetadata; sampleSubject: string }>()
+    for (const msg of source) {
+      const unsub = parseListUnsubscribeHeaders(msg.headers)
+      if (unsub.method === "none") continue
+      const addr = msg.senderAddress?.toLowerCase() ?? extractAsciiEmailAddress(msg.sender)
+      if (!addr) continue
+      const prev = grouped.get(addr)
+      if (prev) {
+        prev.count += 1
+      } else {
+        grouped.set(addr, { display: msg.sender, count: 1, unsubscribe: unsub, sampleSubject: msg.subject ?? msg.snippet.slice(0, 60) })
+      }
+    }
+    return [...grouped.entries()]
+      .map(([senderAddress, info]) => ({
+        senderAddress,
+        senderDisplay: info.display,
+        messageCount: info.count,
+        unsubscribe: info.unsubscribe,
+        sampleSubject: info.sampleSubject,
+      }))
+      .sort((a, b) => b.messageCount - a.messageCount)
+  }
+
+  async unsubscribeSender(request: {
+    readonly senderAddress: string
+    readonly targetUrl?: string
+    readonly oneClick?: boolean
+    readonly userAuthorized: boolean
+    readonly transport?: (url: string, oneClick: boolean) => Promise<{ readonly ok: boolean; readonly status: number }>
+  }): Promise<UnsubscribeOutcome> {
+    const addr = request.senderAddress.trim().toLowerCase()
+    const targetUrl = request.targetUrl?.trim() ?? ""
+    if (!addr || !targetUrl || !canExecuteUnsubscribeUrl(targetUrl, request.userAuthorized)) {
+      const refused: UnsubscribeOutcome = {
+        senderAddress: addr,
+        executed: false,
+        status: "refused",
+        reason: !request.userAuthorized ? "owner_authorization_required" : "unsafe_or_missing_https_url",
+      }
+      this.unsubscribeHistory.set(addr, refused)
+      return refused
+    }
+    try {
+      const dispatch = request.transport ?? dispatchUnsubscribeHttp
+      const res = await dispatch(targetUrl, request.oneClick === true)
+      const outcome: UnsubscribeOutcome = res.ok
+        ? { senderAddress: addr, executed: true, status: "unsubscribed" }
+        : { senderAddress: addr, executed: false, status: "failed", reason: `http_${res.status}` }
+      this.unsubscribeHistory.set(addr, outcome)
+      return outcome
+    } catch (err) {
+      const failed: UnsubscribeOutcome = {
+        senderAddress: addr,
+        executed: false,
+        status: "failed",
+        reason: err instanceof Error ? err.message : String(err),
+      }
+      this.unsubscribeHistory.set(addr, failed)
+      return failed
+    }
+  }
+
+  getUnsubscribeOutcome(senderAddress: string): UnsubscribeOutcome | undefined {
+    return this.unsubscribeHistory.get(senderAddress.trim().toLowerCase())
+  }
+
+  override async stop(): Promise<void> {
+    this.itemStates.clear()
+    this.itemsById.clear()
+    this.unsubscribeHistory.clear()
+    this.lastSnapshot = undefined
+  }
+}

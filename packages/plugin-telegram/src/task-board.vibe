@@ -1,0 +1,237 @@
+// spec/telegram/delivery.md, "Story: Keep a pinned task board or progress status as one message across edits, deletions, and restarts"
+import { stringToUuid, type IAgentRuntime, type Memory } from "@elizaos/core"
+import {
+  Machine,
+  machine,
+  type Event,
+  type TelegramSlotKind,
+  type TelegramSlotState,
+} from "../gen/telegram__delivery.effect.vibe"
+import { normalizeTelegramAccountId } from "./policy.vibe"
+
+export interface TelegramSlotSession {
+  dispatch(event: Event): Promise<boolean>
+  selectKind(kind: TelegramSlotKind): Promise<boolean>
+  updateSlot(text: number): Promise<boolean>
+  restartHost(): Promise<boolean>
+  userDeleteMessage(): Promise<boolean>
+  snapshot(): Promise<TelegramSlotState>
+}
+
+export function createTelegramSlotSession(): TelegramSlotSession {
+  const runtime = Effect.runSync(Effect.provide(Machine, machine()))
+  const dispatch = async (event: Event): Promise<boolean> => {
+    const outcome = await Effect.runPromise(Effect.result(runtime.send(event)))
+    return outcome._tag === "Success"
+  }
+  return {
+    dispatch,
+    selectKind: (kind) => dispatch({ type: "selectSlotKind", kind }),
+    updateSlot: (text) => dispatch({ type: "updateSlot", text }),
+    restartHost: () => dispatch({ type: "restartHost" }),
+    userDeleteMessage: () => dispatch({ type: "userDeleteMessage" }),
+    snapshot: () => Effect.runPromise(runtime.get()),
+  }
+}
+
+export interface BoardMessageStore {
+  load(key: string): Promise<number | undefined> | number | undefined
+  save(key: string, messageId: number): Promise<void> | void
+  forget(key: string): Promise<void> | void
+}
+
+export function createInMemoryBoardStore(): BoardMessageStore {
+  const map = new Map<string, number>()
+  return {
+    load: (key) => map.get(key),
+    save: (key, messageId) => {
+      map.set(key, messageId)
+    },
+    forget: (key) => {
+      map.delete(key)
+    },
+  }
+}
+
+export function createRuntimeMemoryBoardStore(runtime: IAgentRuntime, accountId?: string): BoardMessageStore {
+  const normalized = normalizeTelegramAccountId(accountId)
+  const roomId = stringToUuid(`telegram-task-board:${normalized}:${runtime.agentId}`)
+  const memoryIdFor = (key: string) => stringToUuid(`telegram-task-board:${normalized}:${key}`)
+  return {
+    load: async (key) => {
+      const mem = await runtime.getMemoryById?.(memoryIdFor(key))
+      const raw = (mem?.content as { readonly boardMessageId?: unknown } | undefined)?.boardMessageId
+      return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : undefined
+    },
+    save: async (key, messageId) => {
+      const id = memoryIdFor(key)
+      const row: Memory = {
+        id,
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId,
+        createdAt: Date.now(),
+        content: { text: `board:${key}:${messageId}`, source: "telegram", boardMessageId: messageId },
+      }
+      if (runtime.updateMemory !== undefined) {
+        const existing = await runtime.getMemoryById?.(id)
+        if (existing !== null && existing !== undefined) {
+          await runtime.updateMemory({ id, content: row.content })
+          return
+        }
+      }
+      await runtime.createMemory(row, "messages")
+    },
+    forget: async (key) => {
+      await runtime.deleteMemory?.(memoryIdFor(key))
+    },
+  }
+}
+
+export interface TelegramTaskSummary {
+  readonly id: string
+  readonly title: string
+  readonly status: "pending" | "running" | "done" | "failed"
+}
+
+export function formatTelegramTaskBoard(tasks: readonly TelegramTaskSummary[]): string {
+  if (tasks.length === 0) return "Task Board\nNo active tasks."
+  const iconFor = (status: TelegramTaskSummary["status"]): string => {
+    if (status === "done") return "[done]"
+    if (status === "running") return "[running]"
+    if (status === "failed") return "[failed]"
+    return "[pending]"
+  }
+  const lines = tasks.map((task) => `${iconFor(task.status)} ${task.title}`)
+  return `Task Board (${tasks.length})\n${lines.join("\n")}`
+}
+
+function collectErrorText(error: unknown): string {
+  const parts: string[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 6 && current !== undefined && current !== null; depth++) {
+    if (current instanceof Error) {
+      parts.push(current.message)
+      current = (current as { readonly cause?: unknown }).cause
+    } else if (typeof current === "object" && "cause" in current) {
+      parts.push(String(current))
+      current = (current as { readonly cause?: unknown }).cause
+    } else {
+      parts.push(String(current))
+      break
+    }
+  }
+  return parts.join(" ")
+}
+
+export function isTelegramMessageNotModifiedError(error: unknown): boolean {
+  return /message is not modified/i.test(collectErrorText(error))
+}
+
+export function isTelegramMessageMissingError(error: unknown): boolean {
+  return /message to edit not found|message_id_invalid|message not found/i.test(collectErrorText(error))
+}
+
+export interface TelegramBoardTransport {
+  post(chatId: string, text: string, threadId?: number): Promise<number>
+  edit(chatId: string, messageId: number, text: string): Promise<void | { readonly status: "edited" | "unchanged" }>
+  pin?(chatId: string, messageId: number): Promise<void>
+}
+
+export class TelegramTaskBoardManager {
+  private readonly slots = new Map<string, TelegramSlotSession>()
+  private readonly textRevisions = new Map<string, { readonly lastText: string; readonly rev: number }>()
+
+  constructor(
+    private readonly store: BoardMessageStore,
+    private readonly transport: TelegramBoardTransport,
+  ) {}
+
+  private slotKey(chatId: string, threadId?: number): string {
+    return threadId === undefined ? chatId : `${chatId}:${threadId}`
+  }
+
+  private slotFor(key: string): TelegramSlotSession {
+    const existing = this.slots.get(key)
+    if (existing !== undefined) return existing
+    const created = createTelegramSlotSession()
+    this.slots.set(key, created)
+    return created
+  }
+
+  private nextTextRev(key: string, text: string): number {
+    const prev = this.textRevisions.get(key)
+    if (prev !== undefined && prev.lastText === text) return prev.rev
+    const rev = (prev?.rev ?? 0) + 1
+    this.textRevisions.set(key, { lastText: text, rev })
+    return rev
+  }
+
+  async render(chatId: string, tasks: readonly TelegramTaskSummary[], threadId?: number): Promise<{ readonly messageId: number; readonly action: "posted" | "edited" | "unchanged" }> {
+    const key = this.slotKey(chatId, threadId)
+    const text = formatTelegramTaskBoard(tasks)
+    const rev = this.nextTextRev(key, text)
+    const slot = this.slotFor(key)
+    const storedId = await this.store.load(key)
+    if (storedId !== undefined) {
+      const editAttempt = await Effect.runPromise(Effect.result(Effect.tryPromise(() => this.transport.edit(chatId, storedId, text))))
+      if (editAttempt._tag === "Success") {
+        await slot.updateSlot(rev)
+        const status = editAttempt.success?.status === "unchanged" ? "unchanged" : "edited"
+        return { messageId: storedId, action: status }
+      }
+      if (isTelegramMessageNotModifiedError(editAttempt.failure)) {
+        await slot.updateSlot(rev)
+        return { messageId: storedId, action: "unchanged" }
+      }
+      await this.store.forget(key)
+      await slot.userDeleteMessage()
+    }
+    const postedId = await this.transport.post(chatId, text, threadId)
+    await this.store.save(key, postedId)
+    await this.transport.pin?.(chatId, postedId)
+    await slot.updateSlot(rev)
+    return { messageId: postedId, action: "posted" }
+  }
+}
+
+export function createTelegramCompactProgressCallback(
+  chatId: string,
+  transport: Pick<TelegramBoardTransport, "post" | "edit">,
+  threadId?: number,
+): (statusText: string) => Promise<{ readonly messageId: number; readonly action: "posted" | "edited" | "unchanged" }> {
+  const slot = createTelegramSlotSession()
+  let initialized = false
+  let statusMessageId: number | undefined
+  let lastText = ""
+  let textRev = 0
+
+  return async (statusText: string) => {
+    if (!initialized) {
+      initialized = true
+      await slot.selectKind("ProgressSlot")
+    }
+    if (statusText !== lastText) {
+      lastText = statusText
+      textRev += 1
+    }
+    if (statusMessageId !== undefined) {
+      const attempt = await Effect.runPromise(Effect.result(Effect.tryPromise(() => transport.edit(chatId, statusMessageId as number, statusText))))
+      if (attempt._tag === "Success") {
+        await slot.updateSlot(textRev)
+        const status = attempt.success?.status === "unchanged" ? "unchanged" : "edited"
+        return { messageId: statusMessageId, action: status }
+      }
+      if (isTelegramMessageNotModifiedError(attempt.failure)) {
+        await slot.updateSlot(textRev)
+        return { messageId: statusMessageId, action: "unchanged" }
+      }
+      await slot.userDeleteMessage()
+      statusMessageId = undefined
+    }
+    const postedId = await transport.post(chatId, statusText, threadId)
+    statusMessageId = postedId
+    await slot.updateSlot(textRev)
+    return { messageId: postedId, action: "posted" }
+  }
+}

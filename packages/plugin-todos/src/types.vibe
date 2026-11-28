@@ -1,0 +1,173 @@
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"; spec/todos/store.md, "Story: Reject invalid batch writes and keep list queries bounded"
+export const TODOS_LOG_PREFIX = "[Todos]"
+export const TODOS_SERVICE_TYPE = "todos"
+
+export const TODO_STATUSES = [
+  "pending",
+  "in_progress",
+  "completed",
+  "cancelled",
+] as const
+export type TodoStatus = (typeof TODO_STATUSES)[number]
+
+export const TODO_ACTIONS = [
+  "write",
+  "create",
+  "update",
+  "complete",
+  "cancel",
+  "delete",
+  "list",
+  "clear",
+] as const
+export type TodoActionName = (typeof TODO_ACTIONS)[number]
+export const TODO_OPS = TODO_ACTIONS
+export type TodoOp = TodoActionName
+
+export const TODOS_CONTEXTS = ["tasks", "todos", "automation"] as const
+export type TodosContext = (typeof TODOS_CONTEXTS)[number]
+export const TODO_FAILURE_TEXT_PREFIX = "[Todos]"
+
+export interface Todo {
+  readonly id: string
+  readonly entityId: string
+  readonly agentId: string
+  readonly roomId: string | null
+  readonly worldId: string | null
+  readonly content: string
+  readonly activeForm: string
+  readonly status: TodoStatus
+  readonly parentTodoId: string | null
+  readonly parentTrajectoryStepId: string | null
+  readonly metadata: Record<string, unknown>
+  readonly createdAt: Date
+  readonly updatedAt: Date
+  readonly completedAt: Date | null
+}
+
+export interface TodoInput {
+  readonly id?: string
+  readonly content: string
+  readonly status: TodoStatus
+  readonly activeForm?: string
+  readonly parentTodoId?: string | null
+}
+
+export interface TodoScope {
+  readonly entityId: string
+  readonly agentId: string
+}
+
+export type TodoLocator =
+  | { readonly id: string; readonly ref?: undefined; readonly match?: undefined }
+  | { readonly ref: string; readonly id?: undefined; readonly match?: undefined }
+  | { readonly match: string; readonly id?: undefined; readonly ref?: undefined }
+
+export type TodoTargetMiss =
+  | { readonly kind: "not_found" }
+  | { readonly kind: "ambiguous"; readonly candidates: readonly Todo[] }
+
+export type TodoReplyClassification = "affirmative" | "other"
+
+export interface CreateTodoInput {
+  readonly entityId: string
+  readonly agentId: string
+  readonly roomId: string | null
+  readonly worldId: string | null
+  readonly content: string
+  readonly status?: TodoStatus
+  readonly activeForm?: string
+  readonly parentTodoId?: string | null
+  readonly parentTrajectoryStepId?: string | null
+  readonly metadata?: Record<string, unknown>
+}
+
+export interface UpdateTodoInput {
+  readonly content?: string
+  readonly activeForm?: string
+  readonly status?: TodoStatus
+  readonly parentTodoId?: string | null
+}
+
+export interface ListTodosInput {
+  readonly entityId: string
+  readonly agentId: string
+  readonly includeCompleted?: boolean
+  readonly limit?: number
+}
+
+export interface WriteListInput {
+  readonly roomId: string | null
+  readonly worldId: string | null
+  readonly parentTrajectoryStepId?: string | null
+  readonly todos: readonly TodoInput[]
+}
+
+export type TodoMutationPayload =
+  | { readonly action: "write"; readonly input: WriteListInput }
+  | { readonly action: "create"; readonly input: Omit<CreateTodoInput, "entityId" | "agentId">; readonly reply?: TodoReplyClassification }
+  | { readonly action: "update"; readonly locator: TodoLocator; readonly patch: UpdateTodoInput }
+  | { readonly action: "complete"; readonly locator: TodoLocator }
+  | { readonly action: "cancel"; readonly locator: TodoLocator }
+  | { readonly action: "delete"; readonly locator: TodoLocator }
+  | { readonly action: "clear"; readonly roomId: string | null; readonly reply?: TodoReplyClassification }
+
+export interface TodoMutationRequest {
+  readonly scope: TodoScope
+  readonly idempotencyKey: string
+  readonly mutation: TodoMutationPayload
+}
+
+export type TodoMutationOutcome =
+  | { readonly action: "write"; readonly before: Todo[]; readonly after: Todo[] }
+  | { readonly action: "create"; readonly todo: Todo; readonly duplicate?: boolean }
+  | { readonly action: "update"; readonly todo: Todo | null; readonly alreadySet?: boolean; readonly miss?: TodoTargetMiss }
+  | { readonly action: "complete"; readonly todo: Todo | null; readonly alreadySet?: boolean; readonly miss?: TodoTargetMiss }
+  | { readonly action: "cancel"; readonly todo: Todo | null; readonly alreadySet?: boolean; readonly miss?: TodoTargetMiss }
+  | { readonly action: "delete"; readonly deleted: Todo | null; readonly miss?: TodoTargetMiss }
+  | {
+      readonly action: "clear"
+      readonly clearedCount: number
+      readonly previewed?: boolean
+      readonly previewCount?: number
+      readonly cancelled?: boolean
+    }
+
+export interface TodoMutationExecution {
+  readonly mutationId: string
+  readonly idempotencyKey: string
+  readonly applied: boolean
+  readonly replayed: boolean
+  readonly committedAt: Date
+  readonly result: TodoMutationOutcome
+}
+
+export interface TodoCutoverState {
+  readonly todoCount: number
+  readonly mutationCount: number
+}
+
+export interface TodoMutationRecord {
+  readonly id: string
+  readonly entityId: string
+  readonly agentId: string
+  readonly idempotencyKey: string
+  readonly requestDigest: string
+  readonly applied: boolean
+  readonly resultJson: string
+  readonly committedAt: string
+}
+
+export interface RuntimeTodoStore {
+  applyMutation(request: TodoMutationRequest): Promise<TodoMutationExecution>
+  readCutoverState(scope: TodoScope): Promise<TodoCutoverState>
+  listMutationRecords(scope: TodoScope): Promise<TodoMutationRecord[]>
+  importMutationRecords(scope: TodoScope, records: readonly TodoMutationRecord[]): Promise<number>
+  create(input: CreateTodoInput): Promise<Todo>
+  get(scope: TodoScope, id: string): Promise<Todo | null>
+  list(input: ListTodosInput): Promise<Todo[]>
+  update(scope: TodoScope, id: string, patch: UpdateTodoInput): Promise<Todo | null>
+  delete(scope: TodoScope, id: string): Promise<boolean>
+  writeList(scope: TodoScope, input: WriteListInput): Promise<{ before: Todo[]; after: Todo[] }>
+  clear(scope: TodoScope): Promise<number>
+}

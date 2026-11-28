@@ -1,0 +1,153 @@
+// spec/nativeTalkmode/audioPolicy.md, "Story: Keep voice capture active and TTS progressing under output mute"; spec/nativeTalkmode/audioPolicy.md, "Output mute and volume zero change audibility without stopping capture or active TTS progress"
+import {
+  Machine as PolicyMachine,
+  machine as policyMachine,
+  talkAudibility,
+  type Event as TalkAudioPolicySpecEvent,
+  type TalkAudioPolicyState,
+} from "../gen/nativeTalkmode__audioPolicy.effect.vibe"
+
+export type TalkModeAudioPlatform = "ios" | "android" | "electrobun" | "browser"
+export type TalkModeCaptureIndicator = "recording" | "idle"
+export type TalkModeTtsAudibility = "audible" | "silent-by-output-policy" | "not-speaking"
+export type TalkModeTtsProgressPolicy = "continue"
+export type TalkModeTtsOutputChannel =
+  | "ios-play-and-record-voice-chat"
+  | "android-voice-communication"
+  | "desktop-system-output"
+  | "browser-speech-synthesis-output"
+
+export interface VolumeMutePolicy {
+  readonly platform: TalkModeAudioPlatform
+  readonly captureContinuesWhenOutputMuted: true
+  readonly captureIndicatorWhenOutputMuted: "recording"
+  readonly ttsOutputChannel: TalkModeTtsOutputChannel
+  readonly ttsProgressWhenOutputMuted: TalkModeTtsProgressPolicy
+  readonly requiresDeviceAudioVerification: boolean
+}
+
+export interface TalkModeAudioState {
+  readonly captureActive: boolean
+  readonly captureIndicator: TalkModeCaptureIndicator
+  readonly ttsUtteranceId: string | null
+  readonly ttsProgress: TalkModeTtsProgressPolicy | "idle"
+  readonly ttsAudibility: TalkModeTtsAudibility
+  readonly outputMuted: boolean
+  readonly outputVolume: number
+}
+
+export type TalkModeAudioPolicyEvent =
+  | { readonly type: "capture-started" }
+  | { readonly type: "capture-stopped" }
+  | { readonly type: "tts-started"; readonly utteranceId: string }
+  | { readonly type: "tts-finished"; readonly utteranceId: string }
+  | { readonly type: "output-mute-changed"; readonly muted: boolean }
+  | { readonly type: "output-volume-changed"; readonly volume: number }
+
+export interface TalkAudioPolicyMachineHandle {
+  readonly state: () => TalkAudioPolicyState
+  readonly dispatch: (event: TalkAudioPolicySpecEvent) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown) => Promise<"accepted" | "refused">
+}
+
+export function createTalkAudioPolicyHandle(): TalkAudioPolicyMachineHandle {
+  const created = runSync(effect {
+    provide policyMachine() {
+      const m = try PolicyMachine
+      return m
+    }
+  })
+  return {
+    state: () => runSync(created.get()),
+    dispatch: (event) => runPromise(created.send(event).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+    receive: (raw) => runPromise(created.receive(raw).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("NotAnEvent", () => Effect.succeed("refused" as const)),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+  }
+}
+
+const TTS_OUTPUT_CHANNEL_BY_PLATFORM: Readonly<Record<TalkModeAudioPlatform, TalkModeTtsOutputChannel>> = {
+  ios: "ios-play-and-record-voice-chat",
+  android: "android-voice-communication",
+  electrobun: "desktop-system-output",
+  browser: "browser-speech-synthesis-output",
+}
+
+function normalizeOutputVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1
+  return Math.min(1, Math.max(0, volume))
+}
+
+function deriveTalkModeAudioState(state: TalkModeAudioState): TalkModeAudioState {
+  const volumePct = Math.round(normalizeOutputVolume(state.outputVolume) * 100)
+  const audibility = talkAudibility({
+    captureActive: state.captureActive,
+    ttsUtteranceId: state.ttsUtteranceId ?? "",
+    outputMuted: state.outputMuted,
+    outputVolumePct: volumePct,
+  })
+  const ttsAudibility: TalkModeTtsAudibility =
+    audibility === "TtsNotSpeaking"
+      ? "not-speaking"
+      : audibility === "TtsSilentByOutputPolicy"
+        ? "silent-by-output-policy"
+        : "audible"
+  return {
+    ...state,
+    captureIndicator: state.captureActive ? "recording" : "idle",
+    ttsProgress: state.ttsUtteranceId ? "continue" : "idle",
+    ttsAudibility,
+  }
+}
+
+export function getVolumeMutePolicy(platform: TalkModeAudioPlatform): VolumeMutePolicy {
+  return {
+    platform,
+    captureContinuesWhenOutputMuted: true,
+    captureIndicatorWhenOutputMuted: "recording",
+    ttsOutputChannel: TTS_OUTPUT_CHANNEL_BY_PLATFORM[platform],
+    ttsProgressWhenOutputMuted: "continue",
+    requiresDeviceAudioVerification: platform !== "browser",
+  }
+}
+
+export function createTalkModeAudioState(options?: {
+  readonly outputMuted?: boolean
+  readonly outputVolume?: number
+}): TalkModeAudioState {
+  return deriveTalkModeAudioState({
+    captureActive: false,
+    captureIndicator: "idle",
+    ttsUtteranceId: null,
+    ttsProgress: "idle",
+    ttsAudibility: "not-speaking",
+    outputMuted: options?.outputMuted ?? false,
+    outputVolume: normalizeOutputVolume(options?.outputVolume ?? 1),
+  })
+}
+
+export function reduceTalkModeAudioPolicy(
+  state: TalkModeAudioState,
+  event: TalkModeAudioPolicyEvent,
+): TalkModeAudioState {
+  switch (event.type) {
+    case "capture-started":
+      return deriveTalkModeAudioState({ ...state, captureActive: true, captureIndicator: "recording" })
+    case "capture-stopped":
+      return deriveTalkModeAudioState({ ...state, captureActive: false, captureIndicator: "idle" })
+    case "tts-started":
+      return deriveTalkModeAudioState({ ...state, ttsUtteranceId: event.utteranceId, ttsProgress: "continue" })
+    case "tts-finished":
+      if (event.utteranceId !== state.ttsUtteranceId) return state
+      return deriveTalkModeAudioState({ ...state, ttsUtteranceId: null, ttsProgress: "idle" })
+    case "output-mute-changed":
+      return deriveTalkModeAudioState({ ...state, outputMuted: event.muted })
+    case "output-volume-changed":
+      return deriveTalkModeAudioState({ ...state, outputVolume: normalizeOutputVolume(event.volume) })
+  }
+}

@@ -518,9 +518,10 @@ export async function handleTextEmbedding(
 export async function handleBatchTextEmbedding(
   runtime: IAgentRuntime,
   texts: string[],
+  signal?: AbortSignal,
 ): Promise<number[][]> {
   if (!Array.isArray(texts) || texts.length === 0) {
     return []
   }
-  return await runPromise(embed(runtime, { kind: "EmbedBatch", texts }, undefined))
+  return await runPromise(embed(runtime, { kind: "EmbedBatch", texts }, signal))
 }

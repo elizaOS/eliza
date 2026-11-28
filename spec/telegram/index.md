@@ -1,6 +1,6 @@
 # Telegram
 
-Telegram supplies bot updates and account-backed message history. The rules follow `plugins/plugin-telegram/{README.md,src/poller-lock.ts,src/dm-policy.ts,src/messageManager.ts,src/sender-auth.ts}` on `develop` at `51aad7ee8a82e1b8e6fa1908ed76d0c344c75d55`.
+Telegram supplies bot updates and account-backed message history. The rules follow `plugins/plugin-telegram/{README.md,src/poller-lock.ts,src/dm-policy.ts,src/messageManager.ts,src/sender-auth.ts}` on `develop` at `51aad7ee8a82e1b8e6fa1908ed76d0c344c75d55`. Message-slot editing, owner pairing, world ownership, and personal history bounds are specified in [delivery](delivery.md).
 
 ## Story: Run one Telegram long-poller for each bot credential
 

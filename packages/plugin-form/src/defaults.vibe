@@ -1,0 +1,59 @@
+// spec/form/index.md, "Each captured answer belongs to one field in the participant's current form"
+import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS, type FormControl, type FormDefinition } from "./types.vibe"
+
+module guard {
+  export function failDefault(message: string): never {
+    throw new Error(message)
+  }
+}
+import { failDefault } from guard
+
+export function prettify(key: string): string {
+  return key.replace(/[-_]/g, " ").replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+export function applyControlDefaults(control: Partial<FormControl>): FormControl {
+  const key = control.key
+  if (!key) failDefault("Control key is required")
+  return {
+    ...control,
+    key,
+    label: control.label || prettify(key),
+    type: control.type || FORM_CONTROL_DEFAULTS.type,
+    required: control.required ?? FORM_CONTROL_DEFAULTS.required,
+    confirmThreshold: control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold,
+  }
+}
+
+export function applyFormDefaults(form: Partial<FormDefinition>): FormDefinition {
+  const id = form.id
+  if (!id) failDefault("Form id is required")
+  return {
+    ...form,
+    id,
+    name: form.name || prettify(id),
+    version: form.version ?? FORM_DEFINITION_DEFAULTS.version,
+    status: form.status ?? FORM_DEFINITION_DEFAULTS.status,
+    controls: (form.controls || []).map(applyControlDefaults),
+    ux: {
+      allowUndo: form.ux?.allowUndo ?? FORM_DEFINITION_DEFAULTS.ux.allowUndo,
+      allowSkip: form.ux?.allowSkip ?? FORM_DEFINITION_DEFAULTS.ux.allowSkip,
+      maxUndoSteps: form.ux?.maxUndoSteps ?? FORM_DEFINITION_DEFAULTS.ux.maxUndoSteps,
+      showExamples: form.ux?.showExamples ?? FORM_DEFINITION_DEFAULTS.ux.showExamples,
+      showExplanations: form.ux?.showExplanations ?? FORM_DEFINITION_DEFAULTS.ux.showExplanations,
+      allowAutofill: form.ux?.allowAutofill ?? FORM_DEFINITION_DEFAULTS.ux.allowAutofill,
+    },
+    ttl: {
+      minDays: form.ttl?.minDays ?? FORM_DEFINITION_DEFAULTS.ttl.minDays,
+      maxDays: form.ttl?.maxDays ?? FORM_DEFINITION_DEFAULTS.ttl.maxDays,
+      effortMultiplier: form.ttl?.effortMultiplier ?? FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier,
+    },
+    nudge: {
+      enabled: form.nudge?.enabled ?? FORM_DEFINITION_DEFAULTS.nudge.enabled,
+      afterInactiveHours: form.nudge?.afterInactiveHours ?? FORM_DEFINITION_DEFAULTS.nudge.afterInactiveHours,
+      maxNudges: form.nudge?.maxNudges ?? FORM_DEFINITION_DEFAULTS.nudge.maxNudges,
+      message: form.nudge?.message,
+    },
+    debug: form.debug ?? FORM_DEFINITION_DEFAULTS.debug,
+  }
+}

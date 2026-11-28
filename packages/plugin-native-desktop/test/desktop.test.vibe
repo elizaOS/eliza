@@ -1,0 +1,88 @@
+// spec/nativeDesktop/index.md, "Story: Manage desktop tray, shortcuts, window state, and notifications safely"
+import { assert, describe, expect, it } from "@effect/vitest"
+import { Desktop, DesktopWeb, assertSafeExternalUrl, createDesktopSession } from "../src/index.vibe"
+
+describe('plugin-native-desktop (spec/nativeDesktop/index.md, "Story: Manage desktop tray, shortcuts, window state, and notifications safely")', () => {
+  it('supports full DesktopPlugin lifecycle, clipboard, permissions, and safe external URL validation (spec/nativeDesktop/index.md, "Desktop host state keeps opacity, shortcut counts, notifications, and lifecycle transitions bounded")', async () => {
+    assert.ok(Desktop !== undefined)
+    const web = new DesktopWeb()
+    await web.createTray({ icon: "tray.png", tooltip: "Eliza" })
+    await web.updateTray({ title: "Eliza Desktop" })
+    await web.setTrayMenu({ menu: [{ id: "open", label: "Open" }] })
+    assert.strictEqual(web.getState().trayActive, true)
+
+    const reg = await web.registerShortcut({ id: "toggle", accelerator: "CommandOrControl+Shift+E" })
+    assert.strictEqual(reg.registered, true)
+    assert.deepStrictEqual(await web.isShortcutRegistered({ accelerator: "CommandOrControl+Shift+E" }), { registered: true })
+    await web.unregisterShortcut({ id: "toggle" })
+    assert.deepStrictEqual(await web.isShortcutRegistered({ accelerator: "CommandOrControl+Shift+E" }), { registered: false })
+
+    await web.setAutoLaunch({ enabled: true, openAsHidden: true })
+    assert.deepStrictEqual(await web.getAutoLaunchStatus(), { enabled: true, openAsHidden: true })
+
+    await web.setWindowBounds({ x: 10, y: 20, width: 900, height: 600 })
+    assert.deepStrictEqual(await web.getWindowBounds(), { x: 10, y: 20, width: 900, height: 600 })
+    await web.minimizeWindow()
+    assert.deepStrictEqual(await web.isWindowMinimized(), { minimized: true })
+    await web.setFullscreen({ flag: true })
+    assert.deepStrictEqual(await web.isWindowMinimized(), { minimized: false })
+    await web.setOpacity({ opacity: 0.75 })
+    assert.strictEqual(web.getState().opacityHundredths, 75)
+    await expect(web.setOpacity({ opacity: 1.5 })).rejects.toThrow()
+
+    await web.hideWindow()
+    assert.deepStrictEqual(await web.isWindowVisible(), { visible: false })
+    await web.showWindow()
+    assert.deepStrictEqual(await web.isWindowVisible(), { visible: true })
+    await web.maximizeWindow()
+    assert.deepStrictEqual(await web.isWindowMaximized(), { maximized: true })
+    await web.unmaximizeWindow()
+    assert.deepStrictEqual(await web.isWindowMaximized(), { maximized: false })
+    await web.setAlwaysOnTop({ flag: true, level: "floating" })
+    assert.strictEqual(web.isAlwaysOnTop(), true)
+
+    const { id } = await web.showNotification({ title: "Alert", body: "Ready" })
+    assert.strictEqual(web.getState().activeNotifications, 1)
+    await web.closeNotification({ id })
+    assert.strictEqual(web.getState().activeNotifications, 0)
+
+    await web.writeToClipboard({ text: "hello desktop" })
+    assert.deepStrictEqual(await web.readFromClipboard(), { text: "hello desktop", html: undefined, rtf: undefined, hasImage: false })
+    await web.clearClipboard()
+    assert.deepStrictEqual(await web.readFromClipboard(), { hasImage: false })
+
+    assert.strictEqual(assertSafeExternalUrl("https://elizaos.ai"), "https://elizaos.ai")
+    assert.throws(() => assertSafeExternalUrl("javascript:alert(1)"))
+    assert.throws(() => assertSafeExternalUrl("file:///etc/passwd"))
+    await web.openExternal({ url: "https://elizaos.ai" })
+
+    const power = await web.getPowerState()
+    assert.strictEqual(power.idleState, "active")
+    const version = await web.getVersion()
+    assert.strictEqual(version.name, "@elizaos/capacitor-desktop")
+    assert.deepStrictEqual(await web.isPackaged(), { packaged: false })
+    assert.deepStrictEqual(await web.getPath({ name: "temp" }), { path: "/temp" })
+    const perm = await web.checkPermission({ id: "notifications" })
+    assert.strictEqual(perm.id, "notifications")
+    assert.strictEqual(perm.status, "not-applicable")
+
+    let focusCount = 0
+    const listener = await web.addListener("windowFocus", () => {
+      focusCount += 1
+    })
+    await web.focusWindow()
+    assert.strictEqual(focusCount, 1)
+    await listener.remove()
+    await web.focusWindow()
+    assert.strictEqual(focusCount, 1)
+    await web.removeAllListeners()
+    await web.quit()
+    assert.strictEqual(web.getState().trayActive, false)
+
+    const session = createDesktopSession()
+    assert.strictEqual(session.createTray(), true)
+    assert.strictEqual(session.createTray(), false)
+    assert.strictEqual(session.setWindowOpacity(101), false)
+    assert.strictEqual(session.setWindowOpacity(50), true)
+  })
+})

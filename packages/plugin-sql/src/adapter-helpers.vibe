@@ -1,0 +1,506 @@
+// spec/sql/index.md, "A scoped read or mutation must name the active tenant and agent"
+module sqlAdapterHelpers {
+  import { createHash, randomUUID } from "node:crypto"
+  import {
+    ElizaError,
+    MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+    MESSAGE_CONTENT_READ_MAX_SEGMENTS,
+    MemoryType,
+    authorizeMessageContentRead,
+    canRequesterManageDocumentDirectGrants,
+    canRequesterMutateDocument,
+    canonicalAttachmentText,
+    documentMutationSnapshotMatches,
+    filterMemoryReadByAccessContext,
+    hashAttachmentIdForLocator,
+    isDocumentVisibleToRequester,
+    queryDocumentFragmentsInMemory,
+    queryDocumentsInMemory,
+    readMessageContentProjection,
+    resolveMessageContentSourceDescriptor,
+    validateDocumentDirectGrantEntityIds,
+    validateDocumentRevisionReplacement,
+    type AccessContext,
+    type Content,
+    type DocumentCompareAndSwapParams,
+    type DocumentDeleteParams,
+    type DocumentDirectGrantUpdateParams,
+    type DocumentFragmentQueryParams,
+    type DocumentGetQueryParams,
+    type DocumentListQueryParams,
+    type DocumentListQueryResult,
+    type DocumentMutationResult,
+    type DocumentRequesterContext,
+    type DocumentRevisionReplaceParams,
+    type Memory,
+    type MemoryMetadata,
+    type MessageContentPublicationParams,
+    type MessageContentPublicationResult,
+    type MessageContentRangeReadParams,
+    type MessageContentRangeReadResult,
+    type UUID,
+  } from "@elizaos/core"
+  import { assertJsonbStorable, sanitizeJsonObject } from "./sanitize.vibe"
+  import type { SqlExecutor } from "./types.vibe"
+
+  export function randomUuid(): UUID {
+    return randomUUID() as UUID
+  }
+
+  export function sha256Hex(value: string): string {
+    return createHash("sha256").update(value).digest("hex")
+  }
+
+  export function encodeJsonb(value: unknown, strict = false): string {
+    if (strict) {
+      assertJsonbStorable(value)
+      return JSON.stringify(value)
+    }
+    return JSON.stringify(sanitizeJsonObject(value))
+  }
+
+  export function asRecord(value: unknown): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  }
+
+  export function asStringList(value: unknown): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+  }
+
+  export function asNumberList(value: unknown): number[] | undefined {
+    if (!Array.isArray(value)) return undefined
+    const nums = value.filter((item): item is number => typeof item === "number" && Number.isFinite(item))
+    return nums.length > 0 ? nums : undefined
+  }
+
+  export function rowToMemory(row: Record<string, unknown>, includeEmbedding = true): Memory {
+    const embedding = includeEmbedding ? asNumberList(row.embedding) : undefined
+    return {
+      id: String(row.id) as UUID,
+      agentId: String(row.agent_id) as UUID,
+      entityId: String(row.entity_id) as UUID,
+      roomId: String(row.room_id) as UUID,
+      ...(row.world_id ? { worldId: String(row.world_id) as UUID } : {}),
+      content: asRecord(row.content) as Content,
+      metadata: asRecord(row.metadata) as MemoryMetadata,
+      ...(embedding ? { embedding } : {}),
+      unique: Boolean(row.is_unique),
+      createdAt: Number(row.created_at),
+    }
+  }
+
+  export function matchesMetadataFilter(
+    metadata: Record<string, unknown> | undefined,
+    filter: Record<string, unknown> | undefined,
+  ): boolean {
+    if (!filter) return true
+    if (!metadata) return false
+    for (const [key, expected] of Object.entries(filter)) {
+      const actual = metadata[key]
+      if (
+        typeof expected === "object" &&
+        expected !== null &&
+        !Array.isArray(expected) &&
+        typeof actual === "object" &&
+        actual !== null &&
+        !Array.isArray(actual)
+      ) {
+        if (!matchesMetadataFilter(actual as Record<string, unknown>, expected as Record<string, unknown>)) {
+          return false
+        }
+        continue
+      }
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) return false
+    }
+    return true
+  }
+
+  export function memoryAllowedByAccess(
+    memory: Memory,
+    accessContext?: AccessContext,
+    tableName = "messages",
+  ): boolean {
+    if (!accessContext) return true
+    const scope = tableName === "messages" && accessContext.authorizedRoomIds !== undefined ? "room" : "private"
+    return filterMemoryReadByAccessContext([memory], accessContext, (memory.agentId ?? "") as UUID, scope).length > 0
+  }
+
+  async function requesterRooms(executor: SqlExecutor, entityId: UUID): Promise<UUID[]> {
+    const res = await executor.query("SELECT DISTINCT room_id FROM participants WHERE entity_id = $1", [entityId])
+    return res.rows.map((r) => String(r.room_id) as UUID)
+  }
+
+  async function withRequesterRooms<T extends DocumentRequesterContext>(
+    executor: SqlExecutor,
+    params: T,
+  ): Promise<T> {
+    return { ...params, requesterRoomIds: await requesterRooms(executor, params.requesterEntityId) }
+  }
+
+  async function listDocumentMemories(executor: SqlExecutor, agentId: UUID): Promise<Memory[]> {
+    const res = await executor.query(
+      "SELECT * FROM memories WHERE agent_id = $1 AND type IN ('documents', 'document_fragments')",
+      [agentId],
+    )
+    return res.rows.map((r) => rowToMemory(r, true))
+  }
+
+  async function loadOwnedDocument(
+    executor: SqlExecutor,
+    documentId: UUID,
+    agentId: UUID,
+  ): Promise<Memory | null> {
+    const res = await executor.query(
+      "SELECT * FROM memories WHERE id = $1 AND agent_id = $2 AND type = 'documents' LIMIT 1",
+      [documentId, agentId],
+    )
+    return res.rows[0] ? rowToMemory(res.rows[0], true) : null
+  }
+
+  async function upsertMemoryRow(
+    tx: SqlExecutor,
+    memory: Memory,
+    tableName: string,
+    agentId: UUID,
+  ): Promise<void> {
+    const id = memory.id ?? randomUuid()
+    await tx.query(
+      `INSERT INTO memories (id, type, agent_id, entity_id, room_id, world_id, content, metadata, embedding, is_unique, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11)
+       ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding`,
+      [
+        id,
+        tableName,
+        agentId,
+        memory.entityId,
+        memory.roomId,
+        memory.worldId ?? null,
+        encodeJsonb(memory.content ?? {}, true),
+        encodeJsonb(memory.metadata ?? {}, true),
+        memory.embedding ? JSON.stringify(memory.embedding) : null,
+        Boolean(memory.unique),
+        memory.createdAt ?? Date.now(),
+      ],
+    )
+  }
+
+  export async function publishSqlMessageContentSegments(
+    executor: SqlExecutor,
+    params: MessageContentPublicationParams,
+  ): Promise<MessageContentPublicationResult> {
+    return executor.transaction(async (tx) => {
+      const parentId = params.mode === "create" ? params.parent.id : params.messageId
+      const publicationAgentId = params.mode === "create" ? params.parent.agentId : params.agentId
+      if (!parentId || !publicationAgentId) {
+        throw new ElizaError("Message content publication requires parent and agent IDs", {
+          code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+        })
+      }
+      const existingRes = await tx.query("SELECT * FROM memories WHERE id = $1 LIMIT 1", [parentId])
+      const existing = existingRes.rows[0] ? rowToMemory(existingRes.rows[0], true) : null
+      if (params.mode === "create" && existing) return { status: "conflict" }
+      if (params.mode === "replace") {
+        if (!existing || existing.agentId !== params.agentId) return { status: "not_found" }
+        if (JSON.stringify(existing.content) !== JSON.stringify(params.expectedContent)) {
+          return { status: "conflict" }
+        }
+        if (params.removeSegmentIds.length > 0) {
+          await tx.query("DELETE FROM memories WHERE id = ANY($1::uuid[]) AND agent_id = $2", [
+            params.removeSegmentIds,
+            params.agentId,
+          ])
+        }
+      }
+      const parentMemory: Memory =
+        params.mode === "create"
+          ? { ...params.parent, id: parentId, agentId: publicationAgentId }
+          : { ...(existing as Memory), content: params.replacementContent }
+      await upsertMemoryRow(tx, parentMemory, "messages", publicationAgentId)
+      for (const seg of params.segments) {
+        await upsertMemoryRow(tx, seg, "message_content_segments", publicationAgentId)
+      }
+      return {
+        status: params.mode === "create" ? "created" : "updated",
+        parent: parentMemory,
+        removedSegmentIds: params.mode === "create" ? [] : [...params.removeSegmentIds],
+      }
+    })
+  }
+
+  export async function readSqlMessageContentRange(
+    executor: SqlExecutor,
+    params: MessageContentRangeReadParams,
+  ): Promise<MessageContentRangeReadResult> {
+    if (
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.limit > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+    ) {
+      throw new ElizaError("Message content range is invalid", { code: "MESSAGE_CONTENT_INVALID_RANGE" })
+    }
+    const parentRes = await executor.query(
+      "SELECT * FROM memories WHERE id = $1 AND type = 'messages' AND agent_id = $2 AND room_id = $3 LIMIT 1",
+      [params.messageId, params.agentId, params.authorizedRoomId],
+    )
+    if (!parentRes.rows[0]) return { status: "not_found" }
+    const parent = rowToMemory(parentRes.rows[0], false)
+    const partRes = await executor.query(
+      "SELECT 1 FROM participants WHERE room_id = $1 AND entity_id = $2 LIMIT 1",
+      [parent.roomId, params.accessContext.requesterEntityId],
+    )
+    if (
+      !authorizeMessageContentRead({
+        parent,
+        authorizedRoomId: params.authorizedRoomId,
+        requester: params.accessContext,
+        agentId: params.agentId,
+        participantCurrent: partRes.rows.length > 0,
+        selector: params.source,
+      })
+    ) {
+      return { status: "forbidden" }
+    }
+    const descriptor = resolveMessageContentSourceDescriptor(parent.content, params.source)
+    if (!descriptor) {
+      let inline: string
+      if (params.source.kind === "message-text") {
+        inline = parent.content.text ?? ""
+      } else {
+        const attachment = (parent.content.attachments ?? []).find(
+          (item) => hashAttachmentIdForLocator(item.id) === params.source.attachmentIdHash,
+        )
+        inline = attachment ? canonicalAttachmentText(attachment) : ""
+      }
+      return { status: "inline", parent, text: inline }
+    }
+    if (params.expectedRevision && params.expectedRevision !== descriptor.revision) {
+      throw new ElizaError("Message content changed before continuation", {
+        code: "MESSAGE_CONTENT_STALE_REVISION",
+        context: { messageId: params.messageId },
+      })
+    }
+    const requestedEnd = Math.min(params.offset + params.limit, descriptor.byteLength)
+    const segRes = await executor.query(
+      "SELECT * FROM memories WHERE agent_id = $1 AND type = 'message_content_segments'",
+      [params.agentId],
+    )
+    const selected = segRes.rows
+      .map((r) => rowToMemory(r, false))
+      .filter((seg) => {
+        const meta = asRecord(seg.metadata)
+        return (
+          meta.type === "message-content-segment" &&
+          meta.messageId === params.messageId &&
+          meta.sourceKind === params.source.kind &&
+          meta.attachmentIdHash === params.source.attachmentIdHash &&
+          meta.sourceRevision === descriptor.revision &&
+          typeof meta.byteStart === "number" &&
+          typeof meta.byteEnd === "number" &&
+          meta.byteEnd > params.offset &&
+          meta.byteStart < requestedEnd
+        )
+      })
+      .sort((a, b) => Number(asRecord(a.metadata).byteStart ?? -1) - Number(asRecord(b.metadata).byteStart ?? -1))
+    return {
+      status: "ok",
+      parent,
+      page: readMessageContentProjection({
+        descriptor,
+        segments: selected.slice(0, MESSAGE_CONTENT_READ_MAX_SEGMENTS),
+        messageId: params.messageId,
+        offset: params.offset,
+        limit: params.limit,
+        sourceQueryCount: 1,
+      }),
+    }
+  }
+
+  export async function querySqlDocuments(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: DocumentListQueryParams,
+  ): Promise<DocumentListQueryResult> {
+    const scoped = await withRequesterRooms(executor, params)
+    return queryDocumentsInMemory(await listDocumentMemories(executor, agentId), scoped)
+  }
+
+  export async function getSqlDocument(
+    executor: SqlExecutor,
+    agentId: UUID,
+    params: DocumentGetQueryParams,
+  ): Promise<Memory | null> {
+    const scoped = await withRequesterRooms(executor, params)
+    const doc = await loadOwnedDocument(executor, scoped.documentId, agentId)
+    return doc && isDocumentVisibleToRequester(doc, scoped) ? doc : null
+  }
+
+  export async function querySqlDocumentFragments(
+    executor: SqlExecutor,
+    agentId: UUID,
+    embeddingDimension: number,
+    params: DocumentFragmentQueryParams,
+  ): Promise<Memory[]> {
+    const scoped = await withRequesterRooms(executor, params)
+    return queryDocumentFragmentsInMemory(await listDocumentMemories(executor, agentId), scoped, embeddingDimension)
+  }
+
+  async function checkSqlDocMutation<
+    T extends DocumentRequesterContext & {
+      documentId: UUID
+      agentId: UUID
+      expected: DocumentCompareAndSwapParams["expected"]
+    },
+  >(
+    tx: SqlExecutor,
+    params: T,
+    mode: "mutate" | "grants" | "visible-mutate",
+  ): Promise<{ ok: true; scoped: T; existing: Memory } | { ok: false; result: DocumentMutationResult }> {
+    const scoped = await withRequesterRooms(tx, params)
+    const existing = await loadOwnedDocument(tx, scoped.documentId, scoped.agentId)
+    if (!existing) return { ok: false, result: { status: "not_found" } }
+    if (!documentMutationSnapshotMatches(existing, scoped.expected)) {
+      return { ok: false, result: { status: "conflict" } }
+    }
+    if (mode === "grants") {
+      if (!canRequesterManageDocumentDirectGrants(existing, scoped)) {
+        return { ok: false, result: { status: "forbidden" } }
+      }
+    } else if (mode === "visible-mutate") {
+      if (!isDocumentVisibleToRequester(existing, scoped)) return { ok: false, result: { status: "not_found" } }
+      if (!canRequesterMutateDocument(existing, scoped)) return { ok: false, result: { status: "forbidden" } }
+    } else if (!canRequesterMutateDocument(existing, scoped)) {
+      return {
+        ok: false,
+        result: { status: isDocumentVisibleToRequester(existing, scoped) ? "forbidden" : "not_found" },
+      }
+    }
+    return { ok: true, scoped, existing }
+  }
+
+  export async function compareAndSwapSqlDocument(
+    executor: SqlExecutor,
+    params: DocumentCompareAndSwapParams,
+  ): Promise<DocumentMutationResult> {
+    return executor.transaction(async (tx) => {
+      const checked = await checkSqlDocMutation(tx, params, "mutate")
+      if (!checked.ok) return checked.result
+      const updated: Memory = { ...checked.existing, ...checked.scoped.replacement, id: checked.scoped.documentId }
+      await upsertMemoryRow(tx, updated, "documents", checked.scoped.agentId)
+      return { status: "updated", document: updated }
+    })
+  }
+
+  export async function updateSqlDocumentDirectGrants(
+    executor: SqlExecutor,
+    params: DocumentDirectGrantUpdateParams,
+  ): Promise<DocumentMutationResult> {
+    const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds)
+    return executor.transaction(async (tx) => {
+      const checked = await checkSqlDocMutation(tx, params, "grants")
+      if (!checked.ok) return checked.result
+      const metadata = { ...asRecord(checked.existing.metadata) }
+      if (directGrantEntityIds.length > 0) metadata.directGrantEntityIds = directGrantEntityIds
+      else delete metadata.directGrantEntityIds
+      const updated: Memory = { ...checked.existing, metadata: metadata as MemoryMetadata }
+      await upsertMemoryRow(tx, updated, "documents", checked.scoped.agentId)
+      return { status: "updated", document: updated }
+    })
+  }
+
+  async function listDocumentFragmentIds(
+    tx: SqlExecutor,
+    agentId: UUID,
+    documentId: UUID,
+  ): Promise<UUID[]> {
+    const rows = await tx.query(
+      "SELECT id, metadata FROM memories WHERE agent_id = $1 AND type = 'document_fragments'",
+      [agentId],
+    )
+    return rows.rows
+      .filter((r) => {
+        const meta = asRecord(r.metadata)
+        return meta.type === MemoryType.FRAGMENT && meta.documentId === documentId
+      })
+      .map((r) => String(r.id) as UUID)
+  }
+
+  export async function replaceSqlDocumentRevision(
+    executor: SqlExecutor,
+    params: DocumentRevisionReplaceParams,
+  ): Promise<DocumentMutationResult> {
+    validateDocumentRevisionReplacement(params)
+    return executor.transaction(async (tx) => {
+      const checked = await checkSqlDocMutation(tx, params, "visible-mutate")
+      if (!checked.ok) return checked.result
+      const oldIds = await listDocumentFragmentIds(tx, checked.scoped.agentId, checked.scoped.documentId)
+      if (oldIds.length > 0) {
+        await tx.query("DELETE FROM memories WHERE id = ANY($1::uuid[])", [oldIds])
+      }
+      const updated: Memory = { ...checked.existing, ...checked.scoped.replacement, id: checked.scoped.documentId }
+      await upsertMemoryRow(tx, updated, "documents", checked.scoped.agentId)
+      for (const fragment of checked.scoped.fragments) {
+        await upsertMemoryRow(tx, fragment, "document_fragments", checked.scoped.agentId)
+      }
+      return { status: "updated", document: updated }
+    })
+  }
+
+  export async function deleteSqlDocumentWithSnapshot(
+    executor: SqlExecutor,
+    params: DocumentDeleteParams,
+  ): Promise<DocumentMutationResult> {
+    return executor.transaction(async (tx) => {
+      const checked = await checkSqlDocMutation(tx, params, "mutate")
+      if (!checked.ok) return checked.result
+      const ids = await listDocumentFragmentIds(tx, checked.scoped.agentId, checked.scoped.documentId)
+      await tx.query("DELETE FROM memories WHERE id = ANY($1::uuid[])", [[...ids, checked.scoped.documentId]])
+      return { status: "deleted", document: checked.existing }
+    })
+  }
+}
+
+import {
+  asNumberList,
+  asRecord,
+  asStringList,
+  compareAndSwapSqlDocument,
+  deleteSqlDocumentWithSnapshot,
+  encodeJsonb,
+  getSqlDocument,
+  matchesMetadataFilter,
+  memoryAllowedByAccess,
+  publishSqlMessageContentSegments,
+  querySqlDocumentFragments,
+  querySqlDocuments,
+  randomUuid,
+  readSqlMessageContentRange,
+  replaceSqlDocumentRevision,
+  rowToMemory,
+  sha256Hex,
+  updateSqlDocumentDirectGrants,
+} from sqlAdapterHelpers
+
+export {
+  asNumberList,
+  asRecord,
+  asStringList,
+  compareAndSwapSqlDocument,
+  deleteSqlDocumentWithSnapshot,
+  encodeJsonb,
+  getSqlDocument,
+  matchesMetadataFilter,
+  memoryAllowedByAccess,
+  publishSqlMessageContentSegments,
+  querySqlDocumentFragments,
+  querySqlDocuments,
+  randomUuid,
+  readSqlMessageContentRange,
+  replaceSqlDocumentRevision,
+  rowToMemory,
+  sha256Hex,
+  updateSqlDocumentDirectGrants,
+}

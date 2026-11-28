@@ -1,9 +1,12 @@
-// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"
+// spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/actions.md, "A resident delete runs at once only for the one event the owner named, and otherwise asks in chat"; spec/calendar/actions.md, "Attendees hear of a change only when the owner asked and the calendar can tell them"; spec/calendar/readClock.md, "A request's zone is the stated zone, else the client's zone, else the owner's"; spec/calendar/seriesScope.md, "A write names its scope: this event, this and following, or all"; spec/calendar/residentStore.md, "Story: Keep the calendar events I saved before this version"; spec/calendar/autoJoin.md, "Story: Detect calendar conflicts honestly and schedule meeting auto-join by policy"
 import { assert, it } from "@effect/vitest"
 import { activityLabel } from "@elizaos/agent-host"
 import { attestAuthenticatedApiDeliveryAudience, canActionRun, ContextRegistry, disclosureGateFailure, resolveActionContexts, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import {
-  calendarAction, calendarAsk, calendarHost, calendarPlugin, calendarProvider, calendarRoutes, CalendarService, calendarServiceType, CalendarWriteNotAccepted, runCalendarAction,
+  APPROVAL_OFFSET_MINUTES, AUTO_JOIN_METADATA_FLAG, JOIN_OFFSET_MINUTES, MeetingAutoJoinTracker,
+  calendarAction, calendarAsk, calendarHost, calendarPlugin, calendarProvider, calendarRoutes, CalendarService, calendarServiceType,
+  calendarSourcesAction, calendarSourcesProvider, CalendarWriteNotAccepted, conflictDetectAction, detectCalendarConflicts,
+  eventStartAnchorKey, parseMeetingUrl, planAutoJoinTasks, runCalendarAction, runCalendarSourcesAction, runConflictDetectAction, sanitizeSourceLabel,
   type CalendarAccount, type CalendarApprovalRow, type CalendarCache, type CalendarEvent, type CalendarProviderPort, type CalendarRouteInput,
 } from "../src/index.vibe"
 
@@ -994,4 +997,106 @@ it.effect(`A read with no connected calendar account says that none is connected
     contextUnconnected: { text: `No calendar events in the next 24 hours.${notConnected}`, connection: "none" },
     contextConnected: { text: "No calendar events in the next 24 hours.", connection: "connected" },
   })
+})
+
+it.effect(`Detect calendar conflicts honestly, inspect calendar sources safely, and plan/track meeting auto-join by policy (spec/calendar/autoJoin.md, "Story: Detect calendar conflicts honestly and schedule meeting auto-join by policy"; spec/calendar/autoJoin.md, "Conflict scans classify overlap severity and require complete reads to be definitive"; spec/calendar/autoJoin.md, "Auto-join task planning obeys policy, link recognition, and event end time"; spec/calendar/autoJoin.md, "Auto-join approval lifecycle joins only after owner approval or under all-policy")`, effect () => {
+  try TestClock.setTime(Date.parse("2030-03-04T08:00:00Z"))
+  const host = try calendarHost({ cache: memoryCache(), agentId: "agent", approvals: () => undefined })
+  const google = googleCalendar()
+  try host.register(google.port)
+  try host.bindAccount(owner)
+  const makeEvent = (id: string, title: string, startAt: string, endAt: string, extra: Partial<CalendarEvent> = {}): CalendarEvent => ({
+    id, externalId: id, agentId: "agent", provider: "google", side: "owner", calendarId: "work",
+    title, description: "", location: "", status: "confirmed", startAt, endAt, isAllDay: false, timezone: "UTC",
+    htmlLink: null, conferenceLink: null, organizer: { self: true, email: owner.accountId }, attendees: [],
+    metadata: { etag: id }, syncedAt: "2030-03-04T07:00:00.000Z", updatedAt: "2030-03-04T07:00:00.000Z",
+    connectorAccountId: owner.accountId, grantId: "grant", ...extra,
+  })
+  google.events.set("m1", makeEvent("m1", "Standup", "2030-03-04T10:00:00.000Z", "2030-03-04T10:30:00.000Z", { conferenceLink: "https://meet.google.com/abc-defg-hij" }))
+  google.events.set("m2", makeEvent("m2", "Design sync", "2030-03-04T10:15:00.000Z", "2030-03-04T11:00:00.000Z"))
+  google.events.set("m3", makeEvent("m3", "Retro", "2030-03-04T11:03:00.000Z", "2030-03-04T11:30:00.000Z"))
+  google.events.set("m4", makeEvent("m4", "Holiday", "2030-03-04T00:00:00.000Z", "2030-03-05T00:00:00.000Z", { isAllDay: true }))
+
+  const todayScan = try runConflictDetectAction(host, { subaction: "scan_today" })
+  assert.deepStrictEqual([
+    todayScan.success, at(todayScan.data, "severity"), at(todayScan.data, "definitive"), at(todayScan.data, "completeness"),
+    at(todayScan.data, "checkedEvents"), at(todayScan.data, "ignoredEvents"), at(todayScan.data, "conflicts", "length"),
+  ], [true, "hard_overlap", true, "complete", 3, 1, 2])
+
+  const proposalBackToBack = try runConflictDetectAction(host, {
+    subaction: "scan_event_proposal", title: "1:1", startAt: "2030-03-04T11:32:00Z", endAt: "2030-03-04T12:00:00Z",
+  })
+  assert.deepStrictEqual([proposalBackToBack.success, at(proposalBackToBack.data, "severity"), at(proposalBackToBack.data, "definitive")], [true, "back_to_back", true])
+
+  google.health.complete = false
+  const degradedScan = try runConflictDetectAction(host, { subaction: "scan_week" })
+  assert.deepStrictEqual([degradedScan.success, at(degradedScan.data, "definitive"), at(degradedScan.data, "completeness")], [true, false, "partial"])
+  const directReport = detectCalendarConflicts([...google.events.values()], 2, 1)
+  assert.deepStrictEqual([directReport.definitive, directReport.completeness], [false, "partial"])
+  google.health.complete = true
+
+  const listedSources = try runCalendarSourcesAction(host, { operation: "list" })
+  const syncStatus = try runCalendarSourcesAction(host, { operation: "sync_status" })
+  const handoff = try runCalendarSourcesAction(host, { operation: "connect", provider: "ics\n\tsecret" })
+  const unavailableSources = try runCalendarSourcesAction(undefined, { operation: "list" })
+  assert.deepStrictEqual([
+    listedSources.success, at(listedSources.data, "externalConnected"),
+    syncStatus.success, at(syncStatus.data, "complete"),
+    handoff.success, at(handoff.data, "requiresOwnerHandoff"), at(handoff.data, "provider"),
+    unavailableSources.success, at(unavailableSources.data, "status"),
+    sanitizeSourceLabel("Work\u0000\nCalendar\t2030"),
+  ], [true, true, true, true, true, true, "ics secret", false, "unavailable", "Work Calendar 2030"])
+
+  const service = new CalendarService(undefined, host)
+  const runtime = { getService: (type: string) => type === calendarServiceType ? service : null } as unknown as IAgentRuntime
+  const emptyRuntime = { getService: () => null } as unknown as IAgentRuntime
+  const sourcesLive = try tryPromise(() => Promise.resolve(calendarSourcesProvider.get(runtime, { content: { text: "" } } as Memory, { values: {}, data: {}, text: "" })))
+  const sourcesMissing = try tryPromise(() => Promise.resolve(calendarSourcesProvider.get(emptyRuntime, { content: { text: "" } } as Memory, { values: {}, data: {}, text: "" })))
+  assert.deepStrictEqual([at(sourcesLive.data, "status"), at(sourcesMissing.data, "status")], ["connected", "unavailable"])
+
+  assert.deepStrictEqual([
+    parseMeetingUrl("Join https://meet.google.com/abc-defg-hij.")?.provider,
+    parseMeetingUrl("https://us02web.zoom.us/j/123456789")?.provider,
+    parseMeetingUrl("https://teams.microsoft.com/l/meetup-join/abc")?.provider,
+    parseMeetingUrl("https://acme.webex.com/meet/room1")?.provider,
+    parseMeetingUrl("https://meet.jit.si/standup")?.provider,
+    parseMeetingUrl("http://meet.google.com/abc-defg-hij"),
+    parseMeetingUrl("https://user:pass@meet.google.com/abc-defg-hij"),
+  ], ["google_meet", "zoom", "teams", "webex", "jitsi", undefined, undefined])
+
+  const standupEvent = google.events.get("m1")!
+  const nowMs = Date.parse("2030-03-04T09:00:00Z")
+  const offTasks = planAutoJoinTasks(standupEvent, "off", nowMs)
+  const askTasks = planAutoJoinTasks(standupEvent, "ask", nowMs)
+  const allTasks = planAutoJoinTasks(standupEvent, "all", nowMs)
+  const endedTasks = planAutoJoinTasks(standupEvent, "all", Date.parse("2030-03-04T11:00:00Z"))
+  assert.deepStrictEqual([
+    offTasks.length, askTasks.length, askTasks.map((t) => [t.kind, t.offsetMinutes, t.dependsOnApproval, t.metadataFlag, t.anchorKey]),
+    allTasks.length, allTasks[0]?.dependsOnApproval, endedTasks.length,
+  ], [
+    0, 2, [
+      ["approval", APPROVAL_OFFSET_MINUTES, false, AUTO_JOIN_METADATA_FLAG, eventStartAnchorKey("m1")],
+      ["join", JOIN_OFFSET_MINUTES, true, AUTO_JOIN_METADATA_FLAG, eventStartAnchorKey("m1")],
+    ],
+    1, false, 0,
+  ])
+
+  const tracker = new MeetingAutoJoinTracker()
+  const armed = try tracker.armForEvent(standupEvent, "ask", nowMs)
+  const approved = try tracker.stepEvent("m1", { type: "approveAutoJoin" })
+  const dispatched = try tracker.stepEvent("m1", { type: "dispatchAutoJoin" })
+  assert.deepStrictEqual([armed.state.phase, armed.tasks.length, approved.phase, dispatched.phase, dispatched.approved, dispatched.revision],
+    ["JoinAwaitingApproval", 2, "JoinArmed", "JoinDispatched", true, 3])
+
+  const built = calendarPlugin()
+  assert.deepStrictEqual([
+    built.actions?.map((action) => action.name),
+    built.providers?.map((provider) => provider.name),
+    calendarAction.toolSchemaStrict, conflictDetectAction.toolSchemaStrict, calendarSourcesAction.toolSchemaStrict,
+    calendarAction.cacheStable, conflictDetectAction.cacheStable, calendarSourcesAction.cacheStable,
+  ], [
+    ["CALENDAR", "CONFLICT_DETECT", "CALENDAR_SOURCES"],
+    ["CALENDAR_CONTEXT", "CALENDAR_SOURCES"],
+    true, true, true, true, true, true,
+  ])
 })

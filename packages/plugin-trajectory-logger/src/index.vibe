@@ -1,5 +1,23 @@
-// spec/trajectoryLogger/index.md, "Story: Inspect the phases of an agent turn"
-import { phaseOfRecord, showProgress, type TraceKind, type TurnPhase, type TurnProgress } from "../gen/trajectoryLogger.effect.vibe"
+// spec/trajectoryLogger/index.md, "Story: Inspect the phases of an agent turn"; spec/trajectoryLogger/index.md, "Known calls and events are assigned to their canonical phase"; spec/trajectoryLogger/index.md, "An active turn highlights only its latest completed phase before evaluation"
+import type { Plugin } from "@elizaos/core"
+import {
+  phaseOfModelCall,
+  phaseOfRecord,
+  routeUnavailable,
+  showProgress,
+  verdictSkipsTurn,
+  type PhaseProgress,
+  type TraceKind,
+  type TurnPhase,
+  type TurnProgress,
+} from "../gen/trajectoryLogger.effect.vibe"
+
+export type PhaseName = "HANDLE" | "PLAN" | "ACTION" | "EVALUATE"
+export type PhaseStatus = "idle" | "active" | "done" | "skipped" | "error"
+
+export const PHASES: readonly PhaseName[] = ["HANDLE", "PLAN", "ACTION", "EVALUATE"] as const
+
+export const TRAJECTORY_FETCH_TIMEOUT_MS = 15_000
 
 export interface TrajectoryRecord {
   readonly id: string
@@ -20,6 +38,128 @@ export interface TrajectoryInspection {
   readonly groups: Readonly<Record<TurnPhase, readonly TrajectoryRecord[]>>
 }
 
+export interface TrajectoryListItem {
+  readonly id: string
+  readonly status: "active" | "completed" | "error"
+  readonly llmCallCount: number
+  readonly startTime?: number
+  readonly endTime?: number
+  readonly durationMs?: number
+}
+
+export interface TrajectoryListResult {
+  readonly trajectories: readonly TrajectoryListItem[]
+  readonly total: number
+  readonly offset?: number
+  readonly limit?: number
+}
+
+export interface UILlmCall {
+  readonly id: string
+  readonly model: string
+  readonly response: string
+  readonly purpose: string
+  readonly actionType: string
+  readonly stepType: string
+  readonly timestamp?: number
+  readonly latencyMs?: number
+  readonly tokenUsageEstimated?: boolean
+  readonly promptTokens?: number
+  readonly completionTokens?: number
+}
+
+export interface UIProviderAccess {
+  readonly id: string
+  readonly providerName: string
+  readonly purpose: string
+}
+
+export interface UIToolEvent {
+  readonly id: string
+  readonly type: "tool_call" | "tool_result" | "tool_error"
+  readonly actionName?: string
+  readonly toolName?: string
+  readonly name?: string
+  readonly args?: Readonly<Record<string, unknown>>
+  readonly input?: Readonly<Record<string, unknown>>
+  readonly result?: unknown
+  readonly output?: unknown
+  readonly status?: "queued" | "running" | "completed" | "skipped" | "failed"
+  readonly success?: boolean
+  readonly durationMs?: number
+  readonly error?: string
+}
+
+export interface UIEvaluationEvent {
+  readonly id: string
+  readonly evaluatorName?: string
+  readonly name?: string
+  readonly status?: "queued" | "running" | "completed" | "skipped" | "failed"
+  readonly success?: boolean
+  readonly decision?: string
+  readonly thought?: string
+  readonly error?: string
+}
+
+export interface TrajectoryDetail {
+  readonly trajectory: TrajectoryListItem
+  readonly llmCalls: readonly UILlmCall[]
+  readonly providerAccesses: readonly UIProviderAccess[]
+  readonly toolEvents?: readonly UIToolEvent[]
+  readonly evaluationEvents?: readonly UIEvaluationEvent[]
+  readonly semanticStages?: readonly {
+    readonly stageId: string
+    readonly kind: string
+    readonly startedAt: number
+    readonly endedAt?: number
+    readonly latencyMs?: number
+    readonly payload: Readonly<Record<string, unknown>>
+  }[]
+}
+
+export interface PhaseSummary {
+  readonly phase: PhaseName
+  readonly status: PhaseStatus
+  readonly summary: string | null
+  readonly llmCalls: readonly UILlmCall[]
+  readonly providerAccesses: readonly UIProviderAccess[]
+  readonly toolEvents: readonly UIToolEvent[]
+  readonly evaluationEvents: readonly UIEvaluationEvent[]
+}
+
+export interface TrajectoryTimingSpan {
+  readonly meta?: { readonly trajectoryId?: string }
+}
+
+export interface TrajectoryTimingTurn {
+  readonly turnId: string
+  readonly spans: readonly TrajectoryTimingSpan[]
+}
+
+export interface TrajectoryTimingFlow {
+  readonly turnId: string
+}
+
+export interface TrajectoryTimingPayload {
+  readonly turns: readonly TrajectoryTimingTurn[]
+  readonly flows: readonly TrajectoryTimingFlow[]
+}
+
+export error TrajectoryClientError {
+  kind: "http" | "timeout" | "network"
+  path: string
+  status?: number
+  message: string
+}
+
+export service TrajectoryTransport {
+  fetchJson<T>(
+    path: string,
+    options: { readonly method: "GET"; readonly signal?: AbortSignal },
+    config: { readonly timeoutMs: number },
+  ): T!TrajectoryClientError
+}
+
 export function describeTrajectory(snapshot: TrajectorySnapshot): TrajectoryInspection {
   const groups: Record<TurnPhase, TrajectoryRecord[]> = {
     HandlePhase: [],
@@ -35,3 +175,257 @@ export function describeTrajectory(snapshot: TrajectorySnapshot): TrajectoryInsp
     groups,
   }
 }
+
+export function phaseOf(call: UILlmCall): PhaseName | null {
+  const label = (call.stepType || call.purpose || "").toLowerCase()
+  const phase = phaseOfModelCall(label)
+  if (phase === "HandlePhase") return "HANDLE"
+  if (phase === "PlanPhase") return "PLAN"
+  if (phase === "EvaluatePhase") return "EVALUATE"
+  return null
+}
+
+const VERDICT = "RESPOND|REPLY|ANSWER|IGNORE|STOP|SKIP"
+const VERDICT_WORDS = new RegExp(`\\b(?:${VERDICT})\\b`, "gi")
+const VERDICT_LEADING = new RegExp(
+  `^[^A-Za-z0-9]*(${VERDICT})\\b(?=[^\\S\\n]*(?:$|[\\n:;,.!(\\-\\u2013\\u2014]))`,
+  "i",
+)
+const VERDICT_XML_FIELD = new RegExp(`<(action|decision)>\\s*(${VERDICT})\\s*</\\1>`, "i")
+const VERDICT_KV_FIELD = new RegExp(`\\b(?:action|decision)["']?\\s*[:=]\\s*["']?(${VERDICT})\\b`, "i")
+
+function parseJsonObject(text: string): Readonly<Record<string, unknown>> | undefined {
+  const start = text.indexOf("{")
+  const end = text.lastIndexOf("}")
+  if (start < 0 || end < start) return undefined
+  const parsed = Effect.runSync(Effect.result(Effect.try(() => JSON.parse(text.slice(start, end + 1)) as unknown)))
+  if (parsed._tag !== "Success" || typeof parsed.success !== "object" || parsed.success === null || Array.isArray(parsed.success)) {
+    return undefined
+  }
+  return parsed.success as Readonly<Record<string, unknown>>
+}
+
+export function extractShouldRespondDecision(
+  call: UILlmCall,
+): { readonly decision: string; readonly reasoning?: string } | null {
+  const text = call.response.trim()
+  if (text === "") return null
+  const obj = parseJsonObject(text)
+  if (obj !== undefined) {
+    const actionVal = Object.getOwnPropertyDescriptor(obj, "action")?.value
+      ?? Object.getOwnPropertyDescriptor(obj, "decision")?.value
+      ?? Object.getOwnPropertyDescriptor(obj, "shouldRespond")?.value
+    if (typeof actionVal === "string" && actionVal.length > 0) {
+      const reasonVal = Object.getOwnPropertyDescriptor(obj, "reasoning")?.value
+        ?? Object.getOwnPropertyDescriptor(obj, "rationale")?.value
+      return typeof reasonVal === "string"
+        ? { decision: actionVal.toUpperCase(), reasoning: reasonVal }
+        : { decision: actionVal.toUpperCase() }
+    }
+  }
+  const field = text.match(VERDICT_XML_FIELD)?.[2] ?? text.match(VERDICT_KV_FIELD)?.[1]
+  if (field !== undefined) return { decision: field.toUpperCase() }
+  const leading = text.match(VERDICT_LEADING)?.[1]
+  if (leading !== undefined) return { decision: leading.toUpperCase() }
+  const words = text.match(VERDICT_WORDS)
+  const word = words?.[words.length - 1]
+  return word !== undefined ? { decision: word.toUpperCase() } : null
+}
+
+function toSpecProgress(status: PhaseStatus): PhaseProgress {
+  if (status === "done") return "PhaseDone"
+  if (status === "skipped") return "PhaseSkipped"
+  if (status === "error") return "PhaseErrored"
+  if (status === "active") return "PhaseActive"
+  return "PhaseIdle"
+}
+
+function fromSpecProgress(progress: PhaseProgress): PhaseStatus {
+  if (progress === "PhaseDone") return "done"
+  if (progress === "PhaseSkipped") return "skipped"
+  if (progress === "PhaseErrored") return "error"
+  if (progress === "PhaseActive") return "active"
+  return "idle"
+}
+
+function summarizeHandle(
+  llmCalls: readonly UILlmCall[],
+  providerAccesses: readonly UIProviderAccess[],
+): { readonly status: PhaseStatus; readonly summary: string | null } {
+  const respond = llmCalls.find((c) => (c.stepType || c.purpose || "").toLowerCase() === "should_respond")
+  if (respond !== undefined) {
+    const parsed = extractShouldRespondDecision(respond)
+    if (parsed !== null) {
+      return {
+        status: verdictSkipsTurn(parsed.decision) ? "skipped" : "done",
+        summary: parsed.decision.toLowerCase(),
+      }
+    }
+    return { status: "done", summary: null }
+  }
+  if (llmCalls.length > 0 || providerAccesses.length > 0) {
+    return { status: "done", summary: `${providerAccesses.length} ctx` }
+  }
+  return { status: "idle", summary: null }
+}
+
+function summarizePlan(llmCalls: readonly UILlmCall[]): { readonly status: PhaseStatus; readonly summary: string | null } {
+  const last = llmCalls[llmCalls.length - 1]
+  if (last === undefined) return { status: "idle", summary: null }
+  return { status: "done", summary: last.actionType || null }
+}
+
+function summarizeAction(events: readonly UIToolEvent[]): { readonly status: PhaseStatus; readonly summary: string | null } {
+  const last = events[events.length - 1]
+  if (last === undefined) return { status: "idle", summary: null }
+  const name = last.actionName || last.toolName || last.name || "action"
+  if (last.status === "failed" || last.type === "tool_error" || Boolean(last.error) || last.success === false) {
+    return { status: "error", summary: name }
+  }
+  if (last.type === "tool_result" || last.status === "completed" || last.success === true) {
+    return { status: "done", summary: name }
+  }
+  if (last.status === "skipped") return { status: "skipped", summary: name }
+  return { status: "active", summary: name }
+}
+
+function summarizeEvaluate(
+  llmCalls: readonly UILlmCall[],
+  events: readonly UIEvaluationEvent[],
+): { readonly status: PhaseStatus; readonly summary: string | null } {
+  const last = events[events.length - 1]
+  if (last !== undefined) {
+    const name = last.evaluatorName || last.name || "evaluator"
+    if (last.status === "failed" || Boolean(last.error) || last.success === false) {
+      return { status: "error", summary: name }
+    }
+    if (last.decision) return { status: "done", summary: `${name}: ${last.decision}` }
+    return { status: "done", summary: name }
+  }
+  if (llmCalls.length > 0) return { status: "done", summary: null }
+  return { status: "idle", summary: null }
+}
+
+export function summarizePhases(
+  detail: TrajectoryDetail | null,
+  options: { readonly trajectoryActive?: boolean } = {},
+): PhaseSummary[] {
+  const llmCalls = detail?.llmCalls ?? []
+  const providerAccesses = detail?.providerAccesses ?? []
+  const toolEvents = detail?.toolEvents ?? []
+  const evaluationEvents = detail?.evaluationEvents ?? []
+
+  const handleCalls = llmCalls.filter((c) => phaseOf(c) === "HANDLE")
+  const planCalls = llmCalls.filter((c) => phaseOf(c) === "PLAN")
+  const evalCalls = llmCalls.filter((c) => phaseOf(c) === "EVALUATE")
+
+  const handle = summarizeHandle(handleCalls, providerAccesses)
+  const plan = summarizePlan(planCalls)
+  const action = summarizeAction(toolEvents)
+  const evaluate = summarizeEvaluate(evalCalls, evaluationEvents)
+
+  const projected = showProgress(
+    {
+      handling: toSpecProgress(handle.status),
+      planning: toSpecProgress(plan.status),
+      acting: toSpecProgress(action.status),
+      evaluating: toSpecProgress(evaluate.status),
+    },
+    options.trajectoryActive === true,
+  )
+
+  return [
+    {
+      phase: "HANDLE",
+      status: fromSpecProgress(projected.handling),
+      summary: handle.summary,
+      llmCalls: handleCalls,
+      providerAccesses,
+      toolEvents: [],
+      evaluationEvents: [],
+    },
+    {
+      phase: "PLAN",
+      status: fromSpecProgress(projected.planning),
+      summary: plan.summary,
+      llmCalls: planCalls,
+      providerAccesses: [],
+      toolEvents: [],
+      evaluationEvents: [],
+    },
+    {
+      phase: "ACTION",
+      status: fromSpecProgress(projected.acting),
+      summary: action.summary,
+      llmCalls: [],
+      providerAccesses: [],
+      toolEvents,
+      evaluationEvents: [],
+    },
+    {
+      phase: "EVALUATE",
+      status: fromSpecProgress(projected.evaluating),
+      summary: evaluate.summary,
+      llmCalls: evalCalls,
+      providerAccesses: [],
+      toolEvents: [],
+      evaluationEvents,
+    },
+  ]
+}
+
+export function isTrajectoryRouteUnavailable(err: unknown): boolean {
+  return err instanceof TrajectoryClientError && err.kind === "http" && err.status !== undefined && routeUnavailable(err.status)
+}
+
+export effect function fetchTrajectoryList(
+  options: { readonly limit?: number; readonly signal?: AbortSignal } = {},
+) {
+  const limit = options.limit ?? 10
+  const transport = try TrajectoryTransport
+  return try transport.fetchJson<TrajectoryListResult>(
+    `/api/trajectories?limit=${limit}`,
+    { method: "GET", signal: options.signal },
+    { timeoutMs: TRAJECTORY_FETCH_TIMEOUT_MS },
+  )
+}
+
+export effect function fetchTrajectoryDetail(
+  id: string,
+  options: { readonly signal?: AbortSignal } = {},
+) {
+  const transport = try TrajectoryTransport
+  return try transport.fetchJson<TrajectoryDetail>(
+    `/api/trajectories/${encodeURIComponent(id)}`,
+    { method: "GET", signal: options.signal },
+    { timeoutMs: TRAJECTORY_FETCH_TIMEOUT_MS },
+  )
+}
+
+export effect function fetchTrajectoryTiming(
+  id: string,
+  options: { readonly signal?: AbortSignal } = {},
+) {
+  const transport = try TrajectoryTransport
+  const payload = try transport.fetchJson<TrajectoryTimingPayload>(
+    "/api/dev/inference-timing?limit=200",
+    { method: "GET", signal: options.signal },
+    { timeoutMs: TRAJECTORY_FETCH_TIMEOUT_MS },
+  )
+  const turns = payload.turns.filter((turn) => turn.spans.some((span) => span.meta?.trajectoryId === id))
+  const turnIds = new Set(turns.map((turn) => turn.turnId))
+  return {
+    turns,
+    flows: payload.flows.filter((flow) => turnIds.has(flow.turnId)),
+  }
+}
+
+export const trajectoryLoggerPlugin: Plugin = {
+  name: "@elizaos/plugin-trajectory-logger",
+  description: "Realtime trajectory inspector for HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
+  actions: [],
+  providers: [],
+  services: [],
+}
+
+export default trajectoryLoggerPlugin

@@ -1,6 +1,6 @@
 # Native website blocking
 
-The native boundary covers Android VPN DNS consent and iOS Safari content-blocker settings. A host can also supply an authorized runtime or desktop engine.
+The native boundary covers Android VPN DNS consent and iOS Safari content-blocker settings. A host can also supply an authorized runtime or desktop engine. See also [Session](./session.md).
 
 ## Story: See which websites my device is actually blocking
 

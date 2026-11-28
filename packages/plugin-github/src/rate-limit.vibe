@@ -1,0 +1,86 @@
+// spec/github/index.md, "Story: List pull requests and triage notifications under the selected account"
+export interface GitHubHttpError {
+  readonly status?: number
+  readonly response?: {
+    readonly headers?: Readonly<Record<string, string | number | undefined>>
+  }
+  readonly message?: string
+}
+
+export interface RateLimitDetails {
+  readonly isRateLimited: boolean
+  readonly resetAtMs: number | null
+  readonly remaining: number | null
+}
+
+function toErrorLike(value: unknown): GitHubHttpError {
+  if (typeof value !== "object" || value === null) return { message: String(value) }
+  return value as GitHubHttpError
+}
+
+function headerNumber(headers: Readonly<Record<string, string | number | undefined>> | undefined, name: string): number | null {
+  if (!headers) return null
+  const raw = headers[name] ?? headers[name.toLowerCase()]
+  if (raw === undefined) return null
+  const num = typeof raw === "number" ? raw : Number(raw)
+  return Number.isFinite(num) ? num : null
+}
+
+export function inspectRateLimit(err: unknown): RateLimitDetails {
+  const e = toErrorLike(err)
+  const headers = e.response?.headers
+  const remaining = headerNumber(headers, "x-ratelimit-remaining")
+  const resetSeconds = headerNumber(headers, "x-ratelimit-reset")
+  const isRateLimited = (e.status === 403 || e.status === 429) && remaining === 0
+  return {
+    isRateLimited,
+    remaining,
+    resetAtMs: resetSeconds === null ? null : resetSeconds * 1000,
+  }
+}
+
+export function formatRateLimitMessage(details: RateLimitDetails): string {
+  if (!details.isRateLimited) return "GitHub request failed"
+  if (details.resetAtMs === null) return "GitHub rate limit exhausted"
+  return `GitHub rate limit exhausted; resets at ${new Date(details.resetAtMs).toISOString()}`
+}
+
+export function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === "string") return err
+  return toErrorLike(err).message ?? "unknown error"
+}
+
+export interface SenderMachineLike<S, E, C, O> {
+  get(): S!!
+  send(event: E, by: C): { readonly out: readonly O[] }!({ readonly _tag: "Rejected" })
+  receive(raw: unknown, by: C): { readonly out: readonly O[] }!({ readonly _tag: "NotAnEvent" | "Rejected" })
+}
+
+export interface SenderMachineHandle<S, E, C, O> {
+  readonly state: () => S
+  readonly lastOutput: () => readonly O[]
+  readonly dispatch: (event: E, by: C) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown, by: C) => Promise<"accepted" | "refused">
+}
+
+export function wrapSenderMachineHandle<S, E, C, O>(created: SenderMachineLike<S, E, C, O>): SenderMachineHandle<S, E, C, O> {
+  let lastOut: readonly O[] = []
+  const runStep = (stepEffect: { readonly out: readonly O[] }!({ readonly _tag: "NotAnEvent" | "Rejected" })) =>
+    runPromise(stepEffect.pipe(
+      Effect.map((res) => {
+        lastOut = res.out
+        return "accepted" as const
+      }),
+      Effect.catch(() => {
+        lastOut = []
+        return Effect.succeed("refused" as const)
+      }),
+    ))
+  return {
+    state: () => runSync(created.get()),
+    lastOutput: () => lastOut,
+    dispatch: (event, by) => runStep(created.send(event, by)),
+    receive: (raw, by) => runStep(created.receive(raw, by)),
+  }
+}

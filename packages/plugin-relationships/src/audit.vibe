@@ -1,0 +1,97 @@
+// spec/relationships/identity.md, "Retired app_relationships data blocks startup until operator-approved import"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { legacyAuditPasses } from "../gen/relationships__identity.effect.vibe"
+import { getKnowledgeGraphService, type SqliteDatabase } from "./store.vibe"
+import {
+  LEGACY_RELATIONSHIPS_AUDIT_SERVICE_TYPE,
+  RELATIONSHIPS_LEGACY_SCHEMA_DATA_REQUIRES_IMPORT,
+  RelationshipsServiceError,
+  type LegacyRelationshipsInventory,
+} from "./types.vibe"
+
+interface TableExistsRow {
+  readonly name: string
+}
+
+interface CountRow {
+  readonly total: number
+}
+
+export type LegacyAuditResult =
+  | { readonly ok: true; readonly inventory: LegacyRelationshipsInventory }
+  | {
+      readonly ok: false
+      readonly inventory: LegacyRelationshipsInventory
+      readonly error: RelationshipsServiceError
+    }
+
+function tableExists(db: SqliteDatabase, tableName: string): boolean {
+  const row = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(tableName) as TableExistsRow | undefined
+  return row !== undefined
+}
+
+function countTableRows(db: SqliteDatabase, tableName: string): number {
+  if (!tableExists(db, tableName)) return 0
+  const row = db.prepare(`SELECT COUNT(*) AS total FROM "${tableName}"`).get() as CountRow | undefined
+  return typeof row?.total === "number" ? row.total : Number(row?.total ?? 0)
+}
+
+export function inventoryLegacyRelationshipsSchema(db: SqliteDatabase): LegacyRelationshipsInventory {
+  const entitiesPresent = tableExists(db, "app_relationships_entities")
+  const relationshipsPresent = tableExists(db, "app_relationships_relationships")
+  const entityRows = entitiesPresent ? countTableRows(db, "app_relationships_entities") : 0
+  const relationshipRows = relationshipsPresent ? countTableRows(db, "app_relationships_relationships") : 0
+  return {
+    entityRows,
+    relationshipRows,
+    schemaPresent: entitiesPresent || relationshipsPresent,
+  }
+}
+
+export function checkLegacyRelationshipsSchemaEmpty(db: SqliteDatabase): LegacyAuditResult {
+  const inventory = inventoryLegacyRelationshipsSchema(db)
+  if (!legacyAuditPasses(inventory.entityRows, inventory.relationshipRows)) {
+    return {
+      ok: false,
+      inventory,
+      error: new RelationshipsServiceError({
+        status: 409,
+        message: `retired app_relationships schema contains ${inventory.entityRows} entities and ${inventory.relationshipRows} relationships requiring operator-approved import`,
+        code: RELATIONSHIPS_LEGACY_SCHEMA_DATA_REQUIRES_IMPORT,
+      }),
+    }
+  }
+  return { ok: true, inventory }
+}
+
+export class LegacyRelationshipsSchemaAuditService extends Service {
+  static override serviceType = LEGACY_RELATIONSHIPS_AUDIT_SERVICE_TYPE
+  override capabilityDescription = "Read-only startup audit for retired app_relationships schema tables"
+  private readonly db: SqliteDatabase | undefined
+
+  constructor(runtime?: IAgentRuntime, db?: SqliteDatabase) {
+    super(runtime)
+    this.db = db
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<LegacyRelationshipsSchemaAuditService> {
+    const graph = getKnowledgeGraphService(runtime)
+    const service = new LegacyRelationshipsSchemaAuditService(runtime, graph?.db)
+    const res = service.audit()
+    if (!res.ok) {
+      throw res.error
+    }
+    return service
+  }
+
+  override async stop(): Promise<void> {}
+
+  audit(): LegacyAuditResult {
+    if (!this.db) {
+      return { ok: true, inventory: { entityRows: 0, relationshipRows: 0, schemaPresent: false } }
+    }
+    return checkLegacyRelationshipsSchemaEmpty(this.db)
+  }
+}

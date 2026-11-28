@@ -1,0 +1,244 @@
+// spec/vision/index.md, "A subject matches the current observation and an explicit instruction"
+import { subjectNamingAllowed, type VisionState } from "../gen/vision.effect.vibe"
+import type {
+  BoundingBox,
+  DetectedObject,
+  PersonInfo,
+  TrackedEntity,
+  WorldState,
+} from "./types.vibe"
+
+export interface EntityTrackerStatistics {
+  totalEntities: number
+  activeEntities: number
+  recentlyLeft: number
+  people: number
+  objects: number
+}
+
+export class EntityTracker {
+  private readonly worldState: WorldState
+  private readonly positionThreshold = 100
+  private readonly missingThresholdMs = 5_000
+  private readonly cleanupThresholdMs = 60_000
+  private readonly maxAppearances = 100
+  private seq = 0
+
+  constructor(worldId = "default-world") {
+    this.worldState = {
+      worldId,
+      activeEntities: new Map(),
+      recentlyLeft: new Map(),
+      lastUpdate: Date.now(),
+    }
+  }
+
+  updateEntities(
+    detectedObjects: ReadonlyArray<DetectedObject>,
+    people: ReadonlyArray<PersonInfo>,
+    faceProfiles?: Map<string, string>,
+    frameContext?: { revision: number; frameRef: string },
+    nowMs = Date.now(),
+  ): TrackedEntity[] {
+    const frameEntities: TrackedEntity[] = []
+    const seenIds = new Set<string>()
+
+    for (const person of people) {
+      const entity = this.upsertEntity(
+        person.boundingBox,
+        "person",
+        person.confidence,
+        nowMs,
+        faceProfiles?.get(person.id),
+        person.name,
+        undefined,
+        frameContext,
+      )
+      frameEntities.push(entity)
+      seenIds.add(entity.id)
+    }
+
+    for (const obj of detectedObjects) {
+      if (obj.type === "person" || obj.type === "person-candidate") continue
+      const entity = this.upsertEntity(
+        obj.boundingBox,
+        "object",
+        obj.confidence,
+        nowMs,
+        undefined,
+        undefined,
+        obj.type,
+        frameContext,
+      )
+      frameEntities.push(entity)
+      seenIds.add(entity.id)
+    }
+
+    this.reconcilePresence(seenIds, nowMs)
+    return frameEntities
+  }
+
+  private upsertEntity(
+    bbox: BoundingBox,
+    entityType: "person" | "object",
+    confidence: number,
+    timestamp: number,
+    faceId: string | undefined,
+    name: string | undefined,
+    objectType: string | undefined,
+    frameContext?: { revision: number; frameRef: string },
+  ): TrackedEntity {
+    const matched = this.findMatchingEntity(bbox, entityType, faceId)
+    if (matched) {
+      matched.lastSeen = timestamp
+      matched.lastPosition = bbox
+      if (frameContext) {
+        matched.revision = frameContext.revision
+        matched.frameRef = frameContext.frameRef
+      }
+      matched.appearances.push({ timestamp, boundingBox: bbox, confidence })
+      if (matched.appearances.length > this.maxAppearances) {
+        matched.appearances = matched.appearances.slice(-this.maxAppearances)
+      }
+      if (faceId && !matched.attributes.faceId) {
+        matched.attributes.faceId = faceId
+      }
+      if (name && !matched.attributes.name) {
+        matched.attributes.name = name
+      }
+      this.worldState.recentlyLeft.delete(matched.id)
+      this.worldState.activeEntities.set(matched.id, matched)
+      return matched
+    }
+
+    this.seq += 1
+    const id = `${entityType}-${timestamp}-${this.seq}`
+    const created: TrackedEntity = {
+      id,
+      entityType,
+      firstSeen: timestamp,
+      lastSeen: timestamp,
+      lastPosition: bbox,
+      appearances: [{ timestamp, boundingBox: bbox, confidence }],
+      attributes: {
+        ...(faceId ? { faceId } : {}),
+        ...(name ? { name } : {}),
+        ...(objectType ? { description: objectType } : {}),
+      },
+      worldId: this.worldState.worldId,
+      ...(frameContext ? { revision: frameContext.revision, frameRef: frameContext.frameRef } : {}),
+    }
+    this.worldState.activeEntities.set(id, created)
+    return created
+  }
+
+  private findMatchingEntity(
+    bbox: BoundingBox,
+    entityType: "person" | "object",
+    faceId?: string,
+  ): TrackedEntity | null {
+    const candidates = [
+      ...this.worldState.activeEntities.values(),
+      ...Array.from(this.worldState.recentlyLeft.values(), (entry) => entry.entity),
+    ]
+    if (faceId) {
+      for (const candidate of candidates) {
+        if (candidate.entityType === entityType && candidate.attributes.faceId === faceId) {
+          return candidate
+        }
+      }
+    }
+    let best: TrackedEntity | null = null
+    let minDistance = Number.POSITIVE_INFINITY
+    const cx = bbox.x + bbox.width / 2
+    const cy = bbox.y + bbox.height / 2
+    for (const candidate of candidates) {
+      if (candidate.entityType !== entityType) continue
+      const ex = candidate.lastPosition.x + candidate.lastPosition.width / 2
+      const ey = candidate.lastPosition.y + candidate.lastPosition.height / 2
+      const dist = Math.hypot(cx - ex, cy - ey)
+      if (dist <= this.positionThreshold && dist < minDistance) {
+        minDistance = dist
+        best = candidate
+      }
+    }
+    return best
+  }
+
+  private reconcilePresence(seenIds: Set<string>, nowMs: number): void {
+    for (const [id, entity] of this.worldState.activeEntities) {
+      if (!seenIds.has(id) && nowMs - entity.lastSeen >= this.missingThresholdMs) {
+        this.worldState.activeEntities.delete(id)
+        this.worldState.recentlyLeft.set(id, { entity, leftAt: nowMs })
+      }
+    }
+    for (const [id, left] of this.worldState.recentlyLeft) {
+      if (nowMs - left.leftAt >= this.cleanupThresholdMs) {
+        this.worldState.recentlyLeft.delete(id)
+      }
+    }
+    this.worldState.lastUpdate = nowMs
+  }
+
+  assignNameToEntity(
+    entityId: string,
+    name: string,
+    visionState?: VisionState,
+    ownerRequested = true,
+  ): boolean {
+    const trimmed = name.trim()
+    if (!trimmed) return false
+    const entity = this.worldState.activeEntities.get(entityId)
+    if (!entity) return false
+    if (visionState) {
+      const allowed = subjectNamingAllowed(
+        visionState,
+        {
+          subjectId: entity.id,
+          frameRef: entity.frameRef ?? "",
+          revision: entity.revision ?? -1,
+          visible: true,
+        },
+        trimmed,
+        ownerRequested,
+      )
+      if (!allowed) return false
+    } else if (!ownerRequested) {
+      return false
+    }
+    entity.attributes.name = trimmed
+    return true
+  }
+
+  getEntity(entityId: string): TrackedEntity | undefined {
+    return (
+      this.worldState.activeEntities.get(entityId) ??
+      this.worldState.recentlyLeft.get(entityId)?.entity
+    )
+  }
+
+  getActiveEntities(): TrackedEntity[] {
+    return Array.from(this.worldState.activeEntities.values())
+  }
+
+  getRecentlyLeft(): Array<{ entity: TrackedEntity; leftAt: number }> {
+    return Array.from(this.worldState.recentlyLeft.values())
+  }
+
+  getWorldState(): WorldState {
+    return this.worldState
+  }
+
+  getStatistics(): EntityTrackerStatistics {
+    const active = this.getActiveEntities()
+    const left = this.getRecentlyLeft()
+    const all = [...active, ...left.map((item) => item.entity)]
+    return {
+      totalEntities: all.length,
+      activeEntities: active.length,
+      recentlyLeft: left.length,
+      people: all.filter((e) => e.entityType === "person").length,
+      objects: all.filter((e) => e.entityType === "object").length,
+    }
+  }
+}

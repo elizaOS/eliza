@@ -1,0 +1,18 @@
+// spec/imessage/index.md, "Story: Store incoming iMessages without sending unsolicited replies"
+
+export type ParsedContactId =
+  | { readonly ok: true; readonly id: string }
+  | { readonly ok: false; readonly reason: "missing" | "malformed" }
+
+export function parseIMessageContactId(pathname: string): ParsedContactId {
+  const prefix = "/api/imessage/contacts/"
+  if (!pathname.startsWith(prefix)) return { ok: false, reason: "missing" }
+  const rest = pathname.slice(prefix.length)
+  if (!rest) return { ok: false, reason: "missing" }
+  try {
+    const id = decodeURIComponent(rest)
+    return id ? { ok: true, id } : { ok: false, reason: "missing" }
+  } catch {
+    return { ok: false, reason: "malformed" }
+  }
+}

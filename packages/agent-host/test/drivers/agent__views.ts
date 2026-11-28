@@ -1,5 +1,5 @@
 // spec/agent/views.md, "Story: Declare my views once"; spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "Story: Answer what the agent asks a view"; spec/agent/views.md, "Story: Stop waiting when my agent stops"
-import { Clock, Effect } from "effect";
+import { Clock, Duration, Effect } from "effect";
 import type { Driver, Options } from "../../gen/agent__views.conformance.ts";
 import type { Event, Reply, ViewHost as ViewHostState } from "../../gen/agent__views.ts";
 import { makeViewHost, type ViewAnswer, type ViewInteractFrame } from "../../src/views/host.vibe";
@@ -20,7 +20,7 @@ const clock: Clock.Clock = {
   currentTimeNanos: Effect.sync(() => 0n),
   monotonicTimeNanosUnsafe: () => 0n,
   monotonicTimeNanos: Effect.sync(() => 0n),
-  sleep: () => Effect.never,
+  sleep: (duration) => Duration.toMillis(duration) < 5_000 ? Effect.void : Effect.never,
 };
 
 const entities = new Map<string, Entity>();

@@ -1,0 +1,347 @@
+// spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows"; spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/textAndEmbeddings.md, "Story: Answer from the model I chose"
+import { assert, it } from "@effect/vitest"
+import { ServiceType, validateToolArgs, type IAgentRuntime, type Memory, type State, type UUID } from "@elizaos/core"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import {
+  EMBEDDING_PRESETS,
+  InMemoryTranscriptPrivacyStore,
+  LlmEntityRecognizer,
+  LocalPiiRecognizerService,
+  RoutingPolicyEngine,
+  ThroughputTracker,
+  VoiceProfileStore,
+  assessVoiceModalityViability,
+  buildPiiExtractionPrompt,
+  chunkPiiText,
+  classifyDeviceTier,
+  cosineSimilarity,
+  detectEmbeddingPreset,
+  detectMediaIntent,
+  detectTranscriptPiiTerms,
+  emitVoiceControl,
+  estimateDecodeTokens,
+  extractSpeakerName,
+  identifySpeakerAction,
+  liveSignalsDemoteLocal,
+  manageTranscriptPrivacyAction,
+  normalizeAudioBytes,
+  openStoredTranscriptPrivacySession,
+  openTranscriptPrivacySession,
+  parseReportedEntities,
+  planKvSpill,
+  probeHardware,
+  redactTranscriptAction,
+  relocateEntities,
+  sanitizeLocalInferenceSpeechText,
+  selectEmbeddingPresetFromHardware,
+  setTranscriptPrivacyStore,
+  setVoiceProfileStore,
+  shareTranscriptAction,
+  sniffAudioContentType,
+  startTranscriptionAction,
+  stopTranscriptionAction,
+  transcriptPrivacyRoutes,
+  verifyModelFile,
+  type AudioRedactionPort,
+  type TranscriptFileStoragePort,
+} from "../src/index.vibe"
+
+module node {
+  import fs from "node:fs"
+  import os from "node:os"
+  import path from "node:path"
+
+  export function writeTempFile(name: string, content: Uint8Array): { readonly dir: string; readonly filePath: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-local-verify-"))
+    const filePath = path.join(dir, name)
+    fs.writeFileSync(filePath, content)
+    return { dir, filePath }
+  }
+
+  export function removeDir(dir: string): void {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+import { removeDir, writeTempFile } from node
+
+const expectFailed = <A, E>(work: A!E) =>
+  Effect.match(work, {
+    onFailure: () => true,
+    onSuccess: () => false,
+  })
+
+it.effect('Transcript privacy enforces one-time consent, immutable originals, verified audio redaction, admin full share, and stored sessions (spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows")', effect () => {
+  const store = new InMemoryTranscriptPrivacyStore()
+  const hashName = `${"a".repeat(64)}.wav`
+  const audioUrl = `/api/media/${hashName}`
+  const created = try store.register({
+    id: "tr-1",
+    ownerId: "owner-1",
+    segments: [{ startMs: 0, endMs: 1200, text: "Reach me at alice@example.com for details." }],
+    audioUrl,
+  })
+  assert.strictEqual(created.privacy.consent, "ConsentUnrecorded")
+  assert.strictEqual(created.privacy.originalRevision, 1)
+
+  assert.strictEqual(
+    try expectFailed(store.share("tr-1", "AdminRequester", "participant1", "FullShare", [])),
+    true,
+  )
+
+  const consented = try store.recordConsent("tr-1", "ConsentGranted")
+  assert.strictEqual(consented.privacy.consent, "ConsentGranted")
+  assert.strictEqual(try expectFailed(store.recordConsent("tr-1", "ConsentDenied")), true)
+
+  assert.strictEqual(
+    try expectFailed(store.redact("tr-1", "OwnerRequester", ["alice@example.com"])),
+    true,
+  )
+
+  const audioPort: AudioRedactionPort = {
+    effect redactAndVerify(input) {
+      return { verified: true, redactedAudioUrl: `/api/media/redacted-${input.transcriptId}.wav` }
+    },
+  }
+  const redacted = try store.redact("tr-1", "OwnerRequester", ["alice@example.com"], audioPort)
+  assert.strictEqual(redacted.privacy.variant, "AudioVariant")
+  assert.strictEqual(redacted.redactedText, "Reach me at [REDACTED] for details.")
+  assert.strictEqual(redacted.privacy.originalRevision, 1)
+
+  assert.strictEqual(
+    try expectFailed(store.share("tr-1", "OwnerRequester", "participant1", "FullShare", [])),
+    true,
+  )
+
+  const adminFullShare = try store.share("tr-1", "AdminRequester", "participant1", "FullShare", [])
+  assert.strictEqual(adminFullShare.privacy.grants.length, 1)
+
+  assert.strictEqual(
+    try expectFailed(store.updateArtifactSharing("tr-1", { transcript: "restricted" })),
+    true,
+  )
+
+  const sharedAll = try store.redactForAll("tr-1", "AdminRequester", ["alice@example.com"], audioPort)
+  assert.strictEqual(sharedAll.privacy.grants.length, 3)
+
+  const restrictedOk = try store.updateArtifactSharing("tr-1", { transcript: "restricted" })
+  assert.strictEqual(restrictedOk.sharing.transcript, "restricted")
+
+  const files = new Set<string>([hashName])
+  const storage: TranscriptFileStoragePort = {
+    effect delete(name) {
+      return files.delete(name)
+    },
+    effect exists(name) {
+      return files.has(name)
+    },
+  }
+  const deletedAudio = try store.deleteSourceAudio("tr-1", storage)
+  assert.strictEqual(deletedAudio.sourceAudioDeleted, true)
+  assert.strictEqual(files.has(hashName), false)
+
+  provide KeyValueStore.layerMemory {
+    const storedSession = try openStoredTranscriptPrivacySession("tr-stored")
+    const s1 = try storedSession.recordConsent("ConsentNotRequired")
+    assert.strictEqual(s1.consent, "ConsentNotRequired")
+    const direct = try openTranscriptPrivacySession("tr-direct")
+    const s2 = try direct.recordConsent("ConsentDenied")
+    assert.strictEqual(s2.consent, "ConsentDenied")
+  }
+})
+
+it.effect('Local PII NER, voice profiles with Welford refinement, hardware tiering, KV spill, routing policy, and file verification work end to end (spec/localInference/models.md, "Story: Run a model of my choice on my device")', effect () => {
+  const temp = try Effect.try(() => writeTempFile("sample.gguf", new TextEncoder().encode("GGUFtest-payload")))
+  try promise(async () => {
+    try {
+      const prompt = buildPiiExtractionPrompt("Met Jane Doe at Acme Corp in Berlin.")
+      assert.ok(prompt.includes("Jane Doe"))
+      assert.strictEqual(chunkPiiText("short text", 100).length, 1)
+      const reported = parseReportedEntities('[{"kind":"person","value":"Jane Doe"},{"kind":"org","value":"Acme Corp"}]')
+      const spans = relocateEntities("Met Jane Doe at Acme Corp in Berlin.", 0, reported)
+      assert.strictEqual(spans.length, 2)
+
+      const recognizer = new LlmEntityRecognizer(async () => '[{"kind":"person","value":"Jane Doe"}]')
+      const detected = await detectTranscriptPiiTerms(
+        [{ startMs: 0, endMs: 500, text: "Met Jane Doe at jane@example.com" }],
+        recognizer,
+      )
+      assert.ok(detected.includes("Jane Doe"))
+      assert.ok(detected.includes("jane@example.com"))
+
+      let backendCalls = 0
+      const mockRuntime = {
+        agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+        getService: (name: string) =>
+          name === "localInference"
+            ? {
+                generate: async () => {
+                  backendCalls += 1
+                  return '[{"kind":"location","value":"Berlin"}]'
+                },
+              }
+            : null,
+      } as unknown as IAgentRuntime
+      const piiService = await LocalPiiRecognizerService.start(mockRuntime)
+      const svcRecognizer = piiService.getRecognizer()
+      assert.ok(svcRecognizer !== null)
+      const svcSpans = await svcRecognizer!.recognize("Flying to Berlin tomorrow")
+      assert.strictEqual(svcSpans[0]?.value, "Berlin")
+      assert.strictEqual(backendCalls, 1)
+      await piiService.stop()
+
+      const profiles = new VoiceProfileStore({ hotCacheSize: 2, coldDiskMax: 2 })
+      const p1 = profiles.upsert({ embedding: [1, 0, 0], embeddingModel: "wespeaker", durationMs: 1200 })
+      const refined = profiles.refine(p1.profileId, [0.9, 0.1, 0], 800)
+      assert.strictEqual(refined?.sampleCount, 2)
+      profiles.bindEntity(p1.profileId, "entity-jill", "Jill")
+      const matched = profiles.match([0.98, 0.05, 0])
+      assert.strictEqual(matched?.entityId, "entity-jill")
+      assert.ok(cosineSimilarity([1, 0], [1, 0]) > 0.99)
+      assert.strictEqual(extractSpeakerName("That was Jill on the phone."), "Jill")
+
+      const maxHardware = probeHardware({
+        totalRamGb: 64,
+        freeRamGb: 32,
+        appleSilicon: true,
+        mobile: false,
+        gpu: { backend: "metal", name: "M4 Max", totalVramGb: 64 },
+      })
+      const maxTier = classifyDeviceTier(maxHardware)
+      assert.strictEqual(maxTier.tier, "MAX")
+      assert.strictEqual(maxTier.canRunLocalVoice, true)
+      assert.strictEqual(selectEmbeddingPresetFromHardware(maxHardware).tier, "standard")
+      assert.ok(EMBEDDING_PRESETS[detectEmbeddingPreset().tier].dimensions === 384)
+
+      const mobileHardware = probeHardware({ totalRamGb: 8, freeRamGb: 4, appleSilicon: false, mobile: true, gpu: null })
+      assert.strictEqual(classifyDeviceTier(mobileHardware).tier, "OKAY")
+
+      const spillOk = planKvSpill({
+        contextTokens: 131_072,
+        bytesPerToken: 16_384,
+        availableKvBytes: 1_000_000_000,
+        restoreClass: "cpu-apple",
+        voiceMode: true,
+      })
+      assert.strictEqual(spillOk.mode, "spill")
+      const spillFail = planKvSpill({
+        contextTokens: 131_072,
+        bytesPerToken: 16_384,
+        availableKvBytes: 100_000_000,
+        restoreClass: "disk-sata",
+        voiceMode: true,
+      })
+      assert.strictEqual(spillFail.mode, "unsupported")
+
+      const tracker = new ThroughputTracker()
+      tracker.record(estimateDecodeTokens("hello world from local model decode"), 500)
+      assert.ok((tracker.p50() ?? 0) > 6)
+      assert.strictEqual(liveSignalsDemoteLocal({ thermalState: "serious", decodeTpsP50: 20 }), true)
+      assert.strictEqual(assessVoiceModalityViability(maxTier, { thermalState: "nominal", decodeTpsP50: 25 }).viable, true)
+
+      const router = new RoutingPolicyEngine()
+      router.recordLatency("TEXT_SMALL", "cloud", 400)
+      router.recordLatency("TEXT_SMALL", "cloud", 420)
+      router.recordLatency("TEXT_SMALL", "cloud", 410)
+      router.recordLatency("TEXT_SMALL", "eliza-local-inference", 120)
+      router.recordLatency("TEXT_SMALL", "eliza-local-inference", 110)
+      router.recordLatency("TEXT_SMALL", "eliza-local-inference", 130)
+      const fastest = router.pickProvider({
+        slot: "TEXT_SMALL",
+        policy: "fastest",
+        candidates: [
+          { provider: "cloud", priority: 100 },
+          { provider: "eliza-local-inference", priority: -100 },
+        ],
+      })
+      assert.strictEqual(fastest?.provider, "eliza-local-inference")
+
+      const verified = verifyModelFile(temp.filePath)
+      assert.strictEqual(verified.state, "verified")
+      assert.strictEqual(verified.isGguf, true)
+
+      assert.strictEqual(sanitizeLocalInferenceSpeechText("<think>hidden</think>Hello `world` https://x.test"), "Hello world")
+      const wavHead = normalizeAudioBytes(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]))
+      assert.strictEqual(sniffAudioContentType(wavHead), "audio/wav")
+    } finally {
+      removeDir(temp.dir)
+    }
+  })
+})
+
+it.effect('Voice control, speaker identification, transcript privacy actions, media intent, and routes pass strict schema validation end to end (spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows")', effect () => {
+  try promise(async () => {
+    const emitted: unknown[] = []
+    const ownerId = "00000000-0000-0000-0000-000000000099" as UUID
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+      getSetting: (key: string) => (key === "OWNER_ID" || key === "ELIZA_OWNER_ID" ? ownerId : undefined),
+      getService: (name: string) =>
+        name === ServiceType.AGENT_EVENT
+          ? { emit: (ev: unknown) => { emitted.push(ev) } }
+          : null,
+      getRoom: async () => null,
+      getWorld: async () => null,
+      getEntityById: async () => null,
+      reportError: () => {},
+    } as unknown as IAgentRuntime
+    const ownerMsg = { entityId: ownerId, content: { text: "That was Sam" } } as unknown as Memory
+
+    assert.strictEqual(emitVoiceControl(runtime, "start"), true)
+    const startRes = await startTranscriptionAction.handler(runtime, ownerMsg, {} as State, {})
+    const stopRes = await stopTranscriptionAction.handler(runtime, ownerMsg, {} as State, {})
+    assert.strictEqual(startRes?.success, true)
+    assert.strictEqual(stopRes?.success, true)
+    assert.strictEqual(emitted.length, 3)
+
+    const vStore = new VoiceProfileStore()
+    vStore.upsert({ embedding: [0, 1, 0], embeddingModel: "wespeaker", durationMs: 900 })
+    setVoiceProfileStore(vStore)
+    const idArgs = validateToolArgs(identifySpeakerAction, { name: "Sam" })
+    assert.strictEqual(idArgs.valid, true)
+    const idRes = await identifySpeakerAction.handler(runtime, ownerMsg, {} as State, { parameters: { name: "Sam" } })
+    assert.strictEqual(idRes?.success, true)
+
+    const tStore = new InMemoryTranscriptPrivacyStore()
+    await Effect.runPromise(
+      tStore.register({
+        id: "tr-act",
+        ownerId,
+        segments: [{ startMs: 0, endMs: 500, text: "Hello from alice@example.com" }],
+        audioUrl: null,
+      }),
+    )
+    setTranscriptPrivacyStore(tStore)
+
+    assert.strictEqual(validateToolArgs(manageTranscriptPrivacyAction, { transcriptId: "tr-act", consent: "ConsentGranted" }).valid, true)
+    assert.strictEqual(validateToolArgs(redactTranscriptAction, { transcriptId: "tr-act" }).valid, true)
+    assert.strictEqual(validateToolArgs(shareTranscriptAction, { transcriptId: "tr-act", grantee: "participant1", mode: "redacted" }).valid, true)
+
+    const consentRes = await manageTranscriptPrivacyAction.handler(runtime, ownerMsg, {} as State, {
+      parameters: { transcriptId: "tr-act", consent: "ConsentGranted" },
+    })
+    assert.strictEqual(consentRes?.success, true)
+    const redactRes = await redactTranscriptAction.handler(runtime, ownerMsg, {} as State, {
+      parameters: { transcriptId: "tr-act" },
+    })
+    assert.strictEqual(redactRes?.success, true)
+    const shareRes = await shareTranscriptAction.handler(runtime, ownerMsg, {} as State, {
+      parameters: { transcriptId: "tr-act", grantee: "participant1", mode: "redacted" },
+    })
+    assert.strictEqual(shareRes?.success, true)
+
+    const routes = transcriptPrivacyRoutes(tStore)
+    const shareRoute = routes.find((r) => r.path.endsWith("/share"))
+    const routeRes = await shareRoute?.handler({
+      parameters: new Map([["transcriptId", "tr-act"]]),
+      query: new Map(),
+      headers: new Map(),
+      body: { requester: "AdminRequester", redactForAll: true },
+      signal: new AbortController().signal,
+    })
+    assert.strictEqual(routeRes?.status, 200)
+
+    const media = await detectMediaIntent("please draw a sunset over mountains")
+    assert.strictEqual(media?.kind, "image")
+  })
+})

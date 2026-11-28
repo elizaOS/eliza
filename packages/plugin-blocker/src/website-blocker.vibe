@@ -1,0 +1,1144 @@
+// spec/blocker/index.md, "Story: Block distractions for a chosen interval"; spec/blocker/index.md, "Observations and expiry callbacks only affect the matching generation"
+import {
+  logger,
+  Service,
+  ServiceType,
+  stringToUuid,
+  thrown,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type NotificationService,
+  type PermissionState,
+  type Task,
+  type TaskMetadata,
+  type UUID,
+} from "@elizaos/core"
+import {
+  BLOCKER_LOG_PREFIX,
+  SELFCONTROL_BLOCKER_SERVICE_TYPE,
+  WEBSITE_BLOCKER_SERVICE_TYPE,
+} from "./types.vibe"
+
+module node {
+  import fs from "node:fs"
+  import { isIP } from "node:net"
+  import os from "node:os"
+  import path from "node:path"
+  import { domainToASCII } from "node:url"
+
+  export function readTextFile(filePath: string): string {
+    return fs.readFileSync(filePath, "utf8")
+  }
+
+  export function writeTextFile(filePath: string, content: string): void {
+    fs.writeFileSync(filePath, content, "utf8")
+  }
+
+  export function pathExists(filePath: string): boolean {
+    return fs.existsSync(filePath)
+  }
+
+  export function canWriteFile(filePath: string): boolean {
+    try {
+      fs.accessSync(filePath, fs.constants.R_OK | fs.constants.W_OK)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  export function resolveUserPath(input: string): string {
+    if (input.startsWith("~/")) {
+      return path.join(os.homedir(), input.slice(2))
+    }
+    return path.resolve(input)
+  }
+
+  export function defaultHostsFilePath(): string {
+    if (process.platform === "win32") {
+      const systemRoot = process.env.SystemRoot ?? "C:\\Windows"
+      return path.join(systemRoot, "System32", "drivers", "etc", "hosts")
+    }
+    return "/etc/hosts"
+  }
+
+  export function toAsciiDomain(hostname: string): string {
+    return domainToASCII(hostname)
+  }
+
+  export function isIpLiteral(value: string): boolean {
+    return isIP(value) !== 0
+  }
+
+  export function envHostsOverride(): string | undefined {
+    return process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH
+  }
+
+  export function currentPlatform(): string {
+    return process.platform
+  }
+}
+
+import {
+  canWriteFile,
+  currentPlatform,
+  defaultHostsFilePath,
+  envHostsOverride,
+  isIpLiteral,
+  pathExists,
+  readTextFile,
+  resolveUserPath,
+  toAsciiDomain,
+  writeTextFile,
+} from node
+
+export type SelfControlElevationMethod = "osascript" | "pkexec" | "powershell"
+export type SelfControlEngine = "hosts-file" | "safari-content-blocker" | "vpn-dns"
+export type SelfControlBlockMatchMode = "exact" | "subdomain"
+
+export interface SelfControlPluginConfig {
+  readonly hostsFilePath?: string
+  readonly statusCacheTtlMs?: number
+  readonly validateSystemResolution?: boolean
+}
+
+export interface SelfControlBlockPolicy {
+  readonly requestedWebsites: readonly string[]
+  readonly blockedWebsites: readonly string[]
+  readonly allowedWebsites: readonly string[]
+  readonly matchMode: SelfControlBlockMatchMode
+}
+
+export interface SelfControlBlockMetadata {
+  readonly version: 1
+  readonly startedAt: string
+  readonly endsAt: string | null
+  readonly websites: readonly string[]
+  readonly requestedWebsites?: readonly string[]
+  readonly blockedWebsites?: readonly string[]
+  readonly allowedWebsites?: readonly string[]
+  readonly matchMode?: SelfControlBlockMatchMode
+  readonly managedBy: string | null
+  readonly metadata: Readonly<Record<string, unknown>> | null
+  readonly scheduledByAgentId?: string | null
+}
+
+export interface SelfControlStatus extends SelfControlBlockPolicy {
+  readonly available: boolean
+  readonly active: boolean
+  readonly hostsFilePath: string | null
+  readonly startedAt: string | null
+  readonly endsAt: string | null
+  readonly websites: readonly string[]
+  readonly managedBy: string | null
+  readonly metadata: Readonly<Record<string, unknown>> | null
+  readonly scheduledByAgentId: string | null
+  readonly canUnblockEarly: boolean
+  readonly requiresElevation: boolean
+  readonly engine: SelfControlEngine
+  readonly platform: string
+  readonly supportsElevationPrompt: boolean
+  readonly elevationPromptMethod: SelfControlElevationMethod | null
+  readonly reason?: string
+}
+
+export interface SelfControlPermissionState extends PermissionState {
+  readonly engine: SelfControlEngine
+  readonly hostsFilePath: string | null
+  readonly requiresElevation: boolean
+  readonly supportsElevationPrompt: boolean
+  readonly elevationPromptMethod: SelfControlElevationMethod | null
+}
+
+export interface SelfControlBlockRequest {
+  readonly websites: readonly string[]
+  readonly durationMinutes: number | null
+  readonly managedBy?: string | null
+  readonly metadata?: Readonly<Record<string, unknown>> | null
+  readonly scheduledByAgentId?: string | null
+}
+
+export type SelfControlStartResult =
+  | { readonly success: true; readonly endsAt: string | null; readonly status?: SelfControlStatus }
+  | { readonly success: false; readonly error: string; readonly status?: SelfControlStatus }
+
+export type SelfControlStopResult =
+  | { readonly success: true; readonly removed: boolean; readonly status: SelfControlStatus }
+  | { readonly success: false; readonly error: string; readonly status?: SelfControlStatus }
+
+export interface NativeWebsiteBlockerBackend {
+  getStatus(): Promise<SelfControlStatus>
+  startBlock(request: SelfControlBlockRequest): Promise<SelfControlStartResult>
+  stopBlock(): Promise<SelfControlStopResult>
+  getPermissionState(): Promise<SelfControlPermissionState>
+  requestPermission(): Promise<SelfControlPermissionState>
+}
+
+const BLOCK_START_MARKER = "# BEGIN ELIZA SELFCONTROL BLOCK"
+const BLOCK_META_PREFIX = "# ELIZA-SELFCONTROL-META: "
+const BLOCK_END_MARKER = "# END ELIZA SELFCONTROL BLOCK"
+const DEFAULT_STATUS_CACHE_TTL_MS = 5_000
+const WEBSITE_BLOCKER_UNBLOCK_RETRY_MS = 60_000
+
+export const WEBSITE_BLOCKER_UNBLOCK_TASK_NAME = "WEBSITE_BLOCKER_UNBLOCK" as const
+export const WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS = [
+  "queue",
+  "website-blocker",
+  "selfcontrol",
+] as const
+
+const X_TWITTER_BLOCKED_HOSTS = [
+  "x.com",
+  "www.x.com",
+  "mobile.x.com",
+  "twitter.com",
+  "www.twitter.com",
+  "mobile.twitter.com",
+  "t.co",
+  "abs.twimg.com",
+  "pbs.twimg.com",
+  "video.twimg.com",
+  "ton.twimg.com",
+  "platform.twitter.com",
+  "tweetdeck.twitter.com",
+] as const
+
+const REDDIT_BLOCKED_HOSTS = [
+  "reddit.com",
+  "www.reddit.com",
+  "old.reddit.com",
+  "new.reddit.com",
+  "m.reddit.com",
+  "np.reddit.com",
+  "i.redd.it",
+  "v.redd.it",
+  "preview.redd.it",
+  "external-preview.redd.it",
+] as const
+
+const GOOGLE_NEWS_ALLOWED_HOSTS = [
+  "accounts.google.com",
+  "oauth2.googleapis.com",
+  "openidconnect.googleapis.com",
+  "www.googleapis.com",
+] as const
+
+const WEBSITE_BLOCK_POLICY_GROUPS = [
+  {
+    requestedHosts: ["x.com", "twitter.com"] as const,
+    blockedHosts: X_TWITTER_BLOCKED_HOSTS,
+    allowedHosts: ["api.x.com", "api.twitter.com"] as const,
+  },
+  {
+    requestedHosts: ["reddit.com"] as const,
+    blockedHosts: REDDIT_BLOCKED_HOSTS,
+    allowedHosts: [] as const,
+  },
+  {
+    requestedHosts: ["news.google.com"] as const,
+    blockedHosts: ["news.google.com"] as const,
+    allowedHosts: GOOGLE_NEWS_ALLOWED_HOSTS,
+  },
+] as const
+
+const WEBSITE_BLOCK_POLICY_LOOKUP = new Map<
+  string,
+  (typeof WEBSITE_BLOCK_POLICY_GROUPS)[number]
+>(
+  WEBSITE_BLOCK_POLICY_GROUPS.flatMap((group) =>
+    group.requestedHosts.map((hostname) => [hostname, group] as const),
+  ),
+)
+
+const EMPTY_POLICY: SelfControlBlockPolicy = {
+  requestedWebsites: [],
+  blockedWebsites: [],
+  allowedWebsites: [],
+  matchMode: "exact",
+}
+
+const MULTI_PART_SUFFIXES = new Set([
+  "co.uk",
+  "org.uk",
+  "gov.uk",
+  "ac.uk",
+  "com.au",
+  "net.au",
+  "org.au",
+  "co.jp",
+  "co.nz",
+  "com.br",
+  "com.mx",
+  "co.in",
+])
+
+let currentConfig: SelfControlPluginConfig = {}
+let statusCache: { readonly expiresAt: number; readonly promise: Promise<SelfControlStatus> } | undefined
+let nativeWebsiteBackend: NativeWebsiteBlockerBackend | null = null
+
+export function registerNativeWebsiteBlockerBackend(backend: NativeWebsiteBlockerBackend | null): void {
+  nativeWebsiteBackend = backend
+  resetSelfControlStatusCache()
+}
+
+export function getNativeWebsiteBlockerBackend(): NativeWebsiteBlockerBackend | null {
+  return nativeWebsiteBackend
+}
+
+export function setSelfControlPluginConfig(nextConfig: SelfControlPluginConfig | undefined): void {
+  currentConfig = { ...(nextConfig ?? {}) }
+  resetSelfControlStatusCache()
+}
+
+export function getSelfControlPluginConfig(): SelfControlPluginConfig {
+  return { ...currentConfig }
+}
+
+export function resetSelfControlStatusCache(): void {
+  statusCache = undefined
+}
+
+export function cancelSelfControlExpiryTimer(): void {}
+
+export function normalizeWebsiteTarget(raw: string): string | null {
+  const trimmed = raw.trim().toLowerCase()
+  if (trimmed.length === 0) return null
+  const withoutScheme = trimmed.replace(/^https?:\/\//u, "")
+  const hostPort = withoutScheme.split(/[/?#]/u)[0] ?? ""
+  const host = hostPort.replace(/:\d+$/u, "").replace(/\.+$/u, "")
+  if (host.length === 0 || host === "localhost" || isIpLiteral(host)) return null
+  const ascii = toAsciiDomain(host)
+  if (!ascii || !ascii.includes(".") || !/^[a-z0-9.-]+$/u.test(ascii)) return null
+  if (ascii.startsWith(".") || ascii.endsWith(".") || ascii.includes("..")) return null
+  return ascii
+}
+
+export function normalizeWebsiteTargets(websites: readonly string[]): string[] {
+  const seen = new Set<string>()
+  for (const item of websites) {
+    const normalized = normalizeWebsiteTarget(item)
+    if (normalized !== null) seen.add(normalized)
+  }
+  return [...seen].sort()
+}
+
+export function formatWebsiteList(websites: readonly string[]): string {
+  const normalized = normalizeWebsiteTargets(websites)
+  if (normalized.length === 0) return "none"
+  if (normalized.length === 1) return normalized[0] ?? "none"
+  if (normalized.length === 2) return `${normalized[0]} and ${normalized[1]}`
+  return `${normalized.slice(0, -1).join(", ")}, and ${normalized.at(-1)}`
+}
+
+function registrableWebsiteBase(hostname: string): string | null {
+  const bare = hostname.startsWith("www.") ? hostname.slice(4) : hostname
+  const parts = bare.split(".").filter((part) => part.length > 0)
+  if (parts.length < 2) return null
+  const lastTwo = parts.slice(-2).join(".")
+  if (parts.length >= 3 && MULTI_PART_SUFFIXES.has(lastTwo)) {
+    return parts.slice(-3).join(".")
+  }
+  if (parts.length === 2 || hostname.startsWith("www.")) {
+    return lastTwo
+  }
+  return null
+}
+
+export function buildSelfControlBlockPolicy(
+  requestedWebsites: readonly string[],
+): SelfControlBlockPolicy {
+  const normalizedRequestedWebsites = normalizeWebsiteTargets(requestedWebsites)
+  const blockedWebsites = new Set<string>()
+  const allowedWebsites = new Set<string>()
+
+  for (const website of normalizedRequestedWebsites) {
+    blockedWebsites.add(website)
+    const registrable = registrableWebsiteBase(website)
+    if (registrable !== null) {
+      blockedWebsites.add(registrable)
+      blockedWebsites.add(`www.${registrable}`)
+    }
+    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(registrable ?? website)
+    if (policyGroup !== undefined) {
+      for (const host of policyGroup.blockedHosts) blockedWebsites.add(host)
+      for (const host of policyGroup.allowedHosts) allowedWebsites.add(host)
+    }
+  }
+
+  return {
+    requestedWebsites: normalizedRequestedWebsites,
+    blockedWebsites: normalizeWebsiteTargets([...blockedWebsites]),
+    allowedWebsites: normalizeWebsiteTargets([...allowedWebsites]),
+    matchMode: "exact",
+  }
+}
+
+export function isWebsiteBlockedByPolicy(
+  policy: Pick<SelfControlBlockPolicy, "blockedWebsites" | "allowedWebsites" | "matchMode">,
+  queryWebsite: string,
+): boolean {
+  const normalizedQuery = normalizeWebsiteTarget(queryWebsite)
+  if (normalizedQuery === null) return false
+  if (policy.allowedWebsites.some((allowed) => normalizedQuery === allowed)) {
+    return false
+  }
+  return policy.blockedWebsites.some((blocked) =>
+    policy.matchMode === "subdomain"
+      ? normalizedQuery === blocked || normalizedQuery.endsWith(`.${blocked}`)
+      : normalizedQuery === blocked,
+  )
+}
+
+export function isWebsiteBlockSinkholeAddress(address: string): boolean {
+  const trimmed = address.trim().toLowerCase()
+  return trimmed === "0.0.0.0" || trimmed === "127.0.0.1" || trimmed === "::" || trimmed === "::1"
+}
+
+export function parseResolvedAddressesFromDscacheutilOutput(output: string): string[] {
+  const addresses: string[] = []
+  for (const line of output.split(/\r?\n/u)) {
+    const match = /^\s*(?:ip_address|ipv6_address):\s*(\S+)\s*$/u.exec(line)
+    if (match?.[1] !== undefined) addresses.push(match[1])
+  }
+  return addresses
+}
+
+export function resolveSelfControlElevationPromptMethod(
+  platform: string = currentPlatform(),
+): SelfControlElevationMethod | null {
+  if (platform === "darwin") return "osascript"
+  if (platform === "linux") return "pkexec"
+  if (platform === "win32") return "powershell"
+  return null
+}
+
+function parseWebsitesParam(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return normalizeWebsiteTargets(
+      value.filter((entry): entry is string => typeof entry === "string"),
+    )
+  }
+  if (typeof value === "string") {
+    return normalizeWebsiteTargets(value.split(/[\s,;]+/u))
+  }
+  return []
+}
+
+function parseDurationMinutesParam(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null
+  const num = typeof value === "number" ? value : Number(value)
+  if (!Number.isFinite(num) || num <= 0) return null
+  return Math.round(num)
+}
+
+export function parseSelfControlBlockRequest(options?: HandlerOptions): {
+  readonly ok: true
+  readonly request: SelfControlBlockRequest
+} | {
+  readonly ok: false
+  readonly error: string
+} {
+  const params = (options?.parameters ?? {}) as Readonly<Record<string, unknown>>
+  const websites = parseWebsitesParam(params.websites ?? params.domains ?? params.targets)
+  if (websites.length === 0) {
+    return { ok: false, error: "Specify at least one valid website domain to block." }
+  }
+  const rawDuration = params.durationMinutes ?? params.duration_minutes ?? params.duration
+  const durationMinutes = parseDurationMinutesParam(rawDuration)
+  if (rawDuration !== undefined && rawDuration !== null && rawDuration !== "" && durationMinutes === null) {
+    return { ok: false, error: "Duration must be a positive number of minutes." }
+  }
+  const managedBy = typeof params.managedBy === "string" ? params.managedBy : null
+  const scheduledByAgentId = typeof params.scheduledByAgentId === "string" ? params.scheduledByAgentId : null
+  return {
+    ok: true,
+    request: {
+      websites,
+      durationMinutes,
+      managedBy,
+      scheduledByAgentId,
+      metadata: null,
+    },
+  }
+}
+
+export function buildSelfControlManagedHostsBlock(
+  metadata: SelfControlBlockMetadata,
+): string {
+  const policy = buildSelfControlBlockPolicy(metadata.requestedWebsites ?? metadata.websites)
+  const serializedMeta: SelfControlBlockMetadata = {
+    ...metadata,
+    version: 1,
+    websites: policy.blockedWebsites,
+    requestedWebsites: policy.requestedWebsites,
+    blockedWebsites: policy.blockedWebsites,
+    allowedWebsites: policy.allowedWebsites,
+    matchMode: metadata.matchMode ?? policy.matchMode,
+  }
+  const lines = [
+    BLOCK_START_MARKER,
+    `${BLOCK_META_PREFIX}${JSON.stringify(serializedMeta)}`,
+    ...policy.blockedWebsites.flatMap((host) => [`0.0.0.0 ${host}`, `:: ${host}`]),
+    BLOCK_END_MARKER,
+  ]
+  return lines.join("\n")
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function parseMetaLine(line: string): SelfControlBlockMetadata | null {
+  try {
+    const parsed: unknown = JSON.parse(line.slice(BLOCK_META_PREFIX.length))
+    if (!isRecord(parsed) || parsed.version !== 1 || typeof parsed.startedAt !== "string") {
+      return null
+    }
+    const websites = Array.isArray(parsed.websites)
+      ? parsed.websites.filter((w): w is string => typeof w === "string")
+      : []
+    const requestedWebsites = Array.isArray(parsed.requestedWebsites)
+      ? parsed.requestedWebsites.filter((w): w is string => typeof w === "string")
+      : websites
+    const blockedWebsites = Array.isArray(parsed.blockedWebsites)
+      ? parsed.blockedWebsites.filter((w): w is string => typeof w === "string")
+      : websites
+    const allowedWebsites = Array.isArray(parsed.allowedWebsites)
+      ? parsed.allowedWebsites.filter((w): w is string => typeof w === "string")
+      : []
+    return {
+      version: 1,
+      startedAt: parsed.startedAt,
+      endsAt: typeof parsed.endsAt === "string" ? parsed.endsAt : null,
+      websites,
+      requestedWebsites,
+      blockedWebsites,
+      allowedWebsites,
+      matchMode: parsed.matchMode === "subdomain" ? "subdomain" : "exact",
+      managedBy: typeof parsed.managedBy === "string" ? parsed.managedBy : null,
+      metadata: isRecord(parsed.metadata) ? parsed.metadata : null,
+      scheduledByAgentId: typeof parsed.scheduledByAgentId === "string" ? parsed.scheduledByAgentId : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function extractManagedSelfControlBlock(
+  hostsContent: string,
+): SelfControlBlockMetadata | null {
+  const startIdx = hostsContent.indexOf(BLOCK_START_MARKER)
+  if (startIdx < 0) return null
+  const endIdx = hostsContent.indexOf(BLOCK_END_MARKER, startIdx)
+  if (endIdx < 0) return null
+  const section = hostsContent.slice(startIdx, endIdx + BLOCK_END_MARKER.length)
+  for (const line of section.split(/\r?\n/u)) {
+    if (line.startsWith(BLOCK_META_PREFIX)) {
+      return parseMetaLine(line)
+    }
+  }
+  return null
+}
+
+function stripManagedBlock(hostsContent: string): string {
+  const startIdx = hostsContent.indexOf(BLOCK_START_MARKER)
+  if (startIdx < 0) return hostsContent
+  const endIdx = hostsContent.indexOf(BLOCK_END_MARKER, startIdx)
+  if (endIdx < 0) return hostsContent
+  const before = hostsContent.slice(0, startIdx).replace(/\s+$/u, "")
+  const after = hostsContent.slice(endIdx + BLOCK_END_MARKER.length).replace(/^\s+/u, "")
+  if (before.length === 0) return after.length === 0 ? "" : `${after}\n`
+  if (after.length === 0) return `${before}\n`
+  return `${before}\n${after}\n`
+}
+
+export async function resolveSelfControlHostsFilePath(
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<string | null> {
+  const override = config.hostsFilePath?.trim() || envHostsOverride()
+  const candidate = override ? resolveUserPath(override) : defaultHostsFilePath()
+  return pathExists(candidate) ? candidate : null
+}
+
+function buildHostsStatus(input: {
+  readonly available: boolean
+  readonly active: boolean
+  readonly hostsFilePath: string | null
+  readonly startedAt: string | null
+  readonly endsAt: string | null
+  readonly websites: readonly string[]
+  readonly policy: SelfControlBlockPolicy
+  readonly managedBy: string | null
+  readonly metadata: Readonly<Record<string, unknown>> | null
+  readonly scheduledByAgentId: string | null
+  readonly canUnblockEarly: boolean
+  readonly requiresElevation: boolean
+  readonly elevationPromptMethod: SelfControlElevationMethod | null
+  readonly reason?: string
+}): SelfControlStatus {
+  return {
+    available: input.available,
+    active: input.active,
+    hostsFilePath: input.hostsFilePath,
+    startedAt: input.startedAt,
+    endsAt: input.endsAt,
+    websites: input.websites,
+    requestedWebsites: input.policy.requestedWebsites,
+    blockedWebsites: input.policy.blockedWebsites,
+    allowedWebsites: input.policy.allowedWebsites,
+    matchMode: input.policy.matchMode,
+    managedBy: input.managedBy,
+    metadata: input.metadata,
+    scheduledByAgentId: input.scheduledByAgentId,
+    canUnblockEarly: input.canUnblockEarly,
+    requiresElevation: input.requiresElevation,
+    engine: "hosts-file",
+    platform: currentPlatform(),
+    supportsElevationPrompt: input.elevationPromptMethod !== null,
+    elevationPromptMethod: input.elevationPromptMethod,
+    ...(input.reason !== undefined ? { reason: input.reason } : {}),
+  }
+}
+
+function inactiveHostsStatus(
+  hostsFilePath: string | null,
+  available: boolean,
+  writable: boolean,
+  elevationPromptMethod: SelfControlElevationMethod | null,
+  reason?: string,
+): SelfControlStatus {
+  return buildHostsStatus({
+    available,
+    active: false,
+    hostsFilePath,
+    startedAt: null,
+    endsAt: null,
+    websites: [],
+    policy: EMPTY_POLICY,
+    managedBy: null,
+    metadata: null,
+    scheduledByAgentId: null,
+    canUnblockEarly: available && writable,
+    requiresElevation: available && !writable,
+    elevationPromptMethod,
+    ...(reason !== undefined ? { reason } : {}),
+  })
+}
+
+function activeHostsStatus(
+  hostsFilePath: string,
+  block: SelfControlBlockMetadata,
+  writable: boolean,
+  elevationPromptMethod: SelfControlElevationMethod | null,
+  reason?: string,
+): SelfControlStatus {
+  const requested = block.requestedWebsites ?? block.websites
+  return buildHostsStatus({
+    available: true,
+    active: true,
+    hostsFilePath,
+    startedAt: block.startedAt,
+    endsAt: block.endsAt,
+    websites: requested,
+    policy: {
+      requestedWebsites: requested,
+      blockedWebsites: block.blockedWebsites ?? block.websites,
+      allowedWebsites: block.allowedWebsites ?? [],
+      matchMode: block.matchMode ?? "exact",
+    },
+    managedBy: block.managedBy,
+    metadata: block.metadata,
+    scheduledByAgentId: block.scheduledByAgentId ?? null,
+    canUnblockEarly: writable,
+    requiresElevation: !writable,
+    elevationPromptMethod,
+    ...(reason !== undefined ? { reason } : {}),
+  })
+}
+
+export async function reconcileSelfControlBlockState(
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<SelfControlStatus> {
+  const elevationPromptMethod = resolveSelfControlElevationPromptMethod()
+  const hostsFilePath = await resolveSelfControlHostsFilePath(config)
+  if (hostsFilePath === null) {
+    return inactiveHostsStatus(
+      null,
+      false,
+      false,
+      elevationPromptMethod,
+      "Could not find the system hosts file on this machine.",
+    )
+  }
+
+  let hostsContent: string
+  try {
+    hostsContent = readTextFile(hostsFilePath)
+  } catch (error) {
+    return inactiveHostsStatus(
+      hostsFilePath,
+      false,
+      false,
+      elevationPromptMethod,
+      error instanceof Error ? error.message : "Could not read the system hosts file.",
+    )
+  }
+
+  const writable = canWriteFile(hostsFilePath)
+  const permissionWarning = writable
+    ? undefined
+    : "Administrator/root permission is required to edit the hosts file."
+  const block = extractManagedSelfControlBlock(hostsContent)
+  if (block === null) {
+    return inactiveHostsStatus(hostsFilePath, true, writable, elevationPromptMethod, permissionWarning)
+  }
+
+  if (block.endsAt !== null) {
+    const endsAtMs = Date.parse(block.endsAt)
+    if (Number.isFinite(endsAtMs) && endsAtMs <= Date.now()) {
+      if (writable) {
+        writeTextFile(hostsFilePath, stripManagedBlock(hostsContent))
+        resetSelfControlStatusCache()
+        return inactiveHostsStatus(hostsFilePath, true, true, elevationPromptMethod)
+      }
+      return activeHostsStatus(
+        hostsFilePath,
+        block,
+        false,
+        elevationPromptMethod,
+        "The website block has expired, but administrator/root access is required to remove it.",
+      )
+    }
+  }
+
+  return activeHostsStatus(hostsFilePath, block, writable, elevationPromptMethod, permissionWarning)
+}
+
+export async function getSelfControlStatus(
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<SelfControlStatus> {
+  if (nativeWebsiteBackend !== null) {
+    return nativeWebsiteBackend.getStatus()
+  }
+  return reconcileSelfControlBlockState(config)
+}
+
+export async function getCachedSelfControlStatus(
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<SelfControlStatus> {
+  const ttlMs = config.statusCacheTtlMs ?? DEFAULT_STATUS_CACHE_TTL_MS
+  if (statusCache !== undefined && statusCache.expiresAt > Date.now()) {
+    return statusCache.promise
+  }
+  const promise = getSelfControlStatus(config)
+  const entry = { expiresAt: Date.now() + ttlMs, promise }
+  statusCache = entry
+  try {
+    return await promise
+  } catch (error) {
+    if (statusCache === entry) statusCache = undefined
+    throw error
+  }
+}
+
+function toPermissionPlatform(platform: string): PermissionState["platform"] {
+  if (
+    platform === "darwin" ||
+    platform === "win32" ||
+    platform === "linux" ||
+    platform === "ios" ||
+    platform === "android"
+  ) {
+    return platform
+  }
+  return "linux"
+}
+
+export async function getSelfControlPermissionState(
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<SelfControlPermissionState> {
+  if (nativeWebsiteBackend !== null) {
+    return nativeWebsiteBackend.getPermissionState()
+  }
+  const status = await getSelfControlStatus(config)
+  const permissionStatus = !status.available
+    ? "not-applicable"
+    : status.requiresElevation
+      ? "denied"
+      : "granted"
+  return {
+    id: "website-blocking",
+    status: permissionStatus,
+    lastChecked: Date.now(),
+    canRequest: status.available && status.requiresElevation && status.supportsElevationPrompt,
+    engine: status.engine,
+    platform: toPermissionPlatform(status.platform),
+    hostsFilePath: status.hostsFilePath,
+    requiresElevation: status.requiresElevation,
+    supportsElevationPrompt: status.supportsElevationPrompt,
+    elevationPromptMethod: status.elevationPromptMethod,
+    ...(status.reason !== undefined ? { reason: status.reason } : {}),
+  }
+}
+
+export async function requestSelfControlPermission(
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<SelfControlPermissionState> {
+  if (nativeWebsiteBackend !== null) {
+    return nativeWebsiteBackend.requestPermission()
+  }
+  return getSelfControlPermissionState(config)
+}
+
+export async function startSelfControlBlock(
+  request: SelfControlBlockRequest,
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<SelfControlStartResult> {
+  resetSelfControlStatusCache()
+  if (nativeWebsiteBackend !== null) {
+    return nativeWebsiteBackend.startBlock(request)
+  }
+  const policy = buildSelfControlBlockPolicy(request.websites)
+  if (policy.requestedWebsites.length === 0) {
+    return { success: false, error: "Specify at least one valid website domain to block." }
+  }
+  const hostsFilePath = await resolveSelfControlHostsFilePath(config)
+  if (hostsFilePath === null) {
+    return { success: false, error: "Could not find the system hosts file on this machine." }
+  }
+  if (!canWriteFile(hostsFilePath)) {
+    return {
+      success: false,
+      error: "Administrator/root permission is required to edit the hosts file.",
+    }
+  }
+  const now = new Date()
+  const endsAt =
+    request.durationMinutes !== null && request.durationMinutes > 0
+      ? new Date(now.getTime() + request.durationMinutes * 60_000).toISOString()
+      : null
+  const existing = readTextFile(hostsFilePath)
+  const cleaned = stripManagedBlock(existing).replace(/\s+$/u, "")
+  const managedBlock = buildSelfControlManagedHostsBlock({
+    version: 1,
+    startedAt: now.toISOString(),
+    endsAt,
+    websites: policy.blockedWebsites,
+    requestedWebsites: policy.requestedWebsites,
+    blockedWebsites: policy.blockedWebsites,
+    allowedWebsites: policy.allowedWebsites,
+    matchMode: policy.matchMode,
+    managedBy: request.managedBy ?? null,
+    metadata: request.metadata ?? null,
+    scheduledByAgentId: request.scheduledByAgentId ?? null,
+  })
+  const nextContent = cleaned.length > 0 ? `${cleaned}\n\n${managedBlock}\n` : `${managedBlock}\n`
+  writeTextFile(hostsFilePath, nextContent)
+  resetSelfControlStatusCache()
+  const status = await reconcileSelfControlBlockState(config)
+  return { success: true, endsAt, status }
+}
+
+export async function stopSelfControlBlock(
+  config: SelfControlPluginConfig = currentConfig,
+): Promise<SelfControlStopResult> {
+  resetSelfControlStatusCache()
+  if (nativeWebsiteBackend !== null) {
+    return nativeWebsiteBackend.stopBlock()
+  }
+  const hostsFilePath = await resolveSelfControlHostsFilePath(config)
+  if (hostsFilePath === null) {
+    const status = await reconcileSelfControlBlockState(config)
+    return { success: false, error: "Could not find the system hosts file on this machine.", status }
+  }
+  if (!canWriteFile(hostsFilePath)) {
+    const status = await reconcileSelfControlBlockState(config)
+    return {
+      success: false,
+      error: "Administrator/root permission is required to edit the hosts file.",
+      status,
+    }
+  }
+  const existing = readTextFile(hostsFilePath)
+  const hadBlock = extractManagedSelfControlBlock(existing) !== null
+  if (hadBlock) {
+    writeTextFile(hostsFilePath, stripManagedBlock(existing))
+  }
+  resetSelfControlStatusCache()
+  const status = await reconcileSelfControlBlockState(config)
+  return { success: true, removed: hadBlock, status }
+}
+
+interface WebsiteBlockerUnblockDescriptor {
+  readonly kind: "scheduled_unblock"
+  readonly version: 1
+  readonly startedAt: string | null
+  readonly endsAt: string
+  readonly websites: readonly string[]
+  readonly retryCount: number
+}
+
+type WebsiteBlockerUnblockTaskMetadata = TaskMetadata & {
+  readonly websiteBlockerUnblock: WebsiteBlockerUnblockDescriptor
+}
+
+function haveSameWebsiteSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false
+  const leftSorted = [...left].sort()
+  const rightSorted = [...right].sort()
+  return leftSorted.every((website, index) => website === rightSorted[index])
+}
+
+function getWebsiteBlockerTaskRoomId(runtime: IAgentRuntime): UUID {
+  return stringToUuid(`website-blocker-unblock-${runtime.agentId}`)
+}
+
+function readWebsiteBlockerTaskDescriptor(task: Task): WebsiteBlockerUnblockDescriptor | null {
+  const metadata = isRecord(task.metadata) ? task.metadata : null
+  const descriptor = metadata?.websiteBlockerUnblock
+  if (!isRecord(descriptor)) return null
+  if (
+    descriptor.kind !== "scheduled_unblock" ||
+    descriptor.version !== 1 ||
+    typeof descriptor.endsAt !== "string" ||
+    !Array.isArray(descriptor.websites)
+  ) {
+    return null
+  }
+  const websites = descriptor.websites.filter((website): website is string => typeof website === "string")
+  if (websites.length === 0) return null
+  return {
+    kind: "scheduled_unblock",
+    version: 1,
+    startedAt:
+      typeof descriptor.startedAt === "string" && descriptor.startedAt.length > 0
+        ? descriptor.startedAt
+        : null,
+    endsAt: descriptor.endsAt,
+    websites,
+    retryCount:
+      typeof descriptor.retryCount === "number" &&
+      Number.isFinite(descriptor.retryCount) &&
+      descriptor.retryCount >= 0
+        ? descriptor.retryCount
+        : 0,
+  }
+}
+
+function isWebsiteBlockerUnblockTask(task: Task): boolean {
+  return (
+    task.name === WEBSITE_BLOCKER_UNBLOCK_TASK_NAME &&
+    readWebsiteBlockerTaskDescriptor(task) !== null
+  )
+}
+
+export error WebsiteBlockerMissingEndTime { message: string }
+
+effect function missingEndTimeEffect(): never!WebsiteBlockerMissingEndTime {
+  throw new WebsiteBlockerMissingEndTime({
+    message: "Cannot build a website blocker task without an end time.",
+  })
+}
+
+function buildWebsiteBlockerTaskMetadata(
+  status: SelfControlStatus,
+  existing: Record<string, unknown> | null = null,
+  retryCount = 0,
+): WebsiteBlockerUnblockTaskMetadata {
+  if (status.endsAt === null) {
+    return thrown(missingEndTimeEffect)()
+  }
+  return {
+    ...(existing ?? {}),
+    blocking: true,
+    websiteBlockerUnblock: {
+      kind: "scheduled_unblock",
+      version: 1,
+      startedAt: status.startedAt,
+      endsAt: status.endsAt,
+      websites: [...status.websites],
+      retryCount,
+    },
+  }
+}
+
+function buildWebsiteBlockerTaskDescription(status: SelfControlStatus): string {
+  const websites =
+    status.websites.length > 0 ? status.websites.join(", ") : "blocked websites"
+  return `Automatically unblock ${websites} at ${status.endsAt ?? "the scheduled end time"}`
+}
+
+function isTaskOwnedByRuntime(runtime: IAgentRuntime, status: SelfControlStatus): boolean {
+  return status.scheduledByAgentId === null || status.scheduledByAgentId === String(runtime.agentId)
+}
+
+function statusMatchesTask(
+  status: SelfControlStatus,
+  descriptor: WebsiteBlockerUnblockDescriptor,
+): boolean {
+  if (!status.active || status.endsAt !== descriptor.endsAt) return false
+  if (descriptor.startedAt !== null && status.startedAt !== descriptor.startedAt) return false
+  return haveSameWebsiteSet(status.websites, descriptor.websites)
+}
+
+async function listWebsiteBlockerUnblockTasks(runtime: IAgentRuntime): Promise<Task[]> {
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [...WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS],
+  })
+  return tasks.filter(isWebsiteBlockerUnblockTask)
+}
+
+export async function clearWebsiteBlockerExpiryTasks(runtime: IAgentRuntime): Promise<void> {
+  const tasks = await listWebsiteBlockerUnblockTasks(runtime)
+  for (const task of tasks) {
+    if (task.id !== undefined) {
+      await runtime.deleteTask(task.id)
+    }
+  }
+}
+
+async function upsertWebsiteBlockerExpiryTask(
+  runtime: IAgentRuntime,
+  status: SelfControlStatus,
+  retryCount = 0,
+): Promise<UUID | null> {
+  if (!status.active || status.endsAt === null || !isTaskOwnedByRuntime(runtime, status)) {
+    await clearWebsiteBlockerExpiryTasks(runtime)
+    return null
+  }
+  const dueAtMs = Date.parse(status.endsAt)
+  if (!Number.isFinite(dueAtMs)) {
+    await clearWebsiteBlockerExpiryTasks(runtime)
+    return null
+  }
+
+  const tasks = await listWebsiteBlockerUnblockTasks(runtime)
+  const matchingTask = tasks.find((task) => {
+    const descriptor = readWebsiteBlockerTaskDescriptor(task)
+    return descriptor !== null ? statusMatchesTask(status, descriptor) : false
+  })
+  for (const task of tasks) {
+    if (task.id !== undefined && task.id !== matchingTask?.id) {
+      await runtime.deleteTask(task.id)
+    }
+  }
+
+  const metadata = buildWebsiteBlockerTaskMetadata(
+    status,
+    isRecord(matchingTask?.metadata) ? matchingTask.metadata : null,
+    retryCount,
+  )
+  const description = buildWebsiteBlockerTaskDescription(status)
+  const dueAt = Math.max(dueAtMs, Date.now())
+
+  if (matchingTask?.id !== undefined) {
+    await runtime.updateTask(matchingTask.id, { description, dueAt, metadata })
+    return matchingTask.id
+  }
+
+  return runtime.createTask({
+    name: WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
+    description,
+    roomId: getWebsiteBlockerTaskRoomId(runtime),
+    tags: [...WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS],
+    dueAt,
+    metadata,
+  })
+}
+
+export async function syncWebsiteBlockerExpiryTask(
+  runtime: IAgentRuntime,
+  status: SelfControlStatus | null = null,
+): Promise<UUID | null> {
+  registerWebsiteBlockerTaskWorker(runtime)
+  const nextStatus = status ?? (await reconcileSelfControlBlockState())
+  if (!nextStatus.active || nextStatus.endsAt === null || !isTaskOwnedByRuntime(runtime, nextStatus)) {
+    await clearWebsiteBlockerExpiryTasks(runtime)
+    return null
+  }
+  return upsertWebsiteBlockerExpiryTask(runtime, nextStatus)
+}
+
+export async function executeWebsiteBlockerExpiryTask(
+  runtime: IAgentRuntime,
+  task: Task,
+): Promise<void> {
+  const descriptor = readWebsiteBlockerTaskDescriptor(task)
+  if (descriptor === null) return
+  const status = await getSelfControlStatus()
+  if (!statusMatchesTask(status, descriptor)) return
+  const stopResult = await stopSelfControlBlock()
+  if (stopResult.success) {
+    logger.info(
+      `[selfcontrol] Automatically removed the website block scheduled for ${descriptor.endsAt}.`,
+    )
+    return
+  }
+
+  await runtime.createTask({
+    name: WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
+    description: buildWebsiteBlockerTaskDescription(status),
+    roomId: getWebsiteBlockerTaskRoomId(runtime),
+    tags: [...WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS],
+    dueAt: Date.now() + WEBSITE_BLOCKER_UNBLOCK_RETRY_MS,
+    metadata: buildWebsiteBlockerTaskMetadata(status, null, descriptor.retryCount + 1),
+  })
+  logger.warn(
+    `[selfcontrol] Failed to remove the scheduled website block at ${descriptor.endsAt}: ${stopResult.error}`,
+  )
+  const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
+  if (notifications !== null && typeof notifications.notify === "function") {
+    await notifications.notify({
+      title: "Website block didn't end on schedule",
+      body: `Scheduled unblock at ${descriptor.endsAt} failed: ${stopResult.error}`,
+      groupKey: `website-blocker-expiry:${descriptor.endsAt}`,
+    })
+  }
+}
+
+export function registerWebsiteBlockerTaskWorker(runtime: IAgentRuntime): void {
+  runtime.registerTaskWorker({
+    name: WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
+    execute: async (activeRuntime, _options, task) => {
+      await executeWebsiteBlockerExpiryTask(activeRuntime, task)
+    },
+  })
+}
+
+export class SelfControlBlockerService extends Service {
+  static override readonly serviceType: string = SELFCONTROL_BLOCKER_SERVICE_TYPE
+
+  override capabilityDescription =
+    "Local hosts-file website blocker service. Enforces scheduled website blocks and reconciles expiry."
+
+  static async start(runtime: IAgentRuntime): Promise<SelfControlBlockerService> {
+    logger.info(`${BLOCKER_LOG_PREFIX} starting SelfControlBlockerService`)
+    registerWebsiteBlockerTaskWorker(runtime)
+    return new SelfControlBlockerService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    logger.info(`${BLOCKER_LOG_PREFIX} stopping SelfControlBlockerService`)
+  }
+
+  async getStatus(): Promise<SelfControlStatus> {
+    return getSelfControlStatus()
+  }
+
+  async reconcile(): Promise<SelfControlStatus> {
+    const status = await reconcileSelfControlBlockState()
+    await syncWebsiteBlockerExpiryTask(this.runtime, status)
+    return status
+  }
+}
+
+export class WebsiteBlockerService extends SelfControlBlockerService {
+  static override readonly serviceType: string = WEBSITE_BLOCKER_SERVICE_TYPE
+
+  static override async start(runtime: IAgentRuntime): Promise<WebsiteBlockerService> {
+    logger.info(`${BLOCKER_LOG_PREFIX} starting WebsiteBlockerService`)
+    registerWebsiteBlockerTaskWorker(runtime)
+    return new WebsiteBlockerService(runtime)
+  }
+}

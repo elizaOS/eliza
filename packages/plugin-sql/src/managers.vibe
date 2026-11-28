@@ -1,0 +1,267 @@
+// spec/sql/connectionLifecycle.md, "Adapter lifecycle transitions preserve transaction, RLS, schema, and embedding invariants"
+import { PGlite, type PGliteOptions, type Transaction } from "@electric-sql/pglite"
+import { vector } from "@electric-sql/pglite/vector"
+import { Pool, type PoolClient, type PoolConfig } from "pg"
+import { normalizePgSslMode } from "./sanitize.vibe"
+import type { ClosePgliteSingletonResult, SqlExecutor, SqlQueryResult } from "./types.vibe"
+
+export const MEMORY_SETTINGS_ENV = "PGLITE_MEMORY_SETTINGS"
+
+export const DEFAULT_MEMORY_SETTINGS: Readonly<Record<string, string>> = {
+  shared_buffers: "16MB",
+  max_wal_size: "32MB",
+  min_wal_size: "32MB",
+  full_page_writes: "off",
+  wal_level: "minimal",
+  max_wal_senders: "0",
+}
+
+export function buildMemoryStartParams(
+  overrides?: Readonly<Record<string, string>>,
+): string[] {
+  const merged: Record<string, string> = { ...DEFAULT_MEMORY_SETTINGS, ...(overrides ?? {}) }
+  const params = [...PGlite.defaultStartParams]
+  for (const [key, value] of Object.entries(merged)) {
+    params.push("-c", `${key}=${value}`)
+  }
+  return params
+}
+
+function buildTxExecutor(
+  runQuery: <Row extends Record<string, unknown>>(
+    sql: string,
+    params?: readonly unknown[],
+  ) => Promise<SqlQueryResult<Row>>,
+  runExec: (sql: string) => Promise<void>,
+): SqlExecutor {
+  const executor: SqlExecutor = {
+    query: runQuery,
+    exec: runExec,
+    transaction<T>(fn: (nested: SqlExecutor) => Promise<T>): Promise<T> {
+      return fn(executor)
+    },
+  }
+  return executor
+}
+
+function wrapPgliteTx(tx: Transaction): SqlExecutor {
+  return buildTxExecutor(
+    async <Row extends Record<string, unknown>>(sql: string, params?: readonly unknown[]) => {
+      const res = await tx.query<Row>(sql, params ? [...params] : undefined)
+      return { rows: res.rows, affectedRows: res.affectedRows }
+    },
+    async (sql: string) => {
+      await tx.exec(sql)
+    },
+  )
+}
+
+export class PGliteClientManager implements SqlExecutor {
+  private client: PGlite | null = null
+  private shuttingDown = false
+  private readonly options: PGliteOptions
+
+  constructor(options: PGliteOptions = {}) {
+    this.options = options
+  }
+
+  isShuttingDown(): boolean {
+    return this.shuttingDown
+  }
+
+  async initialize(): Promise<PGlite> {
+    if (this.client) return this.client
+    const dataDir = this.options.dataDir ?? "memory://"
+    const isMemory = dataDir === "memory://"
+    const startParams = isMemory ? buildMemoryStartParams() : this.options.startParams
+    this.client = await PGlite.create({
+      ...this.options,
+      dataDir,
+      extensions: { vector, ...(this.options.extensions ?? {}) },
+      ...(startParams ? { startParams } : {}),
+    })
+    return this.client
+  }
+
+  getConnection(): PGlite | null {
+    return this.client
+  }
+
+  async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    sql: string,
+    params?: readonly unknown[],
+  ): Promise<SqlQueryResult<Row>> {
+    const db = await this.initialize()
+    const res = await db.query<Row>(sql, params ? [...params] : undefined)
+    return { rows: res.rows, affectedRows: res.affectedRows }
+  }
+
+  async exec(sql: string): Promise<void> {
+    const db = await this.initialize()
+    await db.exec(sql)
+  }
+
+  async transaction<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T> {
+    const db = await this.initialize()
+    return db.transaction((tx) => fn(wrapPgliteTx(tx)))
+  }
+
+  async close(): Promise<void> {
+    this.shuttingDown = true
+    const current = this.client
+    this.client = null
+    if (current) {
+      await current.close()
+    }
+  }
+}
+
+function wrapPgClient(client: PoolClient): SqlExecutor {
+  return buildTxExecutor(
+    async <Row extends Record<string, unknown>>(sql: string, params?: readonly unknown[]) => {
+      const res = await client.query<Row>(sql, params ? [...params] : undefined)
+      return { rows: res.rows, affectedRows: res.rowCount ?? undefined }
+    },
+    async (sql: string) => {
+      await client.query(sql)
+    },
+  )
+}
+
+export class PostgresConnectionManager implements SqlExecutor {
+  private readonly pool: Pool
+
+  constructor(connectionString: string, options?: { serverId?: string; max?: number }) {
+    const config: PoolConfig = {
+      connectionString: normalizePgSslMode(connectionString),
+      max: options?.max ?? 20,
+      ...(options?.serverId ? { application_name: options.serverId } : {}),
+    }
+    this.pool = new Pool(config)
+  }
+
+  getConnection(): Pool {
+    return this.pool
+  }
+
+  async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    sql: string,
+    params?: readonly unknown[],
+  ): Promise<SqlQueryResult<Row>> {
+    const res = await this.pool.query<Row>(sql, params ? [...params] : undefined)
+    return { rows: res.rows, affectedRows: res.rowCount ?? undefined }
+  }
+
+  async exec(sql: string): Promise<void> {
+    await this.pool.query(sql)
+  }
+
+  async transaction<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect()
+    try {
+      await client.query("BEGIN")
+      const out = await fn(wrapPgClient(client))
+      await client.query("COMMIT")
+      return out
+    } catch (err) {
+      await client.query("ROLLBACK")
+      throw err
+    } finally {
+      client.release()
+    }
+  }
+
+  async withEntityContext<T>(entityId: string | null, fn: (tx: SqlExecutor) => Promise<T>): Promise<T> {
+    return this.transaction(async (tx) => {
+      if (entityId) {
+        await tx.query("SELECT set_config('app.entity_id', $1, true)", [entityId])
+      }
+      return fn(tx)
+    })
+  }
+
+  async close(): Promise<void> {
+    await this.pool.end()
+  }
+}
+
+export interface ReusablePgliteManager {
+  isShuttingDown(): boolean
+  close(): Promise<void>
+}
+
+export interface PgliteManagerCache<TManager extends ReusablePgliteManager = PGliteClientManager> {
+  pgLiteClientManager?: TManager
+  pgLiteClientManagers?: Map<string, TManager>
+  activePgliteManagerKey?: string
+}
+
+export function pgliteManagerCacheKey(dataDir: string | undefined, agentId: string): string {
+  return JSON.stringify({ dataDir: dataDir ?? null, agentId })
+}
+
+export function getOrCreatePgliteManagerForAgent<TManager extends ReusablePgliteManager>(
+  cache: PgliteManagerCache<TManager>,
+  dataDir: string | undefined,
+  agentId: string,
+  createManager: () => TManager,
+): TManager {
+  const key = pgliteManagerCacheKey(dataDir, agentId)
+  cache.pgLiteClientManagers ??= new Map()
+  const existing = cache.pgLiteClientManagers.get(key)
+  if (existing && !existing.isShuttingDown()) {
+    cache.pgLiteClientManager = existing
+    cache.activePgliteManagerKey = key
+    return existing
+  }
+  const manager = createManager()
+  cache.pgLiteClientManagers.set(key, manager)
+  cache.pgLiteClientManager = manager
+  cache.activePgliteManagerKey = key
+  return manager
+}
+
+export function getActivePgliteManager<TManager extends ReusablePgliteManager>(
+  cache: PgliteManagerCache<TManager>,
+): TManager | undefined {
+  if (cache.activePgliteManagerKey && cache.pgLiteClientManagers) {
+    return cache.pgLiteClientManagers.get(cache.activePgliteManagerKey)
+  }
+  return cache.pgLiteClientManager
+}
+
+export function dropActivePgliteManager<TManager extends ReusablePgliteManager>(
+  cache: PgliteManagerCache<TManager>,
+  manager: TManager,
+): void {
+  const activeKey = cache.activePgliteManagerKey
+  if (activeKey && cache.pgLiteClientManagers?.get(activeKey) === manager) {
+    cache.pgLiteClientManagers.delete(activeKey)
+    delete cache.activePgliteManagerKey
+  } else if (cache.pgLiteClientManagers) {
+    for (const [key, cached] of cache.pgLiteClientManagers) {
+      if (cached === manager) cache.pgLiteClientManagers.delete(key)
+    }
+  }
+  if (cache.pgLiteClientManager === manager) {
+    delete cache.pgLiteClientManager
+  }
+}
+
+export async function closePgliteSingleton<TManager extends ReusablePgliteManager>(
+  cache: PgliteManagerCache<TManager>,
+): Promise<ClosePgliteSingletonResult> {
+  const manager = getActivePgliteManager(cache)
+  if (!manager) return { closed: false, timedOut: false, error: null }
+  dropActivePgliteManager(cache, manager)
+  try {
+    await manager.close()
+    return { closed: true, timedOut: false, error: null }
+  } catch (err) {
+    return {
+      closed: false,
+      timedOut: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    }
+  }
+}

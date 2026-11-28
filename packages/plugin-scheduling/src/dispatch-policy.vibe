@@ -1,0 +1,142 @@
+// spec/scheduling/dispatch.md, "Dispatch policy never retries or advances an unknown provider acceptance"
+import { decideDispatch } from "../gen/scheduling__dispatch.effect.vibe"
+import type {
+  DispatchPolicyContext,
+  DispatchPolicyDecision,
+  DispatchResult,
+  ScheduledTask,
+  ScheduledTaskPriority,
+} from "./types.vibe"
+
+const DEFAULT_RETRY_AFTER_MINUTES = 5
+
+export function decideDispatchPolicy(
+  result: DispatchResult,
+  context: DispatchPolicyContext,
+): DispatchPolicyDecision {
+  if (result.ok) {
+    return { kind: "complete", messageId: result.messageId }
+  }
+  const isLastStep = context.currentStepIndex >= Math.max(1, context.totalSteps) - 1
+  const hasRetryHint =
+    (typeof result.retryAfterMinutes === "number" && result.retryAfterMinutes > 0) ||
+    result.reason === "rate_limited"
+  const verdict = decideDispatch(
+    false,
+    result.acceptance === "unknown",
+    Boolean(result.userActionable),
+    hasRetryHint,
+    isLastStep,
+  )
+  if (verdict === "VerdictRetry") {
+    const retryAfterMinutes =
+      typeof result.retryAfterMinutes === "number" && result.retryAfterMinutes > 0
+        ? result.retryAfterMinutes
+        : (context.defaultRetryAfterMinutes ?? DEFAULT_RETRY_AFTER_MINUTES)
+    return { kind: "retry", retryAfterMinutes, reason: result.reason }
+  }
+  if (verdict === "VerdictSurfaceDegraded") {
+    return { kind: "surface_degraded", reason: result.reason, message: result.message }
+  }
+  if (verdict === "VerdictAdvance") {
+    return { kind: "advance", reason: result.reason, message: result.message }
+  }
+  return { kind: "fail", reason: result.reason, message: result.message }
+}
+
+export interface EscalationStep {
+  readonly channelKey: string
+  readonly delayMinutes: number
+}
+
+export interface EscalationLadder {
+  readonly ladderKey: string
+  readonly steps: readonly EscalationStep[]
+}
+
+export interface EscalationCursor {
+  readonly stepIndex: number
+  readonly lastDispatchedAt: string
+}
+
+export const PRIORITY_DEFAULT_LADDER_KEYS: Readonly<Record<ScheduledTaskPriority, string>> = {
+  low: "low_gentle",
+  medium: "medium_standard",
+  high: "high_urgent",
+}
+
+export const DEFAULT_ESCALATION_LADDERS: Readonly<Record<string, EscalationLadder>> = {
+  low_gentle: {
+    ladderKey: "low_gentle",
+    steps: [{ channelKey: "chat", delayMinutes: 0 }],
+  },
+  medium_standard: {
+    ladderKey: "medium_standard",
+    steps: [
+      { channelKey: "chat", delayMinutes: 0 },
+      { channelKey: "push", delayMinutes: 15 },
+    ],
+  },
+  high_urgent: {
+    ladderKey: "high_urgent",
+    steps: [
+      { channelKey: "chat", delayMinutes: 0 },
+      { channelKey: "push", delayMinutes: 5 },
+      { channelKey: "sms", delayMinutes: 15 },
+    ],
+  },
+}
+
+export interface EscalationLadderRegistry {
+  register(ladder: EscalationLadder): void
+  get(ladderKey: string): EscalationLadder | undefined
+  list(): readonly EscalationLadder[]
+}
+
+export function createEscalationLadderRegistry(): EscalationLadderRegistry {
+  const ladders = new Map<string, EscalationLadder>()
+  return {
+    register(ladder) {
+      ladders.set(ladder.ladderKey, ladder)
+    },
+    get(ladderKey) {
+      return ladders.get(ladderKey)
+    },
+    list() {
+      return [...ladders.values()]
+    },
+  }
+}
+
+export function registerDefaultEscalationLadders(registry: EscalationLadderRegistry): EscalationLadderRegistry {
+  for (const ladder of Object.values(DEFAULT_ESCALATION_LADDERS)) {
+    registry.register(ladder)
+  }
+  return registry
+}
+
+export function resolveEffectiveLadder(
+  task: Pick<ScheduledTask, "priority" | "escalation">,
+  registry: EscalationLadderRegistry,
+): EscalationLadder {
+  const explicitKey = task.escalation?.ladderKey
+  if (explicitKey) {
+    const named = registry.get(explicitKey)
+    if (named) return named
+  }
+  const fallbackKey = PRIORITY_DEFAULT_LADDER_KEYS[task.priority]
+  return registry.get(fallbackKey) ?? DEFAULT_ESCALATION_LADDERS[fallbackKey]!
+}
+
+export function nextEscalationStep(
+  ladder: EscalationLadder,
+  cursor: EscalationCursor,
+): { readonly stepIndex: number; readonly step: EscalationStep } | null {
+  const nextIndex = cursor.stepIndex + 1
+  if (nextIndex < 0 || nextIndex >= ladder.steps.length) return null
+  return { stepIndex: nextIndex, step: ladder.steps[nextIndex]! }
+}
+
+export function resetLadderForSnooze(nowIso: string): EscalationCursor {
+  return { stepIndex: -1, lastDispatchedAt: nowIso }
+}

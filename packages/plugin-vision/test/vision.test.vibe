@@ -1,0 +1,356 @@
+// spec/vision/index.md, "Story: Control which of my visual sources the assistant can use"; spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"; spec/vision/index.md, "A subject matches the current observation and an explicit instruction"; spec/vision/backpressure.md, "Scene description admits work only when memory, arbiter, concurrency, and circuit state permit"
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core"
+import { describe, expect, it } from "@effect/vitest"
+import {
+  DescribeBackpressureController,
+  DirtyTileDescriber,
+  EntityTracker,
+  FusedVisionContextAugmenter,
+  OCR_BRIDGE_SERVICE_TYPE,
+  OcrBridgeService,
+  SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+  ScreenCaptureBridgeService,
+  VisionMode,
+  VisionService,
+  VisionServiceType,
+  buildGetScreen,
+  buildSceneSetOfMarks,
+  captureRequestsRoute,
+  computeSemanticPosition,
+  isMeaningfulOcrText,
+  mergeScreenElements,
+  normalizeOp,
+  normalizeVisionMode,
+  ocrRequestsRoute,
+  ocrResultRoute,
+  parseTesseractTsvWords,
+  readPngDimensions,
+  reconstructAbsoluteCoords,
+  registerOcrWithCoordsService,
+  renderSetOfMarksOverlay,
+  screenFrameRoute,
+  summarizeGetScreen,
+  tileScreenshot,
+  visionAction,
+  visionPlugin,
+  visionProvider,
+} from "../src/index.vibe"
+
+module visionTestImages {
+  import sharp from "sharp"
+
+  export async function createSolidPng(
+    width: number,
+    height: number,
+    r: number,
+    g: number,
+    b: number,
+  ): Promise<Uint8Array> {
+    const buf = await sharp({
+      create: { width, height, channels: 4, background: { r, g, b, alpha: 1 } },
+    })
+      .png()
+      .toBuffer()
+    return new Uint8Array(buf)
+  }
+
+  /** @throws {never} */
+  export function encodeBase64(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("base64")
+  }
+}
+import { createSolidPng, encodeBase64 } from visionTestImages
+
+const OWNER_ID = "00000000-0000-4000-8000-000000000001" as UUID
+const OTHER_ID = "00000000-0000-4000-8000-000000000002" as UUID
+const ROOM_ID = "00000000-0000-4000-8000-000000000003" as UUID
+
+function makeRuntime(services: Map<string, unknown>, settings: Record<string, string> = {}): IAgentRuntime {
+  return {
+    agentId: OWNER_ID,
+    getSetting: (key: string) => settings[key] ?? null,
+    getService: <T,>(name: string) => (services.get(name) as T | undefined) ?? null,
+    character: { name: "VisionTest", settings: { OWNER_ID } },
+  } as unknown as IAgentRuntime
+}
+
+function makeMessage(entityId: UUID, text = "check vision"): Memory {
+  return {
+    id: "00000000-0000-4000-8000-000000000010" as UUID,
+    entityId,
+    roomId: ROOM_ID,
+    content: { text },
+  } as unknown as Memory
+}
+
+describe("plugin-vision real E2E journeys", () => {
+  it("tiles real PNG screenshots, reconstructs absolute coords, fuses screen elements, and renders SoM overlays", async () => {
+    const png = await createSolidPng(1920, 1080, 24, 32, 48)
+    const dims = await readPngDimensions(png)
+    expect(dims).toEqual({ width: 1920, height: 1080 })
+
+    const tiles = await tileScreenshot(
+      { displayId: "display-0", width: 1920, height: 1080, pngBytes: png },
+      { maxEdge: 1000, overlapFraction: 0.1 },
+    )
+    expect(tiles.length).toBe(4)
+    const second = tiles[1]
+    const abs = reconstructAbsoluteCoords(second, [50, 25, 20, 10])
+    expect(abs).toEqual([second.sourceX + 50, second.sourceY + 25, 20, 10])
+
+    const merged = mergeScreenElements({
+      ocrBoxes: [
+        { text: "Submit", bbox: [100, 200, 120, 40], confidence: 0.95 },
+        { text: "Cancel", bbox: [260, 200, 110, 40], confidence: 0.91 },
+      ],
+      vlmElements: [
+        { label: "Submit button", bbox: [100, 200, 120, 40], confidence: 0.88 },
+        { label: "Search icon", bbox: [500, 50, 32, 32], confidence: 0.8 },
+      ],
+    })
+    expect(merged.length).toBe(3)
+    expect(merged.find((e) => e.label === "Submit")?.source).toBe("ocr")
+
+    const screen = buildGetScreen({
+      ocrBoxes: [{ text: "Submit", bbox: [100, 200, 120, 40] }],
+      vlmElements: [{ label: "Search icon", bbox: [500, 50, 32, 32] }],
+      width: 1920,
+      height: 1080,
+      displayId: 0,
+    })
+    expect(summarizeGetScreen(screen)).toContain("1920x1080")
+    expect(summarizeGetScreen(screen)).toContain("Submit")
+
+    const marks = buildSceneSetOfMarks(
+      [{ type: "button", boundingBox: { x: 400, y: 400, width: 80, height: 30 }, confidence: 0.9 }],
+      [{ text: "Submit", bbox: [100, 200, 120, 40] }],
+    )
+    expect(marks.length).toBe(2)
+    const overlayPng = await renderSetOfMarksOverlay(png, marks, { width: 1920, height: 1080 })
+    expect(overlayPng.byteLength).toBeGreaterThan(0)
+    expect(computeSemanticPosition({ bbox: { x: 10, y: 10, width: 20, height: 20 }, tileWidth: 300, tileHeight: 300 })).toBe("upper-left")
+  })
+
+  it("enforces backpressure, circuit breaking, dirty-tile caching, and fused vision augmentation", async () => {
+    let now = 1000
+    let rss = 100_000_000
+    const bp = new DescribeBackpressureController({
+      memoryCapBytes: 50_000_000,
+      sampleRssBytes: () => rss,
+      arbiterPauseCooldownMs: 5_000,
+      now: () => now,
+    })
+    expect(bp.evaluate().describe).toBe(true)
+    expect(bp.acquire()).toBe(true)
+    expect(bp.acquire()).toBe(true)
+    expect(bp.acquire()).toBe(false)
+    expect(bp.finishFailure()).toBe(true)
+    expect(bp.finishFailure()).toBe(true)
+    expect(bp.acquire()).toBe(true)
+    expect(bp.finishFailure()).toBe(true)
+    expect(bp.getStats().circuitOpen).toBe(true)
+    expect(bp.evaluate().reason).toBe("circuit_open")
+    expect(bp.resetCircuit()).toBe(true)
+
+    rss = 180_000_000
+    const overCap = bp.evaluate()
+    expect(overCap.describe).toBe(false)
+    expect(overCap.reason).toBe("critical_memory")
+    rss = 110_000_000
+    expect(bp.evaluate().describe).toBe(true)
+    now += 10_000
+    expect(bp.evaluate().describe).toBe(true)
+
+    const tilePng = await createSolidPng(640, 480, 12, 80, 140)
+    let calls = 0
+    const describer = new DirtyTileDescriber({
+      describeTile: () => {
+        calls += 1
+        return Promise.resolve(`tile-desc-${calls}`)
+      },
+    })
+    const first = await describer.describe({ displayId: 0, width: 640, height: 480, pngBytes: tilePng })
+    const second = await describer.describe({ displayId: 0, width: 640, height: 480, pngBytes: tilePng })
+    expect(first.tiles[0]?.cached).toBe(false)
+    expect(second.tiles[0]?.cached).toBe(true)
+    expect(describer.getStats().describeCallsSaved).toBe(1)
+
+    expect(isMeaningfulOcrText("||")).toBe(false)
+    expect(isMeaningfulOcrText("Hello")).toBe(true)
+    const augmenter = new FusedVisionContextAugmenter({
+      getOcr: () => ({
+        name: "stub-ocr",
+        describe: () =>
+          Promise.resolve({
+            blocks: [
+              {
+                text: "Deploy",
+                bbox: { x: 0, y: 0, width: 50, height: 20 },
+                words: [],
+                semantic_position: "upper-left",
+              },
+            ],
+          }),
+      }),
+      detectObjects: () => Promise.resolve([{ type: "laptop", confidence: 0.92 }]),
+      detectFaces: () => Promise.resolve(1),
+    })
+    const aug = await augmenter.augmentImagePrompt({
+      image: { kind: "bytes", bytes: tilePng },
+      basePrompt: "Inspect screen.",
+    })
+    expect(aug?.prompt).toContain("Deploy")
+    expect(aug?.prompt).toContain("laptop (0.92)")
+    expect(aug?.prompt).toContain("1 face")
+    expect(await augmenter.augmentImagePrompt({ image: { kind: "bytes", bytes: tilePng }, basePrompt: aug?.prompt })).toBeNull()
+  })
+
+  it("drives renderer bridge routes, entity tracking, owner-gated visionAction ops, and visionProvider", async () => {
+    const screenPng = await createSolidPng(320, 240, 40, 60, 80)
+    const services = new Map<string, unknown>()
+    const runtime = makeRuntime(services, {
+      ELIZA_ADMIN_ENTITY_ID: OWNER_ID,
+      VISION_MODE: "both",
+      VISION_CAMERA_INPUT: "0",
+    })
+    const visionService = await VisionService.start(runtime)
+    const screenBridge = await ScreenCaptureBridgeService.start(runtime)
+    const ocrBridge = await OcrBridgeService.start(runtime)
+    services.set(VisionServiceType.VISION, visionService)
+    services.set(SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE, screenBridge)
+    services.set(OCR_BRIDGE_SERVICE_TYPE, ocrBridge)
+
+    const pendingFrame = screenBridge.requestFrame(0)
+    const capPoll = await captureRequestsRoute.routeHandler({ runtime })
+    const capParsed = JSON.parse(capPoll.body) as { requests: Array<{ requestId: string }> }
+    expect(capParsed.requests.length).toBe(1)
+    const submitFrameRes = await screenFrameRoute.routeHandler({
+      runtime,
+      body: {
+        requestId: capParsed.requests[0].requestId,
+        base64: encodeBase64(screenPng),
+        format: "png",
+        width: 320,
+        height: 240,
+      },
+    })
+    expect(submitFrameRes.status).toBe(200)
+    const deliveredFrame = await pendingFrame
+    expect(deliveredFrame?.width).toBe(320)
+
+    const pendingOcr = ocrBridge.requestOcr(screenPng)
+    const ocrPoll = await ocrRequestsRoute.routeHandler({ runtime })
+    const ocrParsed = JSON.parse(ocrPoll.body) as { requests: Array<{ requestId: string }> }
+    expect(ocrParsed.requests.length).toBe(1)
+    const submitOcrRes = await ocrResultRoute.routeHandler({
+      runtime,
+      body: {
+        requestId: ocrParsed.requests[0].requestId,
+        words: [{ text: "Save", left: 10, top: 10, width: 40, height: 16, confidence: 95, block: 1, par: 1, line: 1 }],
+      },
+    })
+    expect(submitOcrRes.status).toBe(200)
+    const deliveredOcr = await pendingOcr
+    expect(deliveredOcr?.[0]?.text).toBe("Save")
+
+    const tsvWords = parseTesseractTsvWords("level\tpage\tblock\tpar\tline\tword\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t10\t20\t50\t18\t92\tRun")
+    expect(tsvWords[0]?.text).toBe("Run")
+
+    registerOcrWithCoordsService({
+      name: "test-ocr",
+      describe: () =>
+        Promise.resolve({
+          blocks: [
+            {
+              text: "Settings",
+              bbox: { x: 20, y: 30, width: 90, height: 24 },
+              words: [],
+              semantic_position: "upper-left",
+            },
+          ],
+        }),
+    })
+
+    visionService.setScreenAvailability(true, false)
+    const recorded = visionService.recordCapturedFrame({
+      source: "ScreenSource",
+      purpose: "ReadControls",
+      includeImage: false,
+      bytes: screenPng,
+      width: 320,
+      height: 240,
+      description: "Settings panel visible with one person nearby",
+    })
+    expect(recorded.accepted).toBe(true)
+    expect(recorded.imageDataUrl).toBeUndefined()
+
+    visionService.setSceneSnapshot({
+      timestamp: Date.now(),
+      descriptionTimestamp: Date.now(),
+      description: "Settings panel visible with one person nearby",
+      objects: [{ id: "obj-1", type: "monitor", confidence: 0.9, boundingBox: { x: 10, y: 10, width: 100, height: 80 } }],
+      people: [{ id: "p-1", pose: "sitting", facing: "camera", confidence: 0.95, boundingBox: { x: 150, y: 50, width: 80, height: 160 } }],
+      sceneChanged: true,
+      changePercentage: 50,
+    })
+
+    const ownerMsg = makeMessage(OWNER_ID)
+    const otherMsg = makeMessage(OTHER_ID)
+    expect(await visionAction.validate(runtime, ownerMsg)).toBe(true)
+    expect(await visionAction.validate(runtime, otherMsg)).toBe(false)
+
+    const nameRes = await visionAction.handler(runtime, ownerMsg, undefined, {
+      parameters: { op: "name_entity", name: "Alice" },
+    })
+    expect(nameRes?.success).toBe(true)
+
+    const getScreenNoImage = await visionAction.handler(runtime, ownerMsg, undefined, {
+      parameters: { op: "get_screen", includeImage: false },
+    })
+    expect(getScreenNoImage?.success).toBe(true)
+    expect((getScreenNoImage?.data as Record<string, unknown>)?.image).toBeUndefined()
+
+    const staleRenameRes = await visionAction.handler(runtime, ownerMsg, undefined, {
+      parameters: { op: "name_entity", name: "Bob" },
+    })
+    expect(staleRenameRes?.success).toBe(false)
+
+    const getScreenWithImage = await visionAction.handler(runtime, ownerMsg, undefined, {
+      parameters: { op: "get_screen", includeImage: true },
+    })
+    expect(getScreenWithImage?.success).toBe(true)
+    expect(typeof (getScreenWithImage?.data as Record<string, unknown>)?.image).toBe("string")
+
+    const identifyRes = await visionAction.handler(runtime, ownerMsg, undefined, {
+      parameters: { op: "identify_person" },
+    })
+    expect(identifyRes?.text).toContain("Alice")
+
+    const trackRes = await visionAction.handler(runtime, ownerMsg, undefined, {
+      parameters: { op: "track_entity" },
+    })
+    expect(trackRes?.text).toContain("Tracking")
+
+    const modeRes = await visionAction.handler(runtime, ownerMsg, undefined, {
+      parameters: { op: "set_mode", mode: "SCREEN" },
+    })
+    expect(modeRes?.success).toBe(true)
+    expect(visionService.getVisionMode()).toBe(VisionMode.SCREEN)
+
+    expect(normalizeOp("turn_on_camera")).toBe("enable_camera")
+    expect(normalizeVisionMode("both")).toBe(VisionMode.BOTH)
+
+    const providerResult = await visionProvider.get(runtime, ownerMsg, {} as State)
+    expect(providerResult.values?.visionAvailable).toBe(true)
+    expect(providerResult.text).toContain("Alice")
+
+    const tracker = new EntityTracker("w1")
+    const ents = tracker.updateEntities([], [{ id: "p", pose: "sitting", facing: "camera", confidence: 0.9, boundingBox: { x: 10, y: 10, width: 40, height: 80 } }], undefined, { revision: 1, frameRef: "f1" }, 1000)
+    expect(ents.length).toBe(1)
+    tracker.updateEntities([], [], undefined, undefined, 7000)
+    expect(tracker.getRecentlyLeft().length).toBe(1)
+
+    await visionPlugin.dispose?.(runtime)
+    registerOcrWithCoordsService(null)
+  })
+})

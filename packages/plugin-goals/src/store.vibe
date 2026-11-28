@@ -1,0 +1,841 @@
+// spec/goals/index.md, "Story: Review my goals and check-in history"; spec/goals/lifecycle.md, "Evaluation scores stay bounded in percent units and duplicate cadence slots are refused"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { mayImportGoal, type GoalReviewEntry, type GoalViewRow } from "../gen/goals.effect.vibe"
+import {
+  GOAL_REVIEW_STATES,
+  GOAL_STATUSES,
+  GOALS_CHECKIN_SERVICE_TYPE,
+  GOALS_MIGRATION_SERVICE_TYPE,
+  GOALS_SERVICE_TYPE,
+  MIGRATED_GOAL_TABLES,
+  type CreateGoalRequest,
+  type GoalCadence,
+  type GoalCheckinRecord,
+  type GoalDefinition,
+  type GoalItem,
+  type GoalLink,
+  type GoalRecord,
+  type GoalReviewState,
+  type GoalStatus,
+  type UpdateGoalRequest,
+} from "./types.vibe"
+import {
+  checkDuplicateSlotKeys,
+  cloneRecord,
+  goalSimilarityScore,
+  isRecord,
+  makeGoalsError,
+  mergeMetadata,
+  normalizeOptionalString,
+  resolveAgentId,
+  validateEnumValue,
+  validateNonEmptyString,
+} from "./normalize.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { DatabaseSync } from "node:sqlite"
+
+  export interface SqliteStatement {
+    all(...params: unknown[]): unknown[]
+    get(...params: unknown[]): unknown
+    run(...params: unknown[]): { changes: number | bigint }
+  }
+
+  export interface SqliteDatabase {
+    readonly openError: string | null
+    exec(sql: string): void
+    prepare(sql: string): SqliteStatement
+    close(): void
+  }
+
+  /** @throws {never} */
+  export function generateId(): string {
+    return randomUUID()
+  }
+
+  /** @throws {never} */
+  export function openSqlite(path: string): SqliteDatabase {
+    try {
+      const db = new DatabaseSync(path) as unknown as Omit<SqliteDatabase, "openError">
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS life_goal_definitions (
+          id TEXT PRIMARY KEY,
+          agent_id TEXT NOT NULL,
+          owner_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'active',
+          review_state TEXT NOT NULL DEFAULT 'idle',
+          cadence_json TEXT,
+          success_criteria_json TEXT,
+          metadata_json TEXT NOT NULL DEFAULT '{}',
+          dismissed_slots_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_life_goal_owner_status
+          ON life_goal_definitions(owner_id, status);
+        CREATE TABLE IF NOT EXISTS life_goal_links (
+          id TEXT PRIMARY KEY,
+          goal_id TEXT NOT NULL,
+          target_kind TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_life_goal_links_goal
+          ON life_goal_links(goal_id);
+        CREATE TABLE IF NOT EXISTS life_goal_checkins (
+          id TEXT PRIMARY KEY,
+          goal_id TEXT NOT NULL,
+          owner_id TEXT NOT NULL,
+          slot INTEGER NOT NULL,
+          progress TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          recorded_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_life_goal_checkins_goal
+          ON life_goal_checkins(goal_id, recorded_at DESC);
+      `)
+      return {
+        openError: null,
+        exec: (sql: string) => db.exec(sql),
+        prepare: (sql: string) => db.prepare(sql),
+        close: () => db.close(),
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        openError: message,
+        exec: () => {},
+        prepare: () => ({ all: () => [], get: () => undefined, run: () => ({ changes: 0 }) }),
+        close: () => {},
+      }
+    }
+  }
+
+  /** @throws {never} */
+  export function runInSqliteTx<T>(db: SqliteDatabase, work: () => T, fallback: T): T {
+    try {
+      db.exec("BEGIN IMMEDIATE")
+      const value = work()
+      db.exec("COMMIT")
+      return value
+    } catch {
+      try {
+        db.exec("ROLLBACK")
+      } catch {
+        return fallback
+      }
+      return fallback
+    }
+  }
+}
+import { generateId, openSqlite, runInSqliteTx, type SqliteDatabase } from node
+
+export const MAX_GOAL_CHECKIN_LOG = 20
+
+export interface GoalsReviewSummary {
+  readonly generatedAt: string
+  readonly total: number
+  readonly byStatus: Record<GoalStatus, number>
+  readonly byReviewState: Record<GoalReviewState, number>
+  readonly needsAttention: readonly GoalItem[]
+  readonly atRisk: readonly GoalItem[]
+  readonly onTrack: readonly GoalItem[]
+  readonly idle: readonly GoalItem[]
+}
+
+export interface GoalPendingCheckin {
+  readonly goalId: string
+  readonly title: string
+  readonly slotIndex: number
+  readonly slotKey: string
+  readonly slotLabel: string | null
+  readonly scheduledAt: string
+}
+
+export interface GoalsMigrationReport {
+  readonly migratedDefinitions: number
+  readonly migratedLinks: number
+  readonly skippedDefinitions: number
+  readonly skippedLinks: number
+  readonly tables: readonly string[]
+}
+
+interface RawGoalRow {
+  readonly id: string
+  readonly agent_id: string
+  readonly owner_id: string
+  readonly title: string
+  readonly description: string
+  readonly status: string
+  readonly review_state: string
+  readonly cadence_json: string | null
+  readonly success_criteria_json: string | null
+  readonly metadata_json: string
+  readonly dismissed_slots_json: string
+  readonly created_at: string
+  readonly updated_at: string
+}
+
+interface RawLinkRow {
+  readonly id: string
+  readonly goal_id: string
+  readonly target_kind: string
+  readonly target_id: string
+  readonly created_at: string
+}
+
+interface RawCheckinRow {
+  readonly id: string
+  readonly goal_id: string
+  readonly owner_id: string
+  readonly slot: number
+  readonly progress: string
+  readonly note: string
+  readonly recorded_at: string
+}
+
+function toSpecGoalStatus(status: GoalStatus): GoalViewRow["goalStatus"] {
+  if (status === "paused") return "GoalPaused"
+  if (status === "archived") return "GoalArchived"
+  return "GoalActive"
+}
+
+function fromSpecGoalStatus(status: GoalViewRow["goalStatus"]): GoalStatus {
+  if (status === "GoalPaused") return "paused"
+  if (status === "GoalArchived") return "archived"
+  return "active"
+}
+
+function toSpecReviewState(state: GoalReviewState): GoalViewRow["goalReview"] {
+  if (state === "on_track") return "OnTrack"
+  if (state === "needs_attention") return "NeedsAttention"
+  if (state === "at_risk") return "AtRisk"
+  return "ReviewIdle"
+}
+
+function fromSpecReviewState(state: GoalViewRow["goalReview"]): GoalReviewState {
+  if (state === "OnTrack") return "on_track"
+  if (state === "NeedsAttention") return "needs_attention"
+  if (state === "AtRisk") return "at_risk"
+  return "idle"
+}
+
+function parseJsonObjectOrNull(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function parseDismissedSlots(raw: string): number[] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((entry): entry is number => typeof entry === "number" && Number.isInteger(entry))
+  } catch {
+    return []
+  }
+}
+
+function rowToGoal(row: RawGoalRow): GoalDefinition {
+  const cadenceObj = parseJsonObjectOrNull(row.cadence_json)
+  const cadence = cadenceObj ? (cadenceObj as unknown as GoalCadence) : null
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    ownerId: row.owner_id,
+    title: row.title,
+    description: row.description,
+    status: row.status as GoalStatus,
+    reviewState: row.review_state as GoalReviewState,
+    cadence,
+    successCriteria: parseJsonObjectOrNull(row.success_criteria_json),
+    metadata: parseJsonObjectOrNull(row.metadata_json) ?? {},
+    dismissedSlots: parseDismissedSlots(row.dismissed_slots_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function rowToLink(row: RawLinkRow): GoalLink {
+  return {
+    id: row.id,
+    goalId: row.goal_id,
+    targetKind: row.target_kind,
+    targetId: row.target_id,
+    createdAt: row.created_at,
+  }
+}
+
+function rowToCheckin(row: RawCheckinRow): GoalCheckinRecord {
+  return {
+    id: row.id,
+    goalId: row.goal_id,
+    ownerId: row.owner_id,
+    slot: row.slot,
+    progress: row.progress as GoalReviewState,
+    note: row.note,
+    recordedAt: row.recorded_at,
+  }
+}
+
+export function goalToItem(record: GoalRecord): GoalItem {
+  const criteria = record.goal.successCriteria
+  const target = criteria && typeof criteria.target === "string" ? criteria.target : null
+  return {
+    id: record.goal.id,
+    title: record.goal.title,
+    description: record.goal.description,
+    status: record.goal.status,
+    reviewState: record.goal.reviewState,
+    cadenceKind: record.goal.cadence?.kind ?? null,
+    target,
+    linkedCount: record.links.length,
+    updatedAt: record.goal.updatedAt,
+  }
+}
+
+export class GoalsRepository {
+  private readonly db: SqliteDatabase
+
+  constructor(dbPath = ":memory:") {
+    this.db = openSqlite(dbPath)
+  }
+
+  rawDb(): SqliteDatabase {
+    return this.db
+  }
+
+  close(): void {
+    this.db.close()
+  }
+
+  private goalBodyParams(goal: GoalDefinition): unknown[] {
+    return [
+      goal.title,
+      goal.description,
+      goal.status,
+      goal.reviewState,
+      goal.cadence ? JSON.stringify(goal.cadence) : null,
+      goal.successCriteria ? JSON.stringify(goal.successCriteria) : null,
+      JSON.stringify(goal.metadata),
+      JSON.stringify(goal.dismissedSlots),
+    ]
+  }
+
+  insertGoal(goal: GoalDefinition): GoalDefinition {
+    this.db
+      .prepare(
+        `INSERT INTO life_goal_definitions
+         (id, agent_id, owner_id, title, description, status, review_state, cadence_json, success_criteria_json, metadata_json, dismissed_slots_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(goal.id, goal.agentId, goal.ownerId, ...this.goalBodyParams(goal), goal.createdAt, goal.updatedAt)
+    return goal
+  }
+
+  updateGoalRow(goal: GoalDefinition): GoalDefinition {
+    this.db
+      .prepare(
+        `UPDATE life_goal_definitions
+         SET title = ?, description = ?, status = ?, review_state = ?, cadence_json = ?,
+             success_criteria_json = ?, metadata_json = ?, dismissed_slots_json = ?, updated_at = ?
+         WHERE id = ? AND owner_id = ?`,
+      )
+      .run(...this.goalBodyParams(goal), goal.updatedAt, goal.id, goal.ownerId)
+    return goal
+  }
+
+  deleteGoalRow(ownerId: string, goalId: string): boolean {
+    return runInSqliteTx(
+      this.db,
+      () => {
+        this.db.prepare("DELETE FROM life_goal_links WHERE goal_id = ?").run(goalId)
+        this.db.prepare("DELETE FROM life_goal_checkins WHERE goal_id = ? AND owner_id = ?").run(goalId, ownerId)
+        const res = this.db
+          .prepare("DELETE FROM life_goal_definitions WHERE id = ? AND owner_id = ?")
+          .run(goalId, ownerId)
+        return Number(res.changes) > 0
+      },
+      false,
+    )
+  }
+
+  getGoal(ownerId: string, goalId: string): GoalDefinition | null {
+    const row = this.db
+      .prepare("SELECT * FROM life_goal_definitions WHERE id = ? AND owner_id = ?")
+      .get(goalId, ownerId) as RawGoalRow | undefined
+    return row ? rowToGoal(row) : null
+  }
+
+  listGoals(ownerId: string, status?: GoalStatus): GoalDefinition[] {
+    const rows = (
+      status
+        ? this.db
+            .prepare("SELECT * FROM life_goal_definitions WHERE owner_id = ? AND status = ? ORDER BY updated_at DESC, id ASC")
+            .all(ownerId, status)
+        : this.db
+            .prepare("SELECT * FROM life_goal_definitions WHERE owner_id = ? ORDER BY updated_at DESC, id ASC")
+            .all(ownerId)
+    ) as RawGoalRow[]
+    return rows.map(rowToGoal)
+  }
+
+  addLink(goalId: string, targetKind: string, targetId: string, nowIso: string): GoalLink {
+    const link: GoalLink = {
+      id: generateId(),
+      goalId,
+      targetKind,
+      targetId,
+      createdAt: nowIso,
+    }
+    this.db
+      .prepare(
+        "INSERT INTO life_goal_links (id, goal_id, target_kind, target_id, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(link.id, link.goalId, link.targetKind, link.targetId, link.createdAt)
+    return link
+  }
+
+  listLinks(goalId: string): GoalLink[] {
+    const rows = this.db
+      .prepare("SELECT * FROM life_goal_links WHERE goal_id = ? ORDER BY created_at ASC, id ASC")
+      .all(goalId) as RawLinkRow[]
+    return rows.map(rowToLink)
+  }
+
+  recordCheckin(entry: Omit<GoalCheckinRecord, "id">): GoalCheckinRecord {
+    const checkin: GoalCheckinRecord = { id: generateId(), ...entry }
+    return runInSqliteTx(
+      this.db,
+      () => {
+        this.db
+          .prepare(
+            `INSERT INTO life_goal_checkins (id, goal_id, owner_id, slot, progress, note, recorded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            checkin.id,
+            checkin.goalId,
+            checkin.ownerId,
+            checkin.slot,
+            checkin.progress,
+            checkin.note,
+            checkin.recordedAt,
+          )
+        this.db
+          .prepare(
+            `DELETE FROM life_goal_checkins
+             WHERE goal_id = ? AND owner_id = ? AND id NOT IN (
+               SELECT id FROM life_goal_checkins
+               WHERE goal_id = ? AND owner_id = ?
+               ORDER BY recorded_at DESC, rowid DESC
+               LIMIT ?
+             )`,
+          )
+          .run(checkin.goalId, checkin.ownerId, checkin.goalId, checkin.ownerId, MAX_GOAL_CHECKIN_LOG)
+        return checkin
+      },
+      checkin,
+    )
+  }
+
+  listCheckins(ownerId: string, goalId: string): GoalCheckinRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM life_goal_checkins
+         WHERE owner_id = ? AND goal_id = ?
+         ORDER BY recorded_at DESC, rowid DESC
+         LIMIT ?`,
+      )
+      .all(ownerId, goalId, MAX_GOAL_CHECKIN_LOG) as RawCheckinRow[]
+    return rows.map(rowToCheckin)
+  }
+
+  toGoalViewRows(ownerId: string): GoalViewRow[] {
+    return this.listGoals(ownerId).map((goal) => ({
+      ownerId: goal.ownerId,
+      goalId: goal.id,
+      title: goal.title,
+      goalStatus: toSpecGoalStatus(goal.status),
+      goalReview: toSpecReviewState(goal.reviewState),
+    }))
+  }
+
+  toGoalReviewEntries(ownerId: string, goalId: string): GoalReviewEntry[] {
+    return this.listCheckins(ownerId, goalId).map((checkin) => ({
+      reviewOwner: checkin.ownerId,
+      reviewGoal: checkin.goalId,
+      recordedAt: Date.parse(checkin.recordedAt) || 0,
+      reviewText: checkin.note,
+    }))
+  }
+
+  insertMissingViewRow(row: GoalViewRow, agentId: string, nowIso: string): boolean {
+    const existing = this.getGoal(row.ownerId, row.goalId)
+    if (existing) return false
+    this.insertGoal({
+      id: row.goalId,
+      agentId,
+      ownerId: row.ownerId,
+      title: row.title,
+      description: "",
+      status: fromSpecGoalStatus(row.goalStatus),
+      reviewState: fromSpecReviewState(row.goalReview),
+      cadence: null,
+      successCriteria: null,
+      metadata: { privacyClass: "private", publicContextBlocked: true },
+      dismissedSlots: [],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    })
+    return true
+  }
+}
+
+export class GoalsService extends Service {
+  static override serviceType = GOALS_SERVICE_TYPE
+  override capabilityDescription = "Owner goals lifecycle, semantic grounding, links, and check-ins"
+  readonly repository: GoalsRepository
+
+  constructor(runtime?: IAgentRuntime, repository?: GoalsRepository) {
+    super(runtime)
+    this.repository = repository ?? new GoalsRepository(":memory:")
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<GoalsService> {
+    return new GoalsService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.repository.close()
+  }
+
+  private agentId(): string {
+    if (!this.runtime) return "agent-default"
+    const resolved = resolveAgentId(this.runtime)
+    return resolved.ok ? resolved.value : "agent-default"
+  }
+
+  async createGoal(request: CreateGoalRequest, nowIso = new Date().toISOString()): Promise<GoalRecord> {
+    const ownerRes = validateNonEmptyString(request.ownerId, "ownerId")
+    if (!ownerRes.ok) throw ownerRes.error
+    const titleRes = validateNonEmptyString(request.title, "title")
+    if (!titleRes.ok) throw titleRes.error
+    const statusRes = validateEnumValue(request.status, "status", GOAL_STATUSES, "active")
+    if (!statusRes.ok) throw statusRes.error
+    if (request.cadence && isRecord(request.cadence)) {
+      const dupErr = checkDuplicateSlotKeys(request.cadence)
+      if (dupErr) throw dupErr
+    }
+    const duplicate = this.findActiveDuplicate(ownerRes.value, titleRes.value)
+    if (duplicate) {
+      throw makeGoalsError(409, `an active goal with title ${JSON.stringify(titleRes.value)} already exists`, "GOAL_DUPLICATE")
+    }
+    const goal: GoalDefinition = {
+      id: generateId(),
+      agentId: this.agentId(),
+      ownerId: ownerRes.value,
+      title: titleRes.value,
+      description: normalizeOptionalString(request.description) ?? "",
+      status: statusRes.value,
+      reviewState: "idle",
+      cadence: request.cadence ?? null,
+      successCriteria: request.successCriteria ? cloneRecord(request.successCriteria) : null,
+      metadata: mergeMetadata({}, request.metadata),
+      dismissedSlots: [],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }
+    this.repository.insertGoal(goal)
+    return { goal, links: [], checkins: [] }
+  }
+
+  async updateGoal(
+    ownerId: string,
+    goalId: string,
+    request: UpdateGoalRequest,
+    nowIso = new Date().toISOString(),
+  ): Promise<GoalRecord> {
+    const existing = this.repository.getGoal(ownerId, goalId)
+    if (!existing) throw makeGoalsError(404, `goal ${goalId} not found`, "GOAL_NOT_FOUND")
+    if (request.cadence && isRecord(request.cadence)) {
+      const dupErr = checkDuplicateSlotKeys(request.cadence)
+      if (dupErr) throw dupErr
+    }
+    let nextTitle = existing.title
+    if (request.title !== undefined) {
+      const titleRes = validateNonEmptyString(request.title, "title")
+      if (!titleRes.ok) throw titleRes.error
+      nextTitle = titleRes.value
+    }
+    let nextStatus = existing.status
+    if (request.status !== undefined) {
+      const statusRes = validateEnumValue(request.status, "status", GOAL_STATUSES)
+      if (!statusRes.ok) throw statusRes.error
+      nextStatus = statusRes.value
+    }
+    let nextReviewState = existing.reviewState
+    if (request.reviewState !== undefined) {
+      const revRes = validateEnumValue(request.reviewState, "reviewState", GOAL_REVIEW_STATES)
+      if (!revRes.ok) throw revRes.error
+      nextReviewState = revRes.value
+    }
+    if (nextStatus === "active" && nextTitle.toLowerCase() !== existing.title.toLowerCase()) {
+      const duplicate = this.findActiveDuplicate(ownerId, nextTitle, goalId)
+      if (duplicate) {
+        throw makeGoalsError(409, `an active goal with title ${JSON.stringify(nextTitle)} already exists`, "GOAL_DUPLICATE")
+      }
+    }
+    const updated: GoalDefinition = {
+      ...existing,
+      title: nextTitle,
+      description: request.description !== undefined ? (normalizeOptionalString(request.description) ?? "") : existing.description,
+      status: nextStatus,
+      reviewState: nextReviewState,
+      cadence: request.cadence !== undefined ? request.cadence : existing.cadence,
+      successCriteria:
+        request.successCriteria !== undefined
+          ? request.successCriteria
+            ? cloneRecord(request.successCriteria)
+            : null
+          : existing.successCriteria,
+      metadata: request.metadata !== undefined ? mergeMetadata(existing.metadata, request.metadata) : existing.metadata,
+      updatedAt: nowIso,
+    }
+    this.repository.updateGoalRow(updated)
+    return {
+      goal: updated,
+      links: this.repository.listLinks(goalId),
+      checkins: this.repository.listCheckins(ownerId, goalId),
+    }
+  }
+
+  deleteGoal(ownerId: string, goalId: string): boolean {
+    return this.repository.deleteGoalRow(ownerId, goalId)
+  }
+
+  getGoal(ownerId: string, goalId: string): GoalRecord | null {
+    const goal = this.repository.getGoal(ownerId, goalId)
+    if (!goal) return null
+    return {
+      goal,
+      links: this.repository.listLinks(goalId),
+      checkins: this.repository.listCheckins(ownerId, goalId),
+    }
+  }
+
+  listGoals(ownerId: string, status?: GoalStatus): GoalRecord[] {
+    return this.repository.listGoals(ownerId, status).map((goal) => ({
+      goal,
+      links: this.repository.listLinks(goal.id),
+      checkins: this.repository.listCheckins(ownerId, goal.id),
+    }))
+  }
+
+  findActiveDuplicate(ownerId: string, title: string, excludeId?: string): GoalDefinition | null {
+    const normalized = title.trim().toLowerCase()
+    const active = this.repository.listGoals(ownerId, "active")
+    return active.find((goal) => goal.id !== excludeId && goal.title.trim().toLowerCase() === normalized) ?? null
+  }
+
+  findSimilarGoals(ownerId: string, queryTitle: string, threshold = 0.5): readonly { goal: GoalDefinition; score: number }[] {
+    return this.repository
+      .listGoals(ownerId)
+      .map((goal) => ({ goal, score: goalSimilarityScore(queryTitle, goal.title) }))
+      .filter((entry) => entry.score >= threshold)
+      .sort((a, b) => b.score - a.score)
+  }
+
+  async addLink(ownerId: string, goalId: string, targetKind: string, targetId: string, nowIso = new Date().toISOString()): Promise<GoalLink> {
+    const goal = this.repository.getGoal(ownerId, goalId)
+    if (!goal) throw makeGoalsError(404, `goal ${goalId} not found`, "GOAL_NOT_FOUND")
+    const kindRes = validateNonEmptyString(targetKind, "targetKind")
+    if (!kindRes.ok) throw kindRes.error
+    const idRes = validateNonEmptyString(targetId, "targetId")
+    if (!idRes.ok) throw idRes.error
+    return this.repository.addLink(goalId, kindRes.value, idRes.value, nowIso)
+  }
+
+  async recordCheckin(args: {
+    readonly ownerId: string
+    readonly goalId: string
+    readonly slot: number
+    readonly progress: GoalReviewState
+    readonly note?: string
+    readonly recordedAt?: string
+  }): Promise<{ readonly checkin: GoalCheckinRecord; readonly goal: GoalDefinition }> {
+    const existing = this.repository.getGoal(args.ownerId, args.goalId)
+    if (!existing) throw makeGoalsError(404, `goal ${args.goalId} not found`, "GOAL_NOT_FOUND")
+    const progressRes = validateEnumValue(args.progress, "progress", GOAL_REVIEW_STATES)
+    if (!progressRes.ok) throw progressRes.error
+    const nowIso = args.recordedAt ?? new Date().toISOString()
+    const checkin = this.repository.recordCheckin({
+      goalId: args.goalId,
+      ownerId: args.ownerId,
+      slot: args.slot,
+      progress: progressRes.value,
+      note: normalizeOptionalString(args.note) ?? "",
+      recordedAt: nowIso,
+    })
+    const updated: GoalDefinition = { ...existing, reviewState: progressRes.value, updatedAt: nowIso }
+    this.repository.updateGoalRow(updated)
+    return { checkin, goal: updated }
+  }
+
+  async dismissCheckinSlot(ownerId: string, goalId: string, slotIndex: number, nowIso = new Date().toISOString()): Promise<GoalDefinition> {
+    const existing = this.repository.getGoal(ownerId, goalId)
+    if (!existing) throw makeGoalsError(404, `goal ${goalId} not found`, "GOAL_NOT_FOUND")
+    const dismissedSlots = existing.dismissedSlots.includes(slotIndex)
+      ? existing.dismissedSlots
+      : [...existing.dismissedSlots, slotIndex].sort((a, b) => a - b)
+    const updated: GoalDefinition = { ...existing, dismissedSlots, updatedAt: nowIso }
+    return this.repository.updateGoalRow(updated)
+  }
+
+  buildWeeklyReview(ownerId: string, nowIso = new Date().toISOString()): GoalsReviewSummary {
+    const records = this.listGoals(ownerId)
+    const byStatus: Record<GoalStatus, number> = { active: 0, paused: 0, archived: 0, satisfied: 0 }
+    const byReviewState: Record<GoalReviewState, number> = {
+      idle: 0,
+      needs_attention: 0,
+      on_track: 0,
+      at_risk: 0,
+    }
+    const needsAttention: GoalItem[] = []
+    const atRisk: GoalItem[] = []
+    const onTrack: GoalItem[] = []
+    const idle: GoalItem[] = []
+    for (const record of records) {
+      byStatus[record.goal.status] += 1
+      byReviewState[record.goal.reviewState] += 1
+      const item = goalToItem(record)
+      if (record.goal.reviewState === "at_risk") atRisk.push(item)
+      else if (record.goal.reviewState === "needs_attention") needsAttention.push(item)
+      else if (record.goal.reviewState === "on_track") onTrack.push(item)
+      else idle.push(item)
+    }
+    return { generatedAt: nowIso, total: records.length, byStatus, byReviewState, needsAttention, atRisk, onTrack, idle }
+  }
+}
+
+export class GoalsCheckinService extends Service {
+  static override serviceType = GOALS_CHECKIN_SERVICE_TYPE
+  override capabilityDescription = "Reconciles active goal check-in slots while honoring sticky dismissals"
+  private readonly goalsService: GoalsService | undefined
+
+  constructor(runtime?: IAgentRuntime, goalsService?: GoalsService) {
+    super(runtime)
+    this.goalsService = goalsService
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<GoalsCheckinService> {
+    const goals = runtime.getService<GoalsService>(GOALS_SERVICE_TYPE) ?? undefined
+    return new GoalsCheckinService(runtime, goals)
+  }
+
+  override async stop(): Promise<void> {}
+
+  reconcileActiveCheckins(ownerId: string, nowIso = new Date().toISOString()): readonly GoalPendingCheckin[] {
+    const service = this.goalsService ?? this.runtime?.getService<GoalsService>(GOALS_SERVICE_TYPE)
+    if (!service) return []
+    const active = service.listGoals(ownerId, "active")
+    const pending: GoalPendingCheckin[] = []
+    for (const record of active) {
+      const cadence = record.goal.cadence
+      if (!cadence || cadence.kind === "none") continue
+      const slots = cadence.slots && cadence.slots.length > 0 ? cadence.slots : [{ key: cadence.kind, label: cadence.kind }]
+      for (let index = 0; index < slots.length; index += 1) {
+        if (record.goal.dismissedSlots.includes(index)) continue
+        const slot = slots[index]!
+        pending.push({
+          goalId: record.goal.id,
+          title: record.goal.title,
+          slotIndex: index,
+          slotKey: slot.key,
+          slotLabel: slot.label ?? null,
+          scheduledAt: nowIso,
+        })
+      }
+    }
+    return pending
+  }
+}
+
+export class GoalsMigrationService extends Service {
+  static override serviceType = GOALS_MIGRATION_SERVICE_TYPE
+  override capabilityDescription = "Non-destructive app_lifeops to app_goals carve-out migration"
+  private readonly goalsService: GoalsService | undefined
+
+  constructor(runtime?: IAgentRuntime, goalsService?: GoalsService) {
+    super(runtime)
+    this.goalsService = goalsService
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<GoalsMigrationService> {
+    const goals = runtime.getService<GoalsService>(GOALS_SERVICE_TYPE) ?? undefined
+    return new GoalsMigrationService(runtime, goals)
+  }
+
+  override async stop(): Promise<void> {}
+
+  async migrateLegacyRows(args: {
+    readonly ownerId: string
+    readonly legacyDefinitions: readonly GoalDefinition[]
+    readonly legacyLinks?: readonly GoalLink[]
+  }): Promise<GoalsMigrationReport> {
+    const service = this.goalsService ?? this.runtime?.getService<GoalsService>(GOALS_SERVICE_TYPE)
+    if (!service) throw makeGoalsError(500, "GoalsService is not registered")
+    const existingIds = service.repository.listGoals(args.ownerId).map((goal) => goal.id)
+    const known = new Set<string>(existingIds)
+    let migratedDefinitions = 0
+    let skippedDefinitions = 0
+    for (const def of args.legacyDefinitions) {
+      const candidate: GoalViewRow = {
+        ownerId: def.ownerId,
+        goalId: def.id,
+        title: def.title,
+        goalStatus: toSpecGoalStatus(def.status),
+        goalReview: toSpecReviewState(def.reviewState),
+      }
+      if (!mayImportGoal(candidate, args.ownerId, [...known])) {
+        skippedDefinitions += 1
+        continue
+      }
+      service.repository.insertGoal({ ...def, metadata: mergeMetadata(def.metadata) })
+      known.add(def.id)
+      migratedDefinitions += 1
+    }
+    let migratedLinks = 0
+    let skippedLinks = 0
+    for (const link of args.legacyLinks ?? []) {
+      const existingLinks = service.repository.listLinks(link.goalId)
+      const duplicate = existingLinks.some(
+        (item) => item.id === link.id || (item.targetKind === link.targetKind && item.targetId === link.targetId),
+      )
+      if (duplicate || !known.has(link.goalId)) {
+        skippedLinks += 1
+        continue
+      }
+      service.repository.addLink(link.goalId, link.targetKind, link.targetId, link.createdAt)
+      migratedLinks += 1
+    }
+    return {
+      migratedDefinitions,
+      migratedLinks,
+      skippedDefinitions,
+      skippedLinks,
+      tables: [...MIGRATED_GOAL_TABLES],
+    }
+  }
+}
+
+export function getGoalsService(runtime: IAgentRuntime): GoalsService | null {
+  return runtime.getService<GoalsService>(GOALS_SERVICE_TYPE)
+}

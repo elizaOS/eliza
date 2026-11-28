@@ -1,75 +1,168 @@
 // spec/form/index.md, "Story: Complete a form across several turns"
-import { Machine, stored, type FormSession } from "../gen/form.effect.vibe"
+import type { IAgentRuntime, Plugin, RegisteredEvaluator, ServiceClass } from "@elizaos/core"
+import { formContextProvider } from "./context-provider.vibe"
+import { formEvaluator } from "./extractor-evaluator.vibe"
+import { formAction } from "./form-action.vibe"
+import { FormService } from "./service.vibe"
 
-export error MissingFormIdentity { field: "owner" | "session" }
-export error MismatchedFormOwner { sessionId: string }
+export { C, ControlBuilder, Form, FormBuilder } from "./builder.vibe"
+export {
+  BUILTIN_TYPE_MAP,
+  BUILTIN_TYPES,
+  getBuiltinType,
+  isBuiltinType,
+  registerBuiltinTypes,
+} from "./builtins.vibe"
+export { formatCalendarDate, parseCalendarDate } from "./calendar-date.vibe"
+export { formContextProvider } from "./context-provider.vibe"
+export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults.vibe"
+export { basicEmailValid, strictEmailValid } from "./email.vibe"
+export {
+  buildFormExtractorPromptSection,
+  buildFormExtractorSchema,
+  coerceExtractionsAgainstControls,
+  detectCorrection,
+  extractSingleField,
+  parseFormExtractorOutput,
+} from "./extraction.vibe"
+export { formEvaluator } from "./extractor-evaluator.vibe"
+export { formAction, normalizeRestoreResponse } from "./form-action.vibe"
+export {
+  assertFormControlGraph,
+  assertFormControlGraphs,
+  FormControlGraphError,
+  MAX_FORM_CONTROL_DEPTH,
+  MAX_FORM_CONTROL_NODES,
+} from "./form-control-graph.vibe"
+export { FormConfirmationRequiredError, FormService } from "./service.vibe"
+export {
+  editForm,
+  expireFormSession,
+  MismatchedFormOwner,
+  MissingFormIdentity,
+  readForm,
+  startFormSession,
+  type FormEdit,
+  type FormMachineState,
+  type FormReference,
+} from "./session-machine.vibe"
+export {
+  deleteSession,
+  FORM_COMPONENT_DATA_UNBOUNDED,
+  FormComponentDataError,
+  getActiveSession,
+  getAllActiveSessions,
+  getAutofillData,
+  getExpiringSessions,
+  getSessionById,
+  getStaleSessions,
+  getStashedSessions,
+  getSubmissionById,
+  getSubmissions,
+  MAX_FORM_COMPONENT_DATA_BYTES,
+  MAX_FORM_COMPONENT_DATA_DEPTH,
+  MAX_FORM_COMPONENT_DATA_NODES,
+  saveAutofillData,
+  saveSession,
+  saveSubmission,
+  toComponentData,
+} from "./storage.vibe"
+export { buildTemplateValues, renderTemplate, resolveControlTemplates, type TemplateValues } from "./template.vibe"
+export {
+  calculateTTL,
+  formatEffort,
+  formatTimeRemaining,
+  isExpired,
+  isExpiringSoon,
+  shouldConfirmCancel,
+  shouldNudge,
+} from "./ttl.vibe"
+export {
+  FORM_AUTOFILL_COMPONENT,
+  FORM_CONTROL_DEFAULTS,
+  FORM_DEFINITION_DEFAULTS,
+  FORM_SESSION_COMPONENT,
+  FORM_SUBMISSION_COMPONENT,
+  type ActivationContext,
+  type ControlType,
+  type ExternalActivation,
+  type ExternalFieldState,
+  type ExtractionResult,
+  type FieldFile,
+  type FieldHistoryEntry,
+  type FieldState,
+  type FilledFieldSummary,
+  type FormAutofillData,
+  type FormContextState,
+  type FormControl,
+  type FormControlDependency,
+  type FormControlFileOptions,
+  type FormControlI18n,
+  type FormControlOption,
+  type FormControlUI,
+  type FormDefinition,
+  type FormDefinitionHooks,
+  type FormDefinitionI18n,
+  type FormDefinitionNudge,
+  type FormDefinitionTTL,
+  type FormDefinitionUX,
+  type FormExternalActivatedEvent,
+  type FormFieldCancelledEvent,
+  type FormFieldConfirmedEvent,
+  type FormFieldExtractedEvent,
+  type FormIntent,
+  type FormSession,
+  type FormSubcontrolsFilledEvent,
+  type FormSubfieldUpdatedEvent,
+  type FormSubmission,
+  type FormWidgetEvent,
+  type FormWidgetEventType,
+  type IntentResult,
+  type MissingFieldSummary,
+  type PendingExternalFieldSummary,
+  type SessionEffort,
+  type TypeHandler,
+  type UncertainFieldSummary,
+  type ValidationResult,
+} from "./types.vibe"
+export {
+  clearTypeHandlers,
+  formatValue,
+  getTypeHandler,
+  matchesMimeType,
+  MAX_CONTROL_PATTERN_INPUT_LENGTH,
+  MAX_CONTROL_PATTERN_LENGTH,
+  parseBoolean,
+  parseValue,
+  registerTypeHandler,
+  testControlPattern,
+  validateField,
+  type ParsedBoolean,
+} from "./validation.vibe"
 
-export interface FormReference {
-  readonly ownerId: string
-  readonly sessionId: string
+export const formPlugin: Plugin & { descriptionCompressed?: string } = {
+  name: "form",
+  description: "Agent-native conversational forms for data collection",
+  descriptionCompressed: "Conversational forms for structured data collection.",
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const formFeature = (config?.features as Record<string, unknown> | undefined)?.form
+      return (
+        formFeature === true ||
+        (typeof formFeature === "object" &&
+          formFeature !== null &&
+          (formFeature as { enabled?: unknown }).enabled !== false)
+      )
+    },
+  },
+  services: [FormService as unknown as ServiceClass],
+  providers: [formContextProvider],
+  actions: [formAction],
+  evaluators: [formEvaluator as unknown as RegisteredEvaluator],
+  async dispose(runtime: IAgentRuntime) {
+    const service = runtime.getService<FormService>(FormService.serviceType)
+    await service?.stop()
+  },
 }
 
-export effect function readForm(ref: FormReference) {
-  const key = try sessionKey(ref)
-  provide stored(key) {
-    const session = try (try Machine).get()
-    try verifyOwner(ref, session)
-    return session
-  }
-}
-
-export effect function startFormSession(ref: FormReference, definition: {
-  readonly formId: string
-  readonly fields: readonly string[]
-  readonly required: readonly string[]
-  readonly deadline: number
-}) {
-  const key = try sessionKey(ref)
-  provide stored(key) {
-    return try (try Machine).receive({
-      type: "startForm",
-      ownerId: ref.ownerId,
-      formId: definition.formId,
-      visible: [...new Set(definition.fields)],
-      required: [...new Set(definition.required)],
-      deadline: definition.deadline,
-    })
-  }
-}
-
-export type FormEdit =
-  | { readonly type: "recordAnswer"; readonly question: string; readonly answerText: string; readonly confirmed: boolean; readonly visible: string[]; readonly required: string[] }
-  | { readonly type: "confirmAnswer"; readonly question: string }
-  | { readonly type: "stashForm" | "resumeForm" | "cancelForm" | "submitForm" }
-
-export effect function editForm(ref: FormReference, version: number, edit: FormEdit) {
-  const key = try sessionKey(ref)
-  const at = try Clock.currentTimeMillis
-  provide stored(key) {
-    const machine = try Machine
-    try verifyOwner(ref, try machine.get())
-    return try machine.receive({ ...edit, ownerId: ref.ownerId, version, at })
-  }
-}
-
-export effect function expireFormSession(ref: FormReference) {
-  const key = try sessionKey(ref)
-  const at = try Clock.currentTimeMillis
-  provide stored(key) {
-    const machine = try Machine
-    try verifyOwner(ref, try machine.get())
-    return try machine.send({ type: "expireForm", at })
-  }
-}
-
-effect function sessionKey(ref: FormReference) {
-  if (ref.ownerId === "") throw new MissingFormIdentity({ field: "owner" })
-  if (ref.sessionId === "") throw new MissingFormIdentity({ field: "session" })
-  return "form:" + ref.ownerId.length + ":" + ref.ownerId + ":" + ref.sessionId
-}
-
-effect function verifyOwner(ref: FormReference, session: FormSession) {
-  if (session.ownerId !== "" && session.ownerId !== ref.ownerId) {
-    throw new MismatchedFormOwner({ sessionId: ref.sessionId })
-  }
-}
+export default formPlugin

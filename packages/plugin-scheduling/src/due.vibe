@@ -1,0 +1,265 @@
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"
+import type { AnchorRegistry } from "./registries.vibe"
+import type {
+  DispatchResult,
+  OwnerFactsView,
+  ScheduledTask,
+  ScheduledTaskFireResult,
+  ScheduledTaskStatus,
+  ScheduledTaskTrigger,
+} from "./types.vibe"
+
+const MINUTE_MS = 60_000
+export const RENDER_FAILURE_RETRY_MINUTES = 5
+
+export interface ScheduledTaskDueContext {
+  readonly now: Date
+  readonly ownerFacts?: OwnerFactsView
+  readonly anchors?: AnchorRegistry | null
+}
+
+export interface ScheduledTaskDueDecision {
+  readonly due: boolean
+  readonly reason: string
+  readonly occurrenceAtIso?: string
+}
+
+function parseIsoMs(value: unknown): number | null {
+  if (typeof value !== "string" || value.length === 0) return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export function isTerminalTaskStatus(status: ScheduledTaskStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "skipped" ||
+    status === "expired" ||
+    status === "failed" ||
+    status === "dismissed"
+  )
+}
+
+export function isRecurringTrigger(trigger: ScheduledTaskTrigger): boolean {
+  return (
+    trigger.kind === "cron" ||
+    trigger.kind === "interval" ||
+    trigger.kind === "relative_to_anchor" ||
+    trigger.kind === "during_window"
+  )
+}
+
+function cronFieldMatches(field: string, value: number): boolean {
+  if (field === "*") return true
+  if (field.startsWith("*/")) {
+    const step = Number(field.slice(2))
+    return Number.isInteger(step) && step > 0 && value % step === 0
+  }
+  return field.split(",").some((part) => {
+    if (part.includes("-")) {
+      const [lo, hi] = part.split("-").map(Number)
+      return Number.isInteger(lo) && Number.isInteger(hi) && value >= lo! && value <= hi!
+    }
+    return Number(part) === value
+  })
+}
+
+function matchesCronExpression(expression: string, date: Date): boolean {
+  const fields = expression.trim().split(/\s+/)
+  if (fields.length !== 5) return false
+  return (
+    cronFieldMatches(fields[0]!, date.getUTCMinutes()) &&
+    cronFieldMatches(fields[1]!, date.getUTCHours()) &&
+    cronFieldMatches(fields[2]!, date.getUTCDate()) &&
+    cronFieldMatches(fields[3]!, date.getUTCMonth() + 1) &&
+    cronFieldMatches(fields[4]!, date.getUTCDay())
+  )
+}
+
+export function computeNextFireAt(
+  trigger: ScheduledTaskTrigger,
+  fromDate: Date,
+  anchors?: AnchorRegistry | null,
+): string | null {
+  const baseMs = fromDate.getTime()
+  if (trigger.kind === "event" || trigger.kind === "manual" || trigger.kind === "after_task") {
+    return null
+  }
+  if (trigger.kind === "once") {
+    const atMs = parseIsoMs(trigger.atIso)
+    return atMs !== null ? new Date(atMs).toISOString() : null
+  }
+  if (trigger.kind === "interval") {
+    const stepMs = Math.max(1, trigger.everyMinutes) * MINUTE_MS
+    const fromMs = parseIsoMs(trigger.from)
+    const nextMs = fromMs !== null && fromMs > baseMs ? fromMs : baseMs + stepMs
+    const untilMs = parseIsoMs(trigger.until)
+    if (untilMs !== null && nextMs > untilMs) return null
+    return new Date(nextMs).toISOString()
+  }
+  if (trigger.kind === "relative_to_anchor") {
+    const def = anchors?.get(trigger.anchorKey)
+    const hour = def?.defaultHour ?? 9
+    const minute = def?.defaultMinute ?? 0
+    const candidate = new Date(
+      Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate(), hour, minute, 0, 0) +
+        trigger.offsetMinutes * MINUTE_MS,
+    )
+    if (candidate.getTime() <= baseMs) {
+      candidate.setUTCDate(candidate.getUTCDate() + 1)
+    }
+    return candidate.toISOString()
+  }
+  if (trigger.kind === "during_window") {
+    const hour = trigger.windowKey === "evening" ? 18 : 9
+    const candidate = new Date(
+      Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate(), hour, 0, 0, 0),
+    )
+    if (candidate.getTime() <= baseMs) {
+      candidate.setUTCDate(candidate.getUTCDate() + 1)
+    }
+    return candidate.toISOString()
+  }
+  const probe = new Date(Math.ceil(baseMs / MINUTE_MS) * MINUTE_MS)
+  for (let i = 0; i < 60 * 48; i += 1) {
+    if (matchesCronExpression(trigger.expression, probe)) {
+      return probe.toISOString()
+    }
+    probe.setTime(probe.getTime() + MINUTE_MS)
+  }
+  return null
+}
+
+export function isScheduledTaskDue(
+  task: ScheduledTask,
+  ctx: ScheduledTaskDueContext,
+): ScheduledTaskDueDecision {
+  const nowMs = ctx.now.getTime()
+  if (isTerminalTaskStatus(task.state.status) || task.state.status !== "scheduled") {
+    return { due: false, reason: `status_${task.state.status}` }
+  }
+  const snoozedMs = parseIsoMs(task.state.snoozedUntil)
+  if (snoozedMs !== null) {
+    return snoozedMs <= nowMs
+      ? { due: true, reason: "snooze_elapsed", occurrenceAtIso: new Date(snoozedMs).toISOString() }
+      : { due: false, reason: "snoozed" }
+  }
+  const trigger = task.trigger
+  if (trigger.kind === "event" || trigger.kind === "manual" || trigger.kind === "after_task") {
+    return { due: false, reason: `push_trigger_${trigger.kind}` }
+  }
+  if (trigger.kind === "once") {
+    const atMs = parseIsoMs(trigger.atIso)
+    if (atMs === null) return { due: false, reason: "invalid_once_at" }
+    return atMs <= nowMs
+      ? { due: true, reason: "once_due", occurrenceAtIso: new Date(atMs).toISOString() }
+      : { due: false, reason: "once_in_future" }
+  }
+  const nextMs = parseIsoMs(task.state.nextFireAt)
+  if (nextMs !== null) {
+    return nextMs <= nowMs
+      ? { due: true, reason: `${trigger.kind}_due`, occurrenceAtIso: new Date(nextMs).toISOString() }
+      : { due: false, reason: `${trigger.kind}_not_yet` }
+  }
+  const computed = computeNextFireAt(trigger, new Date(nowMs - MINUTE_MS), ctx.anchors)
+  const computedMs = parseIsoMs(computed)
+  if (computedMs !== null && computedMs <= nowMs) {
+    return { due: true, reason: `${trigger.kind}_due`, occurrenceAtIso: computed! }
+  }
+  return { due: false, reason: `${trigger.kind}_waiting` }
+}
+
+export function isCompletionTimeoutDue(task: ScheduledTask, now: Date): boolean {
+  if (task.state.status !== "fired") return false
+  const firedMs = parseIsoMs(task.state.firedAt)
+  if (firedMs === null) return false
+  const timeoutMinutes = task.completionCheck?.followupAfterMinutes ?? 60
+  return now.getTime() - firedMs >= timeoutMinutes * MINUTE_MS
+}
+
+function subsetDeepEquals(expected: unknown, actual: unknown): boolean {
+  if (expected === actual) return true
+  if (Array.isArray(expected)) {
+    return (
+      Array.isArray(actual) &&
+      actual.length === expected.length &&
+      expected.every((item, idx) => subsetDeepEquals(item, actual[idx]))
+    )
+  }
+  if (
+    typeof expected === "object" &&
+    expected !== null &&
+    typeof actual === "object" &&
+    actual !== null &&
+    !Array.isArray(actual)
+  ) {
+    return Object.entries(expected as Record<string, unknown>).every(([key, value]) =>
+      subsetDeepEquals(value, (actual as Record<string, unknown>)[key]),
+    )
+  }
+  return false
+}
+
+export function eventFilterMatches(filter: unknown, payload: unknown): boolean {
+  if (filter === undefined || filter === null) return true
+  return subsetDeepEquals(filter, payload)
+}
+
+export function normalizeScheduledEventPayload(payload: unknown): Record<string, unknown> {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    return { ...(payload as Record<string, unknown>) }
+  }
+  return payload === undefined ? {} : { value: payload }
+}
+
+export interface EventBridgeRunner {
+  list(filter?: { readonly status?: ScheduledTaskStatus }): Promise<readonly ScheduledTask[]>
+  fire(taskId: string, options?: { readonly manual?: boolean; readonly eventPayload?: Record<string, unknown> }): Promise<ScheduledTaskFireResult>
+}
+
+export interface EventTriggeredFireOutcome {
+  readonly results: readonly { readonly taskId: string; readonly result: ScheduledTaskFireResult }[]
+  readonly errors: readonly { readonly taskId: string; readonly message: string }[]
+}
+
+export async function fireEventTriggeredTasks(args: {
+  readonly runner: EventBridgeRunner
+  readonly eventKind: string
+  readonly payload?: unknown
+}): Promise<EventTriggeredFireOutcome> {
+  const scheduled = await args.runner.list({ status: "scheduled" })
+  const normalizedPayload = normalizeScheduledEventPayload(args.payload)
+  const results: Array<{ taskId: string; result: ScheduledTaskFireResult }> = []
+  const errors: Array<{ taskId: string; message: string }> = []
+  for (const task of scheduled) {
+    if (task.trigger.kind !== "event") continue
+    if (task.trigger.eventKind !== args.eventKind) continue
+    if (!eventFilterMatches(task.trigger.filter, normalizedPayload)) continue
+    try {
+      const result = await args.runner.fire(task.id, { manual: false, eventPayload: normalizedPayload })
+      results.push({ taskId: task.id, result })
+    } catch (error) {
+      errors.push({ taskId: task.id, message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  return { results, errors }
+}
+
+export function buildDeterministicDispatchTitle(task: Pick<ScheduledTask, "title" | "kind">): string {
+  const clean = task.title.trim()
+  return clean.length > 0 ? clean : `Scheduled ${task.kind}`
+}
+
+export function buildDeterministicDispatchBody(task: Pick<ScheduledTask, "title" | "promptInstructions">): string {
+  const body = task.promptInstructions.trim()
+  return body.length > 0 ? body : task.title.trim()
+}
+
+export function renderFailureDispatchResult(reason = "render_failed"): DispatchResult {
+  return {
+    ok: false,
+    reason: "transport_error",
+    message: reason,
+    retryAfterMinutes: RENDER_FAILURE_RETRY_MINUTES,
+  }
+}

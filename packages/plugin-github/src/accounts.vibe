@@ -1,0 +1,533 @@
+// spec/github/index.md, "Story: List pull requests and triage notifications under the selected account"
+import type { GitHubIdentity } from "./types.vibe"
+
+export const DEFAULT_GITHUB_USER_ACCOUNT_ID = "user"
+export const DEFAULT_GITHUB_AGENT_ACCOUNT_ID = "agent"
+
+export interface GitHubAccountConfig {
+  readonly accountId: string
+  readonly role: GitHubIdentity
+  readonly token: string
+  readonly label?: string
+}
+
+export interface GitHubAccountSelection {
+  readonly accountId?: string
+  readonly role: GitHubIdentity
+}
+
+export function defaultGitHubAccountIdForRole(role: GitHubIdentity): string {
+  return role === "user" ? DEFAULT_GITHUB_USER_ACCOUNT_ID : DEFAULT_GITHUB_AGENT_ACCOUNT_ID
+}
+
+export function normalizeGitHubAccountId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function normalizeRole(value: unknown): GitHubIdentity | undefined {
+  return value === "user" || value === "agent" ? value : undefined
+}
+
+export function resolveGitHubAccountSelection(
+  options: Record<string, unknown> | undefined,
+  defaultRole: GitHubIdentity,
+): GitHubAccountSelection {
+  const requestedAccountId = normalizeGitHubAccountId(options?.accountId)
+  const requestedRole = normalizeRole(options?.as)
+  return {
+    accountId: requestedAccountId,
+    role: requestedRole ?? normalizeRole(requestedAccountId) ?? defaultRole,
+  }
+}
+
+export function resolveGitHubAccount(
+  accounts: readonly GitHubAccountConfig[],
+  selection: GitHubAccountSelection,
+): GitHubAccountConfig | null {
+  if (selection.accountId) {
+    return accounts.find((account) => account.accountId === selection.accountId) ?? null
+  }
+  const legacyId = defaultGitHubAccountIdForRole(selection.role)
+  return (
+    accounts.find((account) => account.accountId === legacyId) ??
+    accounts.find((account) => account.role === selection.role) ??
+    null
+  )
+}
+
+module node {
+  import { createHash, randomBytes } from "node:crypto"
+  import {
+    ElizaError,
+    logger,
+    type ConnectorAccount,
+    type ConnectorAccountManager,
+    type ConnectorAccountPatch,
+    type ConnectorAccountProvider,
+    type ConnectorAccountPurpose,
+    type ConnectorAccountRole,
+    type ConnectorOAuthCallbackRequest,
+    type ConnectorOAuthCallbackResult,
+    type ConnectorOAuthStartRequest,
+    type ConnectorOAuthStartResult,
+    type IAgentRuntime,
+    type SearchCategoryRegistration,
+  } from "@elizaos/core"
+  import { listConnectorAccounts, loadConnectorOAuthAccessToken, persistConnectorCredentialRefs } from "./credentials.vibe"
+  import { GITHUB_SERVICE_TYPE, type GitHubIdentity } from "./types.vibe"
+  import {
+    DEFAULT_GITHUB_AGENT_ACCOUNT_ID,
+    DEFAULT_GITHUB_USER_ACCOUNT_ID,
+    normalizeGitHubAccountId,
+    type GitHubAccountConfig,
+  } from "./accounts.vibe"
+
+  type RawAccountRecord = Record<string, unknown>
+
+  function nonEmptyString(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+  }
+
+  function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
+    return nonEmptyString(runtime.getSetting?.(key))
+  }
+
+  function parseRole(value: unknown): GitHubIdentity | undefined {
+    return value === "user" || value === "agent" ? value : undefined
+  }
+
+  function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
+    if (!raw) return []
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw) as unknown
+    } catch (error) {
+      throw new ElizaError("GITHUB_ACCOUNTS is not valid JSON — fix or remove the value.", {
+        code: "GITHUB_ACCOUNTS_INVALID",
+        cause: error,
+      })
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is RawAccountRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    }
+    if (parsed && typeof parsed === "object") {
+      return Object.entries(parsed as Record<string, unknown>)
+        .filter(([, value]) => Boolean(value) && typeof value === "object")
+        .map(([id, value]) => ({ ...(value as RawAccountRecord), accountId: (value as RawAccountRecord).accountId ?? id }))
+    }
+    throw new ElizaError("GITHUB_ACCOUNTS must be a JSON object or array of account records.", {
+      code: "GITHUB_ACCOUNTS_INVALID",
+    })
+  }
+
+  function readRawField(record: RawAccountRecord, keys: readonly string[]): string | undefined {
+    const credentials = record.credentials && typeof record.credentials === "object" ? (record.credentials as RawAccountRecord) : {}
+    const settings = record.settings && typeof record.settings === "object" ? (record.settings as RawAccountRecord) : {}
+    for (const source of [record, credentials, settings]) {
+      for (const key of keys) {
+        const value = nonEmptyString(source[key])
+        if (value) return value
+      }
+    }
+    return undefined
+  }
+
+  function accountFromRecord(record: RawAccountRecord): GitHubAccountConfig | null {
+    const accountId = normalizeGitHubAccountId(record.accountId ?? record.id ?? record.name)
+    const role = parseRole(record.role) ?? parseRole(record.as) ?? parseRole(accountId)
+    const token = readRawField(record, ["GITHUB_PAT", "GITHUB_TOKEN", "GITHUB_ACCESS_TOKEN", "token", "pat", "accessToken", "access"])
+    if (!accountId || !role || !token) return null
+    return { accountId, role, token, label: nonEmptyString(record.label ?? record.displayName) }
+  }
+
+  function addAccount(accounts: Map<string, GitHubAccountConfig>, account: GitHubAccountConfig | null): void {
+    if (account) accounts.set(account.accountId, account)
+  }
+
+  function legacyAccount(
+    runtime: IAgentRuntime,
+    role: GitHubIdentity,
+    accountId: string,
+    primaryKey: string,
+    fallbackKey: string,
+  ): GitHubAccountConfig | null {
+    const token = readSetting(runtime, primaryKey) ?? readSetting(runtime, fallbackKey)
+    return token ? { accountId, role, token } : null
+  }
+
+  export function readGitHubAccounts(runtime: IAgentRuntime): GitHubAccountConfig[] {
+    const accounts = new Map<string, GitHubAccountConfig>()
+    const characterConfig = runtime.character?.settings?.github as { accounts?: unknown } | undefined
+    const characterAccounts = characterConfig?.accounts
+    if (Array.isArray(characterAccounts)) {
+      for (const item of characterAccounts) {
+        if (item && typeof item === "object") addAccount(accounts, accountFromRecord(item as RawAccountRecord))
+      }
+    } else if (characterAccounts && typeof characterAccounts === "object") {
+      for (const [id, value] of Object.entries(characterAccounts as Record<string, unknown>)) {
+        if (value && typeof value === "object") {
+          addAccount(accounts, accountFromRecord({ ...(value as RawAccountRecord), accountId: (value as RawAccountRecord).accountId ?? id }))
+        }
+      }
+    }
+    for (const record of parseAccountsJson(readSetting(runtime, "GITHUB_ACCOUNTS"))) {
+      addAccount(accounts, accountFromRecord(record))
+    }
+    addAccount(accounts, legacyAccount(runtime, "user", readSetting(runtime, "GITHUB_USER_ACCOUNT_ID") ?? DEFAULT_GITHUB_USER_ACCOUNT_ID, "GITHUB_USER_PAT", "ELIZA_E2E_GITHUB_USER_PAT"))
+    addAccount(accounts, legacyAccount(runtime, "agent", readSetting(runtime, "GITHUB_AGENT_ACCOUNT_ID") ?? DEFAULT_GITHUB_AGENT_ACCOUNT_ID, "GITHUB_AGENT_PAT", "ELIZA_E2E_GITHUB_AGENT_PAT"))
+    return Array.from(accounts.values())
+  }
+
+  export async function readGitHubAccountsWithConnectorCredentials(runtime: IAgentRuntime): Promise<GitHubAccountConfig[]> {
+    const accounts = new Map<string, GitHubAccountConfig>()
+    for (const account of readGitHubAccounts(runtime)) accounts.set(account.accountId, account)
+    const connectorAccounts = await listConnectorAccounts(runtime, GITHUB_SERVICE_TYPE)
+    for (const account of connectorAccounts) {
+      if (account.status !== "connected") continue
+      const token = await loadConnectorOAuthAccessToken({ runtime, provider: GITHUB_SERVICE_TYPE, accountId: account.id, caller: "plugin-github" })
+      if (!token) continue
+      const role: GitHubIdentity = typeof account.role === "string" && account.role.toUpperCase() === "AGENT" ? "agent" : "user"
+      accounts.set(account.id, { accountId: account.id, role, token, label: account.label ?? account.displayHandle })
+    }
+    if (!Array.from(accounts.values()).some((account) => account.role === "user")) {
+      addAccount(accounts, legacyAccount(runtime, "user", readSetting(runtime, "GITHUB_USER_ACCOUNT_ID") ?? DEFAULT_GITHUB_USER_ACCOUNT_ID, "GITHUB_TOKEN", "GITHUB_TOKEN"))
+    }
+    return Array.from(accounts.values())
+  }
+
+  export interface GitHubOAuthEndpoints {
+    readonly authorizationEndpoint: string
+    readonly tokenEndpoint: string
+    readonly userEndpoint: string
+    readonly requestTimeoutMs: number
+  }
+
+  const DEFAULT_GITHUB_OAUTH_ENDPOINTS: GitHubOAuthEndpoints = {
+    authorizationEndpoint: "https://github.com/login/oauth/authorize",
+    tokenEndpoint: "https://github.com/login/oauth/access_token",
+    userEndpoint: "https://api.github.com/user",
+    requestTimeoutMs: 15_000,
+  }
+
+  const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
+    "posting" as ConnectorAccountPurpose,
+    "reading" as ConnectorAccountPurpose,
+    "admin" as ConnectorAccountPurpose,
+  ]
+
+  export class GitHubOAuthHttpError extends Error {
+    readonly statusCode: number
+    readonly retryAfterSeconds?: number
+
+    constructor(message: string, statusCode: number, retryAfterSeconds?: number) {
+      super(message)
+      this.name = "GitHubOAuthHttpError"
+      this.statusCode = statusCode
+      this.retryAfterSeconds = retryAfterSeconds
+    }
+  }
+
+  function readClientConfig(runtime: IAgentRuntime): { readonly clientId: string; readonly clientSecret: string; readonly redirectUri: string } {
+    const clientId = readSetting(runtime, "GITHUB_OAUTH_CLIENT_ID")
+    const clientSecret = readSetting(runtime, "GITHUB_OAUTH_CLIENT_SECRET")
+    const redirectUri = readSetting(runtime, "GITHUB_OAUTH_REDIRECT_URI")
+    if (!clientId || !clientSecret || !redirectUri) {
+      throw new Error("GitHub OAuth requires GITHUB_OAUTH_CLIENT_ID, GITHUB_OAUTH_CLIENT_SECRET, and GITHUB_OAUTH_REDIRECT_URI to be configured.")
+    }
+    return { clientId, clientSecret, redirectUri }
+  }
+
+  function registeredRedirectUri(requested: string | undefined, configured: string): string {
+    const trimmed = nonEmptyString(requested)
+    if (trimmed && trimmed !== configured) {
+      throw new Error("GitHub OAuth redirect URI must match the provider registration.")
+    }
+    return configured
+  }
+
+  function retryAfterFromHeaders(headers: Headers): number | undefined {
+    const value = headers.get("retry-after")?.trim()
+    if (!value) return undefined
+    const seconds = Number(value)
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds
+    const date = Date.parse(value)
+    return Number.isFinite(date) ? Math.max(0, Math.ceil((date - Date.now()) / 1000)) : undefined
+  }
+
+  function roleFromMetadata(metadata: unknown, accountId: string | undefined): ConnectorAccountRole {
+    const record = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? (metadata as Record<string, unknown>) : {}
+    const normalized = nonEmptyString(record.role ?? record.accountRole ?? record.requestedRole)?.toUpperCase()
+    if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") return normalized
+    return accountId === DEFAULT_GITHUB_AGENT_ACCOUNT_ID ? "AGENT" : "OWNER"
+  }
+
+  function createProviderWithEndpoints(runtime: IAgentRuntime, endpoints: GitHubOAuthEndpoints): ConnectorAccountProvider {
+    return {
+      provider: GITHUB_SERVICE_TYPE,
+      label: "GitHub",
+      listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
+        const stored = await manager.getStorage().listAccounts(GITHUB_SERVICE_TYPE)
+        if (stored.length > 0) return stored
+        const now = Date.now()
+        return readGitHubAccounts(runtime).map((account) => ({
+          id: account.accountId,
+          provider: GITHUB_SERVICE_TYPE,
+          label: account.label ?? `GitHub ${account.role} (${account.accountId})`,
+          role: account.role === "user" ? ("OWNER" as ConnectorAccountRole) : ("AGENT" as ConnectorAccountRole),
+          purpose: DEFAULT_PURPOSES,
+          accessGate: "open",
+          status: "connected",
+          displayHandle: account.accountId,
+          createdAt: now,
+          updatedAt: now,
+          metadata: { authMethod: "pat", source: "env" },
+        }))
+      },
+      createAccount: async (input: ConnectorAccountPatch) => ({
+        ...input,
+        provider: GITHUB_SERVICE_TYPE,
+        role: input.role ?? "OWNER",
+        purpose: input.purpose ?? DEFAULT_PURPOSES,
+        accessGate: input.accessGate ?? "open",
+        status: input.status ?? "pending",
+      }),
+      patchAccount: async (_accountId: string, patch: ConnectorAccountPatch) => ({ ...patch, provider: GITHUB_SERVICE_TYPE }),
+      deleteAccount: async () => undefined,
+      startOAuth: async (request: ConnectorOAuthStartRequest): Promise<ConnectorOAuthStartResult> => {
+        const config = readClientConfig(runtime)
+        const redirectUri = registeredRedirectUri(request.redirectUri, config.redirectUri)
+        const scopes = request.scopes && request.scopes.length > 0 ? request.scopes : ["repo", "read:user", "user:email", "notifications"]
+        const codeVerifier = randomBytes(32).toString("base64url")
+        const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url")
+        const params = new URLSearchParams({
+          client_id: config.clientId,
+          redirect_uri: redirectUri,
+          state: request.flow.state,
+          scope: scopes.join(" "),
+          allow_signup: "false",
+          response_type: "code",
+          code_challenge: codeChallenge,
+          code_challenge_method: "S256",
+        })
+        return {
+          authUrl: `${endpoints.authorizationEndpoint}?${params.toString()}`,
+          redirectUri,
+          codeVerifier,
+          metadata: { ...request.metadata, requestedScopes: scopes, redirectUri },
+        }
+      },
+      completeOAuth: async (request: ConnectorOAuthCallbackRequest, manager: ConnectorAccountManager): Promise<ConnectorOAuthCallbackResult> => {
+        const code = nonEmptyString(request.code)
+        if (!code) throw new Error("GitHub OAuth callback is missing an authorization code.")
+        const config = readClientConfig(runtime)
+        const redirectUri = registeredRedirectUri(request.flow.redirectUri, config.redirectUri)
+        const codeVerifier = nonEmptyString(request.flow.codeVerifier)
+        if (!codeVerifier) throw new Error("GitHub OAuth flow is missing its one-time PKCE verifier; start the flow again.")
+        const tokenRes = await fetch(endpoints.tokenEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+          signal: AbortSignal.timeout(endpoints.requestTimeoutMs),
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            code,
+            redirect_uri: redirectUri,
+            code_verifier: codeVerifier,
+          }).toString(),
+        })
+        if (!tokenRes.ok) {
+          throw new GitHubOAuthHttpError(`GitHub token exchange failed with ${tokenRes.status}: ${await tokenRes.text()}`, tokenRes.status, retryAfterFromHeaders(tokenRes.headers))
+        }
+        const tokens = (await tokenRes.json()) as {
+          access_token?: string
+          token_type?: string
+          scope?: string
+          refresh_token?: string
+          expires_in?: number
+          error?: string
+          error_description?: string
+        }
+        if (tokens.error) throw new Error(`GitHub token exchange returned error ${tokens.error}: ${tokens.error_description ?? "no description"}`)
+        if (!tokens.access_token) throw new Error("GitHub token exchange returned no access_token.")
+        const userRes = await fetch(endpoints.userEndpoint, {
+          headers: { Authorization: `Bearer ${tokens.access_token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+          signal: AbortSignal.timeout(endpoints.requestTimeoutMs),
+        })
+        if (!userRes.ok) throw new GitHubOAuthHttpError(`GitHub /user request failed with ${userRes.status}`, userRes.status, retryAfterFromHeaders(userRes.headers))
+        const user = (await userRes.json()) as { login?: string; id?: number; name?: string; email?: string; type?: string }
+        const login = nonEmptyString(user?.login)
+        if (!login) throw new Error("GitHub /user payload did not include a login.")
+        const externalId = nonEmptyString(user.id ? String(user.id) : undefined)
+        const expiresAt = typeof tokens.expires_in === "number" ? Date.now() + tokens.expires_in * 1000 : undefined
+        const accountMetadata = {
+          authMethod: "oauth",
+          login,
+          githubUserId: user.id ?? null,
+          email: nonEmptyString(user.email) ?? null,
+          type: nonEmptyString(user.type) ?? null,
+          tokenType: nonEmptyString(tokens.token_type) ?? "bearer",
+          grantedScopes: (tokens.scope ?? "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean),
+          hasRefreshToken: Boolean(tokens.refresh_token),
+          expiresAt,
+          oauthCredentialVersion: String(Date.now()),
+        }
+        const opaqueId = `conn_${createHash("sha256").update(`github:${externalId ?? login}`).digest("base64url").slice(0, 24)}`
+        const pendingAccount = await manager.upsertAccount(
+          GITHUB_SERVICE_TYPE,
+          {
+            provider: GITHUB_SERVICE_TYPE,
+            role: roleFromMetadata(request.flow.metadata, request.flow.accountId),
+            purpose: DEFAULT_PURPOSES,
+            accessGate: "open",
+            status: "pending",
+            externalId: externalId ?? login,
+            displayHandle: login,
+            label: nonEmptyString(user.name) ?? login,
+            metadata: accountMetadata,
+          },
+          request.flow.accountId ?? opaqueId,
+        )
+        const credentialPersist = await persistConnectorCredentialRefs({
+          runtime,
+          manager,
+          provider: GITHUB_SERVICE_TYPE,
+          accountIdForRef: pendingAccount.id,
+          storageAccountId: pendingAccount.id,
+          caller: "plugin-github",
+          credentials: [
+            {
+              credentialType: "oauth.tokens",
+              value: JSON.stringify({
+                access_token: tokens.access_token,
+                ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+                ...(expiresAt !== undefined ? { expires_at: expiresAt } : {}),
+                token_type: nonEmptyString(tokens.token_type) ?? "bearer",
+                scope: tokens.scope ?? "",
+              }),
+              ...(expiresAt !== undefined ? { expiresAt } : {}),
+              metadata: { provider: GITHUB_SERVICE_TYPE, hasRefreshToken: Boolean(tokens.refresh_token) },
+            },
+          ],
+        })
+        logger.info({ src: "plugin:github:connector", login }, "GitHub OAuth completed")
+        return {
+          account: {
+            ...pendingAccount,
+            id: pendingAccount.id,
+            provider: GITHUB_SERVICE_TYPE,
+            status: "connected",
+            metadata: {
+              ...accountMetadata,
+              credentialRefs: credentialPersist.refs,
+              credentialRefStorage: {
+                vaultAvailable: credentialPersist.vaultAvailable,
+                storageAvailable: credentialPersist.storageAvailable,
+              },
+            },
+          },
+          flow: { status: "completed" },
+        }
+      },
+    }
+  }
+
+  export function createGitHubConnectorAccountProvider(runtime: IAgentRuntime): ConnectorAccountProvider {
+    return createProviderWithEndpoints(runtime, DEFAULT_GITHUB_OAUTH_ENDPOINTS)
+  }
+
+  export function createGitHubConnectorAccountProviderForTest(
+    runtime: IAgentRuntime,
+    endpoints: GitHubOAuthEndpoints,
+  ): ConnectorAccountProvider {
+    if (process.env.NODE_ENV !== "test") {
+      throw new Error("GitHub OAuth endpoint overrides are available only when NODE_ENV=test.")
+    }
+    for (const endpoint of [endpoints.authorizationEndpoint, endpoints.tokenEndpoint, endpoints.userEndpoint]) {
+      const url = new URL(endpoint)
+      if (
+        (url.protocol !== "http:" && url.protocol !== "https:") ||
+        (url.hostname !== "127.0.0.1" && url.hostname !== "localhost" && url.hostname !== "[::1]") ||
+        url.username !== "" ||
+        url.password !== "" ||
+        url.search !== "" ||
+        url.hash !== ""
+      ) {
+        throw new Error("GitHub OAuth test endpoints must use an explicit credential-free loopback URL without query or fragment data.")
+      }
+    }
+    if (!Number.isSafeInteger(endpoints.requestTimeoutMs) || endpoints.requestTimeoutMs <= 0 || endpoints.requestTimeoutMs > 60_000) {
+      throw new Error("GitHub OAuth test request timeout must be finite and between 1 and 60000 milliseconds.")
+    }
+    return createProviderWithEndpoints(runtime, endpoints)
+  }
+
+  export const GITHUB_PULL_REQUESTS_SEARCH_CATEGORY: SearchCategoryRegistration = {
+    category: "github_pull_requests",
+    label: "GitHub pull requests",
+    description: "Search GitHub pull requests in a repo or across accessible repositories.",
+    contexts: ["code", "automation"],
+    filters: [
+      { name: "query", label: "Query", type: "string" },
+      { name: "repo", label: "Repository", description: "Repository in owner/name format. Omit to search accessible repositories.", type: "string" },
+      {
+        name: "state",
+        label: "State",
+        description: "Pull request state.",
+        type: "enum",
+        default: "open",
+        options: [
+          { label: "Open", value: "open" },
+          { label: "Closed", value: "closed" },
+          { label: "All", value: "all" },
+        ],
+      },
+      { name: "author", label: "Author", description: "GitHub login to filter by.", type: "string" },
+      {
+        name: "as",
+        label: "Identity",
+        description: "Configured GitHub identity token to use.",
+        type: "enum",
+        default: "agent",
+        options: [
+          { label: "Agent", value: "agent" },
+          { label: "User", value: "user" },
+        ],
+      },
+      { name: "accountId", label: "Account", description: "Optional configured GitHub account id. Defaults by identity role.", type: "string" },
+      { name: "limit", label: "Limit", description: "Maximum pull requests to return.", type: "number", default: 50 },
+    ],
+    resultSchemaSummary: "PRSummary[] with repo, number, title, author, state, and url.",
+    capabilities: ["pull-requests", "issues-search", "repositories"],
+    source: "plugin:github",
+    serviceType: "github",
+  }
+
+  export function registerGitHubSearchCategory(runtime: IAgentRuntime): void {
+    try {
+      runtime.getSearchCategory?.(GITHUB_PULL_REQUESTS_SEARCH_CATEGORY.category, { includeDisabled: true })
+    } catch {
+      runtime.registerSearchCategory?.(GITHUB_PULL_REQUESTS_SEARCH_CATEGORY)
+    }
+  }
+}
+
+import {
+  GITHUB_PULL_REQUESTS_SEARCH_CATEGORY,
+  GitHubOAuthHttpError,
+  createGitHubConnectorAccountProvider,
+  createGitHubConnectorAccountProviderForTest,
+  readGitHubAccounts,
+  readGitHubAccountsWithConnectorCredentials,
+  registerGitHubSearchCategory,
+} from node
+
+export {
+  GITHUB_PULL_REQUESTS_SEARCH_CATEGORY,
+  GitHubOAuthHttpError,
+  createGitHubConnectorAccountProvider,
+  createGitHubConnectorAccountProviderForTest,
+  readGitHubAccounts,
+  readGitHubAccountsWithConnectorCredentials,
+  registerGitHubSearchCategory,
+}

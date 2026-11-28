@@ -1,0 +1,138 @@
+// spec/nativeWebsiteblocker/index.md, "Story: See which websites my device is actually blocking"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  WebsiteBlockerWeb,
+  applyWebsiteBlock,
+  createNativeWebsiteBlockerBackend,
+  createWebsiteBlockerSession,
+  normalizeWebsiteHostname,
+  validateStartWebsiteBlockOptions,
+} from "../src/index.vibe"
+
+module testServer {
+  import http from "node:http"
+
+  export async function startMockWebsiteBlockerServer(): Promise<{ url: string; close: () => Promise<void> }> {
+    let activeWebsites: string[] = []
+    let active = false
+    const server = http.createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (c: Buffer) => chunks.push(c))
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8")
+        const body = raw ? (JSON.parse(raw) as { websites?: string[]; durationMinutes?: number | null }) : {}
+        const statusPayload = () => ({
+          status: active ? "active" : "inactive",
+          available: true,
+          active,
+          hostsFilePath: "/etc/hosts",
+          endsAt: null,
+          websites: activeWebsites,
+          requestedWebsites: activeWebsites,
+          blockedWebsites: activeWebsites,
+          allowedWebsites: [],
+          matchMode: "subdomain",
+          canUnblockEarly: true,
+          requiresElevation: false,
+          engine: "hosts-file",
+          platform: "darwin",
+          supportsElevationPrompt: false,
+          elevationPromptMethod: null,
+        })
+        res.setHeader("Content-Type", "application/json")
+        if (req.url === "/api/website-blocker" && req.method === "GET") {
+          res.end(JSON.stringify(statusPayload()))
+          return
+        }
+        if (req.url === "/api/website-blocker" && req.method === "PUT") {
+          active = true
+          activeWebsites = body.websites ?? []
+          res.end(JSON.stringify({
+            success: true,
+            endsAt: null,
+            request: { websites: activeWebsites, durationMinutes: body.durationMinutes ?? null },
+          }))
+          return
+        }
+        if (req.url === "/api/website-blocker" && req.method === "DELETE") {
+          active = false
+          activeWebsites = []
+          res.end(JSON.stringify({
+            success: true,
+            removed: true,
+            status: { active: false, endsAt: null, websites: [], canUnblockEarly: true, requiresElevation: false },
+          }))
+          return
+        }
+        if (req.url === "/api/permissions/website-blocking" || req.url === "/api/permissions/website-blocking/request") {
+          res.end(JSON.stringify({ status: "granted", canRequest: true, engine: "hosts-file" }))
+          return
+        }
+        if (req.url === "/api/permissions/website-blocking/open-settings") {
+          res.end(JSON.stringify({ opened: true, target: "runtime", actualTarget: "runtime", reason: null }))
+          return
+        }
+        res.statusCode = 404
+        res.end(JSON.stringify({ error: "not found" }))
+      })
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    const addr = server.address()
+    const port = typeof addr === "object" && addr ? addr.port : 0
+    return {
+      url: `http://127.0.0.1:${port}`,
+      close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
+    }
+  }
+}
+import { startMockWebsiteBlockerServer } from testServer
+
+describe('plugin-native-websiteblocker (spec/nativeWebsiteblocker/index.md, "Story: See which websites my device is actually blocking")', () => {
+  it('normalizes hostnames, validates start options, and drives real HTTP backend + session (spec/nativeWebsiteblocker/session.md, "Story: Track an active website block session from install through removal or expiry")', async () => {
+    assert.strictEqual(normalizeWebsiteHostname("https://EXAMPLE.com/path"), "example.com")
+    assert.strictEqual(normalizeWebsiteHostname("*.news.example.org."), "news.example.org")
+    assert.strictEqual(normalizeWebsiteHostname("javascript:alert(1)"), null)
+    assert.deepStrictEqual(validateStartWebsiteBlockOptions({ websites: ["example.com"], durationMinutes: "manual" }), {
+      websites: ["example.com"],
+      durationMinutes: null,
+    })
+
+    const server = await startMockWebsiteBlockerServer()
+    try {
+      const web = new WebsiteBlockerWeb({ apiBase: server.url })
+      const backend = createNativeWebsiteBlockerBackend(web)
+      const perm = await backend.getPermissionState()
+      assert.strictEqual(perm.status, "granted")
+      const started = await backend.startBlock({ websites: ["example.com"], durationMinutes: 30 })
+      assert.strictEqual(started.success, true)
+      assert.strictEqual((await backend.getStatus()).active, true)
+      const stopped = await backend.stopBlock()
+      assert.strictEqual(stopped.success, true)
+      assert.strictEqual((await backend.getStatus()).active, false)
+      const opened = await web.openSettings()
+      assert.strictEqual(opened.opened, true)
+    } finally {
+      await server.close()
+    }
+
+    const session = createWebsiteBlockerSession()
+    assert.strictEqual(session.start(false, 1, 100, 0), false)
+    assert.strictEqual(session.start(true, 2, 100, 1000), true)
+    assert.strictEqual(session.expire(1000), true)
+    assert.strictEqual(session.state().active, false)
+  })
+
+  it.effect('enforces spec policy in applyWebsiteBlock over real loopback server (spec/nativeWebsiteblocker/index.md, "A block is authorized only by the selected engine and its normalized domain scope")', effect () => {
+    const server = try Effect.promise(() => startMockWebsiteBlockerServer())
+    try Effect.ensuring(
+      effect {
+        const web = new WebsiteBlockerWeb({ apiBase: server.url })
+        const result = try applyWebsiteBlock({ domains: ["Example.COM", "example.com"], durationMinutes: 15 }, web)
+        try Effect.try(() => assert.strictEqual(result.success, true))
+        const refused = try Effect.exit(applyWebsiteBlock({ domains: [], durationMinutes: 15 }, web))
+        try Effect.try(() => assert.strictEqual(refused._tag, "Failure"))
+      },
+      Effect.promise(() => server.close()),
+    )
+  })
+})

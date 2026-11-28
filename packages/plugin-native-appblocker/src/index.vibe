@@ -2,12 +2,22 @@
 import type { AppBlockerPlugin } from "./native-contract.vibe"
 
 export type * from "./native-contract.vibe"
+export { AppBlockerWeb, validateBlockAppsOptions } from "./web.vibe"
+export {
+  createNativeAppBlockerBackend,
+  type BackendAppBlockerPermissionResult,
+  type BackendAppBlockerStatus,
+  type NativeAppBlockerBackend,
+} from "./backend.vibe"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { AppBlockerPlugin } from "./native-contract.vibe"
+  import { AppBlockerWeb } from "./web.vibe"
 
-  export const native = registerPlugin<AppBlockerPlugin>("ElizaAppBlocker")
+  export const native = registerPlugin<AppBlockerPlugin>("ElizaAppBlocker", {
+    web: () => Promise.resolve(new AppBlockerWeb()),
+  })
 }
 import { native } from capacitor
 
@@ -15,6 +25,16 @@ export const AppBlocker = native
 
 import { nativeReply } from "@elizaos/os-bridges"
 import { mayStartAppBlock, type AppBlockEngine, type AppBlockInterval } from "../gen/nativeAppblocker.effect.vibe"
+import {
+  canExpireAppBlockSession,
+  canStartAppBlockSession,
+  canStopAppBlockSession,
+  expireAppBlockSession,
+  initial as initialSession,
+  startAppBlockSession,
+  stopAppBlockSession,
+  type AppBlockSessionState,
+} from "../gen/nativeAppblocker__session.effect.vibe"
 
 const BlockStatus = Schema.Struct({
   engine: Schema.Literals(["family-controls", "usage-stats-overlay", "none"]),
@@ -30,6 +50,35 @@ const BlockResult = Schema.Struct({
 })
 
 export error AppBlockSelectionRefused
+
+export interface AppBlockerSession {
+  readonly state: () => AppBlockSessionState
+  readonly start: (granted: boolean, selectedCount: number, nowMs: number, deadlineMs: number) => boolean
+  readonly stop: () => boolean
+  readonly expire: (nowMs: number) => boolean
+}
+
+export function createAppBlockerSession(): AppBlockerSession {
+  let current: AppBlockSessionState = initialSession
+  return {
+    state: () => current,
+    start(granted, selectedCount, nowMs, deadlineMs) {
+      if (!canStartAppBlockSession(current, granted, selectedCount, nowMs, deadlineMs)) return false
+      current = startAppBlockSession(current, granted, selectedCount, nowMs, deadlineMs)
+      return true
+    },
+    stop() {
+      if (!canStopAppBlockSession(current)) return false
+      current = stopAppBlockSession(current)
+      return true
+    },
+    expire(nowMs) {
+      if (!canExpireAppBlockSession(current, nowMs)) return false
+      current = expireAppBlockSession(current, nowMs)
+      return true
+    },
+  }
+}
 
 export effect function applyAppBlock(options: Parameters<AppBlockerPlugin["blockApps"]>[0], port: AppBlockerPlugin = AppBlocker) {
   const status = try nativeReply("ElizaAppBlocker", "getStatus", BlockStatus, () => port.getStatus())

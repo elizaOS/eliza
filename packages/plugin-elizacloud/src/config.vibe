@@ -1,0 +1,140 @@
+// spec/elizaCloud/index.md, "The model request and readiness lookup use the same configured identity"; spec/elizaCloud/inference.md, "Chat-brain arbitration disables only chat slots while preserving capability handlers"
+import { cloudServiceType, type CloudLinkService } from "@elizaos/agent-host"
+import { ModelType, type IAgentRuntime, type ModelTypeName } from "@elizaos/core"
+import { effectiveCloudModel, type EffectiveCloudModel } from "../gen/elizaCloud.effect.vibe"
+import { cloudSlotServedByCloud } from "../gen/elizaCloud__inference.effect.vibe"
+
+export const DEFAULT_CLOUD_BASE_URL = "https://www.elizacloud.ai"
+const DEFAULT_SMALL_MODEL = "gpt-4.1-mini"
+const DEFAULT_LARGE_MODEL = "gpt-4.1"
+const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+const DEFAULT_IMAGE_MODEL = "gpt-image-1"
+const DEFAULT_IMAGE_DESCRIPTION_MODEL = "gpt-4.1-mini"
+const DEFAULT_TTS_MODEL = "eleven_multilingual_v2"
+export const DEFAULT_TTS_VOICE = "EXAVITQu4vr4xnSDxMaL"
+const DEFAULT_STT_MODEL = "whisper-1"
+const DEFAULT_AUDIO_MODEL = "music-gen-1"
+const DEFAULT_VIDEO_MODEL = "video-gen-1"
+const DEFAULT_CLOUD_TIMEOUT_MS = 120000
+
+const CHAT_BRAIN_SLOTS = new Set<string>([
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_MEGA,
+  ModelType.RESPONSE_HANDLER,
+  ModelType.ACTION_PLANNER,
+])
+
+export function getSetting(runtime: IAgentRuntime, key: string): string {
+  const value = runtime.getSetting(key)
+  return typeof value === "string" ? value.trim() : ""
+}
+
+export function getCloudLink(runtime: IAgentRuntime): CloudLinkService | undefined {
+  const service = runtime.getService<CloudLinkService>(cloudServiceType)
+  return service === null || service === undefined || typeof service.request !== "function" ? undefined : service
+}
+
+export function getApiKey(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "ELIZAOS_CLOUD_API_KEY")
+}
+
+export function getBaseURL(runtime: IAgentRuntime): string {
+  const configured = getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL")
+  return (configured || DEFAULT_CLOUD_BASE_URL).replace(/\/+$/, "")
+}
+
+export function isApprovedCloudOrigin(urlText: string): boolean {
+  try {
+    const parsed = new URL(urlText)
+    if (parsed.protocol === "https:") return true
+    if (parsed.protocol === "http:") {
+      return parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "::1"
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+export function resolveCloudBillingUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/dashboard/billing`
+}
+
+export function resolveCloudApiKeysUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/dashboard/api-keys`
+}
+
+export function resolveCloudTimeoutMs(runtime: IAgentRuntime): number {
+  const raw = getSetting(runtime, "ELIZAOS_CLOUD_TIMEOUT_MS")
+  const parsed = raw ? Number(raw) : NaN
+  return Number.isFinite(parsed) && parsed >= 1000 && parsed <= 600000 ? Math.floor(parsed) : DEFAULT_CLOUD_TIMEOUT_MS
+}
+
+export function isCloudInferenceEnabled(runtime: IAgentRuntime): boolean {
+  return cloudSlotServedByCloud(getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE").toLowerCase(), true)
+}
+
+export function isSlotServedByCloud(runtime: IAgentRuntime, modelType: ModelTypeName): boolean {
+  return cloudSlotServedByCloud(
+    getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE").toLowerCase(),
+    CHAT_BRAIN_SLOTS.has(String(modelType)),
+  )
+}
+
+export function isCloudTtsAvailable(runtime: IAgentRuntime): boolean {
+  const disabled = getSetting(runtime, "ELIZAOS_CLOUD_TTS_ENABLED").toLowerCase() === "false"
+  return !disabled && (getApiKey(runtime) !== "" || getCloudLink(runtime) !== undefined)
+}
+
+export function isCloudSttAvailable(runtime: IAgentRuntime): boolean {
+  const disabled = getSetting(runtime, "ELIZAOS_CLOUD_STT_ENABLED").toLowerCase() === "false"
+  return !disabled && (getApiKey(runtime) !== "" || getCloudLink(runtime) !== undefined)
+}
+
+export function resolveSlotModel(runtime: IAgentRuntime, modelType: ModelTypeName): EffectiveCloudModel {
+  const slot = String(modelType)
+  if (slot === ModelType.TEXT_NANO) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_NANO_MODEL"), getSetting(runtime, "NANO_MODEL") || getSetting(runtime, "SMALL_MODEL"), DEFAULT_SMALL_MODEL)
+  }
+  if (slot === ModelType.TEXT_SMALL || slot === ModelType.RESPONSE_HANDLER) {
+    return effectiveCloudModel(
+      getSetting(runtime, slot === ModelType.RESPONSE_HANDLER ? "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL" : "ELIZAOS_CLOUD_SMALL_MODEL") || getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL"),
+      getSetting(runtime, "SMALL_MODEL"),
+      DEFAULT_SMALL_MODEL,
+    )
+  }
+  if (slot === ModelType.TEXT_MEDIUM) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_MEDIUM_MODEL"), getSetting(runtime, "MEDIUM_MODEL") || getSetting(runtime, "LARGE_MODEL"), DEFAULT_LARGE_MODEL)
+  }
+  if (slot === ModelType.TEXT_MEGA) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_MEGA_MODEL"), getSetting(runtime, "MEGA_MODEL") || getSetting(runtime, "LARGE_MODEL"), DEFAULT_LARGE_MODEL)
+  }
+  if (slot === ModelType.ACTION_PLANNER) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") || getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL"), getSetting(runtime, "LARGE_MODEL"), DEFAULT_LARGE_MODEL)
+  }
+  if (slot === ModelType.TEXT_EMBEDDING || slot === ModelType.TEXT_EMBEDDING_BATCH) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_MODEL"), getSetting(runtime, "EMBEDDING_MODEL"), DEFAULT_EMBEDDING_MODEL)
+  }
+  if (slot === ModelType.IMAGE) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_MODEL"), getSetting(runtime, "IMAGE_MODEL"), DEFAULT_IMAGE_MODEL)
+  }
+  if (slot === ModelType.IMAGE_DESCRIPTION) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL"), getSetting(runtime, "IMAGE_DESCRIPTION_MODEL"), DEFAULT_IMAGE_DESCRIPTION_MODEL)
+  }
+  if (slot === ModelType.TEXT_TO_SPEECH) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL"), getSetting(runtime, "TTS_MODEL"), DEFAULT_TTS_MODEL)
+  }
+  if (slot === ModelType.TRANSCRIPTION) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_STT_MODEL"), getSetting(runtime, "STT_MODEL"), DEFAULT_STT_MODEL)
+  }
+  if (slot === ModelType.AUDIO) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_AUDIO_MODEL"), getSetting(runtime, "AUDIO_MODEL"), DEFAULT_AUDIO_MODEL)
+  }
+  if (slot === ModelType.VIDEO) {
+    return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_VIDEO_MODEL"), getSetting(runtime, "VIDEO_MODEL"), DEFAULT_VIDEO_MODEL)
+  }
+  return effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL"), getSetting(runtime, "LARGE_MODEL"), DEFAULT_LARGE_MODEL)
+}

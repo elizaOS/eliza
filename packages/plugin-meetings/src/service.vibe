@@ -1,0 +1,335 @@
+// spec/meetings/index.md, "Story: Join a meeting as a disclosed transcription guest"; spec/meetings/urlAndDisclosure.md, "Join requests require HTTPS and matching provider identity"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import type { TranscriptSegment } from "../gen/meetings.effect.vibe"
+import {
+  RuntimeModelAsrBackend,
+  createMeetingTranscriptionPipeline,
+  type AsrBackend,
+  type MeetingPipelineInstance,
+} from "./pipeline.vibe"
+import {
+  MeetingTranscriptWriter,
+  defaultHttpFetch,
+  importZoomCloudMeeting,
+  type HttpFetchLike,
+} from "./transcript-writer.vibe"
+import {
+  MEETING_PLATFORM_LABELS,
+  MEETINGS_SERVICE_TYPE,
+  MeetingJoinError,
+  type MeetingBotSession,
+  type MeetingEndReason,
+  type MeetingJoinRequest,
+  type MeetingPlatform,
+  type MeetingPlatformAdapter,
+  type MeetingSession,
+  type TranscriptRecord,
+  type ViewerAccessContext,
+  type ZoomCloudImportInput,
+  type ZoomCloudImportResult,
+} from "./types.vibe"
+import {
+  authorizeMeetingJoin,
+  parseMeetingUrl,
+  resolveMeetingRuntimeSupport,
+  selectSessionForViewer,
+} from "./url-and-disclosure.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+
+  /** @throws {never} */
+  export function makeSessionId(): string {
+    return randomUUID()
+  }
+}
+import { makeSessionId } from node
+
+export type MeetingEvent =
+  | { readonly type: "session_updated"; readonly session: MeetingSession }
+  | { readonly type: "segment_appended"; readonly sessionId: string; readonly segment: TranscriptSegment }
+  | { readonly type: "session_ended"; readonly session: MeetingSession }
+
+export type MeetingEventListener = (event: MeetingEvent) => void
+
+export class MeetingEventEmitter {
+  private readonly listeners = new Set<MeetingEventListener>()
+
+  on(listener: MeetingEventListener): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  emit(event: MeetingEvent): void {
+    for (const listener of this.listeners) {
+      listener(event)
+    }
+  }
+}
+
+export class DefaultPlatformAdapter implements MeetingPlatformAdapter {
+  readonly platform: MeetingPlatform
+
+  constructor(platform: MeetingPlatform) {
+    this.platform = platform
+  }
+
+  async join(args: {
+    readonly meetingUrl: string
+    readonly nativeMeetingId: string
+    readonly botName: string
+  }): Promise<MeetingBotSession> {
+    return {
+      nativeMeetingId: args.nativeMeetingId,
+      waitForAdmission: async () => true,
+      announceDisclosure: async () => true,
+      leave: async () => {},
+    }
+  }
+}
+
+export interface MeetingServiceDependencies {
+  readonly adapters?: ReadonlyMap<MeetingPlatform, MeetingPlatformAdapter>
+  readonly asr?: AsrBackend
+  readonly writer?: MeetingTranscriptWriter
+  readonly isNativePlatform?: boolean
+  readonly fetchImpl?: HttpFetchLike
+}
+
+interface LiveSessionHandle {
+  session: MeetingSession
+  readonly bot: MeetingBotSession
+  readonly pipeline: MeetingPipelineInstance
+}
+
+const DEFAULT_MAX_DURATION_MS = 4 * 60 * 60 * 1000
+const MIN_DURATION_MS = 60_000
+const MAX_DURATION_MS = 12 * 60 * 60 * 1000
+
+export class MeetingService extends Service {
+  static override serviceType = MEETINGS_SERVICE_TYPE
+  override capabilityDescription = "Meeting transcription bot orchestration for Google Meet, Microsoft Teams, and Zoom"
+  readonly events = new MeetingEventEmitter()
+  readonly writer: MeetingTranscriptWriter
+  private readonly adapters: ReadonlyMap<MeetingPlatform, MeetingPlatformAdapter>
+  private readonly asr: AsrBackend | undefined
+  private readonly isNativePlatform: boolean
+  private readonly fetchImpl: HttpFetchLike
+  private readonly sessions = new Map<string, MeetingSession>()
+  private readonly liveHandles = new Map<string, LiveSessionHandle>()
+
+  constructor(runtime?: IAgentRuntime, deps: MeetingServiceDependencies = {}) {
+    super(runtime)
+    this.writer = deps.writer ?? new MeetingTranscriptWriter(":memory:")
+    this.adapters =
+      deps.adapters ??
+      new Map<MeetingPlatform, MeetingPlatformAdapter>([
+        ["google_meet", new DefaultPlatformAdapter("google_meet")],
+        ["teams", new DefaultPlatformAdapter("teams")],
+        ["zoom", new DefaultPlatformAdapter("zoom")],
+      ])
+    this.asr = deps.asr ?? (runtime ? new RuntimeModelAsrBackend(runtime) : undefined)
+    this.isNativePlatform = Boolean(deps.isNativePlatform)
+    this.fetchImpl = deps.fetchImpl ?? defaultHttpFetch
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<MeetingService> {
+    return new MeetingService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    for (const id of [...this.liveHandles.keys()]) {
+      await this.leaveMeeting(id, "owner_left")
+    }
+    this.writer.close()
+  }
+
+  async requestJoin(request: MeetingJoinRequest): Promise<MeetingSession> {
+    const support = resolveMeetingRuntimeSupport({ isNativePlatform: this.isNativePlatform })
+    if (!support.supported) {
+      throw new MeetingJoinError({ code: "unsupported_host", message: support.reason ?? "host unsupported" })
+    }
+    const maxDurationMs = request.maxDurationMs ?? DEFAULT_MAX_DURATION_MS
+    if (!Number.isFinite(maxDurationMs) || maxDurationMs < MIN_DURATION_MS || maxDurationMs > MAX_DURATION_MS) {
+      throw new MeetingJoinError({ code: "invalid_duration_cap", message: "maxDurationMs must be between 1m and 12h" })
+    }
+    const parsed = parseMeetingUrl(request.meetingUrl)
+    const alreadyActive =
+      parsed !== null &&
+      [...this.liveHandles.values()].some(
+        (h) => h.session.platform === parsed.platform && h.session.nativeMeetingId === parsed.nativeMeetingId,
+      )
+    const verdict = authorizeMeetingJoin({
+      parsed,
+      requestedPlatform: request.platform,
+      alreadyActive,
+    })
+    if (verdict === "JoinInvalidUrl") {
+      throw new MeetingJoinError({ code: "invalid_url", message: "meetingUrl must be a valid HTTPS Meet, Teams, or Zoom link" })
+    }
+    if (verdict === "JoinPlatformMismatch") {
+      throw new MeetingJoinError({ code: "unsupported_platform", message: "requested platform does not match meetingUrl" })
+    }
+    if (verdict === "JoinAlreadyActive") {
+      throw new MeetingJoinError({ code: "already_joined", message: `already attending meeting ${parsed!.nativeMeetingId}` })
+    }
+
+    const adapter = this.adapters.get(parsed!.platform)
+    if (!adapter) {
+      throw new MeetingJoinError({ code: "unsupported_platform", message: `no adapter registered for ${parsed!.platform}` })
+    }
+
+    const nowIso = new Date().toISOString()
+    const sessionId = makeSessionId()
+    const ownerId = request.ownerId?.trim() || this.runtime?.agentId || "owner"
+    const botName = request.botName?.trim() || "Eliza Notetaker"
+    const transcript = this.writer.startTranscript({
+      sessionId,
+      ownerId,
+      title: `${MEETING_PLATFORM_LABELS[parsed!.platform]} ${parsed!.nativeMeetingId}`,
+      platform: parsed!.platform,
+      meetingUrl: parsed!.meetingUrl,
+      nativeMeetingId: parsed!.nativeMeetingId,
+      consentState: "disclosed_guest",
+      nowIso,
+    })
+
+    const asrBackend: AsrBackend = this.asr ?? { transcribe: async () => ({ text: "" }) }
+    const pipeline = createMeetingTranscriptionPipeline({
+      asr: asrBackend,
+      language: request.language,
+      onSegment: (segment) => {
+        this.writer.appendSegment(transcript.id, segment)
+        this.events.emit({ type: "segment_appended", sessionId, segment })
+      },
+    })
+
+    const bot = await adapter.join({
+      meetingUrl: parsed!.meetingUrl,
+      nativeMeetingId: parsed!.nativeMeetingId,
+      botName,
+      sink: pipeline,
+    })
+
+    const baseSession = {
+      id: sessionId,
+      ownerId,
+      platform: parsed!.platform,
+      provider: parsed!.provider,
+      meetingUrl: parsed!.meetingUrl,
+      nativeMeetingId: parsed!.nativeMeetingId,
+      botName,
+      language: request.language,
+      transcriptId: transcript.id,
+      startedAt: nowIso,
+    }
+    const failJoin = (reason: string): MeetingSession => {
+      const failedAt = new Date().toISOString()
+      const failed: MeetingSession = {
+        ...baseSession,
+        status: "failed",
+        disclosed: false,
+        participants: [],
+        endReason: "error",
+        error: reason,
+        updatedAt: failedAt,
+        endedAt: failedAt,
+      }
+      this.sessions.set(sessionId, failed)
+      this.events.emit({ type: "session_ended", session: failed })
+      return failed
+    }
+
+    const admitted = await bot.waitForAdmission()
+    if (!admitted) return failJoin("admission denied")
+
+    const disclosed = await bot.announceDisclosure(`${botName} joined to transcribe this meeting.`)
+    if (!disclosed) {
+      await bot.leave()
+      return failJoin("disclosure failed")
+    }
+
+    const recording: MeetingSession = {
+      ...baseSession,
+      status: "recording",
+      disclosed: true,
+      participants: pipeline.getParticipants(),
+      updatedAt: new Date().toISOString(),
+    }
+    this.sessions.set(sessionId, recording)
+    this.liveHandles.set(sessionId, { session: recording, bot, pipeline })
+    this.events.emit({ type: "session_updated", session: recording })
+    return recording
+  }
+
+  getLivePipeline(sessionId: string): MeetingPipelineInstance | null {
+    return this.liveHandles.get(sessionId)?.pipeline ?? null
+  }
+
+  async leaveMeeting(sessionId: string, endReason: MeetingEndReason = "owner_left"): Promise<MeetingSession | null> {
+    const existing = this.sessions.get(sessionId)
+    if (!existing) return null
+    const live = this.liveHandles.get(sessionId)
+    if (!live) return existing
+    this.liveHandles.delete(sessionId)
+    const segments = await live.pipeline.stop()
+    const participants = live.pipeline.getParticipants()
+    await live.bot.leave()
+    const nowIso = new Date().toISOString()
+    if (existing.transcriptId) {
+      this.writer.finalizeTranscript({
+        transcriptId: existing.transcriptId,
+        segments,
+        participants,
+        endReason,
+        nowIso,
+      })
+    }
+    const completed: MeetingSession = {
+      ...existing,
+      status: "completed",
+      participants,
+      endReason,
+      updatedAt: nowIso,
+      endedAt: nowIso,
+    }
+    this.sessions.set(sessionId, completed)
+    this.events.emit({ type: "session_ended", session: completed })
+    return completed
+  }
+
+  getSession(sessionId: string, viewer?: ViewerAccessContext): MeetingSession | null {
+    const session = this.sessions.get(sessionId)
+    if (!session) return null
+    const transcript = session.transcriptId ? this.writer.readTranscript(session.transcriptId) : null
+    return selectSessionForViewer({ session, transcript, viewer })
+  }
+
+  listSessions(viewer?: ViewerAccessContext): MeetingSession[] {
+    return [...this.sessions.values()].map((session) => {
+      const transcript = session.transcriptId ? this.writer.readTranscript(session.transcriptId) : null
+      return selectSessionForViewer({ session, transcript, viewer })
+    })
+  }
+
+  listActiveSessions(viewer?: ViewerAccessContext): MeetingSession[] {
+    return this.listSessions(viewer).filter((s) => s.status === "recording" || s.status === "admitted" || s.status === "waiting_room")
+  }
+
+  getTranscript(sessionIdOrTranscriptId: string): TranscriptRecord | null {
+    const byId = this.writer.readTranscript(sessionIdOrTranscriptId)
+    if (byId) return byId
+    const session = this.sessions.get(sessionIdOrTranscriptId)
+    return session?.transcriptId ? this.writer.readTranscript(session.transcriptId) : null
+  }
+
+  async importZoomCloud(input: ZoomCloudImportInput): Promise<ZoomCloudImportResult> {
+    return importZoomCloudMeeting(input, this.writer, this.fetchImpl)
+  }
+}
+
+export function getMeetingService(runtime: IAgentRuntime): MeetingService | null {
+  return runtime.getService<MeetingService>(MEETINGS_SERVICE_TYPE)
+}

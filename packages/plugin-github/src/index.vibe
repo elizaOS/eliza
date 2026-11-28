@@ -1,173 +1,250 @@
-// spec/github/index.md, "Pull request listing requires an explicit repository or author, and me uses the selected account's login"; spec/github/index.md, "Each GitHub mutation requires the fields appropriate to its operation"; spec/github/index.md, "Only the owner may approve the exact preview while the captured account is current"; spec/github/index.md, "A GitHub completion applies only to the dispatched request and uses the provider's receipt"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
-import { requireConfirmation, stableStringify, type Action, type ActionResult, type HandlerCallback, type IAgentRuntime, type Memory, type Plugin } from "@elizaos/core"
-import { initial, machineOver, effectiveGitHubAuthor, githubMissingNames, validGitHubRead, validGitHubRequest, type GitHubMutation, type GitHubRequest } from "../gen/github.effect.vibe"
+// spec/github/index.md, "Story: List pull requests and triage notifications under the selected account"; spec/github/index.md, "Story: Review the exact GitHub operation before it changes a repository"; spec/github/deviceFlow.md, "Story: Sign in to GitHub from the account setup screen"
+import {
+  getConnectorAccountManager,
+  logger,
+  promoteSubactionsToActions,
+  type IAgentRuntime,
+  type Plugin,
+} from "@elizaos/core"
+import {
+  DEFAULT_GITHUB_AGENT_ACCOUNT_ID,
+  DEFAULT_GITHUB_USER_ACCOUNT_ID,
+  GITHUB_PULL_REQUESTS_SEARCH_CATEGORY,
+  GitHubOAuthHttpError,
+  createGitHubConnectorAccountProvider,
+  createGitHubConnectorAccountProviderForTest,
+  defaultGitHubAccountIdForRole,
+  normalizeGitHubAccountId,
+  readGitHubAccounts,
+  readGitHubAccountsWithConnectorCredentials,
+  registerGitHubSearchCategory,
+  resolveGitHubAccount,
+  resolveGitHubAccountSelection,
+  type GitHubAccountConfig,
+  type GitHubAccountSelection,
+} from "./accounts.vibe"
+import {
+  GitHubUnavailable,
+  buildPreview,
+  buildReviewPreview,
+  compareTriagedNotifications,
+  createGitHubOperationHandle,
+  fetchAllUnreadNotifications,
+  formatTriageSummary,
+  githubAction,
+  githubActionRun,
+  githubRequest,
+  issueOpAction,
+  notificationTriageAction,
+  prOpAction,
+  scoreNotification,
+  splitRepo,
+  type GitHubIssueOpResult,
+  type GitHubOperationMachineHandle,
+  type GitHubPrOpResult,
+  type PRSummary,
+  type TriagedNotification,
+} from "./actions.vibe"
+import {
+  OAUTH_TOKENS_CREDENTIAL_TYPE,
+  _resolveStateDirForTests,
+  applySavedTokenToEnv,
+  buildCredentialsFromUserResponse,
+  clearCredentials,
+  clearSavedTokenFromEnv,
+  credentialRefRecordsFromMetadata,
+  getCredentialFilePath,
+  listConnectorAccounts,
+  loadConnectorOAuthAccessToken,
+  loadCredentials,
+  loadMetadata,
+  persistConnectorCredentialRefs,
+  saveCredentials,
+  type ApplySavedTokenResult,
+  type ConnectorCredentialPersistResult,
+  type ConnectorCredentialRefMetadata,
+  type ConnectorCredentialRefRecordLike,
+  type GitHubCredentialMetadata,
+  type GitHubCredentials,
+} from "./credentials.vibe"
+import {
+  DeviceFlowError,
+  GitHubDeviceConnectionFailed,
+  clearDeviceFlowsForTest,
+  createGitHubDeviceFlowHandle,
+  pollDeviceFlow,
+  startDeviceFlow,
+  startGitHubDeviceConnection,
+  type DeviceFlowDeps,
+  type DeviceFlowErrorCode,
+  type DeviceFlowPollResult,
+  type DeviceFlowStart,
+  type GitHubDeviceFlowMachineHandle,
+} from "./device-flow.vibe"
+import {
+  errorMessage,
+  formatRateLimitMessage,
+  inspectRateLimit,
+  type GitHubHttpError,
+  type RateLimitDetails,
+} from "./rate-limit.vibe"
+import { githubRoutes, type GitHubRoute, type GitHubRouteContext, type GitHubRouteResult } from "./routes.vibe"
+import { GitHubService } from "./service.vibe"
+import {
+  GITHUB_SERVICE_TYPE,
+  GitHubActions,
+  createGitHubRestClient,
+  type BaseActionOptions,
+  type GitHubActionResult,
+  type GitHubAddLabelsResult,
+  type GitHubAssigneesResult,
+  type GitHubIdentity,
+  type GitHubIssueCommentResult,
+  type GitHubIssueDetail,
+  type GitHubIssueOp,
+  type GitHubIssueResult,
+  type GitHubLabelSummary,
+  type GitHubNotificationSummary,
+  type GitHubOctokitClient,
+  type GitHubPrOp,
+  type GitHubPullRequestSummary,
+  type GitHubReviewResult,
+  type GitHubSearchIssueSummary,
+  type GitHubUserSummary,
+  type IGitHubService,
+  type RateLimitError,
+} from "./types.vibe"
 
-module node {
-  import { createHash } from "node:crypto"
-  export function gitHubCredentialFingerprint(value: string): string { return createHash("sha256").update(value).digest("hex") }
+export type GitHubPlugin = Plugin & {
+  readonly routes: readonly GitHubRoute[]
 }
-import { gitHubCredentialFingerprint } from node
 
-export error GitHubUnavailable { stage: string; status: number }
-
-const Parameters = Schema.Struct({ action: Schema.Literals(["pr_list", "pr_review", "issue_create", "issue_assign", "issue_close", "issue_reopen", "issue_comment", "issue_label", "notification_triage"]), repo: Schema.optionalKey(Schema.String), number: Schema.optionalKey(Schema.Int), state: Schema.optionalKey(Schema.Literals(["open", "closed", "all"])), author: Schema.optionalKey(Schema.String), review_action: Schema.optionalKey(Schema.Literals(["approve", "comment", "request-changes"])), title: Schema.optionalKey(Schema.String), body: Schema.optionalKey(Schema.String), labels: Schema.optionalKey(Schema.Array(Schema.String)), assignees: Schema.optionalKey(Schema.Array(Schema.String)), as: Schema.optionalKey(Schema.Literals(["user", "agent"])), accountId: Schema.optionalKey(Schema.String) })
-const User = Schema.Struct({ login: Schema.String })
-const PullRequest = Schema.Struct({ number: Schema.Int, title: Schema.String, html_url: Schema.String, state: Schema.String, user: Schema.optionalKey(Schema.NullOr(User)) })
-const SearchPullRequests = Schema.Struct({ items: Schema.Array(Schema.Struct({ number: Schema.Int, title: Schema.String, html_url: Schema.String, state: Schema.String, user: Schema.optionalKey(Schema.NullOr(User)), repository_url: Schema.String })) })
-const Notification = Schema.Struct({ id: Schema.String, reason: Schema.String, subject: Schema.Struct({ title: Schema.String, type: Schema.String }), repository: Schema.Struct({ full_name: Schema.String }), updated_at: Schema.String })
-const MutationReceipt = Schema.Struct({ id: Schema.Int, number: Schema.optionalKey(Schema.Int), html_url: Schema.optionalKey(Schema.String), assignees: Schema.optionalKey(Schema.Array(User)), labels: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String }))) })
-
-function readParameters(options: unknown): unknown {
-  const raw = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : options
-  if (typeof raw !== "object" || raw === null) return raw
-  const named: Record<string, unknown> = { ...raw }
-  for (const key of ["action", "state", "review_action"]) {
-    const value = named[key]
-    if (typeof value === "string") named[key] = key === "review_action" ? value.trim().toLowerCase().replaceAll("_", "-") : value.trim().toLowerCase()
-  }
-  return named
-}
-
-function repoOf(raw: string | undefined): { owner: string; name: string } | undefined {
-  if (raw === undefined || [...raw].some((ch) => ch.charCodeAt(0) <= 0x1f || ch === "\\")) return undefined
-  const value = raw.trim().replace(/^(?:https?:\/\/)?github\.com\//iu, "").replace(/\/$/u, "").replace(/\.git$/iu, "")
-  const [owner, name, extra] = value.split("/")
-  return owner && name && extra === undefined && /^[A-Za-z\d](?:[A-Za-z\d-]{0,38})$/.test(owner) && /^[A-Za-z\d._-]{1,100}$/.test(name) && name !== "." && name !== ".." ? { owner, name } : undefined
-}
-
-function mutationOf(options: typeof Parameters.Type): GitHubMutation | undefined {
-  const issue = options.number ?? 0
-  const body = options.body?.trim() ?? ""
-  switch (options.action) {
-    case "issue_create": return { tag: "CreateIssue", title: options.title?.trim() ?? "", body, labels: [...options.labels ?? []], assignees: [...options.assignees ?? []] }
-    case "issue_assign": return { tag: "AssignIssue", issue, assignees: [...options.assignees ?? []] }
-    case "issue_close": return { tag: "CloseIssue", issue }
-    case "issue_reopen": return { tag: "ReopenIssue", issue }
-    case "issue_comment": return { tag: "CommentIssue", issue, body }
-    case "issue_label": return { tag: "LabelIssue", issue, labels: [...options.labels ?? []] }
-    case "pr_review": return options.review_action === undefined ? undefined : { tag: "ReviewPr", pullRequest: issue, reviewKind: options.review_action === "approve" ? "ApproveReview" : options.review_action === "request-changes" ? "RequestChanges" : "ReviewComment", reviewBody: body }
-    case "notification_triage":
-    case "pr_list": return undefined
-  }
-}
-
-export effect function githubRequest(token: Redacted.Redacted<string>, method: "GET" | "POST" | "PATCH", path: string, body?: object): unknown!GitHubUnavailable!HttpClient.HttpClient {
-  const request = HttpClientRequest.make(method)(`https://api.github.com${path}`).pipe(HttpClientRequest.setHeaders({ Authorization: `Bearer ${Redacted.value(token)}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "elizaos-github" }))
-  const response = timeout(Effect.provideService(HttpClient.execute(body === undefined ? request : request.pipe(HttpClientRequest.bodyText(JSON.stringify(body), "application/json"))), FetchHttpClient.RequestInit, { redirect: "error" }), "30 seconds") catch effect () => { throw new GitHubUnavailable({ stage: "request", status: 0 }) }
-  if (response.status < 200 || response.status >= 300) throw new GitHubUnavailable({ stage: "http", status: response.status })
-  return response.json catch effect () => { throw new GitHubUnavailable({ stage: "response", status: response.status }) }
-}
-
-function requestFor(proposal: GitHubRequest): { path: string; method: "POST" | "PATCH"; body: Record<string, unknown> } {
-  const repo = `/repos/${proposal.repoOwner}/${proposal.repoName}`
-  const op = proposal.mutation
-  switch (op.tag) {
-    case "CreateIssue": return { path: `${repo}/issues`, method: "POST", body: { title: op.title, body: op.body, labels: op.labels, assignees: op.assignees } }
-    case "AssignIssue": return { path: `${repo}/issues/${op.issue}/assignees`, method: "POST", body: { assignees: op.assignees } }
-    case "CloseIssue": return { path: `${repo}/issues/${op.issue}`, method: "PATCH", body: { state: "closed" } }
-    case "ReopenIssue": return { path: `${repo}/issues/${op.issue}`, method: "PATCH", body: { state: "open" } }
-    case "CommentIssue": return { path: `${repo}/issues/${op.issue}/comments`, method: "POST", body: { body: op.body } }
-    case "LabelIssue": return { path: `${repo}/issues/${op.issue}/labels`, method: "POST", body: { labels: op.labels } }
-    case "ReviewPr": return { path: `${repo}/pulls/${op.pullRequest}/reviews`, method: "POST", body: { event: op.reviewKind === "ApproveReview" ? "APPROVE" : op.reviewKind === "RequestChanges" ? "REQUEST_CHANGES" : "COMMENT", body: op.reviewBody } }
-  }
-}
-
-const failed = (text: string): ActionResult => ({ success: false, text })
-
-export effect function githubActionRun(runtime: IAgentRuntime, message: Memory, raw: unknown, callback: HandlerCallback | undefined) {
-  const options = Schema.decodeUnknownEffect(Parameters)(readParameters(raw)) catch () => undefined
-  if (options === undefined) return failed("Provide a valid GitHub operation and its arguments.")
-  const account = options.as ?? (options.action === "notification_triage" ? "user" : "agent")
-  if (options.accountId !== undefined && options.accountId !== account) return failed("The selected GitHub account is unavailable.")
-  const tokenSetting = account === "user" ? "GITHUB_USER_PAT" : "GITHUB_AGENT_PAT"
-  const rawToken = runtime.getSetting(tokenSetting)
-  if (typeof rawToken !== "string" || rawToken.trim() === "") return failed("Connect the selected GitHub account first.")
-  const token = Redacted.make(rawToken)
-  const repo = repoOf(options.repo)
-  const op = mutationOf(options)
-  if (options.action === "notification_triage") {
-    const notices = try Schema.decodeUnknownEffect(Schema.Array(Notification))(try githubRequest(token, "GET", "/notifications?per_page=50"))
-    const text = notices.length === 0 ? "No new GitHub notifications." : notices.map(item => `- ${item.repository.full_name}: ${item.subject.title} (${item.reason})`).join("\n")
-    return { success: true, text, data: { notifications: notices } } satisfies ActionResult
-  }
-  if (options.action === "pr_list") {
-    if (options.repo !== undefined && repo === undefined) return failed("Name a GitHub repository as owner/name.")
-    const me = try Schema.decodeUnknownEffect(User)(try githubRequest(token, "GET", "/user"))
-    const author = effectiveGitHubAuthor(options.author?.trim() ?? "", me.login)
-    if (author !== "" && !/^[A-Za-z0-9-]{1,39}$/.test(author)) return failed("Name a GitHub login without query modifiers.")
-    const state = options.state ?? "open"
-    if (!validGitHubRead({ tag: "ListPrs", repoOwner: repo?.owner ?? "", repoName: repo?.name ?? "", author, prState: state === "open" ? "OpenPrs" : state === "closed" ? "ClosedPrs" : "AllPrs" }, me.login)) return failed("Name a GitHub repository or author to list pull requests.")
-    const pulls: (typeof PullRequest.Type)[] = []
-    for (let page = 1; page <= 10; page += 1) {
-      const entries = author !== "" ? (try Schema.decodeUnknownEffect(SearchPullRequests)(try githubRequest(token, "GET", `/search/issues?${new URLSearchParams({ q: ["is:pr", state === "all" ? "" : `is:${state}`, repo === undefined ? "" : `repo:${repo.owner}/${repo.name}`, `author:${author}`].filter(part => part !== "").join(" "), per_page: "100", page: String(page) })}`))).items : repo === undefined ? [] : try Schema.decodeUnknownEffect(Schema.Array(PullRequest))(try githubRequest(token, "GET", `/repos/${repo.owner}/${repo.name}/pulls?state=${state}&per_page=100&page=${page}`))
-      pulls.push(...entries)
-      if (entries.length < 100) break
+export const githubPlugin: GitHubPlugin = {
+  name: "@elizaos/plugin-github",
+  description: "GitHub integration for pull requests, issues, and notification triage",
+  services: [GitHubService],
+  actions: [...promoteSubactionsToActions(githubAction)],
+  routes: githubRoutes,
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    registerGitHubSearchCategory(runtime)
+    try {
+      const manager = getConnectorAccountManager(runtime)
+      manager.registerProvider(createGitHubConnectorAccountProvider(runtime))
+    } catch (err) {
+      logger.warn(
+        { src: "plugin:github", err: err instanceof Error ? err.message : String(err) },
+        "Failed to register GitHub provider with ConnectorAccountManager",
+      )
     }
-    return { success: true, text: pulls.length === 0 ? "No matching pull requests." : pulls.map(pr => `- #${pr.number} ${pr.title} (${pr.state}) ${pr.html_url}`).join("\n"), data: { prs: pulls } } satisfies ActionResult
-  }
-  if (repo === undefined || op === undefined || message.id === undefined) return failed("The GitHub operation needs an exact repository and a bound request.")
-  const proposal: GitHubRequest = { requestId: message.id, accountId: account, credentialEpoch: 1, repoOwner: repo.owner, repoName: repo.name, mutation: op }
-  if (!validGitHubRequest(proposal)) return failed("The GitHub operation is missing required fields.")
-  const credential = try Effect.try(() => gitHubCredentialFingerprint(rawToken))
-  const signature = stableStringify({ account, credential, repo, op })
-  const prompt = `${account} account · ${repo.owner}/${repo.name}\n${JSON.stringify(op)}\nReply yes to confirm or no to cancel.`
-  const ask = () => requireConfirmation({ runtime, message, actionName: "GITHUB", pendingKey: account, prompt, ...(callback === undefined ? {} : { callback }), metadata: { signature } })
-  let decision = try tryPromise(ask)
-  if (decision.status === "confirmed" && decision.metadata?.signature !== signature) decision = try tryPromise(ask)
-  if (decision.status !== "confirmed" || decision.metadata?.signature !== signature) return { success: decision.status !== "cancelled", text: decision.status === "cancelled" ? "GitHub operation cancelled." : prompt, data: { status: decision.status } } satisfies ActionResult
-  if (runtime.getSetting(tokenSetting) !== rawToken) return failed("The GitHub account changed during confirmation.")
-  const state = try Ref.make(initial)
-  const journal = try machineOver(() => Ref.get(state), next => Ref.set(state, next))
-  try journal.send({ type: "previewGitHub", proposal }, "GitHubAdapter")
-  try journal.send({ type: "decideGitHub", proposal, approve: true, activeEpoch: 1 }, "GitHubOwner")
-  const key = `github/mutation/${account}/${proposal.requestId}`
-  if (try tryPromise(() => runtime.getCache(key))) return failed("This GitHub request has already been reserved.")
-  if (!(try tryPromise(() => runtime.setCache(key, "dispatching")))) return failed("The GitHub request could not be saved before dispatch.")
-  try journal.send({ type: "reserveGitHub", activeEpoch: 1 }, "GitHubAdapter")
-  if (runtime.getSetting(tokenSetting) !== rawToken) return failed("The GitHub account changed before dispatch.")
-  try journal.send({ type: "dispatchGitHub", activeEpoch: 1 }, "GitHubAdapter")
-  const request = requestFor(proposal)
-  const observed = try githubRequest(token, request.method, request.path, request.body)
-  if (op.tag === "LabelIssue") {
-    const labels = try Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: Schema.Int, name: Schema.String })))(observed)
-    const first = labels[0]
-    if (first === undefined) return failed("GitHub returned no expected label receipt.")
-    try journal.send({ type: "observeGitHub", proposal, observation: { tag: "GitHubSuccess", providerReceipt: String(first.id) } }, "GitHubAdapter")
-    return { success: true, text: `Updated labels on #${op.issue}.`, data: { labels: labels.map(label => label.name) } } satisfies ActionResult
-  }
-  const receipt = try Schema.decodeUnknownEffect(MutationReceipt)(observed)
-  if (receipt.id <= 0) return failed("GitHub did not return a mutation receipt.")
-  try journal.send({ type: "observeGitHub", proposal, observation: { tag: "GitHubSuccess", providerReceipt: String(receipt.id) } }, "GitHubAdapter")
-  const assigned = receipt.assignees?.map(user => user.login) ?? []
-  const link = receipt.html_url === undefined ? "" : ` ${receipt.html_url}`
-  if (op.tag === "AssignIssue") {
-    const missingLogins = githubMissingNames(op.assignees.map(login => login.toLowerCase()), assigned.map(login => login.toLowerCase()))
-    const assignees = op.assignees.filter(login => missingLogins.includes(login.toLowerCase()))
-    if (assignees.length > 0) return {
-      success: false,
-      text: `GitHub did not assign ${assignees.join(", ")} to #${op.issue}.${link}`,
-      data: { receiptId: receipt.id, notApplied: { assignees } },
-    } satisfies ActionResult
-  }
-  const missing = op.tag === "CreateIssue" ? { labels: githubMissingNames(op.labels, receipt.labels?.map(label => label.name) ?? []), assignees: githubMissingNames(op.assignees, assigned) } : undefined
-  return { success: true, text: `GitHub confirmed the operation${receipt.number === undefined ? "" : ` for #${receipt.number}`}.${link}`, data: { receiptId: receipt.id, ...(missing === undefined ? {} : { notApplied: missing }) } } satisfies ActionResult
+  },
+  async dispose(runtime) {
+    const svc = runtime.getService<GitHubService>(GitHubService.serviceType)
+    await svc?.stop()
+  },
 }
 
-export const githubAction: Action = {
-  name: "GITHUB", description: "List GitHub pull requests, triage notifications, and review or change an issue or pull request after exact confirmation.", roleGate: { minRole: "USER" },
-  parameters: [
-    { name: "action", description: "GitHub operation to run.", required: true, schema: { type: "string", enum: ["pr_list", "pr_review", "issue_create", "issue_assign", "issue_close", "issue_reopen", "issue_comment", "issue_label", "notification_triage"] } },
-    { name: "repo", description: "Repository owner/name.", schema: { type: "string" } }, { name: "number", description: "Issue or pull request number.", schema: { type: "number" } },
-    { name: "author", description: "Pull request author, or @me for the selected account.", schema: { type: "string" } }, { name: "state", description: "open, closed, or all.", schema: { type: "string" } },
-    { name: "review_action", description: "approve, request-changes, or comment.", schema: { type: "string" } }, { name: "title", description: "New issue title.", schema: { type: "string" } }, { name: "body", description: "Issue, comment, or review body.", schema: { type: "string" } },
-    { name: "labels", description: "GitHub label names.", schema: { type: "array", items: { type: "string" } } }, { name: "assignees", description: "GitHub assignee logins.", schema: { type: "array", items: { type: "string" } } }, { name: "as", description: "user or agent GitHub account.", schema: { type: "string" } },
-  ],
-  validate: async (runtime) => Boolean(runtime.getSetting("GITHUB_USER_PAT") || runtime.getSetting("GITHUB_AGENT_PAT")),
-  handler: (runtime, message, _state, options, callback) => runPromise(Effect.catch(Effect.provide(githubActionRun(runtime, message, options, callback), FetchHttpClient.layer), () => succeed(failed("The GitHub request failed or its outcome could not be confirmed.")))),
-}
-
-export { GitHubDeviceConnectionFailed, startGitHubDeviceConnection } from "./device-flow.vibe"
-
-export const githubPlugin: Plugin = { name: "@elizaos/plugin-github", description: "GitHub issue, pull request and notification tools", actions: [githubAction] }
+export const plugin: GitHubPlugin = githubPlugin
 export default githubPlugin
+
+export {
+  DEFAULT_GITHUB_AGENT_ACCOUNT_ID,
+  DEFAULT_GITHUB_USER_ACCOUNT_ID,
+  DeviceFlowError,
+  GITHUB_PULL_REQUESTS_SEARCH_CATEGORY,
+  GITHUB_SERVICE_TYPE,
+  GitHubActions,
+  GitHubDeviceConnectionFailed,
+  GitHubOAuthHttpError,
+  GitHubService,
+  GitHubUnavailable,
+  OAUTH_TOKENS_CREDENTIAL_TYPE,
+  _resolveStateDirForTests,
+  applySavedTokenToEnv,
+  buildCredentialsFromUserResponse,
+  buildPreview,
+  buildReviewPreview,
+  clearCredentials,
+  clearDeviceFlowsForTest,
+  clearSavedTokenFromEnv,
+  compareTriagedNotifications,
+  createGitHubConnectorAccountProvider,
+  createGitHubConnectorAccountProviderForTest,
+  createGitHubDeviceFlowHandle,
+  createGitHubOperationHandle,
+  createGitHubRestClient,
+  credentialRefRecordsFromMetadata,
+  defaultGitHubAccountIdForRole,
+  errorMessage,
+  fetchAllUnreadNotifications,
+  formatRateLimitMessage,
+  formatTriageSummary,
+  getCredentialFilePath,
+  githubAction,
+  githubActionRun,
+  githubRequest,
+  githubRoutes,
+  inspectRateLimit,
+  issueOpAction,
+  listConnectorAccounts,
+  loadConnectorOAuthAccessToken,
+  loadCredentials,
+  loadMetadata,
+  normalizeGitHubAccountId,
+  notificationTriageAction,
+  persistConnectorCredentialRefs,
+  pollDeviceFlow,
+  prOpAction,
+  readGitHubAccounts,
+  readGitHubAccountsWithConnectorCredentials,
+  registerGitHubSearchCategory,
+  resolveGitHubAccount,
+  resolveGitHubAccountSelection,
+  saveCredentials,
+  scoreNotification,
+  splitRepo,
+  startDeviceFlow,
+  startGitHubDeviceConnection,
+  startGitHubDeviceConnection as startGitHubDeviceFlowConnection,
+  type ApplySavedTokenResult,
+  type BaseActionOptions,
+  type ConnectorCredentialPersistResult,
+  type ConnectorCredentialRefMetadata,
+  type ConnectorCredentialRefRecordLike,
+  type DeviceFlowDeps,
+  type DeviceFlowErrorCode,
+  type DeviceFlowPollResult,
+  type DeviceFlowStart,
+  type GitHubAccountConfig,
+  type GitHubAccountSelection,
+  type GitHubActionResult,
+  type GitHubAddLabelsResult,
+  type GitHubAssigneesResult,
+  type GitHubCredentialMetadata,
+  type GitHubCredentials,
+  type GitHubDeviceFlowMachineHandle,
+  type GitHubHttpError,
+  type GitHubIdentity,
+  type GitHubIssueCommentResult,
+  type GitHubIssueDetail,
+  type GitHubIssueOp,
+  type GitHubIssueOpResult,
+  type GitHubIssueResult,
+  type GitHubLabelSummary,
+  type GitHubNotificationSummary,
+  type GitHubOctokitClient,
+  type GitHubOperationMachineHandle,
+  type GitHubPrOp,
+  type GitHubPrOpResult,
+  type GitHubPullRequestSummary,
+  type GitHubReviewResult,
+  type GitHubRoute,
+  type GitHubRouteContext,
+  type GitHubRouteResult,
+  type GitHubSearchIssueSummary,
+  type GitHubUserSummary,
+  type IGitHubService,
+  type PRSummary,
+  type RateLimitDetails,
+  type RateLimitError,
+  type TriagedNotification,
+}

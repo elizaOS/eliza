@@ -1,0 +1,135 @@
+// spec/telegram/index.md, "An admitted command keeps its sender and a reply stays in its account, chat and topic"
+import type { Action, ActionResult, IAgentRuntime, Provider } from "@elizaos/core"
+import { listTelegramPollerHealth } from "./poller-lock.vibe"
+import { TELEGRAM_PERSONAL_SERVICE_TYPE, TELEGRAM_SERVICE_NAME } from "./types.vibe"
+import type { TelegramAccountService } from "./account-client.vibe"
+import type { MessageManager } from "./message-manager.vibe"
+
+interface TelegramServiceOps {
+  getMessageManager(accountId?: string): MessageManager | undefined
+  listAccountIds(): readonly string[]
+}
+
+function getTelegramOps(runtime: IAgentRuntime): TelegramServiceOps | undefined {
+  const svc = runtime.getService(TELEGRAM_SERVICE_NAME) as Partial<TelegramServiceOps> | null | undefined
+  if (svc === null || svc === undefined || typeof svc.getMessageManager !== "function") return undefined
+  return svc as TelegramServiceOps
+}
+
+function readParams(options: unknown): Record<string, unknown> {
+  if (typeof options !== "object" || options === null) return {}
+  const rec = options as Record<string, unknown>
+  if (typeof rec.parameters === "object" && rec.parameters !== null) {
+    return rec.parameters as Record<string, unknown>
+  }
+  return rec
+}
+
+function strParam(params: Record<string, unknown>, key: string): string | undefined {
+  const value = params[key]
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
+}
+
+function intParam(params: Record<string, unknown>, key: string): number | undefined {
+  const value = params[key]
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined
+}
+
+const TELEGRAM_SUBACTIONS = ["edit", "react", "send", "typing"] as const
+
+export const telegramAction: Action = {
+  name: "TELEGRAM",
+  description: "Send or edit Telegram bot messages, send typing indicators, or add emoji reactions on an authorized chat.",
+  descriptionCompressed: "Send/edit Telegram messages, reactions, and typing indicators.",
+  similes: [],
+  examples: [],
+  roleGate: { minRole: "OWNER" },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [
+    { name: "accountId", description: "Optional configured Telegram account ID.", required: false, schema: { type: "string" } },
+    { name: "action", description: "Telegram bot operation.", required: true, schema: { type: "string", enum: [...TELEGRAM_SUBACTIONS] } },
+    { name: "chatId", description: "Numeric Telegram chat ID.", required: true, schema: { type: "string" } },
+    { name: "emoji", description: "Emoji reaction for react.", required: false, schema: { type: "string" } },
+    { name: "messageId", description: "Target provider message ID for edit or react.", required: false, schema: { type: "number" } },
+    { name: "text", description: "Message text for send or edit.", required: false, schema: { type: "string" } },
+    { name: "threadId", description: "Optional forum topic thread ID.", required: false, schema: { type: "number" } },
+  ],
+  summarize: (result, params) => {
+    const op = strParam(params, "action") ?? "telegram"
+    return `TELEGRAM(${op}): ${result?.success ? "ok" : "failed"}`
+  },
+  validate: async (runtime) => getTelegramOps(runtime) !== undefined,
+  handler: async (runtime, _message, _state, options): Promise<ActionResult> => {
+    const ops = getTelegramOps(runtime)
+    if (ops === undefined) {
+      return { success: false, text: "Telegram service is unavailable." }
+    }
+    const params = readParams(options)
+    const op = strParam(params, "action")
+    const chatId = strParam(params, "chatId")
+    const accountId = strParam(params, "accountId")
+    const threadId = intParam(params, "threadId")
+    if (chatId === undefined || !/^-?\d+$/.test(chatId)) {
+      return { success: false, text: "A valid numeric chatId is required." }
+    }
+    const manager = ops.getMessageManager(accountId)
+    if (manager === undefined) {
+      return { success: false, text: "No active Telegram bot is connected for the requested account." }
+    }
+    if (op === "send") {
+      const text = strParam(params, "text")
+      if (text === undefined) return { success: false, text: "text is required for send." }
+      const sent = await manager.sendMessage(chatId, { text }, { threadId })
+      return { success: true, text: `Sent ${sent.messageIds.length} Telegram message(s).`, data: { operation: "send", messageIds: sent.messageIds } }
+    }
+    if (op === "edit") {
+      const messageId = intParam(params, "messageId")
+      const text = strParam(params, "text")
+      if (messageId === undefined || text === undefined) {
+        return { success: false, text: "messageId and text are required for edit." }
+      }
+      const edited = await manager.editMessage(chatId, messageId, text)
+      return { success: true, text: `Telegram message ${messageId} ${edited.status}.`, data: { operation: "edit", messageId, status: edited.status } }
+    }
+    if (op === "react") {
+      const messageId = intParam(params, "messageId")
+      const emoji = strParam(params, "emoji")
+      if (messageId === undefined || emoji === undefined) {
+        return { success: false, text: "messageId and emoji are required for react." }
+      }
+      await manager.addReaction(chatId, messageId, emoji)
+      return { success: true, text: `Added ${emoji} reaction to Telegram message ${messageId}.`, data: { operation: "react", messageId, emoji } }
+    }
+    if (op === "typing") {
+      await manager.sendTypingAction(chatId, threadId)
+      return { success: true, text: `Sent typing indicator to Telegram chat ${chatId}.`, data: { operation: "typing", chatId } }
+    }
+    return { success: false, text: "Unsupported Telegram action." }
+  },
+}
+
+export const telegramStatusProvider: Provider = {
+  name: "telegram_status",
+  description: "Live summary of connected Telegram bot pollers and personal account sessions.",
+  descriptionCompressed: "Active Telegram bot pollers and personal session status.",
+  contexts: ["telegram", "messaging"],
+  contextGate: { anyOf: ["telegram", "messaging"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
+  get: async (runtime) => {
+    const ops = getTelegramOps(runtime)
+    const personal = runtime.getService<TelegramAccountService>(TELEGRAM_PERSONAL_SERVICE_TYPE)
+    const pollers = await listTelegramPollerHealth()
+    return {
+      text: JSON.stringify({
+        telegram: {
+          botAccounts: ops?.listAccountIds() ?? [],
+          pollers: pollers.map((p) => ({ accountId: p.accountId, mode: p.mode, connected: p.connected })),
+          personalConnected: personal?.isConnected() === true,
+        },
+      }),
+    }
+  },
+}

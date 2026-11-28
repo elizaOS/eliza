@@ -1,0 +1,61 @@
+// spec/nativeContacts/index.md, "Story: Read or add contacts only within my device permissions"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import type { AddressBookClient, ContactId } from "@elizaos/os-bridges"
+import {
+  ContactsWeb,
+  appContactsPlugin,
+  contactsProvider,
+  createContactsProvider,
+  readNativeContacts,
+} from "../src/index.vibe"
+
+module node {
+  export async function captureRejection(fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await fn()
+      return undefined
+    } catch (error) {
+      return error
+    }
+  }
+}
+import { captureRejection } from node
+
+describe("Native contacts (spec/nativeContacts/index.md, \"Story: Read or add contacts only within my device permissions\")", () => {
+  it("Enforces read grants, bounded pages, ContactsWeb validation, and Pi-agent contactsProvider (spec/nativeContacts/index.md, \"A contacts read needs a read grant and a write needs a write grant\")", async () => {
+    assert.strictEqual(appContactsPlugin.name, "@elizaos/plugin-native-contacts")
+    assert.strictEqual(contactsProvider.dynamic, true)
+    assert.strictEqual(contactsProvider.cacheStable, false)
+    assert.strictEqual(contactsProvider.cacheScope, "turn")
+    assert.isString(contactsProvider.descriptionCompressed)
+
+    const web = new ContactsWeb()
+    assert.deepStrictEqual(await web.status(), { available: false, readable: false, writable: false })
+    assert.isDefined(await captureRejection(() => web.list({ query: "", limit: 0 })))
+    assert.isDefined(await captureRejection(() => web.list({ query: "", limit: 10 })))
+    assert.isDefined(await captureRejection(() => web.save({ displayName: "", phoneNumbers: [], emailAddresses: [] })))
+
+    const readableClient = {
+      status: async () => ({ available: true, readable: true, writable: false }),
+      list: async () => ({
+        contacts: [{ id: "c1" as ContactId, lookup: "lk1", name: "Alice", revision: "1", phones: ["+15551234"], emails: ["a@example.com"], starred: true }],
+        next: null,
+      }),
+    } as unknown as AddressBookClient
+
+    const page = await runPromise(readNativeContacts(readableClient, { query: "", limit: 25 }))
+    assert.strictEqual(page.contacts.length, 1)
+
+    const deniedClient = {
+      status: async () => ({ available: true, readable: false, writable: true }),
+      list: async () => ({ contacts: [], next: null }),
+    } as unknown as AddressBookClient
+    assert.isDefined(await captureRejection(() => runPromise(readNativeContacts(deniedClient, { query: "", limit: 25 }))))
+
+    const provider = createContactsProvider(() => readableClient)
+    const result = await provider.get({} as IAgentRuntime, {} as Memory, {} as State)
+    assert.strictEqual(result.values?.contactsCount, 1)
+    assert.strictEqual(result.values?.contactsAvailable, true)
+  })
+})

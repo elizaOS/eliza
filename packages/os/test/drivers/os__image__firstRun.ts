@@ -8,4 +8,4 @@ export const driver: Driver & AsyncDisposable = jvmDriver("ai.eliza.firstrun.Fir
 
 export const options: Options = { keys: [KEY] };
 
-if (import.meta.main) await answerDriverLines(driver, KEY, () => Promise.resolve([]));
+if (import.meta.main) await answerDriverLines(driver, KEY);

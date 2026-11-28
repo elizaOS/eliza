@@ -1,0 +1,182 @@
+// spec/telegram/index.md, "Story: Run one Telegram long-poller for each bot credential"; spec/telegram/index.md, "The effective Telegram allowlist can deny all chats, and DMs default to pairing when no list is set"
+import { ChannelType, Service, createUniqueUuid, type IAgentRuntime, type Memory } from "@elizaos/core"
+import { Telegraf, type Context } from "telegraf"
+import { parseTelegramChatList, parseTelegramDmPolicy, resolveTelegramAccount, shouldStartTelegramStandaloneBot } from "./policy.vibe"
+import {
+  claimTelegramPollerToken,
+  markTelegramPollerConnected,
+  markTelegramPollerTerminated,
+  markTelegramPollerUpdate,
+  preserveTelegramCancellation,
+  releaseTelegramPollerToken,
+} from "./poller-lock.vibe"
+import { telegramChatAdmission, telegramMessageDisposition } from "../gen/telegram.effect.vibe"
+import { TELEGRAM_STANDALONE_SERVICE_NAME } from "./types.vibe"
+
+export interface TelegramStandaloneUser {
+  readonly id?: number | string
+  readonly is_bot?: boolean
+  readonly username?: string
+  readonly first_name?: string
+}
+
+export interface TelegramStandaloneChat {
+  readonly id?: number | string
+  readonly type?: string
+}
+
+export interface TelegramStandaloneMessage {
+  readonly message_id?: number | string
+  readonly date?: number
+  readonly text?: string
+  readonly from?: TelegramStandaloneUser
+  readonly chat?: TelegramStandaloneChat
+  readonly message_thread_id?: number | string
+}
+
+export interface TelegramStandaloneContext {
+  readonly message?: TelegramStandaloneMessage
+  readonly from?: TelegramStandaloneUser
+  readonly chat?: TelegramStandaloneChat
+  reply(text: string): Promise<unknown>
+}
+
+export async function handleTelegramStandaloneMessage(
+  runtime: IAgentRuntime,
+  ctx: TelegramStandaloneContext,
+): Promise<{ readonly handled: boolean; readonly mode: "ignore" | "store" | "reply" }> {
+  const msg = ctx.message
+  const from = ctx.from ?? msg?.from
+  const chat = ctx.chat ?? msg?.chat
+  const text = msg?.text?.trim() ?? ""
+  if (from === undefined || chat === undefined || from.is_bot === true || from.id === undefined || chat.id === undefined || text === "") {
+    return { handled: false, mode: "ignore" }
+  }
+  const chatId = String(chat.id)
+  const senderId = String(from.id)
+  const topicId = msg?.message_thread_id === undefined ? "" : String(msg.message_thread_id)
+  const scope = chat.type === "private" ? "TelegramDirect" : chat.type === "channel" ? "TelegramChannel" : topicId !== "" ? "TelegramTopic" : "TelegramGroup"
+  const policy = {
+    accountList: [],
+    globalList: parseTelegramChatList(runtime.getSetting("TELEGRAM_ALLOWED_CHATS")),
+    dmPolicy: parseTelegramDmPolicy(runtime.getSetting("TELEGRAM_DM_POLICY")),
+    pairedSender: false,
+  }
+  const admission = telegramChatAdmission(scope, chatId, policy)
+  if (admission !== "TelegramAdmitted") {
+    return { handled: false, mode: "ignore" }
+  }
+  const entityId = createUniqueUuid(runtime, `telegram:standalone:sender:${senderId}`)
+  const roomId = createUniqueUuid(runtime, `telegram:standalone:chat:${chatId}:${topicId}`)
+  const worldId = createUniqueUuid(runtime, `telegram:standalone:world:${chatId}`)
+  const msgId = String(msg?.message_id ?? Date.now())
+  const id = createUniqueUuid(runtime, `telegram:standalone:message:${chatId}:${msgId}`)
+  const disposition = telegramMessageDisposition(
+    { eventAccount: "default", eventChat: chatId, topicId, eventMessageId: msgId, senderEntity: entityId, chatScope: scope, command: "TelegramOrdinary" },
+    policy,
+    { isOwner: false, isAdmin: false },
+    runtime.getSetting("TELEGRAM_AUTO_REPLY") !== "false",
+    false,
+  )
+  if (disposition === "TelegramIgnore") {
+    return { handled: false, mode: "ignore" }
+  }
+  const channelType = scope === "TelegramDirect" ? ChannelType.DM : ChannelType.GROUP
+  await runtime.ensureConnection?.({
+    entityId,
+    roomId,
+    worldId,
+    source: "telegram",
+    channelId: chatId,
+    serverId: chatId,
+    type: channelType,
+    metadata: { accountId: "default", standalone: true },
+  })
+  const incoming: Memory = {
+    id,
+    entityId,
+    roomId,
+    worldId,
+    agentId: runtime.agentId,
+    createdAt: (msg?.date ?? Math.floor(Date.now() / 1000)) * 1000,
+    content: { text, source: "telegram", channelType },
+  }
+  if (disposition === "TelegramReply" && runtime.messageService !== undefined && runtime.messageService !== null) {
+    await runtime.messageService.handleMessage(runtime, incoming, async (reply) => {
+      const replyText = reply.text?.trim() ?? ""
+      if (replyText !== "") await ctx.reply(replyText)
+      return []
+    })
+    return { handled: true, mode: "reply" }
+  }
+  await runtime.createMemory(incoming, "messages")
+  return { handled: true, mode: "store" }
+}
+
+export class TelegramStandaloneService extends Service {
+  static override serviceType = TELEGRAM_STANDALONE_SERVICE_NAME
+  override capabilityDescription = "Opt-in standalone Telegram polling bot gated by ELIZA_TELEGRAM_STANDALONE_BOT."
+
+  private bot: Telegraf<Context> | null = null
+  private botToken: string | null = null
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<TelegramStandaloneService> {
+    const service = new TelegramStandaloneService(runtime)
+    if (!shouldStartTelegramStandaloneBot(undefined, runtime)) {
+      return service
+    }
+    const resolved = resolveTelegramAccount(runtime)
+    if (resolved.botToken === undefined) {
+      return service
+    }
+    await service.launch(resolved.botToken, resolved.apiRoot)
+    return service
+  }
+
+  static async stop(runtime: IAgentRuntime): Promise<void> {
+    const existing = runtime.getService<TelegramStandaloneService>(TELEGRAM_STANDALONE_SERVICE_NAME)
+    await existing?.stop()
+  }
+
+  async launch(token: string, apiRoot: string): Promise<void> {
+    const bot = new Telegraf(token, { telegram: { apiRoot } })
+    preserveTelegramCancellation(bot.telegram)
+    await claimTelegramPollerToken(token, {
+      mode: "standalone",
+      accountId: "default",
+      ownerId: String(this.runtime?.agentId ?? "standalone"),
+      bot,
+    })
+    const me = await bot.telegram.getMe()
+    bot.botInfo = me
+    bot.on("message", async (ctx) => {
+      await markTelegramPollerUpdate(token, bot)
+      if (this.runtime !== undefined) {
+        await handleTelegramStandaloneMessage(this.runtime, ctx as unknown as TelegramStandaloneContext)
+      }
+    })
+    bot.catch(async (err) => {
+      await markTelegramPollerTerminated(token, bot, err instanceof Error ? err.message : String(err))
+    })
+    await markTelegramPollerConnected(token, bot)
+    this.bot = bot
+    this.botToken = token
+  }
+
+  override async stop(): Promise<void> {
+    const bot = this.bot
+    const token = this.botToken
+    this.bot = null
+    this.botToken = null
+    if (bot !== null) {
+      Effect.runSync(Effect.result(Effect.try(() => bot.stop("shutdown"))))
+    }
+    if (bot !== null && token !== null) {
+      await releaseTelegramPollerToken(token, bot)
+    }
+  }
+}

@@ -1,25 +1,101 @@
-// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"
+// spec/inbox/managedRead.md, "Story: Read my managed inbox fresh, and only for me"; spec/inbox/handoff.md, "Story: Put the agent's words into an email draft without sending it"; spec/inbox/grants.md, "Story: Grant Gmail access one step at a time"; spec/inbox/triage.md, "Story: Triage my unified cross-channel inbox and safely manage subscriptions"
 import { showsApp, type AgentPlugin } from "@elizaos/agent-host"
 import { inboxAccessProvider } from "./agent/access.vibe"
 import { inboxComposeAction } from "./agent/compose.vibe"
 import { inboxContext, inboxReadAction } from "./agent/read.vibe"
+import { inboxAction, inboxActionName } from "./triage/actions.vibe"
+import {
+  buildDeepLink,
+  canExecuteUnsubscribeUrl,
+  clearPriorityScoreCache,
+  extractAsciiEmailAddress,
+  isPublicHttpsHost,
+  parseListUnsubscribeHeaders,
+  scoreInboxMessage,
+  type InboxMessageRecord,
+  type InboxPlatform,
+  type PriorityCategory,
+  type PriorityScore,
+  type UnsubscribeMetadata,
+} from "./triage/helpers.vibe"
+import { crossChannelContextProvider, inboxTriageProvider } from "./triage/providers.vibe"
+import { inboxRoutes, type InboxRouteTarget } from "./triage/routes.vibe"
+import {
+  INBOX_TRIAGE_SERVICE_TYPE,
+  InboxTriageService,
+  resetInboxFetchers,
+  setInboxFetchers,
+  type EmailSubscriptionSenderSummary,
+  type InboxDegradedPlatform,
+  type InboxFetcher,
+  type InboxFetchers,
+  type TriagedInboxItem,
+  type UnifiedInboxSnapshot,
+  type UnsubscribeOutcome,
+} from "./triage/service.vibe"
 
 export { inboxAccess, inboxAccessProvider, inboxAccessProviderName } from "./agent/access.vibe"
 export { emailDraftAnswer, inboxComposeAction, inboxComposeActionName, type EmailDraftHandoff } from "./agent/compose.vibe"
 export { managedInboxRead, inboxReadAction, inboxReadActionName, type ManagedReadAnswer, type ManagedReadRequest } from "./agent/read.vibe"
 export { agentGmailClient, cloudLinkTransport, gmailTransportOf } from "./agent/cloud.vibe"
 export { brokerTransport } from "./agent/broker.vibe"
+export {
+  INBOX_TRIAGE_SERVICE_TYPE,
+  InboxTriageService,
+  buildDeepLink,
+  canExecuteUnsubscribeUrl,
+  clearPriorityScoreCache,
+  crossChannelContextProvider,
+  extractAsciiEmailAddress,
+  inboxAction,
+  inboxActionName,
+  inboxRoutes,
+  inboxTriageProvider,
+  isPublicHttpsHost,
+  parseListUnsubscribeHeaders,
+  resetInboxFetchers,
+  scoreInboxMessage,
+  setInboxFetchers,
+  type EmailSubscriptionSenderSummary,
+  type InboxDegradedPlatform,
+  type InboxFetcher,
+  type InboxFetchers,
+  type InboxMessageRecord,
+  type InboxPlatform,
+  type InboxRouteTarget,
+  type PriorityCategory,
+  type PriorityScore,
+  type TriagedInboxItem,
+  type UnifiedInboxSnapshot,
+  type UnsubscribeMetadata,
+  type UnsubscribeOutcome,
+}
 
 export const inboxPluginName = "@elizaos/plugin-inbox"
 
-for (const action of [inboxReadAction, inboxComposeAction]) showsApp(action, inboxContext.id)
+for (const action of [inboxReadAction, inboxComposeAction, inboxAction]) showsApp(action, inboxContext.id)
+
+let activeTriageService: InboxTriageService | undefined = undefined
 
 export const inboxPlugin: AgentPlugin = {
   name: inboxPluginName,
-  description: "Reads the owner's connected Gmail fresh and bounded, hands a new email to the phone's own composer, and reports Gmail access; sending and mailbox changes stay with the owner in Inbox",
-  actions: [inboxReadAction, inboxComposeAction],
-  providers: [inboxAccessProvider],
-  init: async (_config, runtime) => { runtime.contexts.tryRegister(inboxContext) },
+  description: "Reads the owner's connected Gmail fresh and bounded, triages cross-channel inbox messages with safe subscription management, hands new emails to the phone's composer, and reports Gmail access.",
+  services: [InboxTriageService],
+  actions: [inboxReadAction, inboxComposeAction, inboxAction],
+  providers: [inboxAccessProvider, inboxTriageProvider, crossChannelContextProvider],
+  routes: inboxRoutes(() => activeTriageService),
+  init: async (_config, runtime) => {
+    runtime.contexts.tryRegister(inboxContext)
+    const found: unknown = typeof runtime.getService === "function" ? runtime.getService(INBOX_TRIAGE_SERVICE_TYPE) : undefined
+    if (found instanceof InboxTriageService) activeTriageService = found
+  },
+  dispose: async (runtime) => {
+    const found: unknown = typeof runtime.getService === "function" ? runtime.getService(INBOX_TRIAGE_SERVICE_TYPE) : undefined
+    if (found instanceof InboxTriageService) {
+      await found.stop()
+      if (activeTriageService === found) activeTriageService = undefined
+    }
+  },
 }
 
 export default inboxPlugin

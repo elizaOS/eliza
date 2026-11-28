@@ -1,0 +1,141 @@
+// spec/telegram/delivery.md, "Owner pairing fails closed on rate limit or missing backend, arbitrary senders never own a world, and history rejects cursors"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { maxPairAttempts, pairCommandAllowed } from "../gen/telegram__delivery.effect.vibe"
+import { TELEGRAM_OWNER_PAIRING_SERVICE_TYPE, TELEGRAM_SERVICE_NAME } from "./types.vibe"
+
+const RATE_LIMIT_WINDOW_MS = 60_000
+const MAX_TRACKED_PAIR_USERS = 10_000
+
+interface OwnerBindVerifyService {
+  verifyOwnerBindFromConnector(params: {
+    readonly connector: "discord" | "telegram" | "wechat" | "matrix"
+    readonly externalId: string
+    readonly displayHandle: string
+    readonly code: string
+  }): Promise<{ readonly success: boolean; readonly error?: string }>
+}
+
+export interface TelegramPairCommandContext {
+  readonly from?: { readonly id?: number; readonly username?: string; readonly first_name?: string }
+  reply(text: string): Promise<unknown>
+}
+
+export interface TelegramOwnerPairingService {
+  handlePairCommand(
+    ctx: TelegramPairCommandContext,
+    codeArg: string,
+    now?: number,
+  ): Promise<{ readonly ok: boolean; readonly message: string }>
+  sendOwnerLoginDmLink(input: { readonly externalId: string; readonly link: string }): Promise<{ readonly sent: boolean; readonly error?: string }>
+}
+
+const pairAttempts = new Map<string, number[]>()
+
+export function resetTelegramPairAttemptsForTest(): void {
+  pairAttempts.clear()
+}
+
+function pruneExpiredAttempts(now: number): void {
+  const cutoff = now - RATE_LIMIT_WINDOW_MS
+  for (const [userId, timestamps] of pairAttempts) {
+    const fresh = timestamps.filter((ts) => ts > cutoff)
+    if (fresh.length === 0) pairAttempts.delete(userId)
+    else pairAttempts.set(userId, fresh)
+  }
+}
+
+function isVerifyService(value: unknown): value is OwnerBindVerifyService {
+  return typeof value === "object" && value !== null && "verifyOwnerBindFromConnector" in value
+    && typeof (value as { verifyOwnerBindFromConnector?: unknown }).verifyOwnerBindFromConnector === "function"
+}
+
+export class TelegramOwnerPairingServiceImpl extends Service implements TelegramOwnerPairingService {
+  static override serviceType = TELEGRAM_OWNER_PAIRING_SERVICE_TYPE
+  override capabilityDescription = "Relays Telegram /eliza_pair owner binding commands and delivers owner login DM links."
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<TelegramOwnerPairingServiceImpl> {
+    return Promise.resolve(new TelegramOwnerPairingServiceImpl(runtime))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+
+  async handlePairCommand(
+    ctx: TelegramPairCommandContext,
+    codeArg: string,
+    now = Date.now(),
+  ): Promise<{ readonly ok: boolean; readonly message: string }> {
+    const userId = ctx.from?.id
+    if (userId === undefined) {
+      const message = "Unable to identify Telegram user for pairing."
+      await ctx.reply(message)
+      return { ok: false, message }
+    }
+    const key = String(userId)
+    pruneExpiredAttempts(now)
+    if (pairAttempts.size >= MAX_TRACKED_PAIR_USERS && !pairAttempts.has(key)) {
+      const oldest = pairAttempts.keys().next().value
+      if (oldest !== undefined) pairAttempts.delete(oldest)
+    }
+    const recent = pairAttempts.get(key) ?? []
+    const trimmed = codeArg.trim()
+    const codeValid = /^\d{6}$/.test(trimmed)
+    const verifier: unknown = this.runtime?.getService("OWNER_BIND_VERIFY") ?? this.runtime?.getService("owner-bind-verify")
+    const backendReachable = isVerifyService(verifier)
+    if (recent.length >= maxPairAttempts) {
+      const message = "Too many pairing attempts. Please wait a minute and try again."
+      await ctx.reply(message)
+      return { ok: false, message }
+    }
+    pairAttempts.set(key, [...recent, now])
+    if (!pairCommandAllowed(recent.length, backendReachable, codeValid) || !isVerifyService(verifier)) {
+      const message = !codeValid
+        ? "Usage: /eliza_pair <6-digit code>"
+        : "Owner pairing service is currently unavailable. Please try again later."
+      await ctx.reply(message)
+      return { ok: false, message }
+    }
+    const displayHandle = ctx.from?.username ?? ctx.from?.first_name ?? key
+    const verified = await verifier.verifyOwnerBindFromConnector({
+      connector: "telegram",
+      externalId: key,
+      displayHandle,
+      code: trimmed,
+    })
+    const message = verified.success
+      ? "Owner account paired with Telegram."
+      : verified.error ?? "Pairing code was rejected."
+    await ctx.reply(message)
+    return { ok: verified.success, message }
+  }
+
+  async sendOwnerLoginDmLink(input: {
+    readonly externalId: string
+    readonly link: string
+  }): Promise<{ readonly sent: boolean; readonly error?: string }> {
+    const chatId = input.externalId.trim()
+    const link = input.link.trim()
+    if (!/^\d+$/.test(chatId) || !/^https?:\/\//.test(link)) {
+      return { sent: false, error: "Invalid Telegram user ID or login link." }
+    }
+    const svc = this.runtime?.getService(TELEGRAM_SERVICE_NAME) as
+      | { readonly sendDmLink?: (targetChatId: string, text: string, linkUrl: string) => Promise<void> }
+      | null
+      | undefined
+    if (svc?.sendDmLink === undefined) {
+      return { sent: false, error: "Telegram bot service is unavailable." }
+    }
+    const attempt = await Effect.runPromise(Effect.result(Effect.tryPromise(() =>
+      svc.sendDmLink!(chatId, "Tap below to sign in to your Eliza owner account:", link),
+    )))
+    if (attempt._tag !== "Success") {
+      return { sent: false, error: "Failed to deliver Telegram login DM link." }
+    }
+    return { sent: true }
+  }
+}

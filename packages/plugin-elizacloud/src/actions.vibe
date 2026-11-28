@@ -1,0 +1,235 @@
+// spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/apiKeys.md, "Story: Mint a Cloud API key safely from chat"
+import type { CloudLinkRequest, CloudLinkService } from "@elizaos/agent-host"
+import { creditFromSnapshot, snapshotFromResponse } from "@elizaos/cloud"
+import {
+  resolveCanonicalOwnerId,
+  validateUuid,
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core"
+import { Schema } from "effect"
+import { Machine, cloudTextReadiness, effectiveCloudModel, machine } from "../gen/elizaCloud.effect.vibe"
+import {
+  Machine as KeyMintMachine,
+  apiKeyNameAllowed,
+  machine as keyMintMachine,
+} from "../gen/elizaCloud__apiKeys.effect.vibe"
+import {
+  getApiKey,
+  getBaseURL,
+  getCloudLink,
+  getSetting,
+  resolveCloudApiKeysUrl,
+} from "./config.vibe"
+import { CloudAccountUnavailable, CloudApiFailure, cloudJsonFetch } from "./http.vibe"
+import { invalidateCloudAccountCache } from "./providers.vibe"
+import { CLOUD_AUTH_SERVICE_TYPE, normalizeCloudCatalogIdentifiers, type CloudAuthService } from "./services.vibe"
+
+const RESERVED_KEY_PREFIX = "agent-sandbox:"
+
+const profileSchema = Schema.Struct({
+  success: Schema.Literal(true),
+  data: Schema.Struct({ id: Schema.String }),
+})
+
+const modelListSchema = Schema.Struct({
+  object: Schema.Literal("list"),
+  data: Schema.Array(Schema.Struct({ id: Schema.String })),
+})
+
+const createdKeySchema = Schema.Struct({
+  apiKey: Schema.Struct({
+    id: Schema.optionalKey(Schema.String),
+    name: Schema.String,
+    key_prefix: Schema.optionalKey(Schema.String),
+  }),
+  plainKey: Schema.String,
+})
+
+effect function readCloudPath(link: CloudLinkService, path: CloudLinkRequest["path"]) {
+  const response = try tryPromise({
+    try: (signal) => link.request({ method: "GET", path, signal }),
+    catch: () => new CloudAccountUnavailable({ reason: "Cloud could not be reached through the current connection." }),
+  })
+  if (response.kind !== "answered") {
+    throw new CloudAccountUnavailable({ reason: "The current Cloud connection refused this request." })
+  }
+  return response.body
+}
+
+export effect function accountStatus(runtime: IAgentRuntime) {
+  const link = getCloudLink(runtime)
+  if (link === undefined) {
+    throw new CloudAccountUnavailable({ reason: "The agent has no authenticated Cloud connection." })
+  }
+  const account = try Schema.decodeUnknownEffect(profileSchema)(try readCloudPath(link, "/api/v1/user"))
+  const accountId = account.data.id
+  const originId = String(runtime.agentId)
+  provide machine() {
+    const view = try Machine
+    try view.send({ type: "attachCloud", accountId, originId, epoch: 1, originAllowed: true })
+    if (getCloudLink(runtime) !== link) throw new CloudAccountUnavailable({ reason: "The Cloud connection changed during the account request." })
+    try view.send({ type: "observeCloud", accountId, originId, epoch: 1, observation: "ProfileSummary" })
+    const billing = try snapshotFromResponse(try readCloudPath(link, "/api/v1/billing/limits"))
+    if (getCloudLink(runtime) !== link) throw new CloudAccountUnavailable({ reason: "The Cloud connection changed during the funding request." })
+    try view.send({ type: "observeCloud", accountId, originId, epoch: 1, observation: "CreditSummary" })
+    const catalog = (effect {
+      return try Schema.decodeUnknownEffect(modelListSchema)(try readCloudPath(link, "/api/v1/models"))
+    }) catch () => undefined
+    if (getCloudLink(runtime) !== link) throw new CloudAccountUnavailable({ reason: "The Cloud connection changed during the catalog request." })
+    const small = effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL"), getSetting(runtime, "SMALL_MODEL"), "gpt-4.1-mini")
+    const large = effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL"), getSetting(runtime, "LARGE_MODEL"), "gpt-4.1")
+    const ids = catalog ? normalizeCloudCatalogIdentifiers(catalog.data) : []
+    const readiness = cloudTextReadiness(catalog === undefined ? "CatalogUnavailable" : "CatalogSnapshot", ids, small.modelId, large.modelId)
+    return { accountId, credit: creditFromSnapshot(billing, try Clock.currentTimeMillis), readiness, small, large }
+  }
+}
+
+function isAccountOwner(runtime: IAgentRuntime, message: Memory): boolean {
+  const owner = validateUuid(resolveCanonicalOwnerId(runtime))
+  return owner !== null && owner === message.entityId
+}
+
+function hasCloudAuth(runtime: IAgentRuntime): boolean {
+  const auth = runtime.getService<CloudAuthService>(CLOUD_AUTH_SERVICE_TYPE)
+  return Boolean(auth?.isAuthenticated() || getApiKey(runtime) !== "" || getCloudLink(runtime) !== undefined)
+}
+
+export function parseApiKeyName(text: string, now = new Date()): string {
+  const quoted = text.match(/"([^"]{1,64})"|'([^']{1,64})'|\u201c([^\u201d]{1,64})\u201d/)
+  const quotedName = quoted?.[1] ?? quoted?.[2] ?? quoted?.[3]
+  if (quotedName?.trim()) return quotedName.trim()
+  const named = text.match(/\b(?:named|called)\s+([\w][\w./-]{0,63})/i)
+  if (named?.[1]) return named[1]
+  return `agent-created-${now.toISOString().slice(0, 10)}`
+}
+
+export const accountStatusAction: Action = {
+  name: "CLOUD_ACCOUNT_STATUS",
+  description: "Show the owner's current Eliza Cloud funding and configured model availability.",
+  descriptionCompressed: "Show Eliza Cloud account funding and model availability.",
+  contexts: ["cloud", "settings", "finance"],
+  contextGate: { anyOf: ["cloud", "settings", "finance"] },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [],
+  summarize: (result) => (result?.success ? "Cloud account status checked." : undefined),
+  validate: (runtime, message) => Promise.resolve(isAccountOwner(runtime, message) && getCloudLink(runtime) !== undefined),
+  handler: (runtime, message) => runPromise(effect {
+    if (!isAccountOwner(runtime, message)) {
+      throw new CloudAccountUnavailable({ reason: "Cloud account status is visible only to the configured owner." })
+    }
+    const status = try accountStatus(runtime)
+    const text = status.readiness === "TextModelsAvailable"
+      ? "Cloud is connected and both configured text models are available."
+      : status.readiness === "UnknownTextModels"
+        ? "Cloud is connected. Model availability is temporarily unknown."
+        : "Cloud is connected, but a configured text model is missing from its catalog."
+    return { success: true, text, data: status }
+  }),
+}
+
+export const createCloudApiKeyAction: Action = {
+  name: "CLOUD_CREATE_API_KEY",
+  similes: ["CREATE_CLOUD_API_KEY", "NEW_CLOUD_API_KEY", "CREATE_API_KEY"],
+  description: "Create a new Eliza Cloud API key with an optional name. Plain key is shown once and never logged.",
+  descriptionCompressed: "Mint an Eliza Cloud API key (optional name).",
+  contexts: ["cloud", "settings"],
+  contextGate: { anyOf: ["cloud", "settings"] },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [
+    {
+      name: "name",
+      description: "Optional display name for the new API key (1-64 chars, cannot start with agent-sandbox:).",
+      descriptionCompressed: "Key name (1-64 chars).",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  summarize: (result) => (result?.success ? (result.text ?? "Created Eliza Cloud API key.") : undefined),
+  validate: (runtime, message) => Promise.resolve(isAccountOwner(runtime, message) && hasCloudAuth(runtime)),
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    if (!isAccountOwner(runtime, message)) {
+      return { success: false, text: "Only the configured owner can create Eliza Cloud API keys." }
+    }
+    if (!hasCloudAuth(runtime)) {
+      const msg = "Not connected to Eliza Cloud."
+      await callback?.({ text: msg, actions: ["CLOUD_CREATE_API_KEY"] })
+      return { success: false, text: msg, data: { reason: "not_connected" } }
+    }
+    const params = (options?.parameters ?? {}) as Record<string, unknown>
+    const rawName = typeof params.name === "string" && params.name.trim().length > 0
+      ? params.name.trim()
+      : parseApiKeyName(message.content?.text ?? "")
+    const hasReservedPrefix = rawName.toLowerCase().startsWith(RESERVED_KEY_PREFIX)
+    if (!apiKeyNameAllowed(rawName.length, hasReservedPrefix)) {
+      const refused = hasReservedPrefix
+        ? `Key names starting with "${RESERVED_KEY_PREFIX}" are reserved — choose another name.`
+        : "API key name must be between 1 and 64 characters."
+      await callback?.({ text: refused, actions: ["CLOUD_CREATE_API_KEY"] })
+      return { success: false, text: refused, data: { reason: hasReservedPrefix ? "reserved_name" : "invalid_name", name: rawName } }
+    }
+
+    const apiKeysUrl = resolveCloudApiKeysUrl(getBaseURL(runtime))
+    return runPromise(effect {
+      provide keyMintMachine() {
+        const session = try KeyMintMachine
+        const auth = runtime.getService<CloudAuthService>(CLOUD_AUTH_SERVICE_TYPE)
+        const accountId = auth?.getAccountId() || String(runtime.agentId)
+        try session.send({ type: "bindKeySession", accountId, epoch: Math.max(1, (auth?.getEpoch() ?? 0) + 1) })
+        const response = (effect {
+          const body = try cloudJsonFetch(runtime, {
+            method: "POST",
+            path: "/api/v1/api-keys",
+            body: { name: rawName },
+            maxWarmingRetries: 0,
+          })
+          return { kind: "ok" as const, body }
+        }) catch effect (err) => {
+          if (err instanceof CloudApiFailure && (err.status === 401 || err.status === 403)) {
+            const guidance = `API key minting requires a signed-in Cloud session. Create keys from ${apiKeysUrl}.`
+            try tryPromise(async () => { await callback?.({ text: guidance, actions: ["CLOUD_CREATE_API_KEY"] }) })
+            return {
+              kind: "refused" as const,
+              result: { success: false, text: guidance, data: { reason: "session_required", apiKeysUrl } } satisfies ActionResult,
+            }
+          }
+          throw err
+        }
+        if (response.kind === "refused") return response.result
+        const created = try Schema.decodeUnknownEffect(createdKeySchema)(response.body)
+        const keyId = created.apiKey.id ?? created.apiKey.name
+        try session.send({ type: "mintApiKey", keyId, sessionAuthorized: true, nameAllowed: true })
+        invalidateCloudAccountCache(runtime)
+        const reply = [
+          `Created Eliza Cloud API key "${created.apiKey.name}".`,
+          "",
+          created.plainKey,
+          "",
+          `Copy it now — shown once. Manage or revoke at ${apiKeysUrl}.`,
+        ].join("\n")
+        try tryPromise(async () => { await callback?.({ text: reply, actions: ["CLOUD_CREATE_API_KEY"] }) })
+        try session.send({ type: "acknowledgePlainKey" })
+        const prefix = created.apiKey.key_prefix ?? created.plainKey.slice(0, 8)
+        return {
+          success: true,
+          text: `Created Eliza Cloud API key "${created.apiKey.name}" (${prefix}…).`,
+          userFacingText: reply,
+          data: { id: keyId, name: created.apiKey.name, keyPrefix: prefix, apiKeysUrl },
+        }
+      }
+    })
+  },
+}

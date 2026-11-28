@@ -1,0 +1,561 @@
+// spec/health/index.md, "Interval summaries include only valid observations for the owner and requested time range"; spec/health/lifecycle.md, "Connector authorization and sync transitions enforce owner consent and monotonic revisions"
+import {
+  decryptTokenEnvelope,
+  encryptTokenPayload,
+  generatePkcePair,
+  isEncryptedTokenEnvelope,
+  randomStateToken,
+  resolveTokenEncryptionKey,
+  type EncryptedTokenEnvelope,
+} from "./crypto.vibe"
+import type {
+  HealthConnectorCapability,
+  HealthConnectorKind,
+  HealthMetricSample,
+  HealthOAuthProvider,
+  HealthSleepEpisode,
+  HealthWorkout,
+} from "./types.vibe"
+
+export interface HealthOAuthSpec {
+  readonly authorizeUrl: string
+  readonly tokenUrl: string
+  readonly revokeUrl: string | null
+  readonly defaultScopes: readonly string[]
+  readonly scopeSeparator: "comma" | "space"
+  readonly usePkce: boolean
+  readonly tokenRequestStyle: "form" | "basic" | "withings"
+}
+
+export interface HealthProviderSpec {
+  readonly provider: HealthOAuthProvider
+  readonly envPrefix: string
+  readonly oauth: HealthOAuthSpec
+  readonly apiBaseUrl: string
+  readonly capabilities: readonly HealthConnectorCapability[]
+}
+
+export interface StoredHealthConnectorToken {
+  readonly provider: HealthOAuthProvider
+  readonly ownerId: string
+  readonly clientId: string
+  readonly clientSecret: string | null
+  readonly redirectUri: string
+  readonly accessToken: string
+  readonly refreshToken: string | null
+  readonly tokenType: string
+  readonly grantedScopes: readonly string[]
+  readonly expiresAt: number | null
+  readonly updatedAt: string
+}
+
+export interface PendingOAuthSession {
+  readonly state: string
+  readonly provider: HealthOAuthProvider
+  readonly ownerId: string
+  readonly clientId: string
+  readonly clientSecret: string | null
+  readonly redirectUri: string
+  readonly codeVerifier: string | null
+  readonly authorizeUrl: string
+  readonly createdAt: number
+}
+
+export interface NormalizedProviderPayload {
+  readonly samples: readonly HealthMetricSample[]
+  readonly sleepEpisodes: readonly HealthSleepEpisode[]
+  readonly workouts: readonly HealthWorkout[]
+}
+
+export const HEALTH_CONNECTOR_LABELS: Readonly<Record<HealthConnectorKind, string>> = {
+  apple_health: "Apple Health (HealthKit)",
+  google_fit: "Google Fit",
+  strava: "Strava",
+  fitbit: "Fitbit",
+  withings: "Withings",
+  oura: "Oura",
+}
+
+export const HEALTH_CONNECTOR_CAPABILITY_MAP: Readonly<Record<HealthConnectorKind, readonly HealthConnectorCapability[]>> = {
+  apple_health: ["health.sleep.read", "health.activity.read", "health.workouts.read", "health.body.read", "health.vitals.read"],
+  google_fit: ["health.sleep.read", "health.activity.read", "health.workouts.read", "health.body.read", "health.vitals.read"],
+  strava: ["health.activity.read", "health.workouts.read"],
+  fitbit: ["health.sleep.read", "health.activity.read", "health.workouts.read", "health.body.read", "health.vitals.read", "health.readiness.read"],
+  withings: ["health.sleep.read", "health.body.read", "health.vitals.read"],
+  oura: ["health.sleep.read", "health.activity.read", "health.workouts.read", "health.readiness.read", "health.body.read", "health.vitals.read"],
+}
+
+const DEFAULT_HEALTH_PROVIDER_SPECS: Readonly<Record<HealthOAuthProvider, HealthProviderSpec>> = {
+  strava: {
+    provider: "strava",
+    envPrefix: "STRAVA",
+    oauth: {
+      authorizeUrl: "https://www.strava.com/oauth/authorize",
+      tokenUrl: "https://www.strava.com/oauth/token",
+      revokeUrl: "https://www.strava.com/oauth/deauthorize",
+      defaultScopes: ["read", "profile:read_all", "activity:read_all"],
+      scopeSeparator: "comma",
+      usePkce: false,
+      tokenRequestStyle: "form",
+    },
+    apiBaseUrl: "https://www.strava.com/api/v3",
+    capabilities: HEALTH_CONNECTOR_CAPABILITY_MAP.strava,
+  },
+  fitbit: {
+    provider: "fitbit",
+    envPrefix: "FITBIT",
+    oauth: {
+      authorizeUrl: "https://www.fitbit.com/oauth2/authorize",
+      tokenUrl: "https://api.fitbit.com/oauth2/token",
+      revokeUrl: "https://api.fitbit.com/oauth2/revoke",
+      defaultScopes: ["profile", "activity", "heartrate", "sleep", "weight"],
+      scopeSeparator: "space",
+      usePkce: true,
+      tokenRequestStyle: "basic",
+    },
+    apiBaseUrl: "https://api.fitbit.com",
+    capabilities: HEALTH_CONNECTOR_CAPABILITY_MAP.fitbit,
+  },
+  withings: {
+    provider: "withings",
+    envPrefix: "WITHINGS",
+    oauth: {
+      authorizeUrl: "https://account.withings.com/oauth2_user/authorize2",
+      tokenUrl: "https://wbsapi.withings.net/v2/oauth2",
+      revokeUrl: null,
+      defaultScopes: ["user.info", "user.metrics", "user.activity", "user.sleepevents"],
+      scopeSeparator: "comma",
+      usePkce: false,
+      tokenRequestStyle: "withings",
+    },
+    apiBaseUrl: "https://wbsapi.withings.net",
+    capabilities: HEALTH_CONNECTOR_CAPABILITY_MAP.withings,
+  },
+  oura: {
+    provider: "oura",
+    envPrefix: "OURA",
+    oauth: {
+      authorizeUrl: "https://cloud.ouraring.com/oauth/authorize",
+      tokenUrl: "https://api.ouraring.com/oauth/token",
+      revokeUrl: "https://api.ouraring.com/oauth/revoke",
+      defaultScopes: ["email", "personal", "daily", "heartrate", "workout", "spo2"],
+      scopeSeparator: "space",
+      usePkce: false,
+      tokenRequestStyle: "basic",
+    },
+    apiBaseUrl: "https://api.ouraring.com",
+    capabilities: HEALTH_CONNECTOR_CAPABILITY_MAP.oura,
+  },
+}
+
+const providerSpecs = new Map<string, HealthProviderSpec>(Object.entries(DEFAULT_HEALTH_PROVIDER_SPECS))
+
+export function listHealthProviderSpecs(): readonly HealthProviderSpec[] {
+  return [...providerSpecs.values()]
+}
+
+export function getHealthProviderSpec(provider: string): HealthProviderSpec | undefined {
+  return providerSpecs.get(provider)
+}
+
+export function setHealthProviderSpec(spec: HealthProviderSpec): void {
+  providerSpecs.set(spec.provider, spec)
+}
+
+export function deleteHealthProviderSpec(provider: string): void {
+  providerSpecs.delete(provider)
+}
+
+export function resetHealthProviderRegistry(): void {
+  providerSpecs.clear()
+  for (const [key, spec] of Object.entries(DEFAULT_HEALTH_PROVIDER_SPECS)) {
+    providerSpecs.set(key, spec)
+  }
+}
+
+export error HealthOAuthError {
+  status: number
+  message: string
+}
+
+module node {
+  /** @throws {never} */
+  export function buildAuthorizeUrl(
+    base: string,
+    params: Readonly<Record<string, string>>,
+  ): string {
+    const url = new URL(base)
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, v)
+    }
+    return url.toString()
+  }
+
+  /** @throws {never} */
+  export function basicAuthHeader(clientId: string, clientSecret: string): string {
+    return `Basic ${Buffer.from(`${clientId}:${clientSecret}`, "utf8").toString("base64")}`
+  }
+
+  async function readJsonResponse(
+    res: Response,
+  ): Promise<{ readonly status: number; readonly json: Record<string, unknown> | undefined }> {
+    const text = await res.text()
+    try {
+      const parsed = JSON.parse(text) as unknown
+      return {
+        status: res.status,
+        json: typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined,
+      }
+    } catch {
+      return { status: res.status, json: undefined }
+    }
+  }
+
+  export async function postOAuthForm(
+    url: string,
+    body: Readonly<Record<string, string>>,
+    headers: Readonly<Record<string, string>>,
+  ): Promise<{ readonly status: number; readonly json: Record<string, unknown> | undefined }> {
+    const form = new URLSearchParams()
+    for (const [k, v] of Object.entries(body)) {
+      form.set(k, v)
+    }
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        accept: "application/json",
+        ...headers,
+      },
+      body: form.toString(),
+    })
+    return readJsonResponse(res)
+  }
+
+  const inflightRefreshes = new Map<string, Promise<{ readonly status: number; readonly json: Record<string, unknown> | undefined }>>()
+
+  export async function postOAuthFormCoalesced(
+    key: string,
+    url: string,
+    body: Readonly<Record<string, string>>,
+    headers: Readonly<Record<string, string>>,
+  ): Promise<{ readonly status: number; readonly json: Record<string, unknown> | undefined }> {
+    const existing = inflightRefreshes.get(key)
+    if (existing !== undefined) return existing
+    const work = postOAuthForm(url, body, headers).finally(() => {
+      inflightRefreshes.delete(key)
+    })
+    inflightRefreshes.set(key, work)
+    return work
+  }
+
+  export async function fetchProviderJson(
+    url: string,
+    accessToken: string,
+  ): Promise<{ readonly status: number; readonly json: Record<string, unknown> | undefined }> {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        accept: "application/json",
+      },
+    })
+    return readJsonResponse(res)
+  }
+}
+
+import { basicAuthHeader, buildAuthorizeUrl, fetchProviderJson, postOAuthForm, postOAuthFormCoalesced } from node
+
+function dateKeyOf(iso: string): string {
+  return iso.slice(0, 10)
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
+}
+
+function extractIntervalBounds(
+  item: unknown,
+): { readonly rec: Record<string, unknown>; readonly startAt: string; readonly endAt: string; readonly durationMs: number } | undefined {
+  if (typeof item !== "object" || item === null) return undefined
+  const rec = item as Record<string, unknown>
+  const startAt = asString(rec.startAt)
+  const endAt = asString(rec.endAt)
+  if (startAt === undefined || endAt === undefined) return undefined
+  const startMs = Date.parse(startAt)
+  const endMs = Date.parse(endAt)
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return undefined
+  return { rec, startAt, endAt, durationMs: endMs - startMs }
+}
+
+export function normalizeProviderSyncPayload(
+  ownerId: string,
+  provider: HealthConnectorKind,
+  raw: Readonly<Record<string, unknown>>,
+): NormalizedProviderPayload {
+  const samples: HealthMetricSample[] = []
+  const sleepEpisodes: HealthSleepEpisode[] = []
+  const workouts: HealthWorkout[] = []
+  const nowIso = new Date().toISOString()
+
+  const rawSamples = Array.isArray(raw.samples) ? raw.samples : []
+  for (let i = 0; i < rawSamples.length; i += 1) {
+    const item = rawSamples[i]
+    if (typeof item !== "object" || item === null) continue
+    const rec = item as Record<string, unknown>
+    const metric = asString(rec.metric)
+    const value = asNumber(rec.value)
+    const recordedAt = asString(rec.recordedAt) ?? nowIso
+    if (metric === undefined || value === undefined) continue
+    samples.push({
+      id: asString(rec.id) ?? `${provider}-${metric}-${recordedAt}-${i}`,
+      ownerId,
+      provider,
+      metric: metric as HealthMetricSample["metric"],
+      value,
+      unit: asString(rec.unit) ?? "count",
+      recordedAt,
+      dateKey: dateKeyOf(recordedAt),
+    })
+  }
+
+  const rawSleep = Array.isArray(raw.sleepEpisodes) ? raw.sleepEpisodes : []
+  for (let i = 0; i < rawSleep.length; i += 1) {
+    const parsed = extractIntervalBounds(rawSleep[i])
+    if (parsed === undefined) continue
+    const durationMinutes = Math.round(parsed.durationMs / 60_000)
+    sleepEpisodes.push({
+      id: asString(parsed.rec.id) ?? `${provider}-sleep-${parsed.startAt}-${i}`,
+      ownerId,
+      provider,
+      startAt: parsed.startAt,
+      endAt: parsed.endAt,
+      cycleType: parsed.rec.cycleType === "nap" ? "nap" : "main",
+      durationMinutes,
+      efficiencyPct: asNumber(parsed.rec.efficiencyPct) ?? null,
+      stages: [],
+    })
+    samples.push({
+      id: `${provider}-sleep_hours-${parsed.endAt}-${i}`,
+      ownerId,
+      provider,
+      metric: "sleep_hours",
+      value: Math.round((durationMinutes / 60) * 100) / 100,
+      unit: "hours",
+      recordedAt: parsed.endAt,
+      dateKey: dateKeyOf(parsed.endAt),
+    })
+  }
+
+  const rawWorkouts = Array.isArray(raw.workouts) ? raw.workouts : []
+  for (let i = 0; i < rawWorkouts.length; i += 1) {
+    const parsed = extractIntervalBounds(rawWorkouts[i])
+    if (parsed === undefined) continue
+    workouts.push({
+      id: asString(parsed.rec.id) ?? `${provider}-workout-${parsed.startAt}-${i}`,
+      ownerId,
+      provider,
+      sport: asString(parsed.rec.sport) ?? "workout",
+      startAt: parsed.startAt,
+      endAt: parsed.endAt,
+      durationSeconds: Math.round(parsed.durationMs / 1000),
+      distanceMeters: asNumber(parsed.rec.distanceMeters) ?? null,
+      calories: asNumber(parsed.rec.calories) ?? null,
+    })
+  }
+
+  return { samples, sleepEpisodes, workouts }
+}
+
+export class HealthOAuthManager {
+  private readonly pendingSessions = new Map<string, PendingOAuthSession>()
+  private readonly encryptedTokens = new Map<string, EncryptedTokenEnvelope>()
+  private readonly encryptionKey: ReturnType<typeof resolveTokenEncryptionKey>
+
+  constructor(credentialsDir?: string, envKey?: string) {
+    this.encryptionKey = resolveTokenEncryptionKey(credentialsDir, envKey)
+  }
+
+  startAuthorization(args: {
+    readonly provider: HealthOAuthProvider
+    readonly ownerId: string
+    readonly clientId: string
+    readonly clientSecret?: string | null
+    readonly redirectUri: string
+    readonly scopes?: readonly string[]
+  }): PendingOAuthSession | undefined {
+    const spec = getHealthProviderSpec(args.provider)
+    if (spec === undefined) return undefined
+    const state = randomStateToken()
+    const pkce = spec.oauth.usePkce ? generatePkcePair() : undefined
+    const sep = spec.oauth.scopeSeparator === "comma" ? "," : " "
+    const scopes = args.scopes && args.scopes.length > 0 ? args.scopes : spec.oauth.defaultScopes
+    const params: Record<string, string> = {
+      response_type: "code",
+      client_id: args.clientId,
+      redirect_uri: args.redirectUri,
+      scope: scopes.join(sep),
+      state,
+      ...(pkce === undefined ? {} : { code_challenge: pkce.challenge, code_challenge_method: "S256" }),
+    }
+    const session: PendingOAuthSession = {
+      state,
+      provider: args.provider,
+      ownerId: args.ownerId,
+      clientId: args.clientId,
+      clientSecret: args.clientSecret ?? null,
+      redirectUri: args.redirectUri,
+      codeVerifier: pkce?.verifier ?? null,
+      authorizeUrl: buildAuthorizeUrl(spec.oauth.authorizeUrl, params),
+      createdAt: Date.now(),
+    }
+    this.pendingSessions.set(state, session)
+    return session
+  }
+
+  private tokenKey(ownerId: string, provider: HealthOAuthProvider): string {
+    return `${ownerId}:${provider}`
+  }
+
+  private saveToken(token: StoredHealthConnectorToken): void {
+    if (this.encryptionKey === undefined) return
+    const envelope = encryptTokenPayload(token, this.encryptionKey)
+    if (envelope !== undefined) {
+      this.encryptedTokens.set(this.tokenKey(token.ownerId, token.provider), envelope)
+    }
+  }
+
+  getToken(ownerId: string, provider: HealthOAuthProvider): StoredHealthConnectorToken | undefined {
+    if (this.encryptionKey === undefined) return undefined
+    const envelope = this.encryptedTokens.get(this.tokenKey(ownerId, provider))
+    if (envelope === undefined || !isEncryptedTokenEnvelope(envelope)) return undefined
+    const decoded = decryptTokenEnvelope(envelope, this.encryptionKey)
+    if (typeof decoded !== "object" || decoded === null) return undefined
+    return decoded as StoredHealthConnectorToken
+  }
+
+  getEncryptedEnvelope(ownerId: string, provider: HealthOAuthProvider): EncryptedTokenEnvelope | undefined {
+    return this.encryptedTokens.get(this.tokenKey(ownerId, provider))
+  }
+
+  revokeToken(ownerId: string, provider: HealthOAuthProvider): boolean {
+    return this.encryptedTokens.delete(this.tokenKey(ownerId, provider))
+  }
+
+  effect exchangeCode(state: string, code: string): StoredHealthConnectorToken!HealthOAuthError {
+    const session = this.pendingSessions.get(state)
+    if (session === undefined) {
+      throw new HealthOAuthError({ status: 400, message: "Unknown or expired health OAuth state" })
+    }
+    this.pendingSessions.delete(state)
+    const spec = getHealthProviderSpec(session.provider)
+    if (spec === undefined) {
+      throw new HealthOAuthError({ status: 400, message: `Missing health provider spec: ${session.provider}` })
+    }
+    const headers: Record<string, string> = {}
+    const body: Record<string, string> = {
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: session.redirectUri,
+      ...(session.codeVerifier === null ? {} : { code_verifier: session.codeVerifier }),
+    }
+    if (spec.oauth.tokenRequestStyle === "basic" && session.clientSecret !== null) {
+      headers.authorization = basicAuthHeader(session.clientId, session.clientSecret)
+    } else {
+      body.client_id = session.clientId
+      if (session.clientSecret !== null) body.client_secret = session.clientSecret
+      if (spec.oauth.tokenRequestStyle === "withings") body.action = "requesttoken"
+    }
+    const response = try tryPromise({
+      try: () => postOAuthForm(spec.oauth.tokenUrl, body, headers),
+      catch: () => new HealthOAuthError({ status: 502, message: `Token exchange failed for ${session.provider}` }),
+    })
+    const payload = response.json?.body && typeof response.json.body === "object"
+      ? (response.json.body as Record<string, unknown>)
+      : response.json
+    const accessToken = asString(payload?.access_token)
+    if (response.status < 200 || response.status >= 300 || accessToken === undefined) {
+      throw new HealthOAuthError({ status: response.status || 502, message: `Invalid token response from ${session.provider}` })
+    }
+    const expiresIn = asNumber(payload?.expires_in)
+    const scopeRaw = asString(payload?.scope)
+    const token: StoredHealthConnectorToken = {
+      provider: session.provider,
+      ownerId: session.ownerId,
+      clientId: session.clientId,
+      clientSecret: session.clientSecret,
+      redirectUri: session.redirectUri,
+      accessToken,
+      refreshToken: asString(payload?.refresh_token) ?? null,
+      tokenType: asString(payload?.token_type) ?? "Bearer",
+      grantedScopes: scopeRaw === undefined ? [...spec.oauth.defaultScopes] : scopeRaw.split(/[\s,]+/u).filter(Boolean),
+      expiresAt: expiresIn === undefined ? null : Date.now() + expiresIn * 1000,
+      updatedAt: new Date().toISOString(),
+    }
+    this.saveToken(token)
+    return token
+  }
+
+  effect refreshToken(ownerId: string, provider: HealthOAuthProvider): StoredHealthConnectorToken!HealthOAuthError {
+    const key = this.tokenKey(ownerId, provider)
+    const existing = this.getToken(ownerId, provider)
+    const spec = getHealthProviderSpec(provider)
+    if (existing === undefined || existing.refreshToken === null || spec === undefined) {
+      throw new HealthOAuthError({ status: 400, message: `No refresh token stored for ${provider}` })
+    }
+    const headers: Record<string, string> = {}
+    const body: Record<string, string> = {
+      grant_type: "refresh_token",
+      refresh_token: existing.refreshToken,
+    }
+    if (spec.oauth.tokenRequestStyle === "basic" && existing.clientSecret !== null) {
+      headers.authorization = basicAuthHeader(existing.clientId, existing.clientSecret)
+    } else {
+      body.client_id = existing.clientId
+      if (existing.clientSecret !== null) body.client_secret = existing.clientSecret
+      if (spec.oauth.tokenRequestStyle === "withings") body.action = "requesttoken"
+    }
+    const res = try tryPromise({
+      try: () => postOAuthFormCoalesced(key, spec.oauth.tokenUrl, body, headers),
+      catch: () => new HealthOAuthError({ status: 502, message: `Token refresh failed for ${provider}` }),
+    })
+    const payload = res.json?.body && typeof res.json.body === "object"
+      ? (res.json.body as Record<string, unknown>)
+      : res.json
+    const accessToken = asString(payload?.access_token)
+    if (res.status < 200 || res.status >= 300 || accessToken === undefined) {
+      throw new HealthOAuthError({ status: res.status || 502, message: `Invalid refresh response from ${provider}` })
+    }
+    const expiresIn = asNumber(payload?.expires_in)
+    const updated: StoredHealthConnectorToken = {
+      ...existing,
+      accessToken,
+      refreshToken: asString(payload?.refresh_token) ?? existing.refreshToken,
+      expiresAt: expiresIn === undefined ? existing.expiresAt : Date.now() + expiresIn * 1000,
+      updatedAt: new Date().toISOString(),
+    }
+    this.saveToken(updated)
+    return updated
+  }
+
+  effect fetchProviderSummary(ownerId: string, provider: HealthOAuthProvider, endpointPath = "/summary"): NormalizedProviderPayload!HealthOAuthError {
+    const token = this.getToken(ownerId, provider)
+    const spec = getHealthProviderSpec(provider)
+    if (token === undefined || spec === undefined) {
+      throw new HealthOAuthError({ status: 401, message: `Connector ${provider} is not authorized` })
+    }
+    const url = `${spec.apiBaseUrl.replace(/\/+$/u, "")}${endpointPath.startsWith("/") ? endpointPath : `/${endpointPath}`}`
+    const response = try tryPromise({
+      try: () => fetchProviderJson(url, token.accessToken),
+      catch: () => new HealthOAuthError({ status: 502, message: `Failed to fetch health data from ${provider}` }),
+    })
+    if (response.status < 200 || response.status >= 300 || response.json === undefined) {
+      throw new HealthOAuthError({ status: response.status || 502, message: `Provider ${provider} returned status ${response.status}` })
+    }
+    return normalizeProviderSyncPayload(ownerId, provider, response.json)
+  }
+}

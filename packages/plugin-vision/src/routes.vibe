@@ -1,0 +1,188 @@
+// spec/vision/index.md, "Returning a grounded screen description excludes unrequested images"
+import type { IAgentRuntime } from "@elizaos/core"
+import {
+  OCR_BRIDGE_SERVICE_TYPE,
+  SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+  type OcrBridgeService,
+  type OcrBridgeWord,
+  type ScreenCaptureBridgeService,
+  type ScreenCaptureImageFormat,
+} from "./ocr.vibe"
+
+export interface VisionRouteContext {
+  runtime: IAgentRuntime
+  body?: unknown
+}
+
+export interface VisionRouteResponse {
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
+export interface VisionRoute {
+  type: "GET" | "POST"
+  path: string
+  rawPath: true
+  routeHandler: (ctx: VisionRouteContext) => Promise<VisionRouteResponse>
+}
+
+function jsonResult(status: number, body: unknown): VisionRouteResponse {
+  return {
+    status,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isOcrWord(value: unknown): value is OcrBridgeWord {
+  if (!isObjectRecord(value)) return false
+  return (
+    typeof value.text === "string" &&
+    typeof value.left === "number" &&
+    typeof value.top === "number" &&
+    typeof value.width === "number" &&
+    typeof value.height === "number" &&
+    typeof value.confidence === "number" &&
+    typeof value.block === "number" &&
+    typeof value.par === "number" &&
+    typeof value.line === "number"
+  )
+}
+
+function parseFramePayload(body: unknown): {
+  requestId: string
+  base64: string
+  format: ScreenCaptureImageFormat
+  width: number
+  height: number
+  capturedAt?: number
+} | null {
+  if (!isObjectRecord(body)) return null
+  if (
+    typeof body.requestId !== "string" ||
+    typeof body.base64 !== "string" ||
+    (body.format !== "png" && body.format !== "jpeg") ||
+    typeof body.width !== "number" ||
+    typeof body.height !== "number"
+  ) {
+    return null
+  }
+  return {
+    requestId: body.requestId,
+    base64: body.base64,
+    format: body.format,
+    width: body.width,
+    height: body.height,
+    capturedAt: typeof body.capturedAt === "number" ? body.capturedAt : undefined,
+  }
+}
+
+export const captureRequestsRoute: VisionRoute = {
+  type: "GET",
+  path: "/api/vision/capture-requests",
+  rawPath: true,
+  routeHandler: (ctx) => {
+    const bridge = ctx.runtime.getService<ScreenCaptureBridgeService>(
+      SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+    )
+    if (!bridge) return Promise.resolve(jsonResult(200, { requests: [] }))
+    return Promise.resolve(jsonResult(200, { requests: bridge.takeRequests() }))
+  },
+}
+
+export const screenFrameRoute: VisionRoute = {
+  type: "POST",
+  path: "/api/vision/screen-frame",
+  rawPath: true,
+  routeHandler: (ctx) => {
+    const bridge = ctx.runtime.getService<ScreenCaptureBridgeService>(
+      SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+    )
+    if (!bridge) {
+      return Promise.resolve(jsonResult(404, { ok: false, error: "bridge_unavailable" }))
+    }
+    const body = ctx.body
+    if (isObjectRecord(body) && typeof body.requestId === "string" && body.error !== undefined) {
+      const failed = bridge.failFrame(body.requestId, String(body.error))
+      return Promise.resolve(
+        failed
+          ? jsonResult(200, { ok: true })
+          : jsonResult(404, { ok: false, error: "unknown_request" }),
+      )
+    }
+    const frame = parseFramePayload(body)
+    if (!frame) {
+      return Promise.resolve(jsonResult(400, { ok: false, error: "invalid_body" }))
+    }
+    const ok = bridge.submitFrame(
+      frame.requestId,
+      frame.base64,
+      frame.format,
+      frame.width,
+      frame.height,
+      frame.capturedAt,
+    )
+    return Promise.resolve(
+      ok
+        ? jsonResult(200, { ok: true })
+        : jsonResult(404, { ok: false, error: "unknown_request" }),
+    )
+  },
+}
+
+export const ocrRequestsRoute: VisionRoute = {
+  type: "GET",
+  path: "/api/vision/ocr-requests",
+  rawPath: true,
+  routeHandler: (ctx) => {
+    const bridge = ctx.runtime.getService<OcrBridgeService>(OCR_BRIDGE_SERVICE_TYPE)
+    if (!bridge) return Promise.resolve(jsonResult(200, { requests: [] }))
+    return Promise.resolve(jsonResult(200, { requests: bridge.takeRequests() }))
+  },
+}
+
+export const ocrResultRoute: VisionRoute = {
+  type: "POST",
+  path: "/api/vision/ocr-result",
+  rawPath: true,
+  routeHandler: (ctx) => {
+    const bridge = ctx.runtime.getService<OcrBridgeService>(OCR_BRIDGE_SERVICE_TYPE)
+    if (!bridge) {
+      return Promise.resolve(jsonResult(404, { ok: false, error: "bridge_unavailable" }))
+    }
+    const body = ctx.body
+    if (!isObjectRecord(body) || typeof body.requestId !== "string") {
+      return Promise.resolve(jsonResult(400, { ok: false, error: "invalid_body" }))
+    }
+    const requestId = body.requestId
+    if (body.error !== undefined) {
+      const failed = bridge.failRequest(requestId, String(body.error))
+      return Promise.resolve(
+        failed
+          ? jsonResult(200, { ok: true })
+          : jsonResult(404, { ok: false, error: "unknown_request" }),
+      )
+    }
+    if (!Array.isArray(body.words)) {
+      return Promise.resolve(jsonResult(400, { ok: false, error: "invalid_body" }))
+    }
+    const ok = bridge.submitResult(requestId, body.words.filter(isOcrWord))
+    return Promise.resolve(
+      ok
+        ? jsonResult(200, { ok: true })
+        : jsonResult(404, { ok: false, error: "unknown_request" }),
+    )
+  },
+}
+
+export const visionRoutes: VisionRoute[] = [
+  captureRequestsRoute,
+  screenFrameRoute,
+  ocrRequestsRoute,
+  ocrResultRoute,
+]

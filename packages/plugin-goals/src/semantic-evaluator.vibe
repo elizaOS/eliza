@@ -1,0 +1,142 @@
+// spec/goals/lifecycle.md, "Prompt value rendering fails closed on excessive depth, cycles, or hostile accessors"; spec/goals/lifecycle.md, "Evaluation scores stay bounded in percent units and duplicate cadence slots are refused"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import {
+  buildGoalSemanticReviewMetadata,
+  type GoalSemanticReviewMetadata,
+  type GoalSemanticSuggestionMetadata,
+} from "./grounding.vibe"
+import { normalizeStringList } from "./normalize.vibe"
+import { formatPromptValueSafe } from "./prompt-value.vibe"
+import {
+  GOAL_REVIEW_STATES,
+  GOAL_SUGGESTION_KINDS,
+  type GoalDefinition,
+  type GoalReviewState,
+  type GoalSuggestionKind,
+} from "./types.vibe"
+
+export type GoalSemanticEvaluationResult = GoalSemanticReviewMetadata
+
+const VALID_REVIEW_STATES = new Set<GoalReviewState>(GOAL_REVIEW_STATES)
+const VALID_SUGGESTION_KINDS = new Set<GoalSuggestionKind>(GOAL_SUGGESTION_KINDS)
+
+function normalizeText(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizeFiniteNumber(value: unknown): number | null {
+  const parsed = typeof value === "string" && value.trim().length > 0 ? Number(value) : value
+  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value
+      .split(/\n|,/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+  }
+  return normalizeStringList(value)
+}
+
+function normalizeSuggestions(value: unknown): GoalSemanticSuggestionMetadata[] {
+  if (!Array.isArray(value)) return []
+  const out: GoalSemanticSuggestionMetadata[] = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
+    const rec = entry as Record<string, unknown>
+    const title = normalizeText(rec.title)
+    const detail = normalizeText(rec.detail)
+    if (!title || !detail) continue
+    const kind = normalizeText(rec.kind)
+    out.push({
+      kind: kind && VALID_SUGGESTION_KINDS.has(kind as GoalSuggestionKind) ? kind : null,
+      title,
+      detail,
+    })
+    if (out.length >= 3) break
+  }
+  return out
+}
+
+function parseJsonObject(raw: string): Record<string, unknown> | null {
+  const trimmed = raw.trim()
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const candidate = fenced ? fenced[1]!.trim() : trimmed
+  const start = candidate.indexOf("{")
+  const end = candidate.lastIndexOf("}")
+  if (start < 0 || end < start) return null
+  try {
+    const parsed: unknown = JSON.parse(candidate.slice(start, end + 1))
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+function parseEvaluationPayload(raw: string, nowIso: string): GoalSemanticEvaluationResult | null {
+  const parsed = parseJsonObject(raw)
+  if (!parsed) return null
+  const reviewState = normalizeText(parsed.reviewState)
+  const explanation = normalizeText(parsed.explanation)
+  if (!reviewState || !VALID_REVIEW_STATES.has(reviewState as GoalReviewState) || !explanation) {
+    return null
+  }
+  return buildGoalSemanticReviewMetadata({
+    reviewedAt: nowIso,
+    reviewState: reviewState as GoalReviewState,
+    progressScore: normalizeFiniteNumber(parsed.progressScore),
+    confidence: normalizeFiniteNumber(parsed.confidence),
+    explanation,
+    evidenceSummary: normalizeText(parsed.evidenceSummary),
+    missingEvidence: normalizeStringArray(parsed.missingEvidence),
+    suggestions: normalizeSuggestions(parsed.suggestions),
+  })
+}
+
+export function buildSemanticEvaluationPrompt(args: {
+  readonly evidence: Record<string, unknown>
+  readonly goal: GoalDefinition
+  readonly nowIso: string
+}): { readonly ok: true; readonly prompt: string } | { readonly ok: false; readonly reason: string } {
+  const goalText = formatPromptValueSafe(args.goal)
+  if (!goalText.ok) return { ok: false, reason: goalText.error.message }
+  const evidenceText = formatPromptValueSafe(args.evidence)
+  if (!evidenceText.ok) return { ok: false, reason: evidenceText.error.message }
+  return {
+    ok: true,
+    prompt: [
+      "Evaluate the user's goal semantically using the grounded goal contract and the evidence.",
+      "Return ONLY JSON with fields: reviewState, progressScore, confidence, explanation, evidenceSummary, missingEvidence, suggestions.",
+      "reviewState must be one of: idle, needs_attention, on_track, at_risk.",
+      `Now: ${args.nowIso}`,
+      "Goal:",
+      goalText.text,
+      "Evidence:",
+      evidenceText.text,
+    ].join("\n"),
+  }
+}
+
+export async function evaluateGoalProgressWithLlm(args: {
+  readonly runtime: IAgentRuntime
+  readonly goal: GoalDefinition
+  readonly evidence: Record<string, unknown>
+  readonly nowIso?: string
+}): Promise<GoalSemanticEvaluationResult | null> {
+  const nowIso = args.nowIso ?? new Date().toISOString()
+  const built = buildSemanticEvaluationPrompt({ goal: args.goal, evidence: args.evidence, nowIso })
+  if (!built.ok) return null
+  const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt: built.prompt })
+  const first = typeof raw === "string" ? parseEvaluationPayload(raw, nowIso) : null
+  if (first) return first
+  const repairPrompt = [
+    "Your last reply for the goal semantic evaluator was invalid JSON or missed reviewState/explanation.",
+    "Return ONLY valid JSON with: reviewState (idle|needs_attention|on_track|at_risk), progressScore, confidence, explanation, evidenceSummary, missingEvidence, suggestions.",
+    `Previous reply: ${typeof raw === "string" ? raw.slice(0, 600) : ""}`,
+  ].join("\n")
+  const repaired = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt: repairPrompt })
+  return typeof repaired === "string" ? parseEvaluationPayload(repaired, nowIso) : null
+}

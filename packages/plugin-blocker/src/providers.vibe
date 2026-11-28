@@ -1,0 +1,204 @@
+// spec/blocker/index.md, "Only the owner can request a block for an explicit set of targets and a future deadline"
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core"
+import { getAppBlockerAccess, getSelfControlAccess } from "./access.vibe"
+import { getCachedAppBlockerStatus, type AppBlockerStatus } from "./app-blocker.vibe"
+import { getCachedSelfControlStatus, type SelfControlStatus } from "./website-blocker.vibe"
+
+function websiteUnavailableResult(status: SelfControlStatus): ProviderResult {
+  const payload = {
+    websiteBlockerAuthorized: true,
+    websiteBlockerAvailable: false,
+    websiteBlockerCanUnblockEarly: false,
+    websiteBlockerRequiresElevation: status.requiresElevation,
+    websiteBlockerSupportsElevationPrompt: status.supportsElevationPrompt,
+    websiteBlockerElevationPromptMethod: status.elevationPromptMethod,
+    websiteBlockerEngine: status.engine,
+    websiteBlockerPlatform: status.platform,
+    selfControlAuthorized: true,
+    selfControlAvailable: false,
+    selfControlCanUnblockEarly: false,
+    selfControlSupportsElevationPrompt: status.supportsElevationPrompt,
+    selfControlElevationPromptMethod: status.elevationPromptMethod,
+  }
+  return {
+    text: status.reason ?? "Local website blocking is unavailable on this machine.",
+    values: payload,
+    data: payload,
+  }
+}
+
+function websiteAvailableResult(status: SelfControlStatus): ProviderResult {
+  const statusLine = status.active
+    ? status.endsAt !== null
+      ? `A website block is active until ${status.endsAt}.`
+      : "A website block is active until you remove it."
+    : "No website block is active right now."
+  const payload = {
+    websiteBlockerAuthorized: true,
+    websiteBlockerAvailable: true,
+    websiteBlockerActive: status.active,
+    websiteBlockerEndsAt: status.endsAt,
+    websiteBlockerCanUnblockEarly: status.canUnblockEarly,
+    websiteBlockerRequiresElevation: status.requiresElevation,
+    websiteBlockerSupportsElevationPrompt: status.supportsElevationPrompt,
+    websiteBlockerElevationPromptMethod: status.elevationPromptMethod,
+    websiteBlockerHostsFilePath: status.hostsFilePath,
+    websiteBlockerEngine: status.engine,
+    websiteBlockerPlatform: status.platform,
+    selfControlAuthorized: true,
+    selfControlAvailable: true,
+    selfControlActive: status.active,
+    selfControlEndsAt: status.endsAt,
+    selfControlCanUnblockEarly: status.canUnblockEarly,
+    selfControlSupportsElevationPrompt: status.supportsElevationPrompt,
+    selfControlElevationPromptMethod: status.elevationPromptMethod,
+    selfControlHostsFilePath: status.hostsFilePath,
+  }
+  return {
+    text: [
+      "Local website blocking is available through the system hosts file.",
+      statusLine,
+      status.reason ?? "Eliza can remove the block early when it has permission to edit the hosts file.",
+    ].join(" "),
+    values: payload,
+    data: payload,
+  }
+}
+
+function createOwnerBlockerProvider(config: {
+  readonly name: string
+  readonly description: string
+  readonly descriptionCompressed: string
+  readonly get: Provider["get"]
+}): Provider {
+  return {
+    name: config.name,
+    description: config.description,
+    descriptionCompressed: config.descriptionCompressed,
+    dynamic: true,
+    contexts: ["screen_time", "settings"],
+    contextGate: { anyOf: ["screen_time", "settings"] },
+    cacheScope: "turn",
+    roleGate: { minRole: "OWNER" },
+    get: config.get,
+  }
+}
+
+export const websiteBlockerProvider: Provider = createOwnerBlockerProvider({
+  name: "websiteBlocker",
+  description:
+    "Owner-only provider for the local hosts-file website blocker integration. Use BLOCK action=block target=website for website blocking (timed focus blocks, generic distraction blocks, or fixed duration).",
+  descriptionCompressed: "Owner: hosts-file website blocker.",
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
+    const access = await getSelfControlAccess(runtime, message)
+    if (!access.allowed) {
+      const denied = {
+        websiteBlockerAuthorized: false,
+        selfControlAuthorized: false,
+      }
+      return { text: "", values: denied, data: denied }
+    }
+
+    let status: SelfControlStatus
+    try {
+      status = await getCachedSelfControlStatus()
+    } catch (error) {
+      const base = {
+        websiteBlockerAuthorized: true,
+        websiteBlockerAvailable: false,
+        selfControlAuthorized: true,
+        selfControlAvailable: false,
+      }
+      return {
+        text: "Local website blocking status unavailable.",
+        values: base,
+        data: { ...base, error: error instanceof Error ? error.message : String(error) },
+      }
+    }
+
+    return status.available ? websiteAvailableResult(status) : websiteUnavailableResult(status)
+  },
+})
+
+function appAvailableResult(status: AppBlockerStatus): ProviderResult {
+  const statusLine = status.active
+    ? status.endsAt !== null
+      ? `An app block is active (${status.blockedCount} apps) until ${status.endsAt}.`
+      : `An app block is active (${status.blockedCount} apps) until you remove it.`
+    : "No app block is active right now."
+  const permissionLine =
+    status.permissionStatus === "granted"
+      ? "Eliza has permission to block apps on this device."
+      : status.reason ?? "App blocking permissions have not been granted yet."
+  const values = {
+    appBlockerAuthorized: true,
+    appBlockerAvailable: true,
+    appBlockerActive: status.active,
+    appBlockerBlockedCount: status.blockedCount,
+    appBlockerEndsAt: status.endsAt,
+    appBlockerEngine: status.engine,
+    appBlockerPlatform: status.platform,
+    appBlockerPermissionStatus: status.permissionStatus,
+  }
+  return {
+    text: `${statusLine} ${permissionLine}`,
+    values,
+    data: { ...values, appBlockerBlockedPackageNames: [...status.blockedPackageNames] },
+  }
+}
+
+export const appBlockerProvider: Provider = createOwnerBlockerProvider({
+  name: "appBlocker",
+  description:
+    "Owner-only provider for the native mobile app blocker integration (Family Controls on iPhone, Usage Access overlay on Android).",
+  descriptionCompressed: "Owner: mobile app blocker integration.",
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
+    const access = await getAppBlockerAccess(runtime, message)
+    if (!access.allowed) {
+      const denied = { appBlockerAuthorized: false }
+      return { text: "", values: denied, data: denied }
+    }
+
+    let status: AppBlockerStatus
+    try {
+      status = await getCachedAppBlockerStatus()
+    } catch {
+      const unavailable = { appBlockerAuthorized: true, appBlockerAvailable: false }
+      return {
+        text: "App blocking plugin is not loaded on this device.",
+        values: unavailable,
+        data: unavailable,
+      }
+    }
+
+    if (!status.available) {
+      const unavailable = {
+        appBlockerAuthorized: true,
+        appBlockerAvailable: false,
+        appBlockerEngine: status.engine,
+        appBlockerPlatform: status.platform,
+      }
+      return {
+        text: status.reason ?? "App blocking is not available on this device.",
+        values: unavailable,
+        data: unavailable,
+      }
+    }
+
+    return appAvailableResult(status)
+  },
+})

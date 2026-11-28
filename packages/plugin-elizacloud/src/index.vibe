@@ -1,97 +1,206 @@
-// spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/index.md, "Story: See which configured Cloud models can answer my request"
-import { cloudServiceType, type CloudLinkRequest, type CloudLinkService } from "@elizaos/agent-host"
-import { creditFromSnapshot, snapshotFromResponse } from "@elizaos/cloud"
-import { resolveCanonicalOwnerId, validateUuid, type Action, type IAgentRuntime, type Memory, type Plugin, type Provider } from "@elizaos/core"
-import { Schema } from "effect"
-import { Machine, cloudTextReadiness, effectiveCloudModel, machine } from "../gen/elizaCloud.effect.vibe"
+// spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/index.md, "Story: See which configured Cloud models can answer my request"; spec/elizaCloud/apiKeys.md, "Story: Mint a Cloud API key safely from chat"; spec/elizaCloud/inference.md, "Story: Route Cloud inference with bounded retries and uniform wire tool schemas"; spec/elizaCloud/delegation.md, "Story: Gate managed Google delegation and gateway relay on owner consent"
+import type { AgentPlugin } from "@elizaos/agent-host"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import {
+  accountStatus,
+  accountStatusAction,
+  createCloudApiKeyAction,
+  parseApiKeyName,
+} from "./actions.vibe"
+import {
+  DEFAULT_CLOUD_BASE_URL,
+  getApiKey,
+  getBaseURL,
+  isApprovedCloudOrigin,
+  isCloudInferenceEnabled,
+  isCloudSttAvailable,
+  isCloudTtsAvailable,
+  isSlotServedByCloud,
+  resolveCloudApiKeysUrl,
+  resolveCloudBillingUrl,
+  resolveCloudTimeoutMs,
+  resolveSlotModel,
+} from "./config.vibe"
+import {
+  CloudAccountUnavailable,
+  CloudApiFailure,
+  CloudSttUnavailableError,
+  toCloudTokenUsage,
+  unavailableResearchError,
+} from "./http.vibe"
+import {
+  fetchTextToSpeech,
+  handleActionPlanner,
+  handleAudioGeneration,
+  handleBatchTextEmbedding,
+  handleImageDescription,
+  handleImageGeneration,
+  handleResearch,
+  handleResponseHandler,
+  handleTextEmbedding,
+  handleTextLarge,
+  handleTextMedium,
+  handleTextMega,
+  handleTextNano,
+  handleTextSmall,
+  handleTextToSpeech,
+  handleTokenizerDecode,
+  handleTokenizerEncode,
+  handleTranscription,
+  handleVideoGeneration,
+  resolveTokenizerEncodingName,
+} from "./models.vibe"
+import {
+  cloudAccountProvider,
+  cloudStatusProvider,
+  connectionProvider,
+  creditBalanceProvider,
+  fetchCreditBalance,
+  getCachedAccountSnapshot,
+  invalidateCloudAccountCache,
+  modelRegistryProvider,
+  type CloudAccountSnapshot,
+} from "./providers.vibe"
+import { elizaCloudRoutes, type CloudRouteRuntimeTarget } from "./routes.vibe"
+import {
+  CLOUD_AUTH_SERVICE_TYPE,
+  CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE,
+  CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE,
+  CLOUD_MODEL_REGISTRY_SERVICE_TYPE,
+  CloudAuthService,
+  CloudGoogleDelegationService,
+  CloudManagedGatewayRelayService,
+  CloudModelRegistryService,
+  normalizeCloudCatalogIdentifiers,
+  type CloudCatalogModel,
+  type CloudTextReadinessReport,
+  type ModelsByProvider,
+} from "./services.vibe"
+import {
+  clearCloudVoiceCatalogCache,
+  fetchCloudVoiceCatalog,
+  isOpenAiVoiceAlias,
+  type CloudVoiceCatalogEntry,
+} from "./voice-catalog.vibe"
 
-export error CloudAccountUnavailable { reason: string }
+let activeRuntime: IAgentRuntime | undefined = undefined
 
-const profileSchema = Schema.Struct({
-  success: Schema.Literal(true),
-  data: Schema.Struct({ id: Schema.String }),
-})
-const modelSchema = Schema.Struct({
-  object: Schema.Literal("list"),
-  data: Schema.Array(Schema.Struct({ id: Schema.String })),
-})
-
-function getLink(runtime: IAgentRuntime) {
-  const service = runtime.getService<CloudLinkService>(cloudServiceType)
-  return service === null || service === undefined || typeof service.request !== "function" ? undefined : service
+export function setActiveCloudRuntime(runtime: IAgentRuntime | undefined): void {
+  activeRuntime = runtime
 }
 
-function getSetting(runtime: IAgentRuntime, key: string): string {
-  const value = runtime.getSetting(key)
-  return typeof value === "string" ? value.trim() : ""
+export function getActiveCloudRuntime(): IAgentRuntime | undefined {
+  return activeRuntime
 }
 
-effect function readCloud(link: CloudLinkService, path: CloudLinkRequest["path"]) {
-  const response = try tryPromise({
-    try: (signal) => link.request({ method: "GET", path, signal }),
-    catch: () => new CloudAccountUnavailable({ reason: "Cloud could not be reached through the current connection." }),
-  })
-  if (response.kind !== "answered") throw new CloudAccountUnavailable({ reason: "The current Cloud connection refused this request." })
-  return response.body
-}
+const cloudModels = {
+  [ModelType.TEXT_NANO]: handleTextNano,
+  [ModelType.TEXT_SMALL]: handleTextSmall,
+  [ModelType.TEXT_MEDIUM]: handleTextMedium,
+  [ModelType.TEXT_LARGE]: handleTextLarge,
+  [ModelType.TEXT_MEGA]: handleTextMega,
+  [ModelType.RESPONSE_HANDLER]: handleResponseHandler,
+  [ModelType.ACTION_PLANNER]: handleActionPlanner,
+  [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
+  [ModelType.TEXT_EMBEDDING_BATCH]: handleBatchTextEmbedding,
+  [ModelType.IMAGE]: handleImageGeneration,
+  [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
+  [ModelType.AUDIO]: handleAudioGeneration,
+  [ModelType.VIDEO]: handleVideoGeneration,
+  [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
+  [ModelType.TRANSCRIPTION]: handleTranscription,
+  [ModelType.TEXT_TOKENIZER_ENCODE]: handleTokenizerEncode,
+  [ModelType.TEXT_TOKENIZER_DECODE]: handleTokenizerDecode,
+  [ModelType.RESEARCH]: handleResearch,
+} as const
 
-export effect function accountStatus(runtime: IAgentRuntime) {
-  const link = getLink(runtime)
-  if (link === undefined) throw new CloudAccountUnavailable({ reason: "The agent has no authenticated Cloud connection." })
-  const account = try Schema.decodeUnknownEffect(profileSchema)(try readCloud(link, "/api/v1/user"))
-  const accountId = account.data.id
-  const originId = String(runtime.agentId)
-  provide machine() {
-    const view = try Machine
-    try view.send({ type: "attachCloud", accountId, originId, epoch: 1, originAllowed: true })
-    if (getLink(runtime) !== link) throw new CloudAccountUnavailable({ reason: "The Cloud connection changed during the account request." })
-    try view.send({ type: "observeCloud", accountId, originId, epoch: 1, observation: "ProfileSummary" })
-    const billing = try snapshotFromResponse(try readCloud(link, "/api/v1/billing/limits"))
-    if (getLink(runtime) !== link) throw new CloudAccountUnavailable({ reason: "The Cloud connection changed during the funding request." })
-    try view.send({ type: "observeCloud", accountId, originId, epoch: 1, observation: "CreditSummary" })
-    const catalog = (effect {
-      return try Schema.decodeUnknownEffect(modelSchema)(try readCloud(link, "/api/v1/models"))
-    }) catch () => undefined
-    if (getLink(runtime) !== link) throw new CloudAccountUnavailable({ reason: "The Cloud connection changed during the catalog request." })
-    const small = effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL"), getSetting(runtime, "SMALL_MODEL"), "gpt-4.1-mini")
-    const large = effectiveCloudModel(getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL"), getSetting(runtime, "LARGE_MODEL"), "gpt-4.1")
-    const readiness = cloudTextReadiness(catalog === undefined ? "CatalogUnavailable" : "CatalogSnapshot", catalog?.data.map((entry) => entry.id) ?? [], small.modelId, large.modelId)
-    return { accountId, credit: creditFromSnapshot(billing, try Clock.currentTimeMillis), readiness, small, large }
-  }
-}
-
-function isAccountOwner(runtime: IAgentRuntime, message: Memory): boolean {
-  const owner = validateUuid(resolveCanonicalOwnerId(runtime))
-  return owner !== null && owner === message.entityId
-}
-
-export const accountStatusAction: Action = {
-  name: "CLOUD_ACCOUNT_STATUS",
-  description: "Show the owner's current Eliza Cloud funding and configured model availability.",
-  validate: (runtime, message) => Promise.resolve(isAccountOwner(runtime, message) && getLink(runtime) !== undefined),
-  handler: (runtime, message) => runPromise(effect {
-    if (!isAccountOwner(runtime, message)) throw new CloudAccountUnavailable({ reason: "Cloud account status is visible only to the configured owner." })
-    const status = try accountStatus(runtime)
-    const text = status.readiness === "TextModelsAvailable"
-      ? "Cloud is connected and both configured text models are available."
-      : status.readiness === "UnknownTextModels"
-        ? "Cloud is connected. Model availability is temporarily unknown."
-        : "Cloud is connected, but a configured text model is missing from its catalog."
-    return { success: true, text, data: status }
-  }),
-}
-
-export const connectionProvider: Provider = {
-  name: "cloud-status",
-  description: "Whether the agent has an authenticated Cloud link.",
-  get: (runtime) => Promise.resolve({ text: getLink(runtime) === undefined ? "Cloud is disconnected." : "Cloud is connected." }),
-}
-
-export const plugin: Plugin = {
+export const plugin: AgentPlugin = {
   name: "@elizaos/plugin-elizacloud",
-  description: "Owner-scoped Cloud status, credit, and model catalog using the agent’s authenticated Cloud link.",
-  actions: [accountStatusAction],
-  providers: [connectionProvider],
+  description: "Owner-scoped Eliza Cloud inference, media, voice, account status, API keys, delegation, relay, and billing routes.",
+  actions: [accountStatusAction, createCloudApiKeyAction],
+  providers: [connectionProvider, cloudStatusProvider, creditBalanceProvider, modelRegistryProvider, cloudAccountProvider],
+  services: [CloudAuthService, CloudModelRegistryService, CloudGoogleDelegationService, CloudManagedGatewayRelayService],
+  models: cloudModels,
+  routes: elizaCloudRoutes(() => activeRuntime),
+  init: async (_config, runtime) => {
+    activeRuntime = runtime
+  },
+  dispose: async (runtime) => {
+    invalidateCloudAccountCache(runtime)
+    if (activeRuntime === runtime) activeRuntime = undefined
+  },
 }
 
+export const elizaCloudPlugin = plugin
 export default plugin
+
+export {
+  CLOUD_AUTH_SERVICE_TYPE,
+  CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE,
+  CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE,
+  CLOUD_MODEL_REGISTRY_SERVICE_TYPE,
+  CloudAccountUnavailable,
+  CloudApiFailure,
+  CloudAuthService,
+  CloudGoogleDelegationService,
+  CloudManagedGatewayRelayService,
+  CloudModelRegistryService,
+  CloudSttUnavailableError,
+  DEFAULT_CLOUD_BASE_URL,
+  accountStatus,
+  accountStatusAction,
+  clearCloudVoiceCatalogCache,
+  cloudAccountProvider,
+  cloudStatusProvider,
+  connectionProvider,
+  createCloudApiKeyAction,
+  creditBalanceProvider,
+  elizaCloudRoutes,
+  fetchCloudVoiceCatalog,
+  fetchCreditBalance,
+  fetchTextToSpeech,
+  getApiKey,
+  getBaseURL,
+  getCachedAccountSnapshot,
+  handleActionPlanner,
+  handleAudioGeneration,
+  handleBatchTextEmbedding,
+  handleImageDescription,
+  handleImageGeneration,
+  handleResearch,
+  handleResponseHandler,
+  handleTextEmbedding,
+  handleTextLarge,
+  handleTextMedium,
+  handleTextMega,
+  handleTextNano,
+  handleTextSmall,
+  handleTextToSpeech,
+  handleTokenizerDecode,
+  handleTokenizerEncode,
+  handleTranscription,
+  handleVideoGeneration,
+  invalidateCloudAccountCache,
+  isApprovedCloudOrigin,
+  isCloudInferenceEnabled,
+  isCloudSttAvailable,
+  isCloudTtsAvailable,
+  isOpenAiVoiceAlias,
+  isSlotServedByCloud,
+  modelRegistryProvider,
+  normalizeCloudCatalogIdentifiers,
+  parseApiKeyName,
+  resolveCloudApiKeysUrl,
+  resolveCloudBillingUrl,
+  resolveCloudTimeoutMs,
+  resolveSlotModel,
+  resolveTokenizerEncodingName,
+  toCloudTokenUsage,
+  unavailableResearchError,
+  type CloudAccountSnapshot,
+  type CloudCatalogModel,
+  type CloudRouteRuntimeTarget,
+  type CloudTextReadinessReport,
+  type CloudVoiceCatalogEntry,
+  type ModelsByProvider,
+}

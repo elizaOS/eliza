@@ -1,0 +1,304 @@
+// spec/goals/index.md, "Story: Review my goals and check-in history"; spec/goals/lifecycle.md, "Story: Keep goal evaluation prompts safe and goal metadata well formed"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory } from "@elizaos/core"
+import {
+  GOAL_PROMPT_VALUE_UNBOUNDED,
+  GOALS_SERVICE_TYPE,
+  GoalsCheckinService,
+  GoalsMigrationService,
+  GoalsRepository,
+  GoalsService,
+  MAX_GOAL_PROMPT_VALUE_DEPTH,
+  buildGoalGroundingMetadata,
+  buildGoalSemanticReviewMetadata,
+  createSqliteGoalDirectoryLayer,
+  evaluateGoalProgressWithLlm,
+  formatPromptValueSafe,
+  goalsPlugin,
+  importLegacyGoal,
+  listGoalHistory,
+  listGoals,
+  mergeGoalGroundingMetadata,
+  mergeGoalSemanticReviewMetadata,
+  ownerGoalsAction,
+  readGoalGroundingMetadata,
+  readGoalSemanticReviewMetadata,
+} from "../src/index.vibe"
+
+function createTestRuntime(service: GoalsService, replies: string[] = []): IAgentRuntime {
+  let replyIndex = 0
+  return {
+    agentId: "agent-goals-test",
+    getService: (type: string) => (type === GOALS_SERVICE_TYPE ? service : null),
+    useModel: async () => {
+      const next = replies[replyIndex] ?? "{}"
+      replyIndex += 1
+      return next
+    },
+  } as unknown as IAgentRuntime
+}
+
+function testMessage(ownerId: string): Memory {
+  return {
+    entityId: ownerId,
+    roomId: "room-goals",
+    content: { text: "manage goals" },
+  } as unknown as Memory
+}
+
+describe("plugin-goals end-to-end journeys", () => {
+  it("runs full OWNER_GOALS lifecycle on real SQLite with private defaults and duplicate cadence rejection", async () => {
+    const repo = new GoalsRepository(":memory:")
+    const service = new GoalsService(undefined, repo)
+    const runtime = createTestRuntime(service)
+    const msg = testMessage("owner-1")
+
+    assert.strictEqual(goalsPlugin.name, "@elizaos/plugin-goals")
+    assert.strictEqual(await ownerGoalsAction.validate(runtime, msg), true)
+
+    const created = await ownerGoalsAction.handler(runtime, msg, undefined, {
+      parameters: {
+        action: "create",
+        title: "Sleep 8 hours",
+        description: "Consistent lights-out before 11pm",
+        cadence: {
+          kind: "times_per_day",
+          slots: [
+            { key: "morning", label: "Morning" },
+            { key: "evening", label: "Evening" },
+          ],
+        },
+        successCriteria: { target: "8h nightly" },
+      },
+    })
+    assert.strictEqual(created.success, true)
+    assert.strictEqual(created.effectReceipts?.[0]?.outcome, "applied")
+    const goalId = (created.data as { goal: { id: string } }).goal.id
+
+    const stored = service.getGoal("owner-1", goalId)
+    assert.ok(stored)
+    assert.strictEqual(stored!.goal.metadata.privacyClass, "private")
+    assert.strictEqual(stored!.goal.metadata.publicContextBlocked, true)
+
+    const dupCadence = await ownerGoalsAction.handler(runtime, msg, undefined, {
+      parameters: {
+        action: "create",
+        title: "Drink water",
+        cadence: {
+          kind: "times_per_day",
+          slots: [
+            { key: "noon", label: "Noon" },
+            { key: "noon", label: "Noon Again" },
+          ],
+        },
+      },
+    })
+    assert.strictEqual(dupCadence.success, false)
+
+    const checked = await ownerGoalsAction.handler(runtime, msg, undefined, {
+      parameters: { action: "checkin", goalId, slot: 0, progress: "on_track", note: "Slept 8.2h" },
+    })
+    assert.strictEqual(checked.success, true)
+
+    const updated = await ownerGoalsAction.handler(runtime, msg, undefined, {
+      parameters: { action: "update", goalId, reviewState: "needs_attention" },
+    })
+    assert.strictEqual(updated.success, true)
+
+    const reviewed = await ownerGoalsAction.handler(runtime, msg, undefined, {
+      parameters: { action: "review" },
+    })
+    assert.strictEqual(reviewed.success, true)
+    assert.strictEqual(
+      (reviewed.data as { review: { byReviewState: { needs_attention: number } } }).review.byReviewState.needs_attention,
+      1,
+    )
+
+    const listed = await ownerGoalsAction.handler(runtime, msg, undefined, {
+      parameters: { action: "list", status: "active" },
+    })
+    assert.strictEqual(listed.success, true)
+    assert.strictEqual((listed.data as { count: number }).count, 1)
+
+    const deleted = await ownerGoalsAction.handler(runtime, msg, undefined, {
+      parameters: { action: "delete", goalId },
+    })
+    assert.strictEqual(deleted.success, true)
+    repo.close()
+  })
+
+  it("enforces fail-closed prompt value formatting for depth, cycles, getters, and sparse arrays", () => {
+    const ok = formatPromptValueSafe({ title: "Read", notes: "line1\nline2", tags: ["a", "b"] })
+    assert.strictEqual(ok.ok, true)
+    if (ok.ok) {
+      assert.ok(ok.text.includes("title: Read"))
+      assert.ok(ok.text.includes("line1"))
+    }
+
+    let deep: Record<string, unknown> = { leaf: "ok" }
+    for (let i = 0; i <= MAX_GOAL_PROMPT_VALUE_DEPTH + 1; i += 1) {
+      deep = { child: deep }
+    }
+    const deepRes = formatPromptValueSafe(deep)
+    assert.strictEqual(deepRes.ok, false)
+    if (!deepRes.ok) assert.strictEqual(deepRes.error.code, GOAL_PROMPT_VALUE_UNBOUNDED)
+
+    const cyclic: Record<string, unknown> = { name: "loop" }
+    cyclic.self = cyclic
+    const cyclicRes = formatPromptValueSafe(cyclic)
+    assert.strictEqual(cyclicRes.ok, false)
+    if (!cyclicRes.ok) assert.strictEqual(cyclicRes.error.code, GOAL_PROMPT_VALUE_UNBOUNDED)
+
+    const hostile = {}
+    Object.defineProperty(hostile, "secret", {
+      enumerable: true,
+      get() {
+        return "boom"
+      },
+    })
+    const hostileRes = formatPromptValueSafe(hostile)
+    assert.strictEqual(hostileRes.ok, false)
+    if (!hostileRes.ok) assert.strictEqual(hostileRes.error.code, GOAL_PROMPT_VALUE_UNBOUNDED)
+
+    const sparse: unknown[] = []
+    sparse[2] = "gap"
+    const sparseRes = formatPromptValueSafe(sparse)
+    assert.strictEqual(sparseRes.ok, false)
+    if (!sparseRes.ok) assert.strictEqual(sparseRes.error.code, GOAL_PROMPT_VALUE_UNBOUNDED)
+  })
+
+  it("evaluates goal progress with LLM repair and clamps out-of-range scores", async () => {
+    const repo = new GoalsRepository(":memory:")
+    const service = new GoalsService(undefined, repo)
+    const created = await service.createGoal({ ownerId: "owner-2", title: "Run 5k" })
+
+    const grounding = buildGoalGroundingMetadata({
+      groundingState: "grounded",
+      confidence: 1.75,
+      evidenceSignals: ["strava", "strava"],
+      summary: "Weekly runs logged",
+    })
+    assert.strictEqual(grounding.confidence, 1)
+    assert.deepStrictEqual(grounding.evidenceSignals, ["strava"])
+    const roundTrip = readGoalGroundingMetadata(mergeGoalGroundingMetadata({}, grounding))
+    assert.strictEqual(roundTrip?.groundingState, "grounded")
+
+    const reviewMeta = buildGoalSemanticReviewMetadata({
+      reviewedAt: "2026-11-28T00:00:00Z",
+      reviewState: "on_track",
+      progressScore: -0.4,
+      confidence: 2.5,
+      explanation: "Steady progress",
+    })
+    assert.strictEqual(reviewMeta.progressScore, 0)
+    assert.strictEqual(reviewMeta.confidence, 1)
+    assert.strictEqual(
+      readGoalSemanticReviewMetadata(mergeGoalSemanticReviewMetadata({}, reviewMeta))?.reviewState,
+      "on_track",
+    )
+
+    const runtime = createTestRuntime(service, [
+      "not valid json at all",
+      JSON.stringify({
+        reviewState: "on_track",
+        progressScore: 1.4,
+        confidence: 0.92,
+        explanation: "Completed 3 runs this week",
+        evidenceSummary: "3 logged 5k runs",
+        missingEvidence: [],
+        suggestions: [{ kind: "review_progress", title: "Keep cadence", detail: "Add recovery day" }],
+      }),
+    ])
+    const evaluated = await evaluateGoalProgressWithLlm({
+      runtime,
+      goal: created.goal,
+      evidence: { runs: 3 },
+      nowIso: "2026-11-28T00:00:00Z",
+    })
+    assert.ok(evaluated)
+    assert.strictEqual(evaluated!.reviewState, "on_track")
+    assert.strictEqual(evaluated!.progressScore, 1)
+    assert.strictEqual(evaluated!.confidence, 0.92)
+    repo.close()
+  })
+
+  it("reconciles sticky check-in dismissals and runs idempotent carve-out migration", async () => {
+    const repo = new GoalsRepository(":memory:")
+    const service = new GoalsService(undefined, repo)
+    const checkinService = new GoalsCheckinService(undefined, service)
+    const migrationService = new GoalsMigrationService(undefined, service)
+
+    const rec = await service.createGoal({
+      ownerId: "owner-3",
+      title: "Meditate",
+      cadence: {
+        kind: "times_per_day",
+        slots: [
+          { key: "am", label: "Morning" },
+          { key: "pm", label: "Evening" },
+        ],
+      },
+    })
+    assert.strictEqual(checkinService.reconcileActiveCheckins("owner-3").length, 2)
+    await service.dismissCheckinSlot("owner-3", rec.goal.id, 0)
+    const afterDismiss = checkinService.reconcileActiveCheckins("owner-3")
+    assert.strictEqual(afterDismiss.length, 1)
+    assert.strictEqual(afterDismiss[0]!.slotKey, "pm")
+
+    const legacyDef = {
+      ...rec.goal,
+      id: "legacy-goal-1",
+      title: "Prior journal",
+      metadata: {},
+    }
+    const first = await migrationService.migrateLegacyRows({
+      ownerId: "owner-3",
+      legacyDefinitions: [legacyDef],
+      legacyLinks: [
+        { id: "link-1", goalId: "legacy-goal-1", targetKind: "habit", targetId: "h-1", createdAt: "2026-11-28T00:00:00Z" },
+      ],
+    })
+    assert.strictEqual(first.migratedDefinitions, 1)
+    assert.strictEqual(first.migratedLinks, 1)
+
+    const second = await migrationService.migrateLegacyRows({
+      ownerId: "owner-3",
+      legacyDefinitions: [legacyDef],
+      legacyLinks: [
+        { id: "link-1", goalId: "legacy-goal-1", targetKind: "habit", targetId: "h-1", createdAt: "2026-11-28T00:00:00Z" },
+      ],
+    })
+    assert.strictEqual(second.migratedDefinitions, 0)
+    assert.strictEqual(second.skippedDefinitions, 1)
+    assert.strictEqual(second.skippedLinks, 1)
+    repo.close()
+  })
+
+  it.effect(
+    "runs Effect GoalDirectory service helpers against SQLite layer",
+    effect () => {
+      const repo = new GoalsRepository(":memory:")
+      const layer = createSqliteGoalDirectoryLayer(repo, "agent-eff")
+      const row = {
+        ownerId: "owner-eff",
+        goalId: "g-eff-1",
+        title: "Read 20 pages",
+        goalStatus: "GoalActive" as const,
+        goalReview: "OnTrack" as const,
+      }
+      provide layer {
+        const imported = try importLegacyGoal("owner-eff", row)
+        const importedAgain = try importLegacyGoal("owner-eff", row)
+        const activeVisible = try listGoals("owner-eff", "ActiveGoals")
+        const archivedVisible = try listGoals("owner-eff", "ArchivedGoals")
+        const history = try listGoalHistory("owner-eff", "g-eff-1")
+        assert.strictEqual(imported, true)
+        assert.strictEqual(importedAgain, false)
+        assert.strictEqual(activeVisible.length, 1)
+        assert.strictEqual(archivedVisible.length, 0)
+        assert.strictEqual(history.length, 0)
+      }
+      repo.close()
+    },
+  )
+})

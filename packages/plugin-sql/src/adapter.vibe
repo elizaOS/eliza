@@ -1,0 +1,1820 @@
+// spec/sql/index.md, "Story: Attach a SQL adapter only after its schema is ready"; spec/sql/connectionLifecycle.md, "Adapter lifecycle transitions preserve transaction, RLS, schema, and embedding invariants"
+import {
+  DatabaseAdapter,
+  ElizaError,
+  type AccessContext,
+  type Agent,
+  type AppendConnectorAccountAuditEventParams,
+  type Component,
+  type ConsumeOAuthFlowStateParams,
+  type CreateOAuthFlowStateParams,
+  type DeleteConnectorAccountCredentialRefsParams,
+  type DeleteConnectorAccountParams,
+  type DeleteOAuthFlowStateParams,
+  type DocumentCompareAndSwapParams,
+  type DocumentDeleteParams,
+  type DocumentDirectGrantUpdateParams,
+  type DocumentFragmentQueryParams,
+  type DocumentGetQueryParams,
+  type DocumentListQueryParams,
+  type DocumentRevisionReplaceParams,
+  type EntitiesForRoomsResult,
+  type Entity,
+  type GetConnectorAccountCredentialRefParams,
+  type GetConnectorAccountParams,
+  type GetOAuthFlowStateParams,
+  type IDatabaseAdapter,
+  type ListConnectorAccountCredentialRefsParams,
+  type ListConnectorAccountsParams,
+  type Log,
+  type LogBody,
+  type LogInventoryRow,
+  type Memory,
+  type MemoryEmbeddingUpdate,
+  type MemoryMetadata,
+  type MessageContentPublicationParams,
+  type MessageContentRangeReadParams,
+  type MessageSearchHit,
+  type Metadata,
+  type PairingAllowlistEntry,
+  type PairingAllowlistQuery,
+  type PairingRequest,
+  type PairingRequestQuery,
+  type Participant,
+  type PatchOp,
+  type Relationship,
+  type Room,
+  type SetConnectorAccountCredentialRefParams,
+  type Task,
+  type UpdateOAuthFlowStateParams,
+  type UpsertConnectorAccountParams,
+  type UUID,
+  type World,
+  type WorldMetadata,
+  type WorldMetadataCompareAndSwapParams,
+} from "@elizaos/core"
+import type { SqlBackend } from "../gen/sql__connectionLifecycle.effect.vibe"
+import {
+  asRecord,
+  asStringList,
+  compareAndSwapSqlDocument,
+  deleteSqlDocumentWithSnapshot,
+  encodeJsonb,
+  getSqlDocument,
+  matchesMetadataFilter,
+  memoryAllowedByAccess,
+  publishSqlMessageContentSegments,
+  querySqlDocumentFragments,
+  querySqlDocuments,
+  randomUuid,
+  readSqlMessageContentRange,
+  replaceSqlDocumentRevision,
+  rowToMemory,
+  updateSqlDocumentDirectGrants,
+} from "./adapter-helpers.vibe"
+import {
+  appendSqlConnectorAuditEvent,
+  compareAndSetSqlCache,
+  compareAndSwapSqlWorldMetadata,
+  consumeSqlOAuthFlowState,
+  createSqlOAuthFlowState,
+  deleteSqlConnectorAccount,
+  deleteSqlConnectorCredentialRefs,
+  deleteSqlOAuthFlowState,
+  getSqlConnectorAccount,
+  getSqlConnectorCredentialRef,
+  getSqlOAuthFlowState,
+  listSqlConnectorAccounts,
+  listSqlConnectorCredentialRefs,
+  listSqlPairingAllowlists,
+  listSqlPairingRequests,
+  setSqlConnectorCredentialRef,
+  updateSqlOAuthFlowState,
+  upsertSqlConnectorAccount,
+} from "./adapter-stores.vibe"
+import { PGliteClientManager, PostgresConnectionManager } from "./managers.vibe"
+import {
+  SQL_SCHEMA_MIGRATIONS,
+  cosineSimilarity,
+  getOrCreateRlsServer,
+  installRLSFunctions,
+  readEmbeddingVector,
+} from "./schema.vibe"
+import {
+  SqlConnectionLifecycleController,
+  type SqlAdapterConfig,
+  type SqlExecutor,
+} from "./types.vibe"
+
+function applyPatchOps(data: Record<string, unknown>, ops: readonly PatchOp[]): Record<string, unknown> {
+  const next = { ...data }
+  for (const op of ops) {
+    const record = op as unknown as { op?: string; path?: string; key?: string; value?: unknown }
+    const key = record.key ?? (typeof record.path === "string" ? record.path.replace(/^\//, "") : "")
+    if (!key) continue
+    if (record.op === "remove" || record.op === "delete") {
+      delete next[key]
+    } else {
+      next[key] = record.value
+    }
+  }
+  return next
+}
+
+function rowToAgent(row: Record<string, unknown>): Agent {
+  return {
+    id: String(row.id) as UUID,
+    enabled: Boolean(row.enabled),
+    status: String(row.status) as Agent["status"],
+    name: String(row.name),
+    username: row.username ? String(row.username) : undefined,
+    system: row.system ? String(row.system) : undefined,
+    bio: asStringList(row.bio),
+    topics: asStringList(row.topics),
+    adjectives: asStringList(row.adjectives),
+    plugins: asStringList(row.plugins),
+    settings: asRecord(row.settings) as Agent["settings"],
+    style: asRecord(row.style) as Agent["style"],
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  } as Agent
+}
+
+function rowToEntity(row: Record<string, unknown>): Entity {
+  return {
+    id: String(row.id) as UUID,
+    agentId: String(row.agent_id) as UUID,
+    names: asStringList(row.names),
+    metadata: asRecord(row.metadata) as Metadata,
+  }
+}
+
+function rowToComponent(row: Record<string, unknown>): Component {
+  return {
+    id: String(row.id) as UUID,
+    entityId: String(row.entity_id) as UUID,
+    agentId: String(row.agent_id) as UUID,
+    roomId: String(row.room_id) as UUID,
+    worldId: String(row.world_id) as UUID,
+    sourceEntityId: String(row.source_entity_id) as UUID,
+    type: String(row.type),
+    data: asRecord(row.data) as Metadata,
+    createdAt: Number(row.created_at),
+  }
+}
+
+function rowToRoom(row: Record<string, unknown>): Room {
+  return {
+    id: String(row.id) as UUID,
+    name: row.name ? String(row.name) : undefined,
+    source: String(row.source),
+    type: String(row.type) as Room["type"],
+    channelId: row.channel_id ? String(row.channel_id) : undefined,
+    messageServerId: row.message_server_id ? (String(row.message_server_id) as UUID) : undefined,
+    worldId: row.world_id ? (String(row.world_id) as UUID) : undefined,
+    metadata: asRecord(row.metadata) as Metadata,
+  }
+}
+
+function rowToWorld(row: Record<string, unknown>): World {
+  return {
+    id: String(row.id) as UUID,
+    agentId: String(row.agent_id) as UUID,
+    name: String(row.name),
+    messageServerId: row.message_server_id ? (String(row.message_server_id) as UUID) : undefined,
+    metadata: asRecord(row.metadata) as WorldMetadata,
+  }
+}
+
+function rowToRelationship(row: Record<string, unknown>): Relationship {
+  return {
+    id: String(row.id) as UUID,
+    sourceEntityId: String(row.source_entity_id) as UUID,
+    targetEntityId: String(row.target_entity_id) as UUID,
+    agentId: String(row.agent_id) as UUID,
+    tags: asStringList(row.tags),
+    metadata: asRecord(row.metadata) as Metadata,
+    createdAt: String(row.created_at),
+  }
+}
+
+function rowToLog(row: Record<string, unknown>): Log {
+  return {
+    id: String(row.id) as UUID,
+    entityId: String(row.entity_id) as UUID,
+    roomId: String(row.room_id) as UUID,
+    type: String(row.type),
+    body: asRecord(row.body) as LogBody,
+    createdAt: new Date(Number(row.created_at)),
+  }
+}
+
+function rowToTask(row: Record<string, unknown>): Task {
+  return {
+    id: String(row.id) as UUID,
+    name: String(row.name),
+    description: row.description ? String(row.description) : "",
+    roomId: row.room_id ? (String(row.room_id) as UUID) : undefined,
+    worldId: row.world_id ? (String(row.world_id) as UUID) : undefined,
+    entityId: row.entity_id ? (String(row.entity_id) as UUID) : undefined,
+    tags: asStringList(row.tags),
+    metadata: asRecord(row.metadata) as Task["metadata"],
+  }
+}
+
+export abstract class BaseSqlDatabaseAdapter<DB extends object = SqlExecutor> extends DatabaseAdapter<DB> {
+  override readonly messageContentSegmentCapability = 1 as const
+  override readonly documentListQueryCapability = 4 as const
+
+  readonly agentId: UUID
+  readonly sqlExecutor: SqlExecutor
+  protected readonly backendKind: SqlBackend
+  protected readonly lifecycle = new SqlConnectionLifecycleController()
+  protected embeddingDimension = 384
+  protected embeddingSpaceId: string | null = null
+  protected readonly serverId?: UUID
+
+  constructor(agentId: UUID, executor: SqlExecutor, backendKind: SqlBackend, serverId?: UUID) {
+    super()
+    this.agentId = agentId
+    this.sqlExecutor = executor
+    this.backendKind = backendKind
+    this.serverId = serverId
+  }
+
+  getLifecycleController(): SqlConnectionLifecycleController {
+    return this.lifecycle
+  }
+
+  protected abstract createTransactionAdapter(tx: SqlExecutor): BaseSqlDatabaseAdapter<DB>
+  protected abstract closeBackend(): Promise<void>
+  protected abstract rawConnection(): Promise<DB>
+
+  override async initialize(): Promise<void> {
+    if (this.lifecycle.getState().phase === "Ready") return
+    this.lifecycle.beginConnect(this.backendKind)
+    try {
+      await this.sqlExecutor.exec("CREATE EXTENSION IF NOT EXISTS vector").catch(() => undefined)
+      await this.sqlExecutor.exec(
+        "CREATE TABLE IF NOT EXISTS eliza_plugin_sql_migrations (revision integer PRIMARY KEY, checksum text NOT NULL)",
+      )
+      for (const migration of SQL_SCHEMA_MIGRATIONS) {
+        const applied = await this.sqlExecutor.query(
+          "SELECT checksum FROM eliza_plugin_sql_migrations WHERE revision = $1",
+          [migration.revision],
+        )
+        if (applied.rows.length === 0) {
+          await this.sqlExecutor.exec(migration.sql)
+          await this.sqlExecutor.query(
+            "INSERT INTO eliza_plugin_sql_migrations (revision, checksum) VALUES ($1, $2)",
+            [migration.revision, migration.checksum],
+          )
+        }
+      }
+      if (this.backendKind === "PgBackend") {
+        await installRLSFunctions(this.sqlExecutor).catch(() => undefined)
+        if (this.serverId) {
+          await getOrCreateRlsServer(this.sqlExecutor, this.serverId).catch(() => undefined)
+        }
+      }
+      const spaceRow = await this.sqlExecutor.query(
+        "SELECT space_id, dimension FROM embedding_spaces WHERE agent_id = $1 LIMIT 1",
+        [this.agentId],
+      )
+      if (spaceRow.rows[0]) {
+        this.embeddingSpaceId = spaceRow.rows[0].space_id ? String(spaceRow.rows[0].space_id) : null
+        this.embeddingDimension = Number(spaceRow.rows[0].dimension)
+      }
+      this.lifecycle.completeConnect(SQL_SCHEMA_MIGRATIONS.length)
+      this.db = await this.rawConnection()
+    } catch (err) {
+      this.lifecycle.failConnect()
+      throw err
+    }
+  }
+
+  override async runPluginMigrations(
+    _plugins: Parameters<DatabaseAdapter["runPluginMigrations"]>[0],
+  ): Promise<void> {
+    await this.initialize()
+  }
+
+  override isReady(): Promise<boolean> {
+    return Promise.resolve(this.lifecycle.getState().phase === "Ready")
+  }
+
+  override async close(): Promise<void> {
+    if (this.lifecycle.getState().phase === "Ready") {
+      this.lifecycle.beginShutdown()
+    }
+    await this.closeBackend()
+    this.lifecycle.finishClose()
+  }
+
+  override getConnection(): Promise<DB> {
+    return this.rawConnection()
+  }
+
+  override async transaction<T>(
+    callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
+    options?: { entityContext?: UUID },
+  ): Promise<T> {
+    const withEntity = Boolean(options?.entityContext)
+    const tracked = this.lifecycle.beginTransaction(withEntity)
+    try {
+      return await this.sqlExecutor.transaction(async (tx) => {
+        if (options?.entityContext) {
+          await tx
+            .query("SELECT set_config('app.entity_id', $1, true)", [options.entityContext])
+            .catch(() => undefined)
+        }
+        return callback(this.createTransactionAdapter(tx))
+      })
+    } finally {
+      if (tracked) this.lifecycle.endTransaction()
+    }
+  }
+
+  override publishMessageContentSegments(params: MessageContentPublicationParams) {
+    return publishSqlMessageContentSegments(this.sqlExecutor, params)
+  }
+
+  override readMessageContentRange(params: MessageContentRangeReadParams) {
+    return readSqlMessageContentRange(this.sqlExecutor, params)
+  }
+
+  override queryDocuments(params: DocumentListQueryParams) {
+    return querySqlDocuments(this.sqlExecutor, this.agentId, params)
+  }
+
+  override getDocument(params: DocumentGetQueryParams) {
+    return getSqlDocument(this.sqlExecutor, this.agentId, params)
+  }
+
+  override queryDocumentFragments(params: DocumentFragmentQueryParams) {
+    return querySqlDocumentFragments(this.sqlExecutor, this.agentId, this.embeddingDimension, params)
+  }
+
+  override compareAndSwapDocument(params: DocumentCompareAndSwapParams) {
+    return compareAndSwapSqlDocument(this.sqlExecutor, params)
+  }
+
+  override updateDocumentDirectGrants(params: DocumentDirectGrantUpdateParams) {
+    return updateSqlDocumentDirectGrants(this.sqlExecutor, params)
+  }
+
+  override replaceDocumentRevision(params: DocumentRevisionReplaceParams) {
+    return replaceSqlDocumentRevision(this.sqlExecutor, params)
+  }
+
+  override deleteDocumentWithSnapshot(params: DocumentDeleteParams) {
+    return deleteSqlDocumentWithSnapshot(this.sqlExecutor, params)
+  }
+
+  override compareAndSwapWorldMetadata(params: WorldMetadataCompareAndSwapParams) {
+    return compareAndSwapSqlWorldMetadata(this.sqlExecutor, params)
+  }
+
+  override async ensureEmbeddingDimension(dimension: number): Promise<void> {
+    if (!Number.isSafeInteger(dimension) || dimension <= 0) {
+      throw new ElizaError("Embedding dimension must be a positive integer", {
+        code: "SQL_EMBEDDING_DIMENSION_INVALID",
+      })
+    }
+    this.embeddingDimension = dimension
+    if (dimension === 384 || dimension === 768 || dimension === 1536) {
+      this.lifecycle.pinEmbeddingSpace(dimension)
+    }
+    await this.sqlExecutor.query(
+      `INSERT INTO embedding_spaces (agent_id, space_id, dimension, updated_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (agent_id) DO UPDATE SET dimension = EXCLUDED.dimension, updated_at = EXCLUDED.updated_at`,
+      [this.agentId, this.embeddingSpaceId, dimension, Date.now()],
+    )
+  }
+
+  async ensureEmbeddingSpace(spaceId: string): Promise<UUID[]> {
+    const trimmed = spaceId.trim()
+    if (!trimmed || trimmed !== spaceId) {
+      throw new ElizaError("Embedding representation requires a canonical identifier", {
+        code: "EMBEDDING_SPACE_INVALID",
+      })
+    }
+    if (this.embeddingSpaceId !== null && this.embeddingSpaceId !== trimmed) {
+      throw new ElizaError("Embedding space mismatch", { code: "EMBEDDING_SPACE_CHANGED" })
+    }
+    this.embeddingSpaceId = trimmed
+    await this.sqlExecutor.query(
+      `INSERT INTO embedding_spaces (agent_id, space_id, dimension, updated_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (agent_id) DO UPDATE SET space_id = EXCLUDED.space_id, updated_at = EXCLUDED.updated_at`,
+      [this.agentId, trimmed, this.embeddingDimension, Date.now()],
+    )
+    const pending = await this.sqlExecutor.query(
+      "SELECT id FROM memories WHERE agent_id = $1 AND embedding IS NULL",
+      [this.agentId],
+    )
+    return pending.rows.map((r) => String(r.id) as UUID)
+  }
+
+  override async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+    const res = await this.sqlExecutor.query(
+      "SELECT id, embedding FROM memories WHERE agent_id = $1 AND embedding IS NOT NULL",
+      [this.agentId],
+    )
+    const cleared: UUID[] = []
+    for (const row of res.rows) {
+      const emb = Array.isArray(row.embedding) ? row.embedding : []
+      if (emb.length !== this.embeddingDimension) {
+        const id = String(row.id) as UUID
+        await this.sqlExecutor.query("UPDATE memories SET embedding = NULL WHERE id = $1", [id])
+        cleared.push(id)
+      }
+    }
+    return cleared
+  }
+
+  override async getAgents(): Promise<Partial<Agent>[]> {
+    const res = await this.sqlExecutor.query("SELECT * FROM agents ORDER BY created_at ASC")
+    return res.rows.map(rowToAgent)
+  }
+
+  override async getAgentsByIds(agentIds: UUID[]): Promise<Agent[]> {
+    if (agentIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM agents WHERE id = ANY($1::uuid[])", [agentIds])
+    return res.rows.map(rowToAgent)
+  }
+
+  override async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    const now = Date.now()
+    for (const agent of agents) {
+      const id = agent.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO agents (id, enabled, status, name, username, system, bio, topics, adjectives, plugins, settings, style, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          id,
+          agent.enabled ?? true,
+          agent.status ?? "active",
+          agent.name ?? "Agent",
+          agent.username ?? null,
+          agent.system ?? null,
+          encodeJsonb(Array.isArray(agent.bio) ? agent.bio : agent.bio ? [agent.bio] : []),
+          encodeJsonb(agent.topics ?? []),
+          encodeJsonb(agent.adjectives ?? []),
+          encodeJsonb(agent.plugins ?? []),
+          encodeJsonb(agent.settings ?? {}, true),
+          encodeJsonb(agent.style ?? {}),
+          agent.createdAt ?? now,
+          agent.updatedAt ?? now,
+        ],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+    const now = Date.now()
+    for (const { agentId, agent } of updates) {
+      const existing = (await this.getAgentsByIds([agentId]))[0]
+      if (!existing) return false
+      const merged = { ...existing, ...agent, id: agentId, updatedAt: now }
+      await this.sqlExecutor.query(
+        `UPDATE agents SET enabled=$2, status=$3, name=$4, username=$5, system=$6, bio=$7::jsonb,
+          topics=$8::jsonb, adjectives=$9::jsonb, plugins=$10::jsonb, settings=$11::jsonb, style=$12::jsonb, updated_at=$13
+         WHERE id = $1`,
+        [
+          agentId,
+          merged.enabled ?? true,
+          merged.status ?? "active",
+          merged.name,
+          merged.username ?? null,
+          merged.system ?? null,
+          encodeJsonb(Array.isArray(merged.bio) ? merged.bio : merged.bio ? [merged.bio] : []),
+          encodeJsonb(merged.topics ?? []),
+          encodeJsonb(merged.adjectives ?? []),
+          encodeJsonb(merged.plugins ?? []),
+          encodeJsonb(merged.settings ?? {}, true),
+          encodeJsonb(merged.style ?? {}),
+          now,
+        ],
+      )
+    }
+    return true
+  }
+
+  override async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
+    for (const agent of agents) {
+      const id = agent.id ?? randomUuid()
+      const existing = await this.getAgentsByIds([id])
+      if (existing.length > 0) {
+        await this.updateAgents([{ agentId: id, agent }])
+      } else {
+        await this.createAgents([{ ...agent, id }])
+      }
+    }
+  }
+
+  override async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+    if (agentIds.length === 0) return false
+    const res = await this.sqlExecutor.query("DELETE FROM agents WHERE id = ANY($1::uuid[])", [agentIds])
+    return (res.affectedRows ?? 0) > 0
+  }
+
+  override async countAgents(): Promise<number> {
+    const res = await this.sqlExecutor.query("SELECT count(*)::int AS total FROM agents")
+    return Number(res.rows[0]?.total ?? 0)
+  }
+
+  override async cleanupAgents(): Promise<void> {
+    await this.sqlExecutor.query("DELETE FROM agents WHERE id = $1", [this.agentId])
+  }
+
+  override async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
+    if (entityIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM entities WHERE id = ANY($1::uuid[])", [entityIds])
+    return res.rows.map(rowToEntity)
+  }
+
+  override async createEntities(entities: Entity[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    const now = Date.now()
+    for (const entity of entities) {
+      const id = entity.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO entities (id, agent_id, names, metadata, created_at)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5)
+         ON CONFLICT (id) DO NOTHING`,
+        [id, entity.agentId ?? this.agentId, encodeJsonb(entity.names ?? []), encodeJsonb(entity.metadata ?? {}, true), now],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async updateEntities(entities: Entity[]): Promise<void> {
+    for (const entity of entities) {
+      if (!entity.id) continue
+      await this.sqlExecutor.query(
+        "UPDATE entities SET names = $2::jsonb, metadata = $3::jsonb WHERE id = $1",
+        [entity.id, encodeJsonb(entity.names ?? []), encodeJsonb(entity.metadata ?? {}, true)],
+      )
+    }
+  }
+
+  override async upsertEntities(entities: Entity[]): Promise<void> {
+    const now = Date.now()
+    for (const entity of entities) {
+      const id = entity.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO entities (id, agent_id, names, metadata, created_at)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5)
+         ON CONFLICT (id) DO UPDATE SET names = EXCLUDED.names, metadata = EXCLUDED.metadata`,
+        [id, entity.agentId ?? this.agentId, encodeJsonb(entity.names ?? []), encodeJsonb(entity.metadata ?? {}, true), now],
+      )
+    }
+  }
+
+  override async deleteEntities(entityIds: UUID[]): Promise<void> {
+    if (entityIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM entities WHERE id = ANY($1::uuid[])", [entityIds])
+  }
+
+  override async searchEntitiesByName(params: {
+    query: string
+    agentId: UUID
+    limit?: number
+  }): Promise<Entity[]> {
+    const res = await this.sqlExecutor.query("SELECT * FROM entities WHERE agent_id = $1", [params.agentId])
+    const q = params.query.toLowerCase()
+    return res.rows
+      .map(rowToEntity)
+      .filter((e) => e.names.some((n) => n.toLowerCase().includes(q)))
+      .slice(0, params.limit ?? 20)
+  }
+
+  override async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
+    const wanted = new Set(params.names.map((n) => n.toLowerCase()))
+    const res = await this.sqlExecutor.query("SELECT * FROM entities WHERE agent_id = $1", [params.agentId])
+    return res.rows.map(rowToEntity).filter((e) => e.names.some((n) => wanted.has(n.toLowerCase())))
+  }
+
+  override async getEntitiesForRooms(
+    roomIds: UUID[],
+    includeComponents = false,
+  ): Promise<EntitiesForRoomsResult> {
+    if (roomIds.length === 0) return []
+    const partRes = await this.sqlExecutor.query(
+      "SELECT DISTINCT room_id, entity_id FROM participants WHERE room_id = ANY($1::uuid[])",
+      [roomIds],
+    )
+    const allEntityIds = [...new Set(partRes.rows.map((r) => String(r.entity_id) as UUID))]
+    const entities = await this.getEntitiesByIds(allEntityIds)
+    const components = includeComponents ? await this.getComponentsForEntities(allEntityIds) : []
+    const byId = new Map(
+      entities.map((e) => [
+        e.id,
+        includeComponents ? { ...e, components: components.filter((c) => c.entityId === e.id) } : e,
+      ]),
+    )
+    return roomIds.map((roomId) => ({
+      roomId,
+      entities: partRes.rows
+        .filter((r) => String(r.room_id) === roomId)
+        .map((r) => byId.get(String(r.entity_id) as UUID))
+        .filter((e): e is Entity => e !== undefined),
+    }))
+  }
+
+  override async queryEntities(params: {
+    componentType?: string
+    componentDataFilter?: Record<string, unknown>
+    agentId?: UUID
+    entityIds?: UUID[]
+    worldId?: UUID
+    limit?: number
+    offset?: number
+    includeAllComponents?: boolean
+  }): Promise<Entity[]> {
+    const agent = params.agentId ?? this.agentId
+    const res = params.entityIds?.length
+      ? await this.sqlExecutor.query(
+          "SELECT * FROM entities WHERE agent_id = $1 AND id = ANY($2::uuid[])",
+          [agent, params.entityIds],
+        )
+      : await this.sqlExecutor.query("SELECT * FROM entities WHERE agent_id = $1", [agent])
+    let list = res.rows.map(rowToEntity)
+    if (params.componentType || params.componentDataFilter || params.includeAllComponents) {
+      const comps = await this.getComponentsForEntities(
+        list.map((e) => e.id).filter((id): id is UUID => Boolean(id)),
+        params.worldId,
+      )
+      list = list
+        .filter((entity) => {
+          if (!params.componentType) return true
+          return comps.some(
+            (c) =>
+              c.entityId === entity.id &&
+              c.type === params.componentType &&
+              matchesMetadataFilter(c.data, params.componentDataFilter),
+          )
+        })
+        .map((entity) =>
+          params.includeAllComponents
+            ? { ...entity, components: comps.filter((c) => c.entityId === entity.id) }
+            : entity,
+        )
+    }
+    const offset = params.offset ?? 0
+    return params.limit !== undefined ? list.slice(offset, offset + params.limit) : list.slice(offset)
+  }
+
+  private async writeComponentRow(c: Component, onConflictUpdate: boolean): Promise<UUID> {
+    const id = c.id ?? randomUuid()
+    const suffix = onConflictUpdate ? " ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data" : ""
+    await this.sqlExecutor.query(
+      `INSERT INTO components (id, entity_id, agent_id, room_id, world_id, source_entity_id, type, data, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)${suffix}`,
+      [
+        id,
+        c.entityId,
+        c.agentId ?? this.agentId,
+        c.roomId,
+        c.worldId,
+        c.sourceEntityId,
+        c.type,
+        encodeJsonb(c.data ?? {}, true),
+        c.createdAt ?? Date.now(),
+      ],
+    )
+    return id
+  }
+
+  override async createComponents(components: Component[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    for (const c of components) {
+      ids.push(await this.writeComponentRow(c, false))
+    }
+    return ids
+  }
+
+  override async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
+    if (componentIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM components WHERE id = ANY($1::uuid[])", [componentIds])
+    return res.rows.map(rowToComponent)
+  }
+
+  override async getComponentsByNaturalKeys(
+    keys: Array<{ entityId: UUID; type: string; worldId?: UUID; sourceEntityId?: UUID }>,
+  ): Promise<(Component | null)[]> {
+    const out: (Component | null)[] = []
+    for (const k of keys) {
+      const res = await this.sqlExecutor.query(
+        `SELECT * FROM components WHERE entity_id = $1 AND type = $2
+         AND ($3::uuid IS NULL OR world_id = $3::uuid)
+         AND ($4::uuid IS NULL OR source_entity_id = $4::uuid) LIMIT 1`,
+        [k.entityId, k.type, k.worldId ?? null, k.sourceEntityId ?? null],
+      )
+      out.push(res.rows[0] ? rowToComponent(res.rows[0]) : null)
+    }
+    return out
+  }
+
+  override async getComponentsForEntities(
+    entityIds: UUID[],
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component[]> {
+    if (entityIds.length === 0) return []
+    const res = await this.sqlExecutor.query(
+      `SELECT * FROM components WHERE entity_id = ANY($1::uuid[])
+       AND ($2::uuid IS NULL OR world_id = $2::uuid)
+       AND ($3::uuid IS NULL OR source_entity_id = $3::uuid)`,
+      [entityIds, worldId ?? null, sourceEntityId ?? null],
+    )
+    return res.rows.map(rowToComponent)
+  }
+
+  override async updateComponents(components: Component[]): Promise<void> {
+    for (const c of components) {
+      await this.sqlExecutor.query("UPDATE components SET data = $2::jsonb WHERE id = $1", [
+        c.id,
+        encodeJsonb(c.data ?? {}, true),
+      ])
+    }
+  }
+
+  override async upsertComponents(components: Component[]): Promise<void> {
+    for (const c of components) {
+      await this.writeComponentRow(c, true)
+    }
+  }
+
+  override async patchComponents(updates: Array<{ componentId: UUID; ops: PatchOp[] }>): Promise<void> {
+    for (const u of updates) {
+      const existing = (await this.getComponentsByIds([u.componentId]))[0]
+      if (!existing) continue
+      const patched = applyPatchOps(existing.data ?? {}, u.ops)
+      await this.sqlExecutor.query("UPDATE components SET data = $2::jsonb WHERE id = $1", [
+        u.componentId,
+        encodeJsonb(patched, true),
+      ])
+    }
+  }
+
+  override async deleteComponents(componentIds: UUID[]): Promise<void> {
+    if (componentIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM components WHERE id = ANY($1::uuid[])", [componentIds])
+  }
+
+  private async writeMemoryRow(
+    memory: Memory,
+    tableName: string,
+    unique: boolean,
+    onConflictUpdate: boolean,
+  ): Promise<UUID> {
+    const id = memory.id ?? randomUuid()
+    const conflict = onConflictUpdate
+      ? "ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, metadata = EXCLUDED.metadata, embedding = EXCLUDED.embedding"
+      : "ON CONFLICT (id) DO NOTHING"
+    await this.sqlExecutor.query(
+      `INSERT INTO memories (id, type, agent_id, entity_id, room_id, world_id, content, metadata, embedding, embedding_space, is_unique, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11,$12)
+       ${conflict}`,
+      [
+        id,
+        tableName,
+        memory.agentId ?? this.agentId,
+        memory.entityId,
+        memory.roomId,
+        memory.worldId ?? null,
+        encodeJsonb(memory.content ?? {}, true),
+        encodeJsonb(memory.metadata ?? {}, true),
+        memory.embedding ? JSON.stringify(memory.embedding) : null,
+        this.embeddingSpaceId,
+        unique,
+        memory.createdAt ?? Date.now(),
+      ],
+    )
+    return id
+  }
+
+  override async createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+  ): Promise<UUID[]> {
+    const ids: UUID[] = []
+    for (const item of memories) {
+      ids.push(
+        await this.writeMemoryRow(
+          item.memory,
+          item.tableName,
+          Boolean(item.unique ?? item.memory.unique),
+          false,
+        ),
+      )
+    }
+    return ids
+  }
+
+  override async updateMemories(
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
+  ): Promise<void> {
+    for (const m of memories) {
+      const current = (await this.getMemoriesByIds([m.id]))[0]
+      if (!current) continue
+      await this.sqlExecutor.query(
+        "UPDATE memories SET content = $2::jsonb, metadata = $3::jsonb, embedding = $4::jsonb WHERE id = $1",
+        [
+          m.id,
+          encodeJsonb(m.content ?? current.content, true),
+          encodeJsonb(m.metadata ?? current.metadata ?? {}, true),
+          m.embedding ? JSON.stringify(m.embedding) : current.embedding ? JSON.stringify(current.embedding) : null,
+        ],
+      )
+    }
+  }
+
+  override async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+  ): Promise<void> {
+    for (const item of memories) {
+      await this.writeMemoryRow(item.memory, item.tableName, Boolean(item.memory.unique), true)
+    }
+  }
+
+  override async updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean> {
+    const res = await this.sqlExecutor.query(
+      "UPDATE memories SET embedding = $2::jsonb, embedding_space = $3 WHERE id = $1",
+      [update.id, JSON.stringify(update.embedding), this.embeddingSpaceId],
+    )
+    return (res.affectedRows ?? 0) > 0
+  }
+
+  override async deleteMemories(memoryIds: UUID[]): Promise<void> {
+    if (memoryIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM memories WHERE id = ANY($1::uuid[])", [memoryIds])
+  }
+
+  override async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
+    if (roomIds.length === 0) return
+    await this.sqlExecutor.query(
+      "DELETE FROM memories WHERE room_id = ANY($1::uuid[]) AND type = $2",
+      [roomIds, tableName],
+    )
+  }
+
+  override async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
+    if (memoryIds.length === 0) return []
+    const res = tableName
+      ? await this.sqlExecutor.query(
+          "SELECT * FROM memories WHERE id = ANY($1::uuid[]) AND type = $2",
+          [memoryIds, tableName],
+        )
+      : await this.sqlExecutor.query("SELECT * FROM memories WHERE id = ANY($1::uuid[])", [memoryIds])
+    return res.rows.map((r) => rowToMemory(r, true))
+  }
+
+  override async getMemories(params: {
+    entityId?: UUID
+    authorEntityIds?: UUID[]
+    agentId?: UUID
+    limit?: number
+    count?: number
+    offset?: number
+    cursor?: { createdAt: number; id: UUID }
+    unique?: boolean
+    tableName: string
+    start?: number
+    end?: number
+    roomId?: UUID
+    excludeRoomIds?: UUID[]
+    worldId?: UUID
+    metadata?: Record<string, unknown>
+    textContains?: string
+    orderBy?: "createdAt"
+    orderDirection?: "asc" | "desc"
+    includeEmbedding?: boolean
+    accessContext?: AccessContext
+  }): Promise<Memory[]> {
+    const order = params.orderDirection === "asc" ? "ASC" : "DESC"
+    const res = await this.sqlExecutor.query(
+      `SELECT * FROM memories WHERE type = $1 AND agent_id = $2 ORDER BY created_at ${order}, id ${order}`,
+      [params.tableName, params.agentId ?? this.agentId],
+    )
+    const excluded = new Set(params.excludeRoomIds ?? [])
+    const authors = params.authorEntityIds ? new Set(params.authorEntityIds) : null
+    const textNeedle = params.textContains?.toLowerCase()
+    const filtered = res.rows
+      .map((r) => rowToMemory(r, params.includeEmbedding !== false))
+      .filter((m) => {
+        if (params.entityId && m.entityId !== params.entityId) return false
+        if (authors && !authors.has(m.entityId)) return false
+        if (params.roomId && m.roomId !== params.roomId) return false
+        if (excluded.has(m.roomId)) return false
+        if (params.worldId && m.worldId !== params.worldId) return false
+        if (params.unique && !m.unique) return false
+        if (params.start !== undefined && (m.createdAt ?? 0) < params.start) return false
+        if (params.end !== undefined && (m.createdAt ?? 0) > params.end) return false
+        if (!matchesMetadataFilter(asRecord(m.metadata), params.metadata)) return false
+        if (textNeedle) {
+          const text = typeof m.content.text === "string" ? m.content.text.toLowerCase() : ""
+          if (!text.includes(textNeedle)) return false
+        }
+        return memoryAllowedByAccess(m, params.accessContext)
+      })
+    const offset = params.offset ?? 0
+    const limit = params.limit ?? params.count
+    return limit !== undefined ? filtered.slice(offset, offset + limit) : filtered.slice(offset)
+  }
+
+  override async getMemoriesByRoomIds(params: {
+    roomIds: UUID[]
+    tableName: string
+    limit?: number
+    offset?: number
+    textContains?: string
+    includeEmbedding?: boolean
+    accessContext?: AccessContext
+  }): Promise<Memory[]> {
+    if (params.roomIds.length === 0) return []
+    const res = await this.sqlExecutor.query(
+      "SELECT * FROM memories WHERE room_id = ANY($1::uuid[]) AND type = $2 ORDER BY created_at DESC",
+      [params.roomIds, params.tableName],
+    )
+    const needle = params.textContains?.toLowerCase()
+    const list = res.rows
+      .map((r) => rowToMemory(r, params.includeEmbedding !== false))
+      .filter((m) => {
+        if (needle && !(typeof m.content.text === "string" && m.content.text.toLowerCase().includes(needle))) {
+          return false
+        }
+        return memoryAllowedByAccess(m, params.accessContext)
+      })
+    const offset = params.offset ?? 0
+    return params.limit !== undefined ? list.slice(offset, offset + params.limit) : list.slice(offset)
+  }
+
+  override async getMemoriesByWorldId(params: {
+    worldIds?: UUID[]
+    limit?: number
+    tableName?: string
+  }): Promise<Memory[]> {
+    const res = params.worldIds?.length
+      ? await this.sqlExecutor.query(
+          "SELECT * FROM memories WHERE world_id = ANY($1::uuid[]) AND ($2::text IS NULL OR type = $2::text) ORDER BY created_at DESC",
+          [params.worldIds, params.tableName ?? null],
+        )
+      : await this.sqlExecutor.query(
+          "SELECT * FROM memories WHERE agent_id = $1 AND ($2::text IS NULL OR type = $2::text) ORDER BY created_at DESC",
+          [this.agentId, params.tableName ?? null],
+        )
+    const rows = res.rows.map((r) => rowToMemory(r, false))
+    return params.limit !== undefined ? rows.slice(0, params.limit) : rows
+  }
+
+  override async searchMemories(params: {
+    tableName: string
+    embedding: number[]
+    includeEmbedding?: boolean
+    excludeRoomIds?: UUID[]
+    match_threshold?: number
+    count?: number
+    limit?: number
+    offset?: number
+    unique?: boolean
+    query?: string
+    roomId?: UUID
+    worldId?: UUID
+    entityId?: UUID
+    accessContext?: AccessContext
+  }): Promise<Memory[]> {
+    const candidates = await this.getMemories({
+      tableName: params.tableName,
+      roomId: params.roomId,
+      excludeRoomIds: params.excludeRoomIds,
+      worldId: params.worldId,
+      entityId: params.entityId,
+      unique: params.unique,
+      includeEmbedding: true,
+      accessContext: params.accessContext,
+    })
+    const threshold = params.match_threshold ?? 0
+    const scored = candidates
+      .map((m) => {
+        const emb = readEmbeddingVector(m.embedding, this.embeddingSpaceId)
+        const similarity = emb ? cosineSimilarity(params.embedding, emb) : 0
+        return { memory: m, similarity }
+      })
+      .filter((entry) => entry.similarity >= threshold)
+      .sort((a, b) => b.similarity - a.similarity)
+    const offset = params.offset ?? 0
+    const limit = params.limit ?? params.count ?? 10
+    return scored.slice(offset, offset + limit).map(({ memory, similarity }) => ({
+      ...memory,
+      ...(params.includeEmbedding === false ? { embedding: undefined } : {}),
+      similarity,
+    }))
+  }
+
+  override async searchMessages(params: {
+    roomIds: UUID[]
+    query: string
+    tableName?: string
+    limit?: number
+    offset?: number
+    since?: number
+    until?: number
+    accessContext?: AccessContext
+  }): Promise<MessageSearchHit[]> {
+    const memories = await this.getMemoriesByRoomIds({
+      roomIds: params.roomIds,
+      tableName: params.tableName ?? "messages",
+      textContains: params.query,
+      includeEmbedding: false,
+      accessContext: params.accessContext,
+    })
+    const filtered = memories.filter((m) => {
+      const ts = m.createdAt ?? 0
+      if (params.since !== undefined && ts < params.since) return false
+      if (params.until !== undefined && ts > params.until) return false
+      return true
+    })
+    const offset = params.offset ?? 0
+    const limit = params.limit ?? 20
+    return filtered.slice(offset, offset + limit).map((memory) => ({
+      memory,
+      score: 1,
+    })) as unknown as MessageSearchHit[]
+  }
+
+  override async getCachedEmbeddings(params: {
+    query_table_name: string
+    query_threshold: number
+    query_input: string
+    query_field_name: string
+    query_field_sub_name: string
+    query_match_count: number
+  }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
+    const memories = await this.getMemories({
+      tableName: params.query_table_name,
+      includeEmbedding: true,
+    })
+    const out: { embedding: number[]; levenshtein_score: number }[] = []
+    for (const m of memories) {
+      if (!m.embedding?.length) continue
+      const text = typeof m.content.text === "string" ? m.content.text : ""
+      if (text === params.query_input) {
+        out.push({ embedding: m.embedding, levenshtein_score: 0 })
+      }
+      if (out.length >= params.query_match_count) break
+    }
+    return out
+  }
+
+  override async countMemories(params: {
+    roomIds?: UUID[]
+    unique?: boolean
+    tableName?: string
+  }): Promise<number> {
+    const memories = await this.getMemories({
+      tableName: params.tableName ?? "messages",
+      unique: params.unique,
+      includeEmbedding: false,
+    })
+    if (!params.roomIds?.length) return memories.length
+    const wanted = new Set(params.roomIds)
+    return memories.filter((m) => wanted.has(m.roomId)).length
+  }
+
+  override async getAllWorlds(): Promise<World[]> {
+    const res = await this.sqlExecutor.query("SELECT * FROM worlds WHERE agent_id = $1", [this.agentId])
+    return res.rows.map(rowToWorld)
+  }
+
+  override async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
+    if (worldIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM worlds WHERE id = ANY($1::uuid[])", [worldIds])
+    return res.rows.map(rowToWorld)
+  }
+
+  override async createWorlds(worlds: World[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    const now = Date.now()
+    for (const w of worlds) {
+      const id = w.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO worlds (id, agent_id, name, message_server_id, metadata, created_at)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6) ON CONFLICT (id) DO NOTHING`,
+        [id, w.agentId ?? this.agentId, w.name ?? "World", w.messageServerId ?? null, encodeJsonb(w.metadata ?? {}, true), now],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async updateWorlds(worlds: World[]): Promise<void> {
+    for (const w of worlds) {
+      await this.sqlExecutor.query(
+        "UPDATE worlds SET name = $2, message_server_id = $3, metadata = $4::jsonb WHERE id = $1",
+        [w.id, w.name ?? "World", w.messageServerId ?? null, encodeJsonb(w.metadata ?? {}, true)],
+      )
+    }
+  }
+
+  override async upsertWorlds(worlds: World[]): Promise<void> {
+    const now = Date.now()
+    for (const w of worlds) {
+      const id = w.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO worlds (id, agent_id, name, message_server_id, metadata, created_at)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6)
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, metadata = EXCLUDED.metadata`,
+        [id, w.agentId ?? this.agentId, w.name ?? "World", w.messageServerId ?? null, encodeJsonb(w.metadata ?? {}, true), now],
+      )
+    }
+  }
+
+  override async deleteWorlds(worldIds: UUID[]): Promise<void> {
+    if (worldIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM worlds WHERE id = ANY($1::uuid[])", [worldIds])
+  }
+
+  override async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
+    if (roomIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM rooms WHERE id = ANY($1::uuid[])", [roomIds])
+    return res.rows.map(rowToRoom)
+  }
+
+  override async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
+    if (worldIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM rooms WHERE world_id = ANY($1::uuid[])", [worldIds])
+    const list = res.rows.map(rowToRoom)
+    const start = offset ?? 0
+    return limit !== undefined ? list.slice(start, start + limit) : list.slice(start)
+  }
+
+  private async writeRoomRow(r: Room, onConflictUpdate: boolean): Promise<UUID> {
+    const id = r.id ?? randomUuid()
+    const conflict = onConflictUpdate
+      ? "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, metadata = EXCLUDED.metadata"
+      : "ON CONFLICT (id) DO NOTHING"
+    await this.sqlExecutor.query(
+      `INSERT INTO rooms (id, agent_id, name, source, type, channel_id, message_server_id, world_id, metadata, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) ${conflict}`,
+      [
+        id,
+        this.agentId,
+        r.name ?? null,
+        r.source,
+        r.type,
+        r.channelId ?? null,
+        r.messageServerId ?? null,
+        r.worldId ?? null,
+        encodeJsonb(r.metadata ?? {}, true),
+        Date.now(),
+      ],
+    )
+    return id
+  }
+
+  override async createRooms(rooms: Room[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    for (const r of rooms) {
+      ids.push(await this.writeRoomRow(r, false))
+    }
+    return ids
+  }
+
+  override async upsertRooms(rooms: Room[]): Promise<void> {
+    for (const r of rooms) {
+      await this.writeRoomRow(r, true)
+    }
+  }
+
+  override async updateRooms(rooms: Room[]): Promise<void> {
+    for (const r of rooms) {
+      await this.sqlExecutor.query(
+        "UPDATE rooms SET name = $2, metadata = $3::jsonb WHERE id = $1",
+        [r.id, r.name ?? null, encodeJsonb(r.metadata ?? {}, true)],
+      )
+    }
+  }
+
+  override async deleteRooms(roomIds: UUID[]): Promise<void> {
+    if (roomIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM rooms WHERE id = ANY($1::uuid[])", [roomIds])
+  }
+
+  override async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
+    if (worldIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM rooms WHERE world_id = ANY($1::uuid[])", [worldIds])
+  }
+
+  override async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
+    if (entityIds.length === 0) return []
+    const res = await this.sqlExecutor.query(
+      "SELECT DISTINCT room_id FROM participants WHERE entity_id = ANY($1::uuid[])",
+      [entityIds],
+    )
+    return res.rows.map((r) => String(r.room_id) as UUID)
+  }
+
+  override async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+    const ids: UUID[] = []
+    const now = Date.now()
+    for (const entityId of entityIds) {
+      const id = randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO participants (id, entity_id, room_id, agent_id, created_at)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (entity_id, room_id, agent_id) DO NOTHING`,
+        [id, entityId, roomId, this.agentId, now],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+    let deleted = false
+    for (const p of participants) {
+      const res = await this.sqlExecutor.query(
+        "DELETE FROM participants WHERE entity_id = $1 AND room_id = $2 AND agent_id = $3",
+        [p.entityId, p.roomId, this.agentId],
+      )
+      if ((res.affectedRows ?? 0) > 0) deleted = true
+    }
+    return deleted
+  }
+
+  override async updateParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID; updates: { roomState?: "FOLLOWED" | "MUTED" | null } }>,
+  ): Promise<void> {
+    for (const p of participants) {
+      await this.sqlExecutor.query(
+        "UPDATE participants SET room_state = $1 WHERE entity_id = $2 AND room_id = $3 AND agent_id = $4",
+        [p.updates.roomState ?? null, p.entityId, p.roomId, this.agentId],
+      )
+    }
+  }
+
+  override async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
+    if (entityIds.length === 0) return []
+    const res = await this.sqlExecutor.query(
+      "SELECT * FROM participants WHERE entity_id = ANY($1::uuid[])",
+      [entityIds],
+    )
+    const entities = await this.getEntitiesByIds(entityIds)
+    const byId = new Map(entities.map((e) => [e.id, e]))
+    return res.rows
+      .map((r) => {
+        const entity = byId.get(String(r.entity_id) as UUID)
+        return entity ? { id: String(r.id) as UUID, entity } : null
+      })
+      .filter((p): p is Participant => p !== null)
+  }
+
+  override async getParticipantsForRooms(roomIds: UUID[]): Promise<Array<{ roomId: UUID; entityIds: UUID[] }>> {
+    if (roomIds.length === 0) return []
+    const res = await this.sqlExecutor.query(
+      "SELECT room_id, entity_id FROM participants WHERE room_id = ANY($1::uuid[])",
+      [roomIds],
+    )
+    return roomIds.map((roomId) => ({
+      roomId,
+      entityIds: res.rows
+        .filter((r) => String(r.room_id) === roomId)
+        .map((r) => String(r.entity_id) as UUID),
+    }))
+  }
+
+  override async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
+    const out: boolean[] = []
+    for (const pair of pairs) {
+      const res = await this.sqlExecutor.query(
+        "SELECT 1 FROM participants WHERE room_id = $1 AND entity_id = $2 LIMIT 1",
+        [pair.roomId, pair.entityId],
+      )
+      out.push(res.rows.length > 0)
+    }
+    return out
+  }
+
+  override async getParticipantUserStates(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<Array<"FOLLOWED" | "MUTED" | null>> {
+    const out: Array<"FOLLOWED" | "MUTED" | null> = []
+    for (const pair of pairs) {
+      const res = await this.sqlExecutor.query(
+        "SELECT room_state FROM participants WHERE room_id = $1 AND entity_id = $2 LIMIT 1",
+        [pair.roomId, pair.entityId],
+      )
+      const state = res.rows[0]?.room_state
+      out.push(state === "FOLLOWED" || state === "MUTED" ? state : null)
+    }
+    return out
+  }
+
+  override async updateParticipantUserStates(
+    updates: Array<{ roomId: UUID; entityId: UUID; state: "FOLLOWED" | "MUTED" | null }>,
+  ): Promise<void> {
+    await this.updateParticipants(
+      updates.map((u) => ({ roomId: u.roomId, entityId: u.entityId, updates: { roomState: u.state } })),
+    )
+  }
+
+  override async createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID
+      targetEntityId: UUID
+      tags?: string[]
+      metadata?: Metadata
+    }>,
+  ): Promise<UUID[]> {
+    const ids: UUID[] = []
+    const now = Date.now()
+    for (const rel of relationships) {
+      const id = randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO relationships (id, source_entity_id, target_entity_id, agent_id, tags, metadata, created_at)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)
+         ON CONFLICT (source_entity_id, target_entity_id, agent_id) DO UPDATE SET tags = EXCLUDED.tags, metadata = EXCLUDED.metadata`,
+        [
+          id,
+          rel.sourceEntityId,
+          rel.targetEntityId,
+          this.agentId,
+          encodeJsonb(rel.tags ?? []),
+          encodeJsonb(rel.metadata ?? {}, true),
+          now,
+        ],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]> {
+    if (relationshipIds.length === 0) return []
+    const res = await this.sqlExecutor.query(
+      "SELECT * FROM relationships WHERE id = ANY($1::uuid[])",
+      [relationshipIds],
+    )
+    return res.rows.map(rowToRelationship)
+  }
+
+  override async getRelationshipsByPairs(
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+  ): Promise<(Relationship | null)[]> {
+    const out: (Relationship | null)[] = []
+    for (const pair of pairs) {
+      const res = await this.sqlExecutor.query(
+        "SELECT * FROM relationships WHERE source_entity_id = $1 AND target_entity_id = $2 AND agent_id = $3 LIMIT 1",
+        [pair.sourceEntityId, pair.targetEntityId, this.agentId],
+      )
+      out.push(res.rows[0] ? rowToRelationship(res.rows[0]) : null)
+    }
+    return out
+  }
+
+  override async getRelationships(params: {
+    entityIds?: UUID[]
+    tags?: string[]
+    limit?: number
+    offset?: number
+  }): Promise<Relationship[]> {
+    const res = await this.sqlExecutor.query("SELECT * FROM relationships WHERE agent_id = $1", [this.agentId])
+    let list = res.rows.map(rowToRelationship)
+    if (params.entityIds?.length) {
+      const set = new Set(params.entityIds)
+      list = list.filter((r) => set.has(r.sourceEntityId) || set.has(r.targetEntityId))
+    }
+    if (params.tags?.length) {
+      list = list.filter((r) => params.tags!.every((tag) => r.tags.includes(tag)))
+    }
+    const offset = params.offset ?? 0
+    return params.limit !== undefined ? list.slice(offset, offset + params.limit) : list.slice(offset)
+  }
+
+  override async updateRelationships(relationships: Relationship[]): Promise<void> {
+    for (const rel of relationships) {
+      await this.sqlExecutor.query(
+        "UPDATE relationships SET tags = $2::jsonb, metadata = $3::jsonb WHERE id = $1",
+        [rel.id, encodeJsonb(rel.tags ?? []), encodeJsonb(rel.metadata ?? {}, true)],
+      )
+    }
+  }
+
+  override async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
+    if (relationshipIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM relationships WHERE id = ANY($1::uuid[])", [relationshipIds])
+  }
+
+  override async createLogs(
+    params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string; createdAt?: Date }>,
+  ): Promise<void> {
+    const now = Date.now()
+    for (const item of params) {
+      await this.sqlExecutor.query(
+        "INSERT INTO logs (id, entity_id, room_id, type, body, created_at) VALUES ($1,$2,$3,$4,$5::jsonb,$6)",
+        [
+          randomUuid(),
+          item.entityId,
+          item.roomId,
+          item.type,
+          encodeJsonb(item.body),
+          item.createdAt ? item.createdAt.getTime() : now,
+        ],
+      )
+    }
+  }
+
+  override async getLogs(params: {
+    entityId?: UUID
+    roomId?: UUID
+    type?: string
+    limit?: number
+    offset?: number
+  }): Promise<Log[]> {
+    const res = await this.sqlExecutor.query(
+      `SELECT * FROM logs
+       WHERE ($1::uuid IS NULL OR entity_id = $1::uuid)
+         AND ($2::uuid IS NULL OR room_id = $2::uuid)
+         AND ($3::text IS NULL OR type = $3::text)
+       ORDER BY created_at DESC`,
+      [params.entityId ?? null, params.roomId ?? null, params.type ?? null],
+    )
+    const offset = params.offset ?? 0
+    const list = res.rows.map(rowToLog)
+    return params.limit !== undefined ? list.slice(offset, offset + params.limit) : list.slice(offset)
+  }
+
+  override async getLogInventory(params: { excludeTypes?: readonly string[] }): Promise<LogInventoryRow[]> {
+    const res = await this.sqlExecutor.query(
+      "SELECT type, count(*)::int AS total, max(created_at) AS latest FROM logs GROUP BY type",
+    )
+    const excluded = new Set(params.excludeTypes ?? [])
+    return res.rows
+      .filter((r) => !excluded.has(String(r.type)))
+      .map((r) => ({
+        type: String(r.type),
+        count: Number(r.total),
+        latestCreatedAt: new Date(Number(r.latest)),
+      })) as unknown as LogInventoryRow[]
+  }
+
+  override async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
+    if (logIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM logs WHERE id = ANY($1::uuid[])", [logIds])
+    return res.rows.map(rowToLog)
+  }
+
+  override async updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void> {
+    for (const item of logs) {
+      if (item.updates.body) {
+        await this.sqlExecutor.query("UPDATE logs SET body = $2::jsonb WHERE id = $1", [
+          item.id,
+          encodeJsonb(item.updates.body),
+        ])
+      }
+    }
+  }
+
+  override async deleteLogs(logIds: UUID[]): Promise<void> {
+    if (logIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM logs WHERE id = ANY($1::uuid[])", [logIds])
+  }
+
+  override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+    const out = new Map<string, T>()
+    if (keys.length === 0) return out
+    const res = await this.sqlExecutor.query(
+      "SELECT key, value FROM cache WHERE agent_id = $1 AND key = ANY($2::text[])",
+      [this.agentId, keys],
+    )
+    for (const row of res.rows) {
+      out.set(String(row.key), row.value as T)
+    }
+    return out
+  }
+
+  override async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
+    const now = Date.now()
+    for (const entry of entries) {
+      await this.sqlExecutor.query(
+        `INSERT INTO cache (key, agent_id, value, created_at)
+         VALUES ($1,$2,$3::jsonb,$4)
+         ON CONFLICT (key, agent_id) DO UPDATE SET value = EXCLUDED.value, created_at = EXCLUDED.created_at`,
+        [entry.key, this.agentId, encodeJsonb(entry.value, true), now],
+      )
+    }
+    return true
+  }
+
+  override async deleteCaches(keys: string[]): Promise<boolean> {
+    if (keys.length === 0) return true
+    await this.sqlExecutor.query("DELETE FROM cache WHERE agent_id = $1 AND key = ANY($2::text[])", [
+      this.agentId,
+      keys,
+    ])
+    return true
+  }
+
+  override compareAndSetCache<T>(key: string, expected: unknown, replacement: T): Promise<boolean> {
+    return compareAndSetSqlCache(this.sqlExecutor, this.agentId, key, expected, replacement)
+  }
+
+  override async createTasks(tasks: Task[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    const now = Date.now()
+    for (const task of tasks) {
+      const id = task.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO tasks (id, name, description, room_id, world_id, entity_id, agent_id, tags, metadata, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$10)`,
+        [
+          id,
+          task.name,
+          task.description ?? "",
+          task.roomId ?? null,
+          task.worldId ?? null,
+          task.entityId ?? null,
+          this.agentId,
+          encodeJsonb(task.tags ?? []),
+          encodeJsonb(task.metadata ?? {}, true),
+          now,
+        ],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async getTasks(params: {
+    roomId?: UUID
+    worldId?: UUID
+    tags?: string[]
+    entityId?: UUID
+    agentIds: UUID[]
+    limit?: number
+    offset?: number
+  }): Promise<Task[]> {
+    const res = await this.sqlExecutor.query(
+      `SELECT * FROM tasks
+       WHERE agent_id = ANY($1::uuid[])
+         AND ($2::uuid IS NULL OR room_id = $2::uuid)
+         AND ($3::uuid IS NULL OR world_id = $3::uuid)
+         AND ($4::uuid IS NULL OR entity_id = $4::uuid)
+       ORDER BY created_at ASC`,
+      [params.agentIds.length ? params.agentIds : [this.agentId], params.roomId ?? null, params.worldId ?? null, params.entityId ?? null],
+    )
+    let list = res.rows.map(rowToTask)
+    if (params.tags?.length) {
+      list = list.filter((t) => params.tags!.every((tag) => t.tags?.includes(tag)))
+    }
+    const offset = params.offset ?? 0
+    return params.limit !== undefined ? list.slice(offset, offset + params.limit) : list.slice(offset)
+  }
+
+  override async getTasksByName(name: string): Promise<Task[]> {
+    const res = await this.sqlExecutor.query(
+      "SELECT * FROM tasks WHERE agent_id = $1 AND name = $2",
+      [this.agentId, name],
+    )
+    return res.rows.map(rowToTask)
+  }
+
+  override async getTasksByIds(taskIds: UUID[]): Promise<Task[]> {
+    if (taskIds.length === 0) return []
+    const res = await this.sqlExecutor.query("SELECT * FROM tasks WHERE id = ANY($1::uuid[])", [taskIds])
+    return res.rows.map(rowToTask)
+  }
+
+  override async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
+    const now = Date.now()
+    for (const u of updates) {
+      const existing = (await this.getTasksByIds([u.id]))[0]
+      if (!existing) continue
+      const merged = { ...existing, ...u.task }
+      await this.sqlExecutor.query(
+        `UPDATE tasks SET name=$2, description=$3, tags=$4::jsonb, metadata=$5::jsonb, updated_at=$6 WHERE id = $1`,
+        [
+          u.id,
+          merged.name,
+          merged.description ?? "",
+          encodeJsonb(merged.tags ?? []),
+          encodeJsonb(merged.metadata ?? {}, true),
+          now,
+        ],
+      )
+    }
+  }
+
+  override async deleteTasks(taskIds: UUID[]): Promise<void> {
+    if (taskIds.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM tasks WHERE id = ANY($1::uuid[])", [taskIds])
+  }
+
+  override getPairingRequests(queries: PairingRequestQuery[]) {
+    return listSqlPairingRequests(this.sqlExecutor, queries)
+  }
+
+  override getPairingAllowlists(queries: PairingAllowlistQuery[]) {
+    return listSqlPairingAllowlists(this.sqlExecutor, queries)
+  }
+
+  override async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    for (const req of requests) {
+      const id = req.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO pairing_requests (id, channel, sender_id, code, agent_id, metadata, created_at, last_seen_at)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)`,
+        [
+          id,
+          req.channel,
+          req.senderId,
+          req.code,
+          req.agentId,
+          encodeJsonb(req.metadata ?? {}),
+          req.createdAt.getTime(),
+          req.lastSeenAt.getTime(),
+        ],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async updatePairingRequests(requests: PairingRequest[]): Promise<void> {
+    for (const req of requests) {
+      await this.sqlExecutor.query(
+        "UPDATE pairing_requests SET code=$2, metadata=$3::jsonb, last_seen_at=$4 WHERE id = $1",
+        [req.id, req.code, encodeJsonb(req.metadata ?? {}), req.lastSeenAt.getTime()],
+      )
+    }
+  }
+
+  override async deletePairingRequests(ids: UUID[]): Promise<void> {
+    if (ids.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM pairing_requests WHERE id = ANY($1::uuid[])", [ids])
+  }
+
+  override async createPairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<UUID[]> {
+    const ids: UUID[] = []
+    for (const entry of entries) {
+      const id = entry.id ?? randomUuid()
+      await this.sqlExecutor.query(
+        `INSERT INTO pairing_allowlist (id, channel, sender_id, agent_id, metadata, created_at)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
+        [
+          id,
+          entry.channel,
+          entry.senderId,
+          entry.agentId,
+          encodeJsonb(entry.metadata ?? {}),
+          entry.createdAt.getTime(),
+        ],
+      )
+      ids.push(id)
+    }
+    return ids
+  }
+
+  override async updatePairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<void> {
+    for (const entry of entries) {
+      await this.sqlExecutor.query("UPDATE pairing_allowlist SET metadata = $2::jsonb WHERE id = $1", [
+        entry.id,
+        encodeJsonb(entry.metadata ?? {}),
+      ])
+    }
+  }
+
+  override async deletePairingAllowlistEntries(ids: UUID[]): Promise<void> {
+    if (ids.length === 0) return
+    await this.sqlExecutor.query("DELETE FROM pairing_allowlist WHERE id = ANY($1::uuid[])", [ids])
+  }
+
+  override listConnectorAccounts(params?: ListConnectorAccountsParams) {
+    return listSqlConnectorAccounts(this.sqlExecutor, this.agentId, params)
+  }
+
+  override getConnectorAccount(params: GetConnectorAccountParams) {
+    return getSqlConnectorAccount(this.sqlExecutor, this.agentId, params)
+  }
+
+  override upsertConnectorAccount(params: UpsertConnectorAccountParams) {
+    return upsertSqlConnectorAccount(this.sqlExecutor, this.agentId, params)
+  }
+
+  override deleteConnectorAccount(params: DeleteConnectorAccountParams) {
+    return deleteSqlConnectorAccount(this.sqlExecutor, this.agentId, params)
+  }
+
+  override setConnectorAccountCredentialRef(params: SetConnectorAccountCredentialRefParams) {
+    return setSqlConnectorCredentialRef(this.sqlExecutor, this.agentId, params)
+  }
+
+  override getConnectorAccountCredentialRef(params: GetConnectorAccountCredentialRefParams) {
+    return getSqlConnectorCredentialRef(this.sqlExecutor, this.agentId, params)
+  }
+
+  override listConnectorAccountCredentialRefs(params: ListConnectorAccountCredentialRefsParams) {
+    return listSqlConnectorCredentialRefs(this.sqlExecutor, this.agentId, params)
+  }
+
+  override deleteConnectorAccountCredentialRefs(params: DeleteConnectorAccountCredentialRefsParams) {
+    return deleteSqlConnectorCredentialRefs(this.sqlExecutor, this.agentId, params)
+  }
+
+  override appendConnectorAccountAuditEvent(params: AppendConnectorAccountAuditEventParams) {
+    return appendSqlConnectorAuditEvent(this.sqlExecutor, this.agentId, params)
+  }
+
+  override createOAuthFlowState(params: CreateOAuthFlowStateParams) {
+    return createSqlOAuthFlowState(this.sqlExecutor, this.agentId, params)
+  }
+
+  override getOAuthFlowState(params: GetOAuthFlowStateParams) {
+    return getSqlOAuthFlowState(this.sqlExecutor, this.agentId, params)
+  }
+
+  override consumeOAuthFlowState(params: ConsumeOAuthFlowStateParams) {
+    return consumeSqlOAuthFlowState(this.sqlExecutor, this.agentId, params)
+  }
+
+  override updateOAuthFlowState(params: UpdateOAuthFlowStateParams) {
+    return updateSqlOAuthFlowState(this.sqlExecutor, this.agentId, params)
+  }
+
+  override deleteOAuthFlowState(params: DeleteOAuthFlowStateParams) {
+    return deleteSqlOAuthFlowState(this.sqlExecutor, this.agentId, params)
+  }
+}
+
+export class PgliteDatabaseAdapter extends BaseSqlDatabaseAdapter<SqlExecutor> {
+  private readonly manager: PGliteClientManager
+
+  constructor(agentId: UUID, manager: PGliteClientManager, executor?: SqlExecutor) {
+    super(agentId, executor ?? manager, "PgliteBackend")
+    this.manager = manager
+  }
+
+  protected override createTransactionAdapter(tx: SqlExecutor): BaseSqlDatabaseAdapter<SqlExecutor> {
+    return new PgliteDatabaseAdapter(this.agentId, this.manager, tx)
+  }
+
+  protected override closeBackend(): Promise<void> {
+    return this.manager.close()
+  }
+
+  protected override async rawConnection(): Promise<SqlExecutor> {
+    await this.manager.initialize()
+    return this.sqlExecutor
+  }
+}
+
+export class PgDatabaseAdapter extends BaseSqlDatabaseAdapter<SqlExecutor> {
+  private readonly manager: PostgresConnectionManager
+
+  constructor(
+    agentId: UUID,
+    manager: PostgresConnectionManager,
+    options?: { serverId?: UUID; executor?: SqlExecutor },
+  ) {
+    super(agentId, options?.executor ?? manager, "PgBackend", options?.serverId)
+    this.manager = manager
+  }
+
+  protected override createTransactionAdapter(tx: SqlExecutor): BaseSqlDatabaseAdapter<SqlExecutor> {
+    return new PgDatabaseAdapter(this.agentId, this.manager, {
+      serverId: this.serverId,
+      executor: tx,
+    })
+  }
+
+  protected override closeBackend(): Promise<void> {
+    return this.manager.close()
+  }
+
+  protected override rawConnection(): Promise<SqlExecutor> {
+    return Promise.resolve(this.sqlExecutor)
+  }
+}
+
+export function createDatabaseAdapter(
+  config: SqlAdapterConfig,
+  agentId: UUID,
+): PgliteDatabaseAdapter | PgDatabaseAdapter {
+  if (config.postgresUrl && config.postgresUrl.trim() !== "") {
+    const manager = new PostgresConnectionManager(config.postgresUrl, {
+      serverId: config.serverId,
+      max: config.maxPoolSize,
+    })
+    return new PgDatabaseAdapter(agentId, manager, { serverId: config.serverId })
+  }
+  const manager = new PGliteClientManager({ dataDir: config.dataDir ?? "memory://" })
+  return new PgliteDatabaseAdapter(agentId, manager)
+}

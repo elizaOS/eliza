@@ -1,6 +1,6 @@
 # Native talk mode
 
-The Android [microphone](../os/voice/microphone.md), [speech output](../os/voice/speechOutput.md), and [live capture](../os/voice/liveCapture.md) specifications own their resources. Talk Mode exposes the cross-platform session, transcription, playback, audio-frame and status boundaries.
+The Android [microphone](../os/voice/microphone.md), [speech output](../os/voice/speechOutput.md), and [live capture](../os/voice/liveCapture.md) specifications own their resources. Talk Mode exposes the cross-platform session, transcription, playback, audio-frame and status boundaries. Input-capture and TTS output-mute continuity rules live in [volume and mute audio policy](./audioPolicy.md).
 
 ## Story: Converse by voice without audio from a retired session playing or recording
 

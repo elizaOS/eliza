@@ -1,0 +1,184 @@
+// spec/nativeSystem/index.md, "Story: Follow the device's authority for system controls"; spec/os/android/system.md, "A fact is reported only as Android answered it, and unknown is never off"; spec/os/android/system.md, "A role is asked through Android's role request and reported held only from Android's readback"
+import type {
+  AndroidRoleName,
+  AndroidRoleStatus,
+  InterruptionFilter,
+  SystemFacts,
+  SystemSettingsPage,
+  SystemSettingsPageResult,
+} from "@elizaos/os-bridges"
+
+export type SystemTileKey = "wifi" | "bt" | "dnd" | "mic" | "loc" | "plane" | "torch"
+
+export type SystemTileFacts = Partial<Record<SystemTileKey, boolean>>
+
+export const SYSTEM_TILE_SETTINGS_PAGES: Readonly<Partial<Record<SystemTileKey, SystemSettingsPage>>> = Object.freeze({
+  wifi: "wifi",
+  bt: "bluetooth",
+  dnd: "dnd",
+  plane: "airplane",
+  loc: "location",
+  mic: "privacy",
+})
+
+const BOOLEAN_FACTS = [
+  "wifiEnabled",
+  "bluetoothEnabled",
+  "airplaneMode",
+  "locationEnabled",
+  "mobileDataEnabled",
+  "adaptiveBrightness",
+  "wifiActive",
+  "cellularActive",
+  "internetValidated",
+  "charging",
+  "powerSave",
+] as const
+
+const INTERRUPTION_FILTERS: ReadonlySet<string> = new Set(["all", "priority", "alarms", "none"])
+
+const INTERRUPTION_LABELS: Readonly<Record<InterruptionFilter, string>> = {
+  all: "Off",
+  priority: "Priority only",
+  alarms: "Alarms only",
+  none: "Total silence",
+}
+
+const NOT_REPORTED = "Open settings"
+
+export function parseSystemFacts(value: unknown): SystemFacts {
+  const input = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
+  const facts: SystemFacts = {}
+  for (const key of BOOLEAN_FACTS) {
+    if (typeof input[key] === "boolean") facts[key] = input[key] as boolean
+  }
+  if (typeof input.interruptionFilter === "string" && INTERRUPTION_FILTERS.has(input.interruptionFilter)) {
+    facts.interruptionFilter = input.interruptionFilter as InterruptionFilter
+  }
+  if (typeof input.batteryPercent === "number" && Number.isInteger(input.batteryPercent) && input.batteryPercent >= 0 && input.batteryPercent <= 100) {
+    facts.batteryPercent = input.batteryPercent
+  }
+  return facts
+}
+
+export function tileFactsFromSystemFacts(snapshot: unknown, torch?: boolean): SystemTileFacts {
+  const facts: SystemTileFacts = {}
+  const value = typeof snapshot === "object" && snapshot !== null ? (snapshot as Record<string, unknown>) : {}
+  if (typeof value.wifiEnabled === "boolean") facts.wifi = value.wifiEnabled
+  else if (value.wifiActive === true) facts.wifi = true
+  if (typeof value.bluetoothEnabled === "boolean") facts.bt = value.bluetoothEnabled
+  if (typeof value.airplaneMode === "boolean") facts.plane = value.airplaneMode
+  if (typeof value.locationEnabled === "boolean") facts.loc = value.locationEnabled
+  if (value.interruptionFilter === "all") facts.dnd = false
+  else if (value.interruptionFilter === "priority" || value.interruptionFilter === "alarms" || value.interruptionFilter === "none") {
+    facts.dnd = true
+  }
+  if (typeof torch === "boolean") facts.torch = torch
+  return facts
+}
+
+export function tileStateText(key: SystemTileKey | null, on: boolean | undefined): string {
+  if (key === "torch") return on === true ? "On" : on === false ? "Off" : "Unavailable"
+  if (key === "mic") return NOT_REPORTED
+  if (on === true) return "On"
+  if (on === false) return "Off"
+  return NOT_REPORTED
+}
+
+function switchValue(value: boolean | undefined, fallback: string, labels?: { readonly on?: string; readonly off?: string }): string {
+  if (value === true) return labels?.on ?? "On"
+  if (value === false) return labels?.off ?? "Off"
+  return fallback
+}
+
+export interface SystemSettingsRow {
+  readonly page: SystemSettingsPage
+  readonly label: string
+  readonly value: string
+}
+
+export function settingsPageRows(facts: SystemFacts): SystemSettingsRow[] {
+  return [
+    {
+      page: "wifi",
+      label: "Wi-Fi",
+      value: switchValue(facts.wifiEnabled ?? (facts.wifiActive === true ? true : undefined), NOT_REPORTED, {
+        on: facts.wifiActive === true ? "On · connected" : "On",
+      }),
+    },
+    {
+      page: "bluetooth",
+      label: "Bluetooth",
+      value: switchValue(facts.bluetoothEnabled, NOT_REPORTED),
+    },
+    {
+      page: "mobile",
+      label: "Mobile data",
+      value: facts.airplaneMode === true
+        ? "Airplane mode on"
+        : switchValue(facts.mobileDataEnabled, NOT_REPORTED, {
+            on: facts.cellularActive === true ? "On · in use" : "On",
+          }),
+    },
+    {
+      page: "airplane",
+      label: "Airplane mode",
+      value: switchValue(facts.airplaneMode, NOT_REPORTED),
+    },
+    {
+      page: "location",
+      label: "Location",
+      value: switchValue(facts.locationEnabled, NOT_REPORTED),
+    },
+    {
+      page: "dnd",
+      label: "Do Not Disturb",
+      value: facts.interruptionFilter !== undefined ? INTERRUPTION_LABELS[facts.interruptionFilter] : NOT_REPORTED,
+    },
+    {
+      page: "battery",
+      label: "Battery",
+      value: typeof facts.batteryPercent === "number"
+        ? `${facts.batteryPercent}%${facts.charging === true ? " · charging" : ""}${facts.powerSave === true ? " · battery saver" : ""}`
+        : NOT_REPORTED,
+    },
+  ]
+}
+
+const ROLE_NAMES: ReadonlySet<AndroidRoleName> = new Set(["home", "dialer", "sms", "assistant"])
+
+export function parseRoleStatuses(status: unknown): AndroidRoleStatus[] {
+  const rows = (status as { readonly roles?: unknown } | null | undefined)?.roles
+  if (!Array.isArray(rows)) return []
+  const out: AndroidRoleStatus[] = []
+  for (const row of rows) {
+    if (typeof row !== "object" || row === null) continue
+    const value = row as Partial<AndroidRoleStatus>
+    if (value.role === undefined || !ROLE_NAMES.has(value.role) || typeof value.held !== "boolean" || typeof value.available !== "boolean") {
+      continue
+    }
+    out.push({
+      role: value.role,
+      androidRole: typeof value.androidRole === "string" ? value.androidRole : "",
+      held: value.held,
+      available: value.available,
+      holders: Array.isArray(value.holders) ? value.holders.filter((h): h is string => typeof h === "string") : [],
+    })
+  }
+  return out
+}
+
+export function androidRoleLabel(
+  role: Pick<AndroidRoleStatus, "available" | "held" | "holders"> | undefined,
+  host: { readonly packageName: string; readonly appName: string },
+): string {
+  if (role === undefined) return "Unavailable"
+  if (!role.available) return "Not available on this device"
+  if (role.held) return host.appName
+  return role.holders.some((holder) => holder !== "android" && holder !== host.packageName) ? "Another app" : `Not ${host.appName}`
+}
+
+export function settingsHandoffFallback(result: SystemSettingsPageResult | undefined, pageLabel: string): string {
+  if (result?.status === "opened") return ""
+  return `Open Android Settings for ${pageLabel}.`
+}

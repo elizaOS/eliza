@@ -5,6 +5,7 @@
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
@@ -14,9 +15,13 @@
     "sharp": "^0.35.3"
   },
   "devDependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/vitest": "4.1.1",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vibelang": "0.0.13"
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

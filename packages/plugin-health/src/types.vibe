@@ -1,0 +1,176 @@
+// spec/health/index.md, "Story: Review recorded sleep and device activity"; spec/health/lifecycle.md, "Story: Sync health connectors only with owner consent and gate exports and sleep alerts safely"
+
+export const HEALTH_PLUGIN_NAME = "@elizaos/plugin-health"
+export const HEALTH_SERVICE_TYPE = "HEALTH"
+
+export const HEALTH_CONNECTOR_KINDS = [
+  "apple_health",
+  "google_fit",
+  "strava",
+  "fitbit",
+  "withings",
+  "oura",
+] as const
+export type HealthConnectorKind = typeof HEALTH_CONNECTOR_KINDS[number]
+
+export const HEALTH_OAUTH_PROVIDERS = [
+  "strava",
+  "fitbit",
+  "withings",
+  "oura",
+] as const
+export type HealthOAuthProvider = typeof HEALTH_OAUTH_PROVIDERS[number]
+
+export const HEALTH_ANCHORS = [
+  "wake.observed",
+  "wake.confirmed",
+  "bedtime.target",
+  "nap.start",
+] as const
+export type HealthAnchor = typeof HEALTH_ANCHORS[number]
+
+export const HEALTH_BUS_FAMILIES = [
+  "health.sleep.detected",
+  "health.sleep.ended",
+  "health.wake.observed",
+  "health.wake.confirmed",
+  "health.nap.detected",
+  "health.bedtime.imminent",
+  "health.regularity.changed",
+  "health.workout.completed",
+] as const
+export type HealthBusFamily = typeof HEALTH_BUS_FAMILIES[number]
+
+export const HEALTH_CONNECTOR_CAPABILITIES = [
+  "health.activity.read",
+  "health.body.read",
+  "health.readiness.read",
+  "health.sleep.read",
+  "health.vitals.read",
+  "health.workouts.read",
+] as const
+export type HealthConnectorCapability = typeof HEALTH_CONNECTOR_CAPABILITIES[number]
+
+export const HEALTH_METRICS = [
+  "active_minutes",
+  "blood_pressure_diastolic",
+  "blood_pressure_systolic",
+  "calories",
+  "distance_meters",
+  "heart_rate",
+  "hrv_ms",
+  "medication_taken",
+  "nutrition_kcal",
+  "readiness_score",
+  "sleep_hours",
+  "spo2_pct",
+  "steps",
+  "weight_kg",
+] as const
+export type HealthMetric = typeof HEALTH_METRICS[number]
+
+export const HEALTH_SLEEP_STAGES = [
+  "awake",
+  "light",
+  "deep",
+  "rem",
+  "unknown",
+] as const
+export type HealthSleepStage = typeof HEALTH_SLEEP_STAGES[number]
+
+export type HealthSleepCycleType = "main" | "nap"
+export type HealthHabitCategory = "social" | "video" | "communication" | "browser" | "work" | "system" | "other"
+export type HealthHabitDevice = "phone" | "tablet" | "computer" | "browser" | "unknown"
+
+export interface HealthMetricSample {
+  readonly id: string
+  readonly ownerId: string
+  readonly provider: string
+  readonly metric: HealthMetric
+  readonly value: number
+  readonly unit: string
+  readonly recordedAt: string
+  readonly dateKey: string
+}
+
+export interface HealthSleepStageSample {
+  readonly stage: HealthSleepStage
+  readonly startAt: string
+  readonly endAt: string
+}
+
+export interface HealthSleepEpisode {
+  readonly id: string
+  readonly ownerId: string
+  readonly provider: string
+  readonly startAt: string
+  readonly endAt: string
+  readonly cycleType: HealthSleepCycleType
+  readonly durationMinutes: number
+  readonly efficiencyPct: number | null
+  readonly stages: readonly HealthSleepStageSample[]
+}
+
+export interface HealthWorkout {
+  readonly id: string
+  readonly ownerId: string
+  readonly provider: string
+  readonly sport: string
+  readonly startAt: string
+  readonly endAt: string
+  readonly durationSeconds: number
+  readonly distanceMeters: number | null
+  readonly calories: number | null
+}
+
+export interface HealthDailySummary {
+  readonly date: string
+  readonly provider: string
+  readonly steps: number
+  readonly activeMinutes: number
+  readonly sleepHours: number
+  readonly heartRateAvg: number | null
+  readonly hrvAvgMs: number | null
+  readonly weightKg: number | null
+  readonly readinessScore: number | null
+  readonly calories: number
+}
+
+export interface HealthConnectorOverview {
+  readonly provider: HealthConnectorKind
+  readonly label: string
+  readonly connected: boolean
+  readonly phase: string
+  readonly consent: string
+  readonly syncedSamples: number
+  readonly revision: number
+  readonly hasRefreshToken: boolean
+  readonly capabilities: readonly HealthConnectorCapability[]
+}
+
+export interface HealthAnomaly {
+  readonly metric: HealthMetric
+  readonly date: string
+  readonly value: number
+  readonly baselineAvg: number
+  readonly direction: "above" | "below"
+}
+
+export interface HealthSummaryResponse {
+  readonly ownerId: string
+  readonly days: number
+  readonly providers: readonly HealthConnectorOverview[]
+  readonly summaries: readonly HealthDailySummary[]
+  readonly samples: readonly HealthMetricSample[]
+  readonly sleepEpisodes: readonly HealthSleepEpisode[]
+  readonly workouts: readonly HealthWorkout[]
+  readonly anomalies: readonly HealthAnomaly[]
+}
+
+export interface HealthDefaultPack {
+  readonly key: "bedtime" | "wake-up" | "sleep-recap"
+  readonly title: string
+  readonly anchor: HealthAnchor
+  readonly offsetMinutes: number
+  readonly description: string
+}

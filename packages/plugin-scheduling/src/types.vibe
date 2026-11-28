@@ -1,0 +1,220 @@
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"; spec/scheduling/dispatch.md, "Story: Dispatch scheduled tasks safely through escalation ladders without duplicating uncertain deliveries"
+export const SCHEDULED_TASK_RUNNER_SERVICE_TYPE = "scheduled_task_runner" as const
+export const SCHEDULING_MIGRATION_SERVICE_TYPE = "scheduling_migration" as const
+export const SCHEDULED_TASKS_ACTION_NAME = "SCHEDULED_TASKS" as const
+export const SCHEDULED_TASKS_PROVIDER_NAME = "SCHEDULED_TASKS_STATUS" as const
+
+export const SCHEDULING_CONTEXTS = ["scheduling", "reminders", "owner"] as const
+export type SchedulingContext = (typeof SCHEDULING_CONTEXTS)[number]
+
+export const SCHEDULED_TASK_OPS = ["list", "create", "update", "delete", "fire", "apply"] as const
+export type ScheduledTaskOp = (typeof SCHEDULED_TASK_OPS)[number]
+
+export const TERMINAL_STATES = ["completed", "skipped", "expired", "failed", "dismissed"] as const
+export type TerminalState = (typeof TERMINAL_STATES)[number]
+
+export const SCHEDULED_TASK_STATUSES = [
+  "scheduled",
+  "fired",
+  "acknowledged",
+  "completed",
+  "skipped",
+  "expired",
+  "failed",
+  "dismissed",
+] as const
+export type ScheduledTaskStatus = (typeof SCHEDULED_TASK_STATUSES)[number]
+
+export const SCHEDULED_TASK_KINDS = [
+  "reminder",
+  "checkin",
+  "followup",
+  "approval",
+  "recap",
+  "watcher",
+  "output",
+  "custom",
+] as const
+export type ScheduledTaskKind = (typeof SCHEDULED_TASK_KINDS)[number]
+
+export const SCHEDULED_TASK_PRIORITIES = ["low", "medium", "high"] as const
+export type ScheduledTaskPriority = (typeof SCHEDULED_TASK_PRIORITIES)[number]
+
+export const SCHEDULED_TASK_SOURCES = ["default_pack", "user_chat", "first_run", "plugin"] as const
+export type ScheduledTaskSource = (typeof SCHEDULED_TASK_SOURCES)[number]
+
+export const SCHEDULED_TASK_VERBS = ["complete", "skip", "snooze", "dismiss", "acknowledge"] as const
+export type ScheduledTaskVerb = (typeof SCHEDULED_TASK_VERBS)[number]
+
+export type ScheduledTaskTrigger =
+  | { readonly kind: "once"; readonly atIso: string }
+  | { readonly kind: "cron"; readonly expression: string; readonly tz: string }
+  | { readonly kind: "interval"; readonly everyMinutes: number; readonly from?: string; readonly until?: string }
+  | { readonly kind: "relative_to_anchor"; readonly anchorKey: string; readonly offsetMinutes: number }
+  | { readonly kind: "during_window"; readonly windowKey: string }
+  | { readonly kind: "event"; readonly eventKind: string; readonly filter?: Record<string, unknown> }
+  | { readonly kind: "manual" }
+  | { readonly kind: "after_task"; readonly taskId: string; readonly outcome: TerminalState }
+
+export type GateCompose = "all" | "any" | "first_deny"
+
+export interface ScheduledTaskGateRef {
+  readonly kind: string
+  readonly params?: Record<string, unknown>
+}
+
+export interface ScheduledTaskShouldFire {
+  readonly compose?: GateCompose
+  readonly gates: readonly ScheduledTaskGateRef[]
+}
+
+export interface ScheduledTaskCompletionCheck {
+  readonly kind: string
+  readonly params?: Record<string, unknown>
+  readonly followupAfterMinutes?: number
+}
+
+export interface ScheduledTaskEscalation {
+  readonly ladderKey?: string
+  readonly stepOffsetMinutes?: readonly number[]
+}
+
+export interface ScheduledTaskPipeline {
+  readonly onComplete?: readonly string[]
+  readonly onSkip?: readonly string[]
+  readonly onFail?: readonly string[]
+}
+
+export interface ScheduledTaskState {
+  readonly status: ScheduledTaskStatus
+  readonly revision: number
+  readonly occurrence: number
+  readonly stepIndex: number
+  readonly firedAt: string | null
+  readonly nextFireAt: string | null
+  readonly snoozedUntil: string | null
+  readonly settledAt: string | null
+  readonly lastMessageId: string | null
+  readonly lastFailureReason: string | null
+  readonly appliedReceipts: Readonly<Record<string, string>>
+}
+
+export interface ScheduledTask {
+  readonly id: string
+  readonly agentId: string
+  readonly ownerId: string
+  readonly title: string
+  readonly kind: ScheduledTaskKind
+  readonly priority: ScheduledTaskPriority
+  readonly source: ScheduledTaskSource
+  readonly channelKey: string
+  readonly promptInstructions: string
+  readonly trigger: ScheduledTaskTrigger
+  readonly shouldFire?: ScheduledTaskShouldFire
+  readonly completionCheck?: ScheduledTaskCompletionCheck
+  readonly escalation?: ScheduledTaskEscalation
+  readonly pipeline?: ScheduledTaskPipeline
+  readonly metadata: Readonly<Record<string, unknown>>
+  readonly state: ScheduledTaskState
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface ScheduledTaskInput {
+  readonly id?: string
+  readonly ownerId: string
+  readonly title: string
+  readonly kind?: ScheduledTaskKind
+  readonly priority?: ScheduledTaskPriority
+  readonly source?: ScheduledTaskSource
+  readonly channelKey?: string
+  readonly promptInstructions?: string
+  readonly trigger: ScheduledTaskTrigger
+  readonly shouldFire?: ScheduledTaskShouldFire
+  readonly completionCheck?: ScheduledTaskCompletionCheck
+  readonly escalation?: ScheduledTaskEscalation
+  readonly pipeline?: ScheduledTaskPipeline
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface ScheduledTaskPatch {
+  readonly title?: string
+  readonly priority?: ScheduledTaskPriority
+  readonly channelKey?: string
+  readonly promptInstructions?: string
+  readonly trigger?: ScheduledTaskTrigger
+  readonly shouldFire?: ScheduledTaskShouldFire
+  readonly completionCheck?: ScheduledTaskCompletionCheck
+  readonly escalation?: ScheduledTaskEscalation
+  readonly pipeline?: ScheduledTaskPipeline
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface ScheduledTaskStateLogEntry {
+  readonly id: string
+  readonly taskId: string
+  readonly agentId: string
+  readonly action: string
+  readonly fromStatus: ScheduledTaskStatus
+  readonly toStatus: ScheduledTaskStatus
+  readonly revision: number
+  readonly detail: string
+  readonly createdAt: string
+}
+
+export type DispatchFailureReason =
+  | "disconnected"
+  | "rate_limited"
+  | "auth_expired"
+  | "unknown_recipient"
+  | "transport_error"
+
+export type DispatchResult =
+  | { readonly ok: true; readonly messageId?: string }
+  | {
+      readonly ok: false
+      readonly reason: DispatchFailureReason
+      readonly message?: string
+      readonly acceptance?: "rejected" | "unknown"
+      readonly userActionable?: boolean
+      readonly retryAfterMinutes?: number
+    }
+
+export interface DispatchPolicyContext {
+  readonly currentStepIndex: number
+  readonly totalSteps: number
+  readonly defaultRetryAfterMinutes?: number
+}
+
+export type DispatchPolicyDecision =
+  | { readonly kind: "complete"; readonly messageId?: string }
+  | { readonly kind: "retry"; readonly retryAfterMinutes: number; readonly reason: DispatchFailureReason }
+  | { readonly kind: "advance"; readonly reason: DispatchFailureReason; readonly message?: string }
+  | { readonly kind: "surface_degraded"; readonly reason: DispatchFailureReason; readonly message?: string }
+  | { readonly kind: "fail"; readonly reason: DispatchFailureReason; readonly message?: string }
+
+export interface OwnerFactsView {
+  readonly preferredName?: string
+  readonly timezone?: string
+  readonly morningWindow?: { readonly startHour: number; readonly endHour: number }
+  readonly eveningWindow?: { readonly startHour: number; readonly endHour: number }
+  readonly quietHours?: { readonly startHour: number; readonly endHour: number }
+  readonly locale?: string
+  readonly flags?: Readonly<Record<string, boolean>>
+}
+
+export type ScheduledTaskFireResult =
+  | { readonly kind: "fired"; readonly task: ScheduledTask; readonly decision: DispatchPolicyDecision }
+  | { readonly kind: "skipped_gate"; readonly reason: string; readonly task: ScheduledTask }
+  | { readonly kind: "retrying"; readonly nextAttemptAtIso: string; readonly reason: string; readonly task: ScheduledTask }
+  | { readonly kind: "raced"; readonly reason: string; readonly task: ScheduledTask | null }
+  | { readonly kind: "not_found"; readonly task: null }
+  | { readonly kind: "failed"; readonly error: string; readonly task: ScheduledTask | null }
+
+export type ScheduledTaskApplyResult =
+  | { readonly kind: "applied"; readonly task: ScheduledTask; readonly replayed: boolean }
+  | { readonly kind: "raced"; readonly reason: string; readonly task: ScheduledTask | null }
+  | { readonly kind: "invalid_transition"; readonly reason: string; readonly task: ScheduledTask }
+  | { readonly kind: "not_found"; readonly task: null }
+
+export error ChannelKeyError { channelKey: string; reason: string }

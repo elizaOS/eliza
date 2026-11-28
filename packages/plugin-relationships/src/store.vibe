@@ -1,0 +1,738 @@
+// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"; spec/relationships/identity.md, "Recipient confirmation rejects ambiguity, cross-contact conflicts, and stale reviews"
+import { Service, type IAgentRuntime } from "@elizaos/core"
+import { evaluateRecipientConfirmation } from "../gen/relationships__identity.effect.vibe"
+import type { GraphEdge, GraphEntity, GraphIdentity } from "../gen/relationships.effect.vibe"
+import {
+  clampConfidence,
+  decideIdentityOutcome,
+  findIdentityMatches,
+  laterIso,
+  mergeEntityRecords,
+  mergeIdentities,
+  normalizeConnectorAccountId,
+  normalizeEmailAddress,
+  normalizeHandle,
+  normalizePlatform,
+} from "./identity-merge.vibe"
+import {
+  BUILT_IN_ENTITY_KINDS,
+  KNOWLEDGE_GRAPH_SERVICE_TYPE,
+  RelationshipsServiceError,
+  SELF_ENTITY_ID,
+  type Entity,
+  type EntityAttribute,
+  type EntityIdentity,
+  type EntityIdentityObservation,
+  type EntityKind,
+  type IdentityObservationOutcome,
+  type RecipientConfirmationRequest,
+  type RecipientConfirmationResult,
+  type Relationship,
+} from "./types.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { DatabaseSync } from "node:sqlite"
+
+  export interface SqliteStatement {
+    all(...params: unknown[]): unknown[]
+    get(...params: unknown[]): unknown
+    run(...params: unknown[]): { changes: number | bigint }
+  }
+
+  export interface SqliteDatabase {
+    readonly openError: string | null
+    exec(sql: string): void
+    prepare(sql: string): SqliteStatement
+    close(): void
+  }
+
+  /** @throws {never} */
+  export function generateId(): string {
+    return randomUUID()
+  }
+
+  /** @throws {never} */
+  export function openSqlite(path: string): SqliteDatabase {
+    try {
+      const db = new DatabaseSync(path) as unknown as Omit<SqliteDatabase, "openError">
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS kg_entities (
+          id TEXT NOT NULL,
+          tenant TEXT NOT NULL,
+          kind TEXT NOT NULL DEFAULT 'person',
+          name TEXT NOT NULL,
+          aliases_json TEXT NOT NULL DEFAULT '[]',
+          identities_json TEXT NOT NULL DEFAULT '[]',
+          attributes_json TEXT NOT NULL DEFAULT '[]',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          notes TEXT NOT NULL DEFAULT '',
+          last_interaction_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (tenant, id)
+        );
+        CREATE TABLE IF NOT EXISTS kg_relationships (
+          id TEXT NOT NULL,
+          tenant TEXT NOT NULL,
+          from_id TEXT NOT NULL,
+          to_id TEXT NOT NULL,
+          relation TEXT NOT NULL,
+          strength REAL NOT NULL DEFAULT 0.5,
+          active INTEGER NOT NULL DEFAULT 1,
+          notes TEXT NOT NULL DEFAULT '',
+          evidence_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (tenant, id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_kg_relationships_endpoints
+          ON kg_relationships(tenant, from_id, to_id);
+        CREATE TABLE IF NOT EXISTS kg_revisions (
+          tenant TEXT PRIMARY KEY,
+          revision INTEGER NOT NULL DEFAULT 0
+        );
+      `)
+      return {
+        openError: null,
+        exec: (sql: string) => db.exec(sql),
+        prepare: (sql: string) => db.prepare(sql),
+        close: () => db.close(),
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        openError: message,
+        exec: () => {},
+        prepare: () => ({ all: () => [], get: () => undefined, run: () => ({ changes: 0 }) }),
+        close: () => {},
+      }
+    }
+  }
+
+  /** @throws {never} */
+  export function runInSqliteTx<T>(db: SqliteDatabase, work: () => T, fallback: T): T {
+    try {
+      db.exec("BEGIN IMMEDIATE")
+      const value = work()
+      db.exec("COMMIT")
+      return value
+    } catch {
+      try {
+        db.exec("ROLLBACK")
+      } catch {
+        return fallback
+      }
+      return fallback
+    }
+  }
+}
+import { generateId, openSqlite, runInSqliteTx, type SqliteDatabase } from node
+
+export type { SqliteDatabase }
+
+interface RawEntityRow {
+  readonly id: string
+  readonly tenant: string
+  readonly kind: string
+  readonly name: string
+  readonly aliases_json: string
+  readonly identities_json: string
+  readonly attributes_json: string
+  readonly tags_json: string
+  readonly notes: string
+  readonly last_interaction_at: string | null
+  readonly created_at: string
+  readonly updated_at: string
+}
+
+interface RawRelationshipRow {
+  readonly id: string
+  readonly tenant: string
+  readonly from_id: string
+  readonly to_id: string
+  readonly relation: string
+  readonly strength: number
+  readonly active: number
+  readonly notes: string
+  readonly evidence_json: string
+  readonly created_at: string
+  readonly updated_at: string
+}
+
+interface RevisionRow {
+  readonly revision: number
+}
+
+function parseJsonArray<T>(raw: string): T[] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as T[]) : []
+  } catch {
+    return []
+  }
+}
+
+function rowToEntity(row: RawEntityRow): Entity {
+  return {
+    id: row.id,
+    tenant: row.tenant,
+    kind: (BUILT_IN_ENTITY_KINDS as readonly string[]).includes(row.kind) ? (row.kind as EntityKind) : "person",
+    name: row.name,
+    aliases: parseJsonArray<string>(row.aliases_json),
+    identities: parseJsonArray<EntityIdentity>(row.identities_json),
+    attributes: parseJsonArray<EntityAttribute>(row.attributes_json),
+    tags: parseJsonArray<string>(row.tags_json),
+    notes: row.notes,
+    lastInteractionAt: row.last_interaction_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function rowToRelationship(row: RawRelationshipRow): Relationship {
+  return {
+    id: row.id,
+    tenant: row.tenant,
+    fromId: row.from_id,
+    toId: row.to_id,
+    relation: row.relation,
+    strength: row.strength,
+    active: row.active !== 0,
+    notes: row.notes,
+    evidence: parseJsonArray<string>(row.evidence_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export class EntityStore {
+  private readonly db: SqliteDatabase
+
+  constructor(db: SqliteDatabase) {
+    this.db = db
+  }
+
+  getRevision(tenant: string): number {
+    const row = this.db.prepare("SELECT revision FROM kg_revisions WHERE tenant = ?").get(tenant) as
+      | RevisionRow
+      | undefined
+    return row?.revision ?? 0
+  }
+
+  bumpRevision(tenant: string): number {
+    const next = this.getRevision(tenant) + 1
+    this.db
+      .prepare(
+        `INSERT INTO kg_revisions (tenant, revision) VALUES (?, ?)
+         ON CONFLICT(tenant) DO UPDATE SET revision = excluded.revision`,
+      )
+      .run(tenant, next)
+    return next
+  }
+
+  ensureSelf(tenant: string, name = "Self", nowIso = new Date().toISOString()): Entity {
+    const existing = this.get(tenant, SELF_ENTITY_ID)
+    if (existing) return existing
+    return this.upsert({
+      id: SELF_ENTITY_ID,
+      tenant,
+      kind: "person",
+      name,
+      aliases: [],
+      identities: [],
+      attributes: [],
+      tags: ["self"],
+      notes: "",
+      lastInteractionAt: null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    })
+  }
+
+  upsert(entity: Entity): Entity {
+    this.db
+      .prepare(
+        `INSERT INTO kg_entities
+         (id, tenant, kind, name, aliases_json, identities_json, attributes_json, tags_json, notes, last_interaction_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(tenant, id) DO UPDATE SET
+           kind = excluded.kind,
+           name = excluded.name,
+           aliases_json = excluded.aliases_json,
+           identities_json = excluded.identities_json,
+           attributes_json = excluded.attributes_json,
+           tags_json = excluded.tags_json,
+           notes = excluded.notes,
+           last_interaction_at = excluded.last_interaction_at,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        entity.id,
+        entity.tenant,
+        entity.kind,
+        entity.name,
+        JSON.stringify(entity.aliases),
+        JSON.stringify(entity.identities),
+        JSON.stringify(entity.attributes),
+        JSON.stringify(entity.tags),
+        entity.notes,
+        entity.lastInteractionAt,
+        entity.createdAt,
+        entity.updatedAt,
+      )
+    this.bumpRevision(entity.tenant)
+    return entity
+  }
+
+  get(tenant: string, id: string): Entity | null {
+    const row = this.db
+      .prepare("SELECT * FROM kg_entities WHERE tenant = ? AND id = ?")
+      .get(tenant, id) as RawEntityRow | undefined
+    return row ? rowToEntity(row) : null
+  }
+
+  delete(tenant: string, id: string): boolean {
+    const res = this.db.prepare("DELETE FROM kg_entities WHERE tenant = ? AND id = ?").run(tenant, id)
+    if (Number(res.changes) > 0) {
+      this.bumpRevision(tenant)
+      return true
+    }
+    return false
+  }
+
+  list(tenant: string, filter?: { readonly kind?: EntityKind; readonly query?: string; readonly limit?: number }): Entity[] {
+    const rows = (
+      filter?.kind
+        ? this.db
+            .prepare("SELECT * FROM kg_entities WHERE tenant = ? AND kind = ? ORDER BY updated_at DESC, id ASC")
+            .all(tenant, filter.kind)
+        : this.db
+            .prepare("SELECT * FROM kg_entities WHERE tenant = ? ORDER BY updated_at DESC, id ASC")
+            .all(tenant)
+    ) as RawEntityRow[]
+    let entities = rows.map(rowToEntity)
+    const query = filter?.query?.trim().toLowerCase()
+    if (query) {
+      entities = entities.filter(
+        (entity) =>
+          entity.name.toLowerCase().includes(query) ||
+          entity.aliases.some((alias) => alias.toLowerCase().includes(query)) ||
+          entity.identities.some((ident) => ident.handle.toLowerCase().includes(query)),
+      )
+    }
+    return filter?.limit && filter.limit > 0 ? entities.slice(0, filter.limit) : entities
+  }
+}
+
+export class RelationshipStore {
+  private readonly db: SqliteDatabase
+
+  constructor(db: SqliteDatabase) {
+    this.db = db
+  }
+
+  observe(args: {
+    readonly tenant: string
+    readonly fromId: string
+    readonly toId: string
+    readonly relation: string
+    readonly strengthDelta?: number
+    readonly notes?: string
+    readonly evidence?: readonly string[]
+    readonly nowIso?: string
+  }): Relationship {
+    const nowIso = args.nowIso ?? new Date().toISOString()
+    const relation = args.relation.trim().toLowerCase() || "related_to"
+    const existingRow = this.db
+      .prepare(
+        "SELECT * FROM kg_relationships WHERE tenant = ? AND from_id = ? AND to_id = ? AND relation = ? AND active = 1",
+      )
+      .get(args.tenant, args.fromId, args.toId, relation) as RawRelationshipRow | undefined
+    if (existingRow) {
+      const existing = rowToRelationship(existingRow)
+      const nextStrength = clampConfidence(existing.strength + (args.strengthDelta ?? 0.1))
+      const nextEvidence = [...new Set([...existing.evidence, ...(args.evidence ?? [])].filter(Boolean))]
+      const nextNotes = args.notes && args.notes.trim().length > 0 ? args.notes.trim() : existing.notes
+      this.db
+        .prepare(
+          `UPDATE kg_relationships
+           SET strength = ?, notes = ?, evidence_json = ?, updated_at = ?
+           WHERE tenant = ? AND id = ?`,
+        )
+        .run(nextStrength, nextNotes, JSON.stringify(nextEvidence), nowIso, args.tenant, existing.id)
+      return {
+        ...existing,
+        strength: nextStrength,
+        notes: nextNotes,
+        evidence: nextEvidence,
+        updatedAt: nowIso,
+      }
+    }
+    const created: Relationship = {
+      id: generateId(),
+      tenant: args.tenant,
+      fromId: args.fromId,
+      toId: args.toId,
+      relation,
+      strength: clampConfidence(args.strengthDelta ?? 0.5),
+      active: true,
+      notes: args.notes?.trim() ?? "",
+      evidence: [...new Set((args.evidence ?? []).filter(Boolean))],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }
+    this.db
+      .prepare(
+        `INSERT INTO kg_relationships
+         (id, tenant, from_id, to_id, relation, strength, active, notes, evidence_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+      )
+      .run(
+        created.id,
+        created.tenant,
+        created.fromId,
+        created.toId,
+        created.relation,
+        created.strength,
+        created.notes,
+        JSON.stringify(created.evidence),
+        created.createdAt,
+        created.updatedAt,
+      )
+    return created
+  }
+
+  retire(tenant: string, relationshipId: string, nowIso = new Date().toISOString()): boolean {
+    const res = this.db
+      .prepare("UPDATE kg_relationships SET active = 0, updated_at = ? WHERE tenant = ? AND id = ?")
+      .run(nowIso, tenant, relationshipId)
+    return Number(res.changes) > 0
+  }
+
+  list(tenant: string, options?: { readonly entityId?: string; readonly includeRetired?: boolean }): Relationship[] {
+    const rows = (
+      options?.entityId
+        ? this.db
+            .prepare(
+              "SELECT * FROM kg_relationships WHERE tenant = ? AND (from_id = ? OR to_id = ?) ORDER BY strength DESC, updated_at DESC",
+            )
+            .all(tenant, options.entityId, options.entityId)
+        : this.db
+            .prepare("SELECT * FROM kg_relationships WHERE tenant = ? ORDER BY strength DESC, updated_at DESC")
+            .all(tenant)
+    ) as RawRelationshipRow[]
+    const rels = rows.map(rowToRelationship)
+    return options?.includeRetired ? rels : rels.filter((rel) => rel.active)
+  }
+
+  redirectEndpoints(tenant: string, targetId: string, sourceIds: readonly string[], nowIso: string): void {
+    const sourceSet = new Set(sourceIds)
+    const all = this.list(tenant, { includeRetired: true })
+    for (const rel of all) {
+      const nextFrom = sourceSet.has(rel.fromId) ? targetId : rel.fromId
+      const nextTo = sourceSet.has(rel.toId) ? targetId : rel.toId
+      if (nextFrom === rel.fromId && nextTo === rel.toId) continue
+      this.db
+        .prepare("UPDATE kg_relationships SET from_id = ?, to_id = ?, updated_at = ? WHERE tenant = ? AND id = ?")
+        .run(nextFrom, nextTo, nowIso, tenant, rel.id)
+    }
+  }
+}
+
+export class KnowledgeGraphService extends Service {
+  static override serviceType = KNOWLEDGE_GRAPH_SERVICE_TYPE
+  override capabilityDescription = "Personal entity and relationship knowledge graph with identity resolution"
+  readonly db: SqliteDatabase
+  readonly entities: EntityStore
+  readonly relationships: RelationshipStore
+
+  constructor(runtime?: IAgentRuntime, dbPath = ":memory:") {
+    super(runtime)
+    this.db = openSqlite(dbPath)
+    this.entities = new EntityStore(this.db)
+    this.relationships = new RelationshipStore(this.db)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<KnowledgeGraphService> {
+    return new KnowledgeGraphService(runtime)
+  }
+
+  override async stop(): Promise<void> {
+    this.db.close()
+  }
+
+  createEntity(args: {
+    readonly tenant: string
+    readonly name: string
+    readonly kind?: EntityKind
+    readonly aliases?: readonly string[]
+    readonly identities?: readonly EntityIdentity[]
+    readonly attributes?: readonly EntityAttribute[]
+    readonly tags?: readonly string[]
+    readonly notes?: string
+    readonly nowIso?: string
+  }): Entity {
+    const name = args.name.trim() || "Unnamed"
+    const nowIso = args.nowIso ?? new Date().toISOString()
+    return this.entities.upsert({
+      id: generateId(),
+      tenant: args.tenant,
+      kind: args.kind ?? "person",
+      name,
+      aliases: [...new Set((args.aliases ?? []).map((entry) => entry.trim()).filter(Boolean))],
+      identities: mergeIdentities([], args.identities ?? []),
+      attributes: [...(args.attributes ?? [])],
+      tags: [...new Set((args.tags ?? []).map((entry) => entry.trim()).filter(Boolean))],
+      notes: args.notes?.trim() ?? "",
+      lastInteractionAt: null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    })
+  }
+
+  observeIdentity(observation: EntityIdentityObservation): IdentityObservationOutcome {
+    const nowIso = observation.observedAt ?? new Date().toISOString()
+    const platform = normalizePlatform(observation.platform)
+    const connectorAccountId = normalizeConnectorAccountId(observation.connectorAccountId)
+    const handle = normalizeHandle(platform, observation.handle)
+    const normalizedIdentity: EntityIdentity = {
+      platform,
+      handle,
+      connectorAccountId,
+      verified: Boolean(observation.verified),
+      confidence: clampConfidence(observation.confidence),
+      evidence: [...new Set((observation.evidence ?? []).filter(Boolean))],
+      observedAt: nowIso,
+    }
+    const all = this.entities.list(observation.tenant)
+    const matches = findIdentityMatches(all, {
+      tenant: observation.tenant,
+      platform,
+      handle,
+      connectorAccountId,
+    })
+    const decision = decideIdentityOutcome(matches.length, normalizedIdentity.confidence)
+    if (decision === "DecisionCreate") {
+      const entity = this.createEntity({
+        tenant: observation.tenant,
+        name: observation.displayName?.trim() || handle,
+        kind: observation.kind ?? "person",
+        identities: [normalizedIdentity],
+        nowIso,
+      })
+      return { status: "created", entity }
+    }
+    if (decision === "DecisionAutoMerge") {
+      const existing = matches[0]!
+      const updated: Entity = {
+        ...existing,
+        identities: mergeIdentities(existing.identities, [normalizedIdentity]),
+        updatedAt: nowIso,
+      }
+      this.entities.upsert(updated)
+      return { status: "auto_merged", entity: updated }
+    }
+    if (decision === "DecisionConflictLowConfidence") {
+      return {
+        status: "conflict_low_confidence",
+        candidate: matches[0]!,
+        confidence: normalizedIdentity.confidence,
+      }
+    }
+    return { status: "conflict_multiple", candidates: matches }
+  }
+
+  mergeEntitiesTransactional(
+    tenant: string,
+    targetId: string,
+    sourceIds: readonly string[],
+    nowIso = new Date().toISOString(),
+  ): { readonly ok: true; readonly entity: Entity } | { readonly ok: false; readonly error: RelationshipsServiceError } {
+    const uniqueSources = [...new Set(sourceIds)].filter((id) => id !== targetId)
+    const target = this.entities.get(tenant, targetId)
+    if (!target) {
+      return {
+        ok: false,
+        error: new RelationshipsServiceError({ status: 404, message: `target entity ${targetId} not found`, code: "ENTITY_NOT_FOUND" }),
+      }
+    }
+    const sources: Entity[] = []
+    for (const sourceId of uniqueSources) {
+      const found = this.entities.get(tenant, sourceId)
+      if (!found) {
+        return {
+          ok: false,
+          error: new RelationshipsServiceError({ status: 404, message: `source entity ${sourceId} not found`, code: "ENTITY_NOT_FOUND" }),
+        }
+      }
+      sources.push(found)
+    }
+    const merged = runInSqliteTx(
+      this.db,
+      () => {
+        const next = mergeEntityRecords(target, sources, nowIso)
+        this.entities.upsert(next)
+        this.relationships.redirectEndpoints(tenant, targetId, uniqueSources, nowIso)
+        for (const sourceId of uniqueSources) {
+          this.entities.delete(tenant, sourceId)
+        }
+        return next
+      },
+      null as Entity | null,
+    )
+    if (!merged) {
+      return {
+        ok: false,
+        error: new RelationshipsServiceError({ status: 500, message: "entity merge transaction failed", code: "MERGE_FAILED" }),
+      }
+    }
+    return { ok: true, entity: merged }
+  }
+
+  confirmEmailRecipient(request: RecipientConfirmationRequest, nowIso = new Date().toISOString()): RecipientConfirmationResult {
+    const normalizedEmail = normalizeEmailAddress(request.email)
+    const reviewedName = request.reviewedName.trim()
+    const inputValid = normalizedEmail !== null && reviewedName.length > 0
+    const connectorAccountId = normalizeConnectorAccountId(request.connectorAccountId)
+    const all = this.entities.list(request.tenant)
+    const emailMatches = normalizedEmail
+      ? findIdentityMatches(all, {
+          tenant: request.tenant,
+          platform: "email",
+          handle: normalizedEmail,
+          connectorAccountId,
+        })
+      : []
+    const requestedEntity = request.requestedEntityId
+      ? this.entities.get(request.tenant, request.requestedEntityId)
+      : null
+    const existingOwner = emailMatches.length === 1 ? emailMatches[0]! : null
+    const requestedMatchesExistingOwner =
+      !request.requestedEntityId || !existingOwner || existingOwner.id === request.requestedEntityId
+    const requestedMissing = Boolean(request.requestedEntityId && !requestedEntity)
+    const targetEntity = requestedEntity ?? existingOwner
+    const reviewMatchesCurrent = targetEntity
+      ? targetEntity.name.trim().toLowerCase() === reviewedName.toLowerCase() &&
+        targetEntity.kind === request.reviewedKind
+      : true
+
+    const verdict = evaluateRecipientConfirmation({
+      inputValid,
+      addressMatches: emailMatches.length,
+      requestedMatchesExistingOwner,
+      requestedMissing,
+      reviewMatchesCurrent,
+    })
+
+    if (verdict !== "RecipientConfirmed") {
+      return {
+        verdict,
+        confirmed: false,
+        reason: `recipient confirmation rejected: ${verdict}`,
+      }
+    }
+
+    const confirmedIdentity: EntityIdentity = {
+      platform: "email",
+      handle: normalizedEmail!,
+      connectorAccountId,
+      verified: true,
+      confidence: 1,
+      evidence: ["owner_confirmed_email_recipient"],
+      observedAt: nowIso,
+    }
+
+    if (targetEntity) {
+      const updated: Entity = {
+        ...targetEntity,
+        identities: mergeIdentities(targetEntity.identities, [confirmedIdentity]),
+        updatedAt: nowIso,
+      }
+      this.entities.upsert(updated)
+      return { verdict: "RecipientConfirmed", confirmed: true, entity: updated }
+    }
+
+    const created = this.createEntity({
+      tenant: request.tenant,
+      name: reviewedName,
+      kind: request.reviewedKind,
+      identities: [confirmedIdentity],
+      nowIso,
+    })
+    return { verdict: "RecipientConfirmed", confirmed: true, entity: created }
+  }
+
+  logInteraction(args: {
+    readonly tenant: string
+    readonly entityId: string
+    readonly summary: string
+    readonly relation?: string
+    readonly nowIso?: string
+  }): { readonly entity: Entity; readonly relationship: Relationship } | null {
+    const nowIso = args.nowIso ?? new Date().toISOString()
+    const entity = this.entities.get(args.tenant, args.entityId)
+    if (!entity) return null
+    this.entities.ensureSelf(args.tenant, "Self", nowIso)
+    const noteLine = `[${nowIso}] ${args.summary.trim()}`
+    const updated: Entity = {
+      ...entity,
+      notes: entity.notes.trim().length > 0 ? `${entity.notes.trim()}\n${noteLine}` : noteLine,
+      lastInteractionAt: laterIso(entity.lastInteractionAt, nowIso),
+      updatedAt: nowIso,
+    }
+    this.entities.upsert(updated)
+    const relationship = this.relationships.observe({
+      tenant: args.tenant,
+      fromId: SELF_ENTITY_ID,
+      toId: entity.id,
+      relation: args.relation ?? "interacted_with",
+      strengthDelta: 0.05,
+      evidence: [noteLine],
+      nowIso,
+    })
+    return { entity: updated, relationship }
+  }
+
+  snapshotForSpec(tenant: string): {
+    readonly entities: GraphEntity[]
+    readonly edges: GraphEdge[]
+    readonly identities: GraphIdentity[]
+    readonly revision: number
+  } {
+    const entities = this.entities.list(tenant)
+    const edges = this.relationships.list(tenant, { includeRetired: true })
+    const graphEntities: GraphEntity[] = entities.map((entity) => ({
+      space: entity.tenant,
+      entityId: entity.id,
+      entityName: entity.name,
+    }))
+    const graphEdges: GraphEdge[] = edges.map((edge) => ({
+      edgeSpace: edge.tenant,
+      fromId: edge.fromId,
+      toId: edge.toId,
+      relation: edge.relation,
+    }))
+    const graphIdentities: GraphIdentity[] = []
+    for (const entity of entities) {
+      for (const ident of entity.identities) {
+        graphIdentities.push({
+          tenant: entity.tenant,
+          entity: entity.id,
+          identitySource: ident.platform,
+          identityValue: ident.handle,
+        })
+      }
+    }
+    return {
+      entities: graphEntities,
+      edges: graphEdges,
+      identities: graphIdentities,
+      revision: this.entities.getRevision(tenant),
+    }
+  }
+}
+
+export function getKnowledgeGraphService(runtime: IAgentRuntime): KnowledgeGraphService | null {
+  return runtime.getService<KnowledgeGraphService>(KNOWLEDGE_GRAPH_SERVICE_TYPE)
+}

@@ -1,0 +1,127 @@
+// spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"; spec/nativePhone/index.md, "Opening the dialer and placing a call require different authority"
+import { assert, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import {
+  PhoneWeb,
+  appPhonePlugin,
+  calculateTwilioSmsBilling,
+  createPhoneCallLogProvider,
+  readTwilioCredentialsFromEnv,
+  sendTwilioSms,
+  sendTwilioVoiceCall,
+  splitTwilioSmsBody,
+} from "../src/index.vibe"
+
+module node {
+  import http from "node:http"
+
+  export interface MockTwilioServer {
+    readonly baseUrl: string
+    readonly requests: Array<{ readonly url: string; readonly body: string }>
+    setMode(mode: "ok" | "retry429Once" | "server500"): void
+    close(): Promise<void>
+  }
+
+  export async function startMockTwilioServer(): Promise<MockTwilioServer> {
+    const requests: Array<{ readonly url: string; readonly body: string }> = []
+    let mode: "ok" | "retry429Once" | "server500" = "ok"
+    let retryCount = 0
+    let seq = 1
+
+    const server = http.createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (chunk: Buffer) => chunks.push(chunk))
+      req.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8")
+        requests.push({ url: req.url ?? "", body })
+        if (mode === "retry429Once" && retryCount === 0) {
+          retryCount += 1
+          res.writeHead(429, { "content-type": "application/json" })
+          res.end(JSON.stringify({ message: "Too Many Requests" }))
+          return
+        }
+        if (mode === "server500") {
+          res.writeHead(500, { "content-type": "application/json" })
+          res.end(JSON.stringify({ message: "Internal Error" }))
+          return
+        }
+        res.writeHead(201, { "content-type": "application/json" })
+        res.end(JSON.stringify({ sid: `SM${seq++}` }))
+      })
+    })
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", () => resolve())
+    })
+    const addr = server.address()
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0
+    return {
+      baseUrl: `http://127.0.0.1:${port}`,
+      requests,
+      setMode: (next) => {
+        mode = next
+        retryCount = 0
+      },
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+}
+import { startMockTwilioServer } from node
+
+it.effect(`Provide phone call-log context, fail closed on PhoneWeb, and send Twilio SMS/Voice over HTTP with safe retry rules (spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"; spec/nativePhone/index.md, "Opening the dialer and placing a call require different authority")`, effect () => {
+  const web = new PhoneWeb()
+  const webStatus = try tryPromise(() => web.getStatus())
+  const badCall = try Effect.result(Effect.tryPromise(() => web.placeCall({ number: "" })))
+  const webCall = try Effect.result(Effect.tryPromise(() => web.placeCall({ number: "+15551234" })))
+  const badLimit = try Effect.result(Effect.tryPromise(() => web.listRecentCalls({ limit: 0 })))
+
+  const provider = createPhoneCallLogProvider({
+    recentCalls: async () => ({
+      calls: [{
+        id: "c1",
+        number: "+15550001",
+        cachedName: "Alice",
+        date: 1_700_000_000_000,
+        durationSeconds: 45,
+        type: "incoming",
+        isNew: false,
+      }],
+      next: null,
+    }),
+  })
+  const providerResult = try tryPromise(() => provider.get({} as IAgentRuntime, {} as Memory, {} as State))
+
+  const server = try tryPromise(() => startMockTwilioServer())
+  const creds = { accountSid: "AC123", authToken: "secret", fromPhoneNumber: "+15550000" }
+  const longBody = `${"word ".repeat(350)}end`
+  const smsOk = try tryPromise(() => sendTwilioSms({ credentials: creds, to: "+15559999", body: longBody, apiBaseUrl: server.baseUrl, baseDelayMs: 1 }))
+  try Effect.try(() => server.setMode("retry429Once"))
+  const voiceRetry = try tryPromise(() => sendTwilioVoiceCall({ credentials: creds, to: "+15559999", message: "Hi <Bob> & Co", apiBaseUrl: server.baseUrl, baseDelayMs: 1 }))
+  try Effect.try(() => server.setMode("server500"))
+  const serverErr = try tryPromise(() => sendTwilioVoiceCall({ credentials: creds, to: "+15559999", message: "No retry", apiBaseUrl: server.baseUrl, baseDelayMs: 1 }))
+  try tryPromise(() => server.close())
+
+  try Effect.try(() => {
+    assert.strictEqual(appPhonePlugin.name, "@elizaos/plugin-native-phone")
+    assert.strictEqual(appPhonePlugin.providers?.[0]?.name, "phoneCallLog")
+    assert.isFalse(webStatus.hasTelecom)
+    assert.strictEqual(badCall._tag, "Failure")
+    assert.strictEqual(webCall._tag, "Failure")
+    assert.strictEqual(badLimit._tag, "Failure")
+    assert.strictEqual(providerResult.values?.callLogCount, 1)
+    assert.include(providerResult.text ?? "", "Alice")
+    assert.isTrue(smsOk.ok)
+    assert.strictEqual(smsOk.sids?.length, 2)
+    assert.isAbove(smsOk.billing?.billedCost ?? 0, 0)
+    assert.strictEqual(splitTwilioSmsBody(longBody).length, 2)
+    assert.strictEqual(calculateTwilioSmsBilling(["hello"]).segments, 1)
+    assert.isNull(readTwilioCredentialsFromEnv({}))
+    assert.deepStrictEqual(readTwilioCredentialsFromEnv({ TWILIO_ACCOUNT_SID: "AC1", TWILIO_AUTH_TOKEN: "T", TWILIO_PHONE_NUMBER: "+1" }), { accountSid: "AC1", authToken: "T", fromPhoneNumber: "+1" })
+    assert.isTrue(voiceRetry.ok)
+    assert.strictEqual(voiceRetry.retryCount, 1)
+    assert.isTrue(server.requests.some((r) => r.body.includes("Hi+%26lt%3BBob%26gt%3B+%26amp%3B+Co")))
+    assert.isFalse(serverErr.ok)
+    assert.isTrue(serverErr.deliveryUnknown)
+    assert.strictEqual(serverErr.retryCount, 0)
+  })
+})

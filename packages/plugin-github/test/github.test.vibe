@@ -1,12 +1,48 @@
-// spec/github/index.md, "Story: List pull requests and triage notifications under the selected account"; spec/github/index.md, "Story: Review the exact GitHub operation before it changes a repository"
+// spec/github/index.md, "Story: List pull requests and triage notifications under the selected account"; spec/github/index.md, "Story: Review the exact GitHub operation before it changes a repository"; spec/github/deviceFlow.md, "Story: Sign in to GitHub from the account setup screen"
 import { assert, describe, it } from "@effect/vitest"
 import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core"
 import type { HttpClient } from "effect/http"
-import { githubActionRun } from "../src/index.vibe"
+import {
+  GITHUB_PULL_REQUESTS_SEARCH_CATEGORY,
+  GitHubService,
+  applySavedTokenToEnv,
+  buildCredentialsFromUserResponse,
+  clearCredentials,
+  clearDeviceFlowsForTest,
+  clearSavedTokenFromEnv,
+  compareTriagedNotifications,
+  createGitHubRestClient,
+  formatRateLimitMessage,
+  githubAction,
+  githubActionRun,
+  githubPlugin,
+  githubRoutes,
+  inspectRateLimit,
+  issueOpAction,
+  loadCredentials,
+  loadMetadata,
+  notificationTriageAction,
+  pollDeviceFlow,
+  prOpAction,
+  readGitHubAccounts,
+  registerGitHubSearchCategory,
+  resolveGitHubAccount,
+  resolveGitHubAccountSelection,
+  saveCredentials,
+  scoreNotification,
+  splitRepo,
+  startDeviceFlow,
+} from "../src/index.vibe"
 
 module node {
+  import http from "node:http"
+  import { mkdtemp, rm } from "node:fs/promises"
+  import { tmpdir } from "node:os"
+  import path from "node:path"
   import { Effect, Layer } from "effect"
   import { HttpClient, HttpClientResponse } from "effect/http"
+  import type { IAgentRuntime } from "@elizaos/core"
+  import type { GitHubService } from "../src/index.vibe"
 
   export interface Sent { readonly method: string; readonly url: string; readonly body: string }
 
@@ -20,8 +56,138 @@ module node {
     })
     return { sent, layer: Layer.succeed(HttpClient.HttpClient, client) }
   }
+
+  export interface LocalGitHubServer {
+    readonly baseUrl: string
+    readonly requests: readonly { readonly method: string; readonly url: string; readonly body: string }[]
+    readonly close: () => Promise<void>
+  }
+
+  export async function startLocalGitHubServer(): Promise<LocalGitHubServer> {
+    const requests: { method: string; url: string; body: string }[] = []
+    const server = http.createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (chunk: Buffer) => chunks.push(chunk))
+      req.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8")
+        const reqUrl = req.url ?? "/"
+        requests.push({ method: req.method ?? "GET", url: reqUrl, body })
+        res.setHeader("content-type", "application/json")
+        if (req.method === "GET" && reqUrl.startsWith("/repos/elizaOS/eliza/pulls")) {
+          res.end(JSON.stringify([{ number: 12, title: "Parity PR", state: "open", html_url: "https://github.com/elizaOS/eliza/pull/12", user: { login: "dev1" } }]))
+          return
+        }
+        if (req.method === "GET" && reqUrl.startsWith("/search/issues")) {
+          res.end(JSON.stringify({ total_count: 1, incomplete_results: false, items: [{ repository_url: "https://api.github.com/repos/elizaOS/eliza", number: 15, title: "Author PR", state: "open", html_url: "https://github.com/elizaOS/eliza/pull/15", user: { login: "alice" } }] }))
+          return
+        }
+        if (req.method === "POST" && reqUrl === "/repos/elizaOS/eliza/pulls/12/reviews") {
+          res.end(JSON.stringify({ id: 77 }))
+          return
+        }
+        if (req.method === "POST" && reqUrl === "/repos/elizaOS/eliza/issues") {
+          res.end(JSON.stringify({ number: 101, html_url: "https://github.com/elizaOS/eliza/issues/101", labels: [{ name: "bug" }], assignees: [{ login: "octo" }] }))
+          return
+        }
+        if (req.method === "PATCH" && reqUrl === "/repos/elizaOS/eliza/issues/101") {
+          res.end(JSON.stringify({ number: 101, title: "Demo issue", state: "closed", html_url: "https://github.com/elizaOS/eliza/issues/101" }))
+          return
+        }
+        if (req.method === "POST" && reqUrl === "/repos/elizaOS/eliza/issues/101/comments") {
+          res.end(JSON.stringify({ id: 505, html_url: "https://github.com/elizaOS/eliza/issues/101#issuecomment-505" }))
+          return
+        }
+        if (req.method === "POST" && reqUrl === "/repos/elizaOS/eliza/issues/101/labels") {
+          res.end(JSON.stringify([{ name: "priority" }]))
+          return
+        }
+        if (req.method === "GET" && reqUrl.startsWith("/notifications")) {
+          res.end(JSON.stringify([
+            { id: "n1", reason: "subscribed", repository: { full_name: "elizaOS/eliza", pushed_at: new Date().toISOString() }, subject: { title: "Low prio", type: "Issue", url: "https://api.github.com/repos/elizaOS/eliza/issues/5" }, updated_at: "2026-01-01T00:00:00Z" },
+            { id: "n2", reason: "review_requested", repository: { full_name: "elizaOS/eliza", pushed_at: new Date().toISOString() }, subject: { title: "Urgent PR", type: "PullRequest", url: "https://api.github.com/repos/elizaOS/eliza/pulls/12" }, updated_at: "2026-01-02T00:00:00Z" },
+          ]))
+          return
+        }
+        res.statusCode = 404
+        res.end(JSON.stringify({ message: "Not Found" }))
+      })
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    const port = (server.address() as { port: number }).port
+    return {
+      baseUrl: `http://127.0.0.1:${port}`,
+      requests,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+
+  export async function withTempStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+    const dir = await mkdtemp(path.join(tmpdir(), "eliza-github-state-"))
+    const prevState = process.env.ELIZA_STATE_DIR
+    const prevToken = process.env.GITHUB_TOKEN
+    process.env.ELIZA_STATE_DIR = dir
+    delete process.env.GITHUB_TOKEN
+    try {
+      return await fn(dir)
+    } finally {
+      if (prevState === undefined) delete process.env.ELIZA_STATE_DIR
+      else process.env.ELIZA_STATE_DIR = prevState
+      if (prevToken === undefined) delete process.env.GITHUB_TOKEN
+      else process.env.GITHUB_TOKEN = prevToken
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+
+  export function makeDeviceFetch(responses: readonly Record<string, unknown>[]): typeof fetch {
+    let idx = 0
+    return (async () => {
+      const payload = responses[Math.min(idx, responses.length - 1)]
+      idx += 1
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } })
+    }) as typeof fetch
+  }
+
+  export function makeFullRuntime(settings: Record<string, string>, service?: GitHubService): { readonly runtime: IAgentRuntime; readonly categories: Set<string>; readonly setService: (svc: GitHubService) => void } {
+    const rows = new Map<string, unknown>()
+    const categories = new Set<string>()
+    let attached = service ?? null
+    const runtime = {
+      agentId: "00000000-0000-4000-8000-000000000001",
+      character: { settings: {} },
+      getSetting: (key: string) => settings[key] ?? null,
+      setSetting: (key: string, value: string | null) => {
+        if (value === null) delete settings[key]
+        else settings[key] = value
+      },
+      getCache: async (key: string) => rows.get(key),
+      setCache: async (key: string, value: unknown) => {
+        rows.set(key, value)
+        return true
+      },
+      deleteCache: async (key: string) => rows.delete(key),
+      getService: (name: string) => (name === "github" ? attached : null),
+      getSearchCategory: (name: string) => {
+        if (!categories.has(name)) throw new Error("missing")
+        return { category: name }
+      },
+      registerSearchCategory: (reg: { category: string }) => {
+        categories.add(reg.category)
+      },
+      reportError: () => undefined,
+    } as unknown as IAgentRuntime
+    return { runtime, categories, setService: (svc) => { attached = svc } }
+  }
+
+  export async function captureError(fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await fn()
+      return null
+    } catch (err) {
+      return err
+    }
+  }
 }
-import { githubApi } from node
+import { captureError, githubApi, makeDeviceFetch, makeFullRuntime, startLocalGitHubServer, withTempStateDir } from node
 
 function ownerRuntime(): IAgentRuntime {
   const rows = new Map<string, unknown>()
@@ -39,7 +205,9 @@ function ownerRuntime(): IAgentRuntime {
 const turn = (id: string, text: string): Memory => ({ id: id as UUID, entityId: "00000000-0000-4000-8000-0000000000aa" as UUID, roomId: "00000000-0000-4000-8000-0000000000bb" as UUID, agentId: "00000000-0000-4000-8000-000000000001" as UUID, content: { text, source: "client_chat" } })
 
 effect function run(runtime: IAgentRuntime, message: Memory, options: unknown, layer: Layer.Layer<HttpClient.HttpClient>) {
-  return try Effect.provide(githubActionRun(runtime, message, options, undefined), layer)
+  provide layer {
+    return try githubActionRun(runtime, message, options, undefined)
+  }
 }
 
 const outcome = (result: ActionResult) => ({ success: result.success, text: result.text })
@@ -48,10 +216,48 @@ describe("List pull requests and triage notifications under the selected account
   it.effect("An operation and state written with space or capitals still list the closed pull requests (spec/github/index.md, \"Pull request listing requires an explicit repository or author, and me uses the selected account's login\")", () => effect {
     const api = try Effect.try(() => githubApi({ "GET /user": { login: "octo" }, "GET /repos/octo/projects/pulls": [{ number: 7, title: "Fix the build", html_url: "https://github.com/octo/projects/pull/7", state: "closed" }] }))
     const result = try run(ownerRuntime(), turn("00000000-0000-4000-8000-000000000010", "list closed PRs"), { parameters: { action: " PR_List ", repo: "octo/projects", state: "Closed" } }, api.layer)
-    try Effect.try(() => assert.deepStrictEqual({ result: outcome(result), sent: api.sent.map(entry => entry.url) }, {
+    try Effect.try(() => assert.deepStrictEqual({ result: outcome(result), sent: api.sent.map((entry) => entry.url) }, {
       result: { success: true, text: "- #7 Fix the build (closed) https://github.com/octo/projects/pull/7" },
       sent: ["https://api.github.com/user", "https://api.github.com/repos/octo/projects/pulls?state=closed&per_page=100&page=1"],
     }))
+  })
+
+  it("Validates repo locators, account resolution, rate limits, and Pi-agent action hygiene (spec/github/index.md, \"Pull request listing requires an explicit repository or author, and me uses the selected account's login\")", () => {
+    assert.deepStrictEqual(splitRepo("elizaOS/eliza"), { owner: "elizaOS", name: "eliza" })
+    assert.deepStrictEqual(splitRepo("https://github.com/elizaOS/eliza.git"), { owner: "elizaOS", name: "eliza" })
+    assert.deepStrictEqual(splitRepo("github.com/elizaOS/eliza/"), { owner: "elizaOS", name: "eliza" })
+    assert.isNull(splitRepo("https://evil.example/elizaOS/eliza"))
+    assert.isNull(splitRepo("https://github.com/elizaOS/../secret"))
+    assert.isNull(splitRepo("https://user@github.com/elizaOS/eliza"))
+    assert.isNull(splitRepo("elizaOS\\eliza"))
+    const { runtime } = makeFullRuntime({
+      GITHUB_ACCOUNTS: JSON.stringify([{ accountId: "work", role: "user", token: "tok-work" }, { accountId: "bot", role: "agent", token: "tok-bot" }]),
+    })
+    const accounts = readGitHubAccounts(runtime)
+    assert.strictEqual(accounts.length, 2)
+    assert.strictEqual(resolveGitHubAccount(accounts, resolveGitHubAccountSelection({ accountId: "work" }, "agent"))?.token, "tok-work")
+    assert.strictEqual(resolveGitHubAccount(accounts, resolveGitHubAccountSelection({}, "agent"))?.token, "tok-bot")
+    const rl = inspectRateLimit({ status: 403, response: { headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1700000000" } } })
+    assert.strictEqual(rl.isRateLimited, true)
+    assert.include(formatRateLimitMessage(rl), "GitHub rate limit exhausted; resets at")
+    for (const action of [githubAction, issueOpAction, prOpAction, notificationTriageAction]) {
+      assert.strictEqual(action.toolSchemaStrict, true)
+      assert.strictEqual(action.cacheStable, true)
+      assert.isString(action.descriptionCompressed)
+      assert.isFunction(action.summarize)
+      const names = (action.parameters ?? []).map((p) => p.name)
+      assert.deepStrictEqual(names, [...names].sort())
+    }
+    const s1 = scoreNotification({ reason: "review_requested", subjectType: "PullRequest", repoPushedAtMs: 1_000_000, nowMs: 1_000_000 })
+    const s2 = scoreNotification({ reason: "subscribed", subjectType: "Issue", repoPushedAtMs: 1_000_000, nowMs: 1_000_000 })
+    assert.isAbove(s1, s2)
+    assert.isBelow(
+      compareTriagedNotifications(
+        { id: "a", reason: "review_requested", repo: "r", title: "t", subjectType: "PullRequest", url: null, updatedAt: "", score: s1 },
+        { id: "b", reason: "subscribed", repo: "r", title: "t", subjectType: "Issue", url: null, updatedAt: "", score: s2 },
+      ),
+      0,
+    )
   })
 })
 
@@ -62,7 +268,7 @@ describe("Review the exact GitHub operation before it changes a repository (spec
     const review = { parameters: { action: "PR_REVIEW", repo: "octo/projects", number: 42, review_action: " Request_Changes ", body: "Please add tests." } }
     const preview = try run(runtime, turn("00000000-0000-4000-8000-000000000020", "request changes on PR 42"), review, api.layer)
     const applied = try run(runtime, turn("00000000-0000-4000-8000-000000000021", "yes"), review, api.layer)
-    try Effect.try(() => assert.deepStrictEqual({ preview: preview.data, previewed: preview.text?.includes("\"reviewKind\":\"RequestChanges\""), applied: outcome(applied), sent: api.sent.map(entry => ({ method: entry.method, url: entry.url, body: JSON.parse(entry.body) })) }, {
+    try Effect.try(() => assert.deepStrictEqual({ preview: preview.data, previewed: preview.text?.includes("\"reviewKind\":\"RequestChanges\""), applied: outcome(applied), sent: api.sent.map((entry) => ({ method: entry.method, url: entry.url, body: JSON.parse(entry.body) })) }, {
       preview: { status: "pending" },
       previewed: true,
       applied: { success: true, text: "GitHub confirmed the operation. https://github.com/octo/projects/pull/42#pullrequestreview-9001" },
@@ -79,10 +285,102 @@ describe("Review the exact GitHub operation before it changes a repository (spec
     const assignment = { parameters: { action: "issue_assign", repo: "octo/projects", number: 42, assignees } }
     const preview = try run(runtime, turn("00000000-0000-4000-8000-000000000030", "assign Alice and Bob to issue 42"), assignment, api.layer)
     const result = try run(runtime, turn("00000000-0000-4000-8000-000000000031", "yes"), assignment, api.layer)
-    try Effect.try(() => assert.deepStrictEqual({ preview: preview.data, result: { ...outcome(result), data: result.data }, sent: api.sent.map(entry => ({ method: entry.method, url: entry.url, body: JSON.parse(entry.body) })) }, {
+    try Effect.try(() => assert.deepStrictEqual({ preview: preview.data, result: { ...outcome(result), data: result.data }, sent: api.sent.map((entry) => ({ method: entry.method, url: entry.url, body: JSON.parse(entry.body) })) }, {
       preview: { status: "pending" },
       result: { success: false, text: "GitHub did not assign Bob to #42.", data: { receiptId: 9002, notApplied: { assignees: ["Bob"] } } },
       sent: [{ method: "POST", url: "https://api.github.com/repos/octo/projects/issues/42/assignees", body: { assignees } }],
     }))
+  })
+
+  it("Runs GitHubService and umbrella GITHUB actions end-to-end against a real local GitHub HTTP server (spec/github/index.md, \"Only the owner may approve the exact preview while the captured account is current\")", async () => {
+    const server = await startLocalGitHubServer()
+    try {
+      const { runtime, categories, setService } = makeFullRuntime({ GITHUB_USER_PAT: "user-tok", GITHUB_AGENT_PAT: "agent-tok" })
+      const service = await GitHubService.start(runtime, (auth) => createGitHubRestClient(auth, { baseUrl: server.baseUrl }))
+      setService(service)
+      registerGitHubSearchCategory(runtime)
+      assert.isTrue(categories.has(GITHUB_PULL_REQUESTS_SEARCH_CATEGORY.category))
+
+      const listed = await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000040", "list"), undefined, { parameters: { action: "pr_list", repo: "elizaOS/eliza" } }) as ActionResult
+      assert.strictEqual(listed.success, true)
+      assert.strictEqual(listed.promptDataMode, "replace-data")
+      const byAuthor = await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000041", "list author"), undefined, { parameters: { action: "pr_list", author: "alice" } }) as ActionResult
+      assert.strictEqual(byAuthor.success, true)
+
+      const triage = await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000042", "inbox"), undefined, { parameters: { action: "notification_triage" } }) as ActionResult
+      assert.strictEqual(triage.success, true)
+      assert.strictEqual(triage.promptDataMode, "replace-data")
+      const triagedRows = (triage.data as { notifications: { id: string; url: string | null }[] }).notifications
+      assert.strictEqual(triagedRows[0]?.id, "n2")
+      assert.strictEqual(triagedRows[0]?.url, "https://github.com/elizaOS/eliza/pull/12")
+
+      const createReq = { parameters: { action: "issue_create", repo: "elizaOS/eliza", title: "Demo issue", labels: ["bug"], assignees: ["octo"] } }
+      const createPreview = await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000043", "create"), undefined, createReq) as ActionResult
+      assert.strictEqual((createPreview.data as { awaitingUserInput?: boolean }).awaitingUserInput, true)
+      const createDone = await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000044", "yes"), undefined, createReq) as ActionResult
+      assert.strictEqual(createDone.success, true)
+      assert.strictEqual((createDone.data as { number: number }).number, 101)
+
+      const commentReq = { parameters: { action: "issue_comment", repo: "elizaOS/eliza", number: 101, body: "LGTM" } }
+      await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000045", "comment"), undefined, commentReq)
+      const mutatedComment = await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000046", "yes"), undefined, { parameters: { action: "issue_comment", repo: "elizaOS/eliza", number: 101, body: "CHANGED" } }) as ActionResult
+      assert.strictEqual((mutatedComment.data as { awaitingUserInput?: boolean }).awaitingUserInput, true)
+      const confirmedMutated = await githubAction.handler(runtime, turn("00000000-0000-4000-8000-000000000047", "yes"), undefined, { parameters: { action: "issue_comment", repo: "elizaOS/eliza", number: 101, body: "CHANGED" } }) as ActionResult
+      assert.strictEqual(confirmedMutated.success, true)
+
+      await githubPlugin.dispose?.(runtime)
+      assert.isNull(service.getOctokit("agent"))
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+describe("Sign in to GitHub from the account setup screen (spec/github/deviceFlow.md, \"Story: Sign in to GitHub from the account setup screen\")", () => {
+  it("Persists local credentials atomically, handles device-flow backoff/agent-isolation, and validates routes (spec/github/deviceFlow.md, \"A slow-down response delays the same flow by another five seconds\")", async () => {
+    await withTempStateDir(async () => {
+      assert.isNull(await loadCredentials())
+      const creds = buildCredentialsFromUserResponse("ghp_local_123", { login: "octo" }, ["repo", "read:user"], 1_700_000_000_000)
+      await saveCredentials(creds)
+      assert.deepStrictEqual(await loadCredentials(), creds)
+      const meta = await loadMetadata()
+      assert.strictEqual(meta?.username, "octo")
+      assert.notProperty(meta ?? {}, "token")
+      const applied = await applySavedTokenToEnv()
+      assert.strictEqual(applied.applied, true)
+      clearSavedTokenFromEnv()
+      await clearCredentials()
+      assert.isNull(await loadCredentials())
+
+      clearDeviceFlowsForTest()
+      let nowMs = 10_000
+      const fetchImpl = makeDeviceFetch([
+        { device_code: "dev-1", user_code: "ABCD-1234", verification_uri: "https://github.com/login/device", interval: 5, expires_in: 900 },
+        { error: "slow_down" },
+        { access_token: "gho_done", scope: "repo" },
+      ])
+      const started = await startDeviceFlow({ clientId: "cid", agentKey: "agent-a", deps: { fetchImpl, now: () => nowMs } })
+      assert.strictEqual(started.userCode, "ABCD-1234")
+      const wrongAgentErr = await captureError(() => pollDeviceFlow({ flowId: started.flowId, agentKey: "agent-b", deps: { fetchImpl, now: () => nowMs } }))
+      assert.strictEqual((wrongAgentErr as { status?: number })?.status, 404)
+      const slowed = await pollDeviceFlow({ flowId: started.flowId, agentKey: "agent-a", deps: { fetchImpl, now: () => nowMs } })
+      assert.deepStrictEqual(slowed, { status: "pending", retryAfterSeconds: 10 })
+      nowMs += 4_000
+      const early = await pollDeviceFlow({ flowId: started.flowId, agentKey: "agent-a", deps: { fetchImpl, now: () => nowMs } })
+      assert.deepStrictEqual(early, { status: "pending", retryAfterSeconds: 6 })
+      nowMs += 7_000
+      const done = await pollDeviceFlow({ flowId: started.flowId, agentKey: "agent-a", deps: { fetchImpl, now: () => nowMs } })
+      assert.deepStrictEqual(done, { status: "complete", token: "gho_done", scope: "repo" })
+
+      assert.strictEqual(githubPlugin.routes.length, 5)
+      const { runtime } = makeFullRuntime({})
+      const controller = new AbortController()
+      const getTokenRoute = githubRoutes.find((r) => r.type === "GET" && r.path === "/api/github/token")
+      const startDeviceRoute = githubRoutes.find((r) => r.type === "POST" && r.path === "/api/github/device/start")
+      const pollDeviceRoute = githubRoutes.find((r) => r.type === "POST" && r.path === "/api/github/device/poll")
+      assert.strictEqual((await getTokenRoute?.routeHandler({ runtime, signal: controller.signal }))?.status, 200)
+      assert.strictEqual((await startDeviceRoute?.routeHandler({ runtime, signal: controller.signal }))?.status, 409)
+      assert.strictEqual((await pollDeviceRoute?.routeHandler({ runtime, body: {}, signal: controller.signal }))?.status, 400)
+    })
   })
 })

@@ -1,0 +1,143 @@
+// spec/form/index.md, "The participant can shelve and resume an unexpired form, cancel it, or let it expire"
+import {
+  CANONICAL_SUBACTION_KEY,
+  logger,
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type UUID,
+} from "@elizaos/core"
+import type { FormService } from "./service.vibe"
+
+const FORM_SUBACTIONS = ["restore"] as const
+
+export function normalizeRestoreResponse(text: string): string {
+  return text.toWellFormed()
+}
+
+async function handleRestore(
+  runtime: IAgentRuntime,
+  message: Memory,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  try {
+    const formService = runtime.getService("FORM") as FormService | null
+    if (!formService) {
+      await callback?.({ text: "Sorry, I couldn't find the form service." })
+      return { success: false }
+    }
+    const entityId = message.entityId as UUID
+    const roomId = message.roomId as UUID
+    if (!entityId || !roomId) {
+      await callback?.({ text: "Sorry, I couldn't identify you." })
+      return { success: false }
+    }
+    const existing = await formService.getActiveSession(entityId, roomId)
+    if (existing) {
+      const form = formService.getForm(existing.formId)
+      await callback?.({
+        text: `You already have an active form: "${form?.name || existing.formId}". Would you like to continue with that one, or should I save it and restore your other form?`,
+      })
+      return { success: false }
+    }
+    const stashed = await formService.getStashedSessions(entityId)
+    if (stashed.length === 0) {
+      await callback?.({ text: "You don't have any saved forms to resume." })
+      return { success: false }
+    }
+    const sessionToRestore = [...stashed].sort((a, b) => {
+      const bTime = typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt) ? b.updatedAt : 0
+      const aTime = typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt) ? a.updatedAt : 0
+      return bTime - aTime || a.id.localeCompare(b.id)
+    })[0]
+    const session = await formService.restore(sessionToRestore.id, entityId, roomId)
+    const form = formService.getForm(session.formId)
+    const context = formService.getSessionContext(session)
+    let responseText = `I've restored your "${form?.name || session.formId}" form. You're ${context.progress}% complete. `
+    if (context.filledFields.length > 0) {
+      responseText += "\n\nHere's what I have so far:\n"
+      for (const field of context.filledFields) {
+        responseText += `• ${field.label}: ${field.displayValue}\n`
+      }
+    }
+    if (context.nextField) {
+      responseText += `\nLet's continue with ${context.nextField.label}.`
+      if (context.nextField.askPrompt) responseText += ` ${context.nextField.askPrompt}`
+    } else if (context.status === "ready") {
+      responseText += "\nEverything looks complete! Ready to submit?"
+    }
+    const normalizedText = normalizeRestoreResponse(responseText)
+    await callback?.({ text: normalizedText })
+    return {
+      success: true,
+      text: normalizedText,
+      data: {
+        sessionId: session.id,
+        formId: session.formId,
+        progress: context.progress,
+        [CANONICAL_SUBACTION_KEY]: "restore",
+      },
+    }
+  } catch (error) {
+    logger.error("[FormAction] restore handler error:", String(error))
+    await callback?.({ text: "Sorry, I couldn't restore your form. Please try again." })
+    return { success: false }
+  }
+}
+
+export const formAction: Action = {
+  name: "FORM",
+  contexts: ["tasks", "automation", "memory"],
+  contextGate: { anyOf: ["tasks", "automation", "memory"] },
+  roleGate: { minRole: "USER" },
+  similes: ["FORM_RESTORE", "RESUME_FORM", "CONTINUE_FORM"],
+  description: "Form session router. action=restore rehydrates the most recent stashed form for the current user.",
+  descriptionCompressed: "Form session router (restore).",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [
+    {
+      name: "action",
+      description: "Form verb: restore. Defaults to restore when omitted.",
+      descriptionCompressed: "Form verb (restore).",
+      required: false,
+      schema: { type: "string", enum: [...FORM_SUBACTIONS] },
+    },
+  ],
+  summarize: (result) => {
+    if (!result?.success) return "Form restore failed."
+    const data = result.data as { formId?: string; progress?: number } | undefined
+    return `Restored form ${data?.formId ?? "session"} (${data?.progress ?? 0}% complete).`
+  },
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    const formService = runtime.getService("FORM") as FormService | null
+    if (!formService) return false
+    const entityId = message.entityId as UUID
+    const roomId = message.roomId as UUID
+    if (!entityId || !roomId) return false
+    const stashed = await formService.getStashedSessions(entityId)
+    if (stashed.length === 0) return false
+    return (await formService.getActiveSession(entityId, roomId)) === null
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => handleRestore(runtime, message, callback),
+  examples: [
+    [
+      { name: "{{user1}}", content: { text: "Resume my form" } },
+      { name: "{{agentName}}", content: { text: "I've restored your form. Let's continue where you left off." } },
+    ],
+    [
+      { name: "{{user1}}", content: { text: "Continue with my registration" } },
+      { name: "{{agentName}}", content: { text: "I've restored your Registration form. You're 60% complete." } },
+    ],
+  ],
+}

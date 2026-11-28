@@ -1,0 +1,473 @@
+// spec/mcp/index.md, "A server connection needs enabled configuration and a validated transport"
+export const DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS = 10_000
+export const DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
+export type McpMarketplaceErrorCode =
+  | "aborted"
+  | "http_error"
+  | "invalid_options"
+  | "invalid_response"
+  | "network_error"
+  | "response_too_large"
+  | "timeout"
+
+export interface McpMarketplaceRequestOptions {
+  readonly signal?: AbortSignal
+  readonly timeoutMs?: number
+  readonly maxResponseBytes?: number
+  readonly baseUrl?: string
+  readonly fetchImpl?: typeof fetch
+}
+
+export interface McpRegistryRemote extends Record<string, unknown> {
+  readonly type: "streamable-http" | "sse"
+  readonly url: string
+}
+
+export interface McpRegistryPackageTransport extends Record<string, unknown> {
+  readonly type: "stdio" | "streamable-http" | "sse"
+  readonly url?: string
+}
+
+export interface McpRegistryPackage extends Record<string, unknown> {
+  readonly registryType: string
+  readonly identifier: string
+  readonly version?: string
+  readonly transport: McpRegistryPackageTransport
+}
+
+export interface McpRegistryServer extends Record<string, unknown> {
+  readonly name: string
+  readonly title?: string
+  readonly description: string
+  readonly version: string
+  readonly websiteUrl?: string
+  readonly repository?: Record<string, unknown> & { readonly url?: string }
+  readonly remotes?: readonly McpRegistryRemote[]
+  readonly packages?: readonly McpRegistryPackage[]
+  readonly icons?: readonly (Record<string, unknown> & { readonly src: string })[]
+}
+
+export interface McpMarketplaceSearchItem {
+  readonly id: string
+  readonly name: string
+  readonly title: string
+  readonly description: string
+  readonly version: string
+  readonly connectionType: "remote" | "stdio"
+  readonly connectionUrl?: string
+  readonly npmPackage?: string
+  readonly dockerImage?: string
+  readonly repositoryUrl?: string
+  readonly websiteUrl?: string
+  readonly iconUrl?: string
+  readonly publishedAt?: string
+  readonly isLatest: boolean
+}
+
+export interface McpRouteConfig {
+  mcp?: {
+    servers?: Record<string, Record<string, unknown>>
+  }
+}
+
+module node {
+  import type http from "node:http"
+  import { logger } from "@elizaos/core"
+  import { MCP_SERVICE_NAME } from "./types.vibe"
+  import {
+    DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES,
+    DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS,
+    type McpMarketplaceErrorCode,
+    type McpMarketplaceRequestOptions,
+    type McpMarketplaceSearchItem,
+    type McpRegistryPackage,
+    type McpRegistryRemote,
+    type McpRegistryServer,
+    type McpRouteConfig,
+  } from "./marketplace.vibe"
+
+  const MCP_REGISTRY_BASE_URL = "https://registry.modelcontextprotocol.io"
+  const MAX_TIMEOUT_MS = 2 * 60_000
+  const MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+  const MAX_RESULTS = 50
+
+  export interface McpRouteContext {
+    readonly req: http.IncomingMessage
+    readonly res: http.ServerResponse
+    readonly method: string
+    readonly pathname: string
+    readonly url: URL
+    readonly state: {
+      readonly config: McpRouteConfig
+      readonly runtime: { readonly getService: (name: string) => unknown } | null
+    }
+    readonly json: (res: http.ServerResponse, data: unknown, status?: number) => void | Promise<void>
+    readonly error: (res: http.ServerResponse, message: string, status?: number) => void | Promise<void>
+    readonly readJsonBody: <T extends object>(req: http.IncomingMessage, res: http.ServerResponse, options?: Record<string, unknown>) => Promise<T | null>
+    readonly saveElizaConfig: (config: McpRouteConfig) => void
+    readonly redactDeep: (val: unknown) => unknown
+    readonly isBlockedObjectKey: (key: string) => boolean
+    readonly cloneWithoutBlockedObjectKeys: <T>(value: T) => T
+    readonly resolveMcpServersRejection: (servers: Record<string, unknown>) => Promise<string | null>
+    readonly resolveMcpTerminalAuthorizationRejection: (req: http.IncomingMessage, servers: Record<string, unknown>, body: { terminalToken?: string }) => { reason: string; status: number } | null
+    readonly decodePathComponent: (raw: string, res: http.ServerResponse, label: string) => string | null
+  }
+
+  export class McpMarketplaceError extends Error {
+    readonly code: McpMarketplaceErrorCode
+    readonly status?: number
+
+    constructor(message: string, code: McpMarketplaceErrorCode, options: ErrorOptions & { readonly status?: number } = {}) {
+      super(message, options)
+      this.name = "McpMarketplaceError"
+      this.code = code
+      this.status = options.status
+    }
+  }
+
+  function invalidResponse(message: string, cause?: unknown): never {
+    throw new McpMarketplaceError(message, "invalid_response", { cause })
+  }
+
+  function requireRecord(value: unknown, label: string): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) invalidResponse(`MCP registry ${label} must be an object`)
+    return value as Record<string, unknown>
+  }
+
+  function requireArray(value: unknown, label: string): unknown[] {
+    if (!Array.isArray(value)) invalidResponse(`MCP registry ${label} must be an array`)
+    return value
+  }
+
+  function requireStr(record: Record<string, unknown>, key: string, label: string, allowEmpty = false): string {
+    const val = record[key]
+    if (typeof val !== "string" || (!allowEmpty && !val)) invalidResponse(`MCP registry ${label}.${key} must be a string`)
+    return val
+  }
+
+  function optionalStr(record: Record<string, unknown>, key: string, label: string): string | undefined {
+    const val = record[key]
+    if (val === undefined) return undefined
+    if (typeof val !== "string") invalidResponse(`MCP registry ${label}.${key} must be a string`)
+    return val
+  }
+
+  function parseServer(value: unknown, label: string): McpRegistryServer {
+    const src = requireRecord(value, label)
+    const remotes = src.remotes === undefined
+      ? undefined
+      : requireArray(src.remotes, `${label}.remotes`).map((e, i): McpRegistryRemote => {
+          const r = requireRecord(e, `${label}.remotes[${i}]`)
+          const type = requireStr(r, "type", `${label}.remotes[${i}]`)
+          if (type !== "streamable-http" && type !== "sse") invalidResponse(`MCP registry ${label}.remotes[${i}].type invalid`)
+          return { ...r, type, url: requireStr(r, "url", `${label}.remotes[${i}]`) }
+        })
+    const packages = src.packages === undefined
+      ? undefined
+      : requireArray(src.packages, `${label}.packages`).map((e, i): McpRegistryPackage => {
+          const p = requireRecord(e, `${label}.packages[${i}]`)
+          const t = requireRecord(p.transport, `${label}.packages[${i}].transport`)
+          const tType = requireStr(t, "type", `${label}.packages[${i}].transport`)
+          if (tType !== "stdio" && tType !== "streamable-http" && tType !== "sse") invalidResponse(`MCP registry transport unsupported`)
+          const url = optionalStr(t, "url", `${label}.packages[${i}].transport`)
+          if (tType !== "stdio" && !url) invalidResponse(`MCP registry transport url required`)
+          return { ...p, registryType: requireStr(p, "registryType", `${label}.packages[${i}]`), identifier: requireStr(p, "identifier", `${label}.packages[${i}]`), version: optionalStr(p, "version", `${label}.packages[${i}]`), transport: { ...t, type: tType, url } }
+        })
+    const icons = src.icons === undefined
+      ? undefined
+      : requireArray(src.icons, `${label}.icons`).map((e, i) => {
+          const icon = requireRecord(e, `${label}.icons[${i}]`)
+          return { ...icon, src: requireStr(icon, "src", `${label}.icons[${i}]`) }
+        })
+    const repo = src.repository === undefined ? undefined : requireRecord(src.repository, `${label}.repository`)
+    return {
+      ...src,
+      name: requireStr(src, "name", label),
+      title: optionalStr(src, "title", label),
+      description: requireStr(src, "description", label, true),
+      version: requireStr(src, "version", label),
+      websiteUrl: optionalStr(src, "websiteUrl", label),
+      repository: repo ? { ...repo, url: optionalStr(repo, "url", `${label}.repository`) } : undefined,
+      remotes,
+      packages,
+      icons,
+    }
+  }
+
+  async function fetchRegistryJson<T>(
+    url: string,
+    parse: (v: unknown) => T,
+    options: { readonly signal: AbortSignal; remainingBytes: number; readonly fetchImpl: typeof fetch },
+  ): Promise<T> {
+    let response: Response
+    try {
+      response = await options.fetchImpl(url, { headers: { Accept: "application/json" }, signal: options.signal })
+    } catch (error) {
+      if (options.signal.aborted) throw new McpMarketplaceError("MCP marketplace request was aborted", "aborted", { cause: error })
+      throw new McpMarketplaceError("MCP marketplace request failed", "network_error", { cause: error })
+    }
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined)
+      throw new McpMarketplaceError(`MCP registry request failed with HTTP ${response.status}`, "http_error", { status: response.status })
+    }
+    const declared = Number(response.headers.get("content-length"))
+    if (Number.isFinite(declared) && declared > options.remainingBytes) {
+      await response.body?.cancel().catch(() => undefined)
+      throw new McpMarketplaceError(`MCP registry response exceeded ${options.remainingBytes} bytes`, "response_too_large")
+    }
+    if (!response.body) invalidResponse("MCP registry returned an empty response")
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > options.remainingBytes) {
+        await reader.cancel().catch(() => undefined)
+        throw new McpMarketplaceError(`MCP registry response exceeded ${options.remainingBytes} bytes`, "response_too_large")
+      }
+      chunks.push(value)
+    }
+    options.remainingBytes -= total
+    const merged = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    try {
+      return parse(JSON.parse(new TextDecoder().decode(merged)))
+    } catch (error) {
+      invalidResponse("MCP registry returned invalid JSON", error)
+    }
+  }
+
+  export async function searchMcpMarketplace(
+    query?: string,
+    limit = 30,
+    options: McpMarketplaceRequestOptions = {},
+  ): Promise<{ readonly results: McpMarketplaceSearchItem[] }> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RESULTS) {
+      throw new McpMarketplaceError(`MCP marketplace limit must be an integer from 1 to ${MAX_RESULTS}`, "invalid_options")
+    }
+    const timeoutMs = options.timeoutMs ?? DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS
+    const maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS) {
+      throw new McpMarketplaceError(`MCP marketplace timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}`, "invalid_options")
+    }
+    if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes <= 0 || maxResponseBytes > MAX_RESPONSE_BYTES) {
+      throw new McpMarketplaceError(`MCP marketplace maxResponseBytes must be between 1 and ${MAX_RESPONSE_BYTES}`, "invalid_options")
+    }
+    const signal = AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(timeoutMs)])
+    const state = { signal, remainingBytes: maxResponseBytes, fetchImpl: options.fetchImpl ?? globalThis.fetch }
+    const baseUrl = options.baseUrl ?? MCP_REGISTRY_BASE_URL
+    const results: McpMarketplaceSearchItem[] = []
+    const seenNames = new Set<string>()
+    const seenCursors = new Set<string>()
+    const normalizedQuery = query?.toLowerCase()
+    const pageLimit = normalizedQuery ? MAX_RESULTS : limit
+    let cursor: string | undefined
+    do {
+      const target = new URL("/v0/servers", baseUrl)
+      target.searchParams.set("version", "latest")
+      target.searchParams.set("limit", String(pageLimit))
+      if (cursor) target.searchParams.set("cursor", cursor)
+      const page = await fetchRegistryJson(target.toString(), (raw) => {
+        const root = requireRecord(raw, "response")
+        const meta = root.metadata === undefined ? undefined : requireRecord(root.metadata, "response.metadata")
+        const nextCursor = meta ? optionalStr(meta, "nextCursor", "response.metadata") : undefined
+        const entries = requireArray(root.servers, "response.servers").map((entry, idx) => {
+          const src = requireRecord(entry, `response.servers[${idx}]`)
+          const m = src._meta === undefined ? undefined : requireRecord(src._meta, `response.servers[${idx}]._meta`)
+          const off = m?.["io.modelcontextprotocol.registry/official"]
+          const official = off === undefined ? undefined : requireRecord(off, "official")
+          return { server: parseServer(src.server, `response.servers[${idx}].server`), official }
+        })
+        return { entries, nextCursor }
+      }, state)
+      cursor = page.nextCursor
+      if (cursor && seenCursors.has(cursor)) invalidResponse("MCP registry response repeated a pagination cursor")
+      if (cursor) seenCursors.add(cursor)
+      for (const { server, official } of page.entries) {
+        if (!official?.isLatest || seenNames.has(server.name)) continue
+        seenNames.add(server.name)
+        if (normalizedQuery && !server.name.toLowerCase().includes(normalizedQuery) && !server.title?.toLowerCase().includes(normalizedQuery) && !server.description.toLowerCase().includes(normalizedQuery)) continue
+        const remote = server.remotes?.[0]
+        const pkg = server.packages?.[0]
+        const packageRemote = pkg?.transport && pkg.transport.type !== "stdio" ? pkg.transport.url : undefined
+        const connectionType = remote || packageRemote ? "remote" : "stdio"
+        results.push({
+          id: `${server.name}@${server.version}`,
+          name: server.name,
+          title: server.title || server.name.split("/").pop() || server.name,
+          description: server.description || "No description",
+          version: server.version,
+          connectionType,
+          connectionUrl: remote?.url ?? packageRemote,
+          npmPackage: connectionType === "stdio" && pkg?.registryType === "npm" ? pkg.identifier : undefined,
+          dockerImage: connectionType === "stdio" && pkg?.registryType === "oci" ? pkg.identifier : undefined,
+          repositoryUrl: server.repository?.url,
+          websiteUrl: server.websiteUrl,
+          iconUrl: server.icons?.[0]?.src,
+          publishedAt: typeof official.publishedAt === "string" ? official.publishedAt : undefined,
+          isLatest: true,
+        })
+        if (results.length >= limit) break
+      }
+    } while (cursor && results.length < limit)
+    return { results }
+  }
+
+  export async function getMcpServerDetails(
+    name: string,
+    options: McpMarketplaceRequestOptions = {},
+  ): Promise<McpRegistryServer | null> {
+    const timeoutMs = options.timeoutMs ?? DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS
+    const maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES
+    const signal = AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(timeoutMs)])
+    const baseUrl = (options.baseUrl ?? MCP_REGISTRY_BASE_URL).replace(/\/+$/, "")
+    try {
+      return await fetchRegistryJson(
+        `${baseUrl}/v0/servers/${encodeURIComponent(name)}/versions/latest`,
+        (raw) => parseServer(requireRecord(raw, "response").server, "response.server"),
+        { signal, remainingBytes: maxResponseBytes, fetchImpl: options.fetchImpl ?? globalThis.fetch },
+      )
+    } catch (error) {
+      if (error instanceof McpMarketplaceError && error.code === "http_error" && error.status === 404) return null
+      throw error
+    }
+  }
+
+  async function persistConfig(ctx: McpRouteContext, update: (config: McpRouteConfig) => void): Promise<boolean> {
+    try {
+      const next = structuredClone(ctx.state.config)
+      update(next)
+      ctx.saveElizaConfig(next)
+      ctx.state.config.mcp = next.mcp
+      return true
+    } catch (err) {
+      logger.error({ error: err }, "[api] MCP configuration save failed")
+      await ctx.error(ctx.res, "MCP configuration could not be persisted", 500)
+      return false
+    }
+  }
+
+  export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
+    const { req, res, method, pathname, url, state, json, error, readJsonBody } = ctx
+    if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
+      const query = (url.searchParams.get("q") ?? "").trim()
+      if (query.length > 200) {
+        await error(res, "Marketplace search query must be 200 characters or fewer", 400)
+        return true
+      }
+      const rawLimit = Number(url.searchParams.get("limit") ?? "30")
+      const limit = Number.isSafeInteger(rawLimit) ? Math.min(50, Math.max(1, rawLimit)) : 30
+      try {
+        const result = await searchMcpMarketplace(query || undefined, limit)
+        await json(res, { ok: true, results: result.results })
+      } catch (err) {
+        await error(res, `MCP marketplace search failed: ${err instanceof Error ? err.message : String(err)}`, 502)
+      }
+      return true
+    }
+    if (method === "GET" && (pathname.startsWith("/api/mcp/marketplace/details/") || pathname.startsWith("/api/mcp/marketplace/"))) {
+      const prefix = pathname.startsWith("/api/mcp/marketplace/details/") ? "/api/mcp/marketplace/details/" : "/api/mcp/marketplace/"
+      const decoded = ctx.decodePathComponent(pathname.slice(prefix.length), res, "server name")
+      if (decoded === null) return true
+      const name = decoded.trim()
+      if (!name || name.length > 200) {
+        await error(res, name ? "Server name must be 200 characters or fewer" : "Server name is required", 400)
+        return true
+      }
+      try {
+        const details = await getMcpServerDetails(name)
+        if (!details) {
+          await error(res, `MCP server "${name}" not found`, 404)
+          return true
+        }
+        await json(res, { ok: true, server: details })
+      } catch (err) {
+        await error(res, `Failed to fetch server details: ${err instanceof Error ? err.message : String(err)}`, 502)
+      }
+      return true
+    }
+    if (method === "GET" && pathname === "/api/mcp/config") {
+      await json(res, { ok: true, servers: ctx.redactDeep(state.config.mcp?.servers ?? {}) })
+      return true
+    }
+    if (method === "POST" && pathname === "/api/mcp/config/server") {
+      const body = await readJsonBody<{ name?: string; config?: Record<string, unknown>; terminalToken?: string }>(req, res)
+      if (!body) return true
+      const serverName = body.name?.trim()
+      if (!serverName) { await error(res, "Server name is required", 400); return true }
+      if (ctx.isBlockedObjectKey(serverName)) { await error(res, 'Invalid server name: "__proto__", "constructor", and "prototype" are reserved', 400); return true }
+      if (!body.config || typeof body.config !== "object" || Array.isArray(body.config)) { await error(res, "Server config object is required", 400); return true }
+      const rej = await ctx.resolveMcpServersRejection({ [serverName]: body.config })
+      if (rej) { await error(res, rej, 400); return true }
+      const termRej = ctx.resolveMcpTerminalAuthorizationRejection(req, { [serverName]: body.config }, body)
+      if (termRej) { await error(res, `Configuring stdio MCP servers requires terminal authorization. ${termRej.reason}`, termRej.status); return true }
+      const sanitized = ctx.cloneWithoutBlockedObjectKeys(body.config)
+      if (!(await persistConfig(ctx, (next) => { next.mcp = { ...next.mcp, servers: { ...(next.mcp?.servers ?? {}), [serverName]: sanitized } } }))) return true
+      await json(res, { ok: true, name: serverName, requiresRestart: true })
+      return true
+    }
+    if (method === "DELETE" && pathname.startsWith("/api/mcp/config/server/")) {
+      const serverName = ctx.decodePathComponent(pathname.slice("/api/mcp/config/server/".length), res, "server name")
+      if (serverName === null) return true
+      if (ctx.isBlockedObjectKey(serverName)) { await error(res, 'Invalid server name: "__proto__", "constructor", and "prototype" are reserved', 400); return true }
+      if (state.config.mcp?.servers?.[serverName]) {
+        if (!(await persistConfig(ctx, (next) => { if (next.mcp?.servers) delete next.mcp.servers[serverName] }))) return true
+      }
+      await json(res, { ok: true, requiresRestart: true })
+      return true
+    }
+    if (method === "PUT" && pathname === "/api/mcp/config") {
+      const body = await readJsonBody<{ servers?: Record<string, unknown>; terminalToken?: string }>(req, res)
+      if (!body) return true
+      if (body.servers !== undefined) {
+        if (!body.servers || typeof body.servers !== "object" || Array.isArray(body.servers)) { await error(res, "servers must be a JSON object", 400); return true }
+        for (const name of Object.keys(body.servers)) {
+          if (ctx.isBlockedObjectKey(name)) { await error(res, 'Invalid server name: "__proto__", "constructor", and "prototype" are reserved', 400); return true }
+        }
+        const rej = await ctx.resolveMcpServersRejection(body.servers)
+        if (rej) { await error(res, rej, 400); return true }
+        const termRej = ctx.resolveMcpTerminalAuthorizationRejection(req, body.servers, body)
+        if (termRej) { await error(res, `Configuring stdio MCP servers requires terminal authorization. ${termRej.reason}`, termRej.status); return true }
+      }
+      const sanitized = body.servers === undefined ? undefined : ctx.cloneWithoutBlockedObjectKeys(body.servers)
+      if (!(await persistConfig(ctx, (next) => { if (sanitized !== undefined) next.mcp = { ...next.mcp, servers: sanitized as Record<string, Record<string, unknown>> } }))) return true
+      await json(res, { ok: true })
+      return true
+    }
+    if (method === "GET" && pathname === "/api/mcp/status") {
+      const servers: { name: string; status: string; toolCount: number; resourceCount: number }[] = []
+      const svc = state.runtime?.getService(MCP_SERVICE_NAME) as { getServers?: () => { name: string; status: string; tools?: unknown[]; resources?: unknown[] }[] } | null
+      if (svc && typeof svc.getServers === "function") {
+        for (const s of svc.getServers()) {
+          servers.push({ name: s.name, status: s.status, toolCount: Array.isArray(s.tools) ? s.tools.length : 0, resourceCount: Array.isArray(s.resources) ? s.resources.length : 0 })
+        }
+      }
+      await json(res, { ok: true, servers })
+      return true
+    }
+    return false
+  }
+}
+
+import {
+  McpMarketplaceError,
+  getMcpServerDetails,
+  handleMcpRoutes,
+  searchMcpMarketplace,
+  type McpRouteContext,
+} from node
+
+export {
+  McpMarketplaceError,
+  getMcpServerDetails,
+  handleMcpRoutes,
+  searchMcpMarketplace,
+  type McpRouteContext,
+}

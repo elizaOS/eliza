@@ -1,0 +1,54 @@
+// spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"
+import type { IAgentRuntime, Provider, ProviderResult } from "@elizaos/core"
+import { phoneClient, TELEPHONY_CALL_LOG_MAX, type PhoneClient, type TelephonyCallLogEntry } from "@elizaos/os-bridges"
+
+export interface PhoneCallLogItem {
+  readonly id: string
+  readonly number: string
+  readonly cachedName: string
+  readonly date: number
+  readonly durationSeconds: number
+  readonly type: string
+  readonly isNew: boolean
+}
+
+export function createPhoneCallLogProvider(client: Pick<PhoneClient, "recentCalls"> = phoneClient()): Provider {
+  return {
+    name: "phoneCallLog",
+    description: "Read-only Android call history (number, cached name, timestamp, duration, call type) for resolving recent phone activity.",
+    descriptionCompressed: "Phone call log: number, name, date, duration, type.",
+    dynamic: true,
+    contexts: ["contacts", "messaging"],
+    contextGate: { anyOf: ["contacts", "messaging"] },
+    cacheScope: "turn",
+    roleGate: { minRole: "ADMIN" },
+    cacheStable: false,
+    get: async (_runtime: IAgentRuntime): Promise<ProviderResult> => {
+      const read = await Effect.runPromise(Effect.result(Effect.tryPromise(() => client.recentCalls({ limit: TELEPHONY_CALL_LOG_MAX }))))
+      if (read._tag !== "Success") {
+        const message = read.failure instanceof Error ? read.failure.message : String(read.failure)
+        return {
+          text: JSON.stringify({ phone_call_log: { error: message } }),
+          values: { callLogAvailable: false, callLogCount: 0, callLogError: message },
+          data: { calls: [], count: 0, error: message },
+        }
+      }
+      const entries: PhoneCallLogItem[] = read.success.calls.map((call: TelephonyCallLogEntry) => ({
+        id: call.id,
+        number: call.number,
+        cachedName: call.cachedName ?? "",
+        date: call.date,
+        durationSeconds: call.durationSeconds,
+        type: call.type,
+        isNew: call.isNew,
+      }))
+      return {
+        text: JSON.stringify({ phone_call_log: { count: entries.length, items: entries } }),
+        values: { callLogAvailable: entries.length > 0, callLogCount: entries.length },
+        data: { calls: entries, count: entries.length },
+      }
+    },
+  }
+}
+
+export const phoneCallLogProvider: Provider = createPhoneCallLogProvider()

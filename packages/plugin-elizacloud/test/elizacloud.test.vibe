@@ -1,0 +1,563 @@
+// spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/index.md, "Story: See which configured Cloud models can answer my request"; spec/elizaCloud/apiKeys.md, "Story: Mint a Cloud API key safely from chat"; spec/elizaCloud/inference.md, "Story: Route Cloud inference with bounded retries and uniform wire tool schemas"; spec/elizaCloud/delegation.md, "Story: Gate managed Google delegation and gateway relay on owner consent"
+import { assert, it } from "@effect/vitest"
+import { cloudServiceType, type CloudLinkRequest, type CloudLinkService, type RouteInput } from "@elizaos/agent-host"
+import { ElizaError, ModelType, type IAgentRuntime, type Memory, type Service, type State, type TextStreamResult, type UUID } from "@elizaos/core"
+import {
+  CLOUD_AUTH_SERVICE_TYPE,
+  CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE,
+  CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE,
+  CLOUD_MODEL_REGISTRY_SERVICE_TYPE,
+  CloudAuthService,
+  CloudGoogleDelegationService,
+  CloudManagedGatewayRelayService,
+  CloudModelRegistryService,
+  CloudSttUnavailableError,
+  accountStatusAction,
+  clearCloudVoiceCatalogCache,
+  cloudAccountProvider,
+  cloudStatusProvider,
+  connectionProvider,
+  createCloudApiKeyAction,
+  creditBalanceProvider,
+  elizaCloudRoutes,
+  fetchCloudVoiceCatalog,
+  handleActionPlanner,
+  handleAudioGeneration,
+  handleBatchTextEmbedding,
+  handleImageDescription,
+  handleImageGeneration,
+  handleResearch,
+  handleResponseHandler,
+  handleTextEmbedding,
+  handleTextLarge,
+  handleTextMedium,
+  handleTextMega,
+  handleTextNano,
+  handleTextSmall,
+  handleTextToSpeech,
+  handleTokenizerDecode,
+  handleTokenizerEncode,
+  handleTranscription,
+  handleVideoGeneration,
+  invalidateCloudAccountCache,
+  isOpenAiVoiceAlias,
+  isSlotServedByCloud,
+  modelRegistryProvider,
+  parseApiKeyName,
+  plugin,
+  resolveTokenizerEncodingName,
+} from "../src/index.vibe"
+
+module node {
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+
+  export interface CloudTestServer {
+    readonly baseUrl: string
+    readonly requests: Array<{ readonly method: string; readonly path: string; readonly headers: Record<string, string | string[] | undefined>; readonly bodyText: string }>
+    stop(): Promise<void>
+  }
+
+  export async function startCloudServer(
+    handler: (
+      req: { readonly method: string; readonly path: string; readonly headers: Record<string, string | string[] | undefined>; readonly bodyText: string },
+      res: ServerResponse,
+    ) => void,
+  ): Promise<CloudTestServer> {
+    const requests: Array<{ readonly method: string; readonly path: string; readonly headers: Record<string, string | string[] | undefined>; readonly bodyText: string }> = []
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      const chunks: Buffer[] = []
+      req.on("data", (chunk: Buffer) => { chunks.push(chunk) })
+      req.on("end", () => {
+        const entry = {
+          method: req.method ?? "GET",
+          path: req.url ?? "/",
+          headers: req.headers,
+          bodyText: Buffer.concat(chunks).toString("utf8"),
+        }
+        requests.push(entry)
+        handler(entry, res)
+      })
+    })
+    await new Promise<void>((resolve) => { server.listen(0, "127.0.0.1", () => resolve()) })
+    const addr = server.address()
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0
+    return {
+      baseUrl: `http://127.0.0.1:${port}`,
+      requests,
+      stop: () => new Promise<void>((resolve) => { server.close(() => resolve()) }),
+    }
+  }
+
+  /** @throws {never} */
+  export function parseJson(text: string): Record<string, unknown> {
+    return JSON.parse(text) as Record<string, unknown>
+  }
+
+  /** @throws {never} */
+  export function utf8Buf(text: string): Buffer {
+    return Buffer.from(text, "utf8")
+  }
+
+  /** @throws {never} */
+  export function bytesToUtf8(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("utf8")
+  }
+
+  /** @throws {never} */
+  export function textToBase64(text: string): string {
+    return Buffer.from(text, "utf8").toString("base64")
+  }
+
+  /** @throws {never} */
+  export function makeRouteHeaders(): globalThis.Headers {
+    return new globalThis.Headers()
+  }
+}
+import { bytesToUtf8, makeRouteHeaders, parseJson, startCloudServer, textToBase64, utf8Buf } from node
+
+const OWNER_ID = "00000000-0000-0000-0000-0000000000aa" as UUID
+const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID
+const ROOM_ID = "00000000-0000-0000-0000-0000000000bb" as UUID
+
+function makeRuntime(settings: Record<string, string>, services: Map<string, Service> = new Map()): IAgentRuntime {
+  return {
+    agentId: AGENT_ID,
+    character: { settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID } },
+    getSetting: (key: string) => settings[key] ?? (key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ID : undefined),
+    getService: (type: string) => services.get(type) ?? null,
+  } as unknown as IAgentRuntime
+}
+
+function makeMessage(text: string, entityId: UUID = OWNER_ID): Memory {
+  return {
+    id: "00000000-0000-0000-0000-0000000000cc" as UUID,
+    roomId: ROOM_ID,
+    entityId,
+    content: { text },
+  }
+}
+
+const emptyState: State = { values: {}, data: {}, text: "" }
+
+function routeInput(body?: unknown, query?: Record<string, string>): RouteInput {
+  return {
+    body,
+    query: new URLSearchParams(query ?? {}),
+    parameters: new Map<string, string>(),
+    headers: makeRouteHeaders(),
+    signal: new AbortController().signal,
+  } as unknown as RouteInput
+}
+
+it('Cloud text tiers, KV cache telemetry, batch-uniform wire strictness, warming retry, embeddings coalescing, media, speech, STT, tokenization, and RESEARCH retirement (spec/elizaCloud/inference.md, "Story: Route Cloud inference with bounded retries and uniform wire tool schemas")', async () => {
+  let chatCalls = 0
+  let embedCalls = 0
+  const srv = await startCloudServer((req, res) => {
+    if (req.path === "/api/v1/chat/completions") {
+      chatCalls += 1
+      const body = parseJson(req.bodyText)
+      if (chatCalls === 1) {
+        res.writeHead(503, { "content-type": "application/json" })
+        res.end(JSON.stringify({ error: { code: "service_unavailable", message: "gateway_warming" } }))
+        return
+      }
+      if (body.stream === true) {
+        res.writeHead(200, { "content-type": "text/event-stream" })
+        res.write('data: {"choices":[{"delta":{"content":"cloud-stream"},"finish_reason":null}]}\n\n')
+        res.write('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2048,"completion_tokens":12,"total_tokens":2060,"prompt_tokens_details":{"cached_tokens":1920}}}\n\n')
+        res.end("data: [DONE]\n\n")
+        return
+      }
+      if (Array.isArray(body.tools)) {
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({
+          choices: [{
+            message: { tool_calls: [{ id: "call_1", type: "function", function: { name: "READ", arguments: "{}" } }] },
+            finish_reason: "tool_calls",
+          }],
+          usage: { prompt_tokens: 1024, completion_tokens: 24, total_tokens: 1048, prompt_tokens_details: { cached_tokens: 896 } },
+        }))
+        return
+      }
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({
+        choices: [{ message: { content: `ok:${String(body.model)}` }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110, prompt_tokens_details: { cached_tokens: 64 } },
+      }))
+      return
+    }
+    if (req.path === "/api/v1/embeddings") {
+      embedCalls += 1
+      const body = parseJson(req.bodyText) as { input: string[] }
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ data: body.input.map((_t, index) => ({ index, embedding: [0.25, 0.75, index + 1] })) }))
+      return
+    }
+    if (req.path === "/api/v1/images/generations") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ data: [{ url: "https://cdn.elizacloud.ai/img-1.png" }] }))
+      return
+    }
+    if (req.path === "/api/v1/generate-music") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ id: "aud-1", url: "https://cdn.elizacloud.ai/song.mp3" }))
+      return
+    }
+    if (req.path === "/api/v1/generate-video") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ id: "vid-1", url: "https://cdn.elizacloud.ai/clip.mp4" }))
+      return
+    }
+    if (req.path === "/api/v1/audio/speech" || req.path === "/api/elevenlabs/tts") {
+      res.writeHead(200, { "content-type": "audio/mpeg" })
+      res.end(utf8Buf(req.path === "/api/v1/audio/speech" ? "openai-audio" : "elevenlabs-audio"))
+      return
+    }
+    if (req.path === "/api/v1/audio/transcriptions") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ text: "hello from cloud stt" }))
+      return
+    }
+    if (req.path === "/api/elevenlabs/voices") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ voices: [{ voice_id: "v-premade", name: "Rachel", category: "premade" }] }))
+      return
+    }
+    if (req.path === "/api/elevenlabs/voices/user") {
+      res.writeHead(200, { "content-type": "application/json" })
+      res.end(JSON.stringify({ voices: [{ voice_id: "v-user", name: "MyVoice", category: "cloned" }] }))
+      return
+    }
+    res.writeHead(404)
+    res.end()
+  })
+
+  try {
+    clearCloudVoiceCatalogCache()
+    const runtime = makeRuntime({
+      ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
+      ELIZAOS_CLOUD_BASE_URL: srv.baseUrl,
+      ELIZAOS_CLOUD_SMALL_MODEL: "gpt-4.1-mini",
+      ELIZAOS_CLOUD_LARGE_MODEL: "gpt-4.1",
+    })
+
+    const warmRecovered = await handleTextLarge(runtime, { prompt: "hello" })
+    assert.strictEqual(warmRecovered, "ok:gpt-4.1")
+    assert.strictEqual(chatCalls, 2)
+
+    assert.strictEqual(await handleTextNano(runtime, { prompt: "n" }), "ok:gpt-4.1-mini")
+    assert.strictEqual(await handleTextSmall(runtime, { prompt: "s" }), "ok:gpt-4.1-mini")
+    assert.strictEqual(await handleTextMedium(runtime, { prompt: "m" }), "ok:gpt-4.1")
+    assert.strictEqual(await handleTextMega(runtime, { prompt: "x" }), "ok:gpt-4.1")
+    assert.strictEqual(await handleResponseHandler(runtime, { prompt: "r" }), "ok:gpt-4.1-mini")
+    assert.strictEqual(await handleActionPlanner(runtime, { prompt: "p" }), "ok:gpt-4.1")
+
+    const streamed = (await handleTextSmall(runtime, { prompt: "stream", stream: true })) as TextStreamResult
+    assert.strictEqual(await streamed.text, "cloud-stream")
+    assert.deepStrictEqual(await streamed.usage, {
+      promptTokens: 2048,
+      completionTokens: 12,
+      totalTokens: 2060,
+      cacheReadInputTokens: 1920,
+    })
+
+    const allStrictTool = {
+      name: "WEB_SEARCH",
+      description: "Search",
+      strict: true,
+      parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
+    }
+    const partialTool = {
+      name: "EDIT",
+      description: "Edit",
+      strict: true,
+      parameters: { type: "object", properties: { file_path: { type: "string" }, old_string: { type: "string" } }, required: ["file_path"], additionalProperties: false },
+    }
+    const allStrictRes = (await handleTextLarge(runtime, { prompt: "search", tools: [allStrictTool] })) as TextStreamResult
+    assert.strictEqual((await allStrictRes.usage)?.cacheReadInputTokens, 896)
+    await handleTextLarge(runtime, { prompt: "mixed", tools: [allStrictTool, partialTool] })
+
+    const toolPayloads = srv.requests
+      .filter((r) => r.path === "/api/v1/chat/completions")
+      .map((r) => parseJson(r.bodyText) as { tools?: Array<{ function: { name: string; strict?: boolean } }> })
+      .filter((b) => Array.isArray(b.tools))
+    assert.strictEqual(toolPayloads[0]?.tools?.[0]?.function.strict, true)
+    assert.strictEqual(toolPayloads[1]?.tools?.[0]?.function.strict, undefined)
+    assert.strictEqual(toolPayloads[1]?.tools?.[1]?.function.strict, undefined)
+
+    const chatDisabledRuntime = makeRuntime({ ELIZAOS_CLOUD_USE_INFERENCE: "false" })
+    assert.strictEqual(isSlotServedByCloud(chatDisabledRuntime, ModelType.TEXT_LARGE), false)
+    assert.strictEqual(isSlotServedByCloud(chatDisabledRuntime, ModelType.IMAGE), true)
+
+    const [embA, embB] = await Promise.all([
+      handleBatchTextEmbedding(runtime, { texts: ["alpha", "beta"] }),
+      handleBatchTextEmbedding(runtime, { texts: ["alpha", "beta"] }),
+    ])
+    assert.strictEqual(embedCalls, 1)
+    assert.deepStrictEqual(embA, embB)
+    const singleEmb = await handleTextEmbedding(runtime, "gamma")
+    assert.strictEqual(singleEmb.length, 3)
+
+    const images = await handleImageGeneration(runtime, { prompt: "sunset" })
+    assert.strictEqual(images[0]?.url, "https://cdn.elizacloud.ai/img-1.png")
+    const imgDesc = await handleImageDescription(runtime, { imageUrl: "https://cdn.elizacloud.ai/img-1.png" })
+    assert.strictEqual(imgDesc.description, "ok:gpt-4.1-mini")
+
+    const audioOut = await handleAudioGeneration(runtime, { audioUrl: "prompt" } as never)
+    assert.strictEqual(audioOut.id, "aud-1")
+    const videoOut = await handleVideoGeneration(runtime, { videoUrl: "prompt" } as never)
+    assert.strictEqual(videoOut.id, "vid-1")
+
+    assert.strictEqual(isOpenAiVoiceAlias("alloy"), true)
+    assert.strictEqual(isOpenAiVoiceAlias("EXAVITQu4vr4xnSDxMaL"), false)
+    const openaiAudio = await handleTextToSpeech(runtime, { text: "hi", voice: "alloy" })
+    assert.strictEqual(bytesToUtf8(openaiAudio), "openai-audio")
+    const elevenAudio = await handleTextToSpeech(runtime, { text: "hi", voice: "EXAVITQu4vr4xnSDxMaL" })
+    assert.strictEqual(bytesToUtf8(elevenAudio), "elevenlabs-audio")
+
+    const voices = await fetchCloudVoiceCatalog(runtime)
+    assert.deepStrictEqual(voices.map((v) => v.id), ["v-premade", "v-user"])
+
+    const transcript = await handleTranscription(runtime, utf8Buf("RIFF"))
+    assert.strictEqual(transcript, "hello from cloud stt")
+    const sttDisabledRuntime = makeRuntime({ ELIZAOS_CLOUD_API_KEY: "k", ELIZAOS_CLOUD_STT_ENABLED: "false" })
+    let sttErr: unknown
+    try {
+      await handleTranscription(sttDisabledRuntime, utf8Buf("RIFF"))
+    } catch (err) {
+      sttErr = err
+    }
+    assert.strictEqual(sttErr instanceof CloudSttUnavailableError, true)
+
+    assert.strictEqual(resolveTokenizerEncodingName("openai/gpt-4.1-mini"), "o200k_base")
+    const encoded = await handleTokenizerEncode(runtime, { prompt: "Eliza Cloud", modelType: ModelType.TEXT_SMALL })
+    assert.strictEqual(encoded.length > 0, true)
+    const decoded = await handleTokenizerDecode(runtime, { tokens: encoded, modelType: ModelType.TEXT_SMALL })
+    assert.strictEqual(decoded, "Eliza Cloud")
+
+    let researchErr: unknown
+    try {
+      await handleResearch(runtime, { input: "test" } as never)
+    } catch (err) {
+      researchErr = err
+    }
+    assert.strictEqual(researchErr instanceof ElizaError && researchErr.code === "ELIZA_CLOUD_RESEARCH_UNAVAILABLE", true)
+  } finally {
+    await srv.stop()
+  }
+})
+
+it('Account status, API key minting, providers, delegation, relay, and local host HTTP routes (spec/elizaCloud/index.md, "Story: Read account state and use Cloud under my current connection"; spec/elizaCloud/apiKeys.md, "Story: Mint a Cloud API key safely from chat"; spec/elizaCloud/delegation.md, "Story: Gate managed Google delegation and gateway relay on owner consent")', async () => {
+  let balanceDollars = 1.25
+  let allowKeyMint = false
+  let checkoutUrl = "https://www.elizacloud.ai/checkout/cs_123"
+  const srv = await startCloudServer((req, res) => {
+    const sendJson = (body: object, status = 200) => {
+      res.writeHead(status, { "content-type": "application/json" })
+      res.end(JSON.stringify(body))
+    }
+    if (req.path === "/api/v1/credits/balance") {
+      sendJson({ balance: balanceDollars })
+      return
+    }
+    if (req.path === "/api/v1/models") {
+      sendJson({
+        object: "list",
+        data: [
+          { id: "openai/gpt-4.1-mini", owned_by: "openai" },
+          { id: "openai/gpt-4.1", owned_by: "openai" },
+        ],
+      })
+      return
+    }
+    if (req.path === "/api/v1/api-keys") {
+      if (!allowKeyMint) {
+        sendJson({ error: "session_required" }, 403)
+        return
+      }
+      const parsed = parseJson(req.bodyText) as { name: string }
+      sendJson({
+        apiKey: { id: "key-99", name: parsed.name, key_prefix: "eliza_99" },
+        plainKey: "eliza_99_secret_once",
+      })
+      return
+    }
+    if (req.path === "/api/v1/oauth/token") {
+      sendJson({ sub: "cloud-user-7", email: "owner@example.com", name: "Owner" })
+      return
+    }
+    if (req.path.startsWith("/api/v1/eliza/google/")) {
+      sendJson({ ok: true, path: req.path })
+      return
+    }
+    if (req.path === "/api/v1/billing/summary") {
+      sendJson({ balance: balanceDollars, tier: "pro" })
+      return
+    }
+    if (req.path === "/api/v1/billing/checkout") {
+      sendJson({ url: checkoutUrl })
+      return
+    }
+    if (req.path === "/api/v1/billing/crypto/quote") {
+      sendJson({ quoteId: "q-1", amountUsd: 25 })
+      return
+    }
+    if (req.path === "/api/v1/audio/speech") {
+      res.writeHead(200, { "content-type": "audio/mpeg" })
+      res.end(utf8Buf("preview-mp3"))
+      return
+    }
+    if (req.path === "/api/v1/audio/transcriptions") {
+      sendJson({ text: "route stt ok" })
+      return
+    }
+    if (req.path === "/api/elevenlabs/voices" || req.path === "/api/elevenlabs/voices/user") {
+      sendJson({ voices: [{ voice_id: "v1", name: "VoiceOne" }] })
+      return
+    }
+    sendJson({ ok: true })
+  })
+
+  try {
+    clearCloudVoiceCatalogCache()
+    const link: CloudLinkService = {
+      admitGoogle: () => ({ kind: "admitted" }),
+      request: async (req: CloudLinkRequest) => {
+        if (req.path === "/api/v1/user") return { kind: "answered", status: 200, body: { success: true, data: { id: "acct-1" } } }
+        if (req.path === "/api/v1/billing/limits") {
+          return {
+            kind: "answered",
+            status: 200,
+            body: {
+              success: true,
+              data: {
+                schemaVersion: 3,
+                observedAt: Date.now(),
+                account: { status: "active" },
+                balance: { usdMicros: 12500000, revision: 1 },
+                plan: { key: "pro_monthly", source: "subscription", effectiveUntil: null },
+                subscription: null,
+                grant: null,
+                allowance: null,
+                funding: { inference: "creditsOnly", speech: "creditsOnly", maps: "creditsOnly" },
+              },
+            },
+          }
+        }
+        if (req.path === "/api/v1/models") {
+          return { kind: "answered", status: 200, body: { object: "list", data: [{ id: "openai/gpt-4.1-mini" }, { id: "openai/gpt-4.1" }] } }
+        }
+        return { kind: "refused", status: 404, body: {} }
+      },
+    } as unknown as CloudLinkService
+
+    const services = new Map<string, Service>()
+    const runtime = makeRuntime({
+      ELIZAOS_CLOUD_API_KEY: "eliza_live_key",
+      ELIZAOS_CLOUD_BASE_URL: srv.baseUrl,
+      ELIZA_CLOUD_CLIENT_ID: "client-123",
+    }, services)
+    services.set(cloudServiceType, link as unknown as Service)
+    const authSvc = await CloudAuthService.start(runtime)
+    const registrySvc = await CloudModelRegistryService.start(runtime)
+    const googleSvc = await CloudGoogleDelegationService.start(runtime)
+    const relaySvc = await CloudManagedGatewayRelayService.start(runtime)
+    services.set(CLOUD_AUTH_SERVICE_TYPE, authSvc)
+    services.set(CLOUD_MODEL_REGISTRY_SERVICE_TYPE, registrySvc)
+    services.set(CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE, googleSvc)
+    services.set(CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE, relaySvc)
+
+    await plugin.init?.({}, runtime)
+
+    const statusOut = await accountStatusAction.handler(runtime, makeMessage("cloud status"), emptyState)
+    assert.strictEqual(statusOut?.success, true)
+    assert.strictEqual(statusOut?.text?.includes("both configured text models are available"), true)
+
+    assert.strictEqual(parseApiKeyName('create key named ci-bot'), "ci-bot")
+    assert.strictEqual(parseApiKeyName('mint "prod-deploy"'), "prod-deploy")
+
+    const reservedOut = await createCloudApiKeyAction.handler(runtime, makeMessage("create"), emptyState, { parameters: { name: "agent-sandbox:bad" } })
+    assert.strictEqual(reservedOut?.success, false)
+
+    const sessionReqOut = await createCloudApiKeyAction.handler(runtime, makeMessage("create"), emptyState, { parameters: { name: "ci-key" } })
+    assert.strictEqual(sessionReqOut?.success, false)
+    assert.strictEqual(sessionReqOut?.text?.includes("/dashboard/api-keys"), true)
+
+    const creditsBefore = await creditBalanceProvider.get(runtime, makeMessage("credits"), emptyState)
+    assert.strictEqual(creditsBefore.text?.includes("LOW"), true)
+
+    balanceDollars = 0.25
+    allowKeyMint = true
+    const minted = await createCloudApiKeyAction.handler(runtime, makeMessage("create"), emptyState, { parameters: { name: "ci-key" } })
+    assert.strictEqual(minted?.success, true)
+    assert.strictEqual(minted?.text?.includes("eliza_99_secret_once"), false)
+    assert.strictEqual(minted?.text?.includes("eliza_99"), true)
+
+    const creditsAfter = await creditBalanceProvider.get(runtime, makeMessage("credits"), emptyState)
+    assert.strictEqual(creditsAfter.text?.includes("CRITICAL"), true)
+
+    const accountSummary = await cloudAccountProvider.get(runtime, makeMessage("acct"), emptyState)
+    assert.strictEqual(accountSummary.text?.includes("billing:"), true)
+    const statusProv = await cloudStatusProvider.get(runtime, makeMessage("status"), emptyState)
+    assert.strictEqual(statusProv.text?.includes("TextModelsAvailable"), true)
+    const connProv = await connectionProvider.get(runtime, makeMessage("conn"), emptyState)
+    assert.strictEqual(connProv.text, "Cloud is connected.")
+    const modelsProv = await modelRegistryProvider.get(runtime, makeMessage("models"), emptyState)
+    assert.strictEqual(modelsProv.text?.includes("2 models"), true)
+
+    const ssoUrl = authSvc.getSsoRedirectUrl("nonce-1")
+    assert.strictEqual(ssoUrl?.includes("/oauth/authorize"), true)
+    let stateMismatch = false
+    try {
+      await authSvc.exchangeSsoCode("code-1", "bad-state", "nonce-1")
+    } catch {
+      stateMismatch = true
+    }
+    assert.strictEqual(stateMismatch, true)
+    const ssoSession = await authSvc.exchangeSsoCode("code-1", "nonce-1", "nonce-1")
+    assert.strictEqual(ssoSession.cloudUserId, "cloud-user-7")
+
+    googleSvc.connect("acct-1", false, false)
+    let consentBlocked = false
+    try {
+      await googleSvc.requestDelegated("gmail", "POST", "/messages/send", { to: "a@b.com" })
+    } catch {
+      consentBlocked = true
+    }
+    assert.strictEqual(consentBlocked, true)
+    const readRes = await googleSvc.requestDelegated("gmail", "GET", "/messages")
+    assert.strictEqual((readRes as { ok: boolean }).ok, true)
+    googleSvc.setConsent(true, true)
+    const sendRes = await googleSvc.requestDelegated("gmail", "POST", "/messages/send", { to: "a@b.com" })
+    assert.strictEqual((sendRes as { ok: boolean }).ok, true)
+
+    const routes = elizaCloudRoutes(() => runtime)
+    const findRoute = (method: string, path: string) => routes.find((r) => r.method === method && r.path === path)!
+    const rStatus = await findRoute("GET", "/api/cloud/status").handler(routeInput())
+    assert.strictEqual(rStatus.status, 200)
+    const rBilling = await findRoute("GET", "/api/cloud/billing/summary").handler(routeInput())
+    assert.strictEqual(rBilling.status, 200)
+    const rCheckout = await findRoute("POST", "/api/cloud/billing/checkout").handler(routeInput({ amountUsd: 25 }))
+    assert.strictEqual(rCheckout.status, 200)
+    checkoutUrl = "http://evil.example/steal"
+    const rBadCheckout = await findRoute("POST", "/api/cloud/billing/checkout").handler(routeInput({ amountUsd: 25 }))
+    assert.strictEqual(rBadCheckout.status, 502)
+    const rQuote = await findRoute("POST", "/api/cloud/billing/crypto/quote").handler(routeInput({ amountUsd: 25 }))
+    assert.strictEqual(rQuote.status, 200)
+    const rTts = await findRoute("POST", "/api/cloud/tts/preview").handler(routeInput({ text: "hello", voice: "alloy" }))
+    assert.strictEqual(rTts.status, 200)
+    const rStt = await findRoute("POST", "/api/cloud/stt").handler(routeInput({ audioBase64: textToBase64("RIFF") }))
+    assert.strictEqual(rStt.status, 200)
+    const rRelay = await findRoute("GET", "/api/cloud/relay-status").handler(routeInput())
+    assert.strictEqual((rRelay.body as { relayActive: boolean }).relayActive, true)
+    const rDisconnect = await findRoute("POST", "/api/cloud/disconnect").handler(routeInput())
+    assert.strictEqual(rDisconnect.status, 200)
+    assert.strictEqual(googleSvc.getState().gmailConsent, false)
+    assert.strictEqual(relaySvc.getRelayStatus().relayActive, false)
+
+    invalidateCloudAccountCache(runtime)
+    await plugin.dispose?.(runtime)
+  } finally {
+    await srv.stop()
+  }
+})

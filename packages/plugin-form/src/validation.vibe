@@ -1,0 +1,430 @@
+// spec/form/index.md, "Each captured answer belongs to one field in the participant's current form"
+import { formatCalendarDate, parseCalendarDate } from "./calendar-date.vibe"
+import { strictEmailValid } from "./email.vibe"
+import type { ControlType, FormControl, JsonValue, TypeHandler, ValidationResult } from "./types.vibe"
+
+export const MAX_CONTROL_PATTERN_LENGTH = 200
+export const MAX_CONTROL_PATTERN_INPUT_LENGTH = 4_096
+
+const typeHandlers: Map<string, TypeHandler> = new Map()
+const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i
+const BOOLEAN_TRUE_LITERALS: readonly string[] = ["true", "yes", "1", "on"]
+const BOOLEAN_FALSE_LITERALS: readonly string[] = ["false", "no", "0", "off"]
+
+export type ParsedBoolean =
+  | { readonly known: true; readonly value: boolean }
+  | { readonly known: false }
+
+export function registerTypeHandler(type: string, handler: TypeHandler): void {
+  typeHandlers.set(type, handler)
+}
+
+export function getTypeHandler(type: string): TypeHandler | undefined
+export function getTypeHandler(type: string, controlType: ControlType | undefined): TypeHandler | ControlType | undefined
+export function getTypeHandler(type: string, controlType?: ControlType): TypeHandler | ControlType | undefined {
+  if (controlType && !controlType.builtin) return controlType
+  return typeHandlers.get(type) ?? controlType
+}
+
+export function clearTypeHandlers(): void {
+  typeHandlers.clear()
+}
+
+function isSafeUntrustedRegexPattern(pattern: string): boolean {
+  if (pattern.length === 0 || pattern.length > MAX_CONTROL_PATTERN_LENGTH) return false
+  try {
+    new RegExp(pattern)
+  } catch {
+    return false
+  }
+  let hasAtom = false
+  let variableRepetitions = 0
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index]
+    if (char === "\\") {
+      const escaped = pattern[index + 1]
+      if (!escaped || /[1-9k]/.test(escaped)) return false
+      index += 1
+      hasAtom = true
+      continue
+    }
+    if (char === "[") {
+      let closed = false
+      for (index += 1; index < pattern.length; index += 1) {
+        if (pattern[index] === "\\") {
+          index += 1
+        } else if (pattern[index] === "]") {
+          closed = true
+          break
+        }
+      }
+      if (!closed) return false
+      hasAtom = true
+      continue
+    }
+    if (char === "(" || char === ")" || char === "|") return false
+    if (char === "^" || char === "$") {
+      if ((char === "^" && index !== 0) || (char === "$" && index !== pattern.length - 1)) return false
+      hasAtom = false
+      continue
+    }
+    if (char === "*" || char === "+" || char === "?") {
+      if (!hasAtom) return false
+      variableRepetitions += 1
+      if (variableRepetitions > 1) return false
+      hasAtom = false
+      continue
+    }
+    if (char === "{") {
+      if (!hasAtom) return false
+      const quantifier = /^\{(\d+)(?:,(\d*))?\}/.exec(pattern.slice(index))
+      if (!quantifier) return false
+      const minimum = Number(quantifier[1])
+      const hasComma = quantifier[0].includes(",")
+      const maximum = hasComma ? (quantifier[2] === "" ? undefined : Number(quantifier[2])) : minimum
+      if (
+        minimum > MAX_CONTROL_PATTERN_INPUT_LENGTH ||
+        (maximum !== undefined && maximum > MAX_CONTROL_PATTERN_INPUT_LENGTH)
+      ) {
+        return false
+      }
+      if (maximum === undefined || maximum !== minimum) {
+        variableRepetitions += 1
+        if (variableRepetitions > 1) return false
+      }
+      index += quantifier[0].length - 1
+      hasAtom = false
+      continue
+    }
+    if (char === "}") return false
+    hasAtom = true
+  }
+  return true
+}
+
+export function testControlPattern(
+  pattern: string,
+  value: string,
+): { ok: true } | { ok: false; reason: "unsupported" | "mismatch" | "too-long" } {
+  if (typeof pattern !== "string" || pattern.length === 0) {
+    return { ok: false, reason: "unsupported" }
+  }
+  if (pattern.length > MAX_CONTROL_PATTERN_LENGTH || value.length > MAX_CONTROL_PATTERN_INPUT_LENGTH) {
+    return { ok: false, reason: "too-long" }
+  }
+  if (!isSafeUntrustedRegexPattern(pattern)) {
+    return { ok: false, reason: "unsupported" }
+  }
+  return new RegExp(pattern).test(value) ? { ok: true } : { ok: false, reason: "mismatch" }
+}
+
+function parseStrictNumber(input: string): number {
+  const cleaned = input.trim().replace(/^([+-]?)\s*\$/, "$1").trim()
+  if (cleaned.includes(",") && !/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d*)?(?:e[+-]?\d+)?$/i.test(cleaned)) {
+    return Number.NaN
+  }
+  const normalized = cleaned.replace(/,/g, "")
+  if (!STRICT_NUMBER_PATTERN.test(normalized)) return Number.NaN
+  return Number(normalized)
+}
+
+function checkNumberBounds(numValue: number, control: FormControl): ValidationResult {
+  if (control.min !== undefined && numValue < control.min) {
+    return { valid: false, error: `${control.label || control.key} must be at least ${control.min}` }
+  }
+  if (control.max !== undefined && numValue > control.max) {
+    return { valid: false, error: `${control.label || control.key} must be at most ${control.max}` }
+  }
+  return { valid: true }
+}
+
+function checkDateBounds(timestamp: number, control: FormControl): ValidationResult {
+  if (control.min !== undefined && timestamp < control.min) {
+    return { valid: false, error: `${control.label || control.key} is too early` }
+  }
+  if (control.max !== undefined && timestamp > control.max) {
+    return { valid: false, error: `${control.label || control.key} is too late` }
+  }
+  return { valid: true }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+export function matchesMimeType(mimeType: string, pattern: string): boolean {
+  const type = mimeType.toLowerCase()
+  const expected = pattern.toLowerCase()
+  if (expected === "*/*") return true
+  if (expected.endsWith("/*")) return type.startsWith(expected.slice(0, -1))
+  return type === expected
+}
+
+export function parseBoolean(value: JsonValue): ParsedBoolean {
+  if (typeof value === "boolean") return { known: true, value }
+  const literal = String(value).trim().toLowerCase()
+  if (BOOLEAN_TRUE_LITERALS.includes(literal)) return { known: true, value: true }
+  if (BOOLEAN_FALSE_LITERALS.includes(literal)) return { known: true, value: false }
+  return { known: false }
+}
+
+function validateText(value: JsonValue, control: FormControl): ValidationResult {
+  const strValue = String(value)
+  if (control.pattern) {
+    const checked = testControlPattern(control.pattern, strValue)
+    if (!checked.ok) {
+      return { valid: false, error: `${control.label || control.key} has invalid format` }
+    }
+  }
+  if (control.minLength !== undefined && strValue.length < control.minLength) {
+    return { valid: false, error: `${control.label || control.key} must be at least ${control.minLength} characters` }
+  }
+  if (control.maxLength !== undefined && strValue.length > control.maxLength) {
+    return { valid: false, error: `${control.label || control.key} must be at most ${control.maxLength} characters` }
+  }
+  if (control.enum && control.enum.length > 0 && !control.enum.includes(strValue)) {
+    return { valid: false, error: `${control.label || control.key} must be one of: ${control.enum.join(", ")}` }
+  }
+  return { valid: true }
+}
+
+function validateEmail(value: JsonValue, control: FormControl): ValidationResult {
+  if (!strictEmailValid(String(value))) {
+    return { valid: false, error: `${control.label || control.key} must be a valid email address` }
+  }
+  return validateText(value, control)
+}
+
+function validateNumber(value: JsonValue, control: FormControl): ValidationResult {
+  const numValue = typeof value === "number" ? value : parseStrictNumber(String(value))
+  if (!Number.isFinite(numValue)) {
+    return { valid: false, error: `${control.label || control.key} must be a number` }
+  }
+  return checkNumberBounds(numValue, control)
+}
+
+function validateBoolean(value: JsonValue): ValidationResult {
+  return parseBoolean(value).known ? { valid: true } : { valid: false, error: "Must be true or false" }
+}
+
+function validateDate(value: JsonValue, control: FormControl): ValidationResult {
+  const iso = typeof value === "string" ? parseCalendarDate(value) : undefined
+  if (!iso) {
+    return { valid: false, error: `${control.label || control.key} must be a valid date` }
+  }
+  return checkDateBounds(new Date(`${iso}T00:00:00.000Z`).getTime(), control)
+}
+
+function validateSelect(value: JsonValue, control: FormControl): ValidationResult {
+  const options = control.options ?? []
+  if (options.length === 0) {
+    if (control.enum && !control.enum.includes(String(value))) {
+      return { valid: false, error: `Must be one of: ${control.enum.join(", ")}` }
+    }
+    return { valid: true }
+  }
+  const strValue = String(value)
+  if (!options.some((opt) => opt.value === strValue)) {
+    return { valid: false, error: `${control.label || control.key} must be one of the available options` }
+  }
+  return { valid: true }
+}
+
+function validateFile(value: JsonValue, control: FormControl): ValidationResult {
+  const files = Array.isArray(value) ? value : [value]
+  if (files.length === 0) {
+    return control.required ? { valid: false, error: `${control.label || control.key} is required` } : { valid: true }
+  }
+  if (control.file?.maxFiles !== undefined && files.length > control.file.maxFiles) {
+    return { valid: false, error: `Maximum ${control.file.maxFiles} files allowed` }
+  }
+  for (const file of files) {
+    if (!file || typeof file !== "object" || Array.isArray(file)) {
+      return { valid: false, error: "Invalid file data" }
+    }
+    const fileObj = file as { id?: unknown; name?: unknown; size?: unknown; mimeType?: unknown; url?: unknown }
+    if (
+      typeof fileObj.id !== "string" ||
+      fileObj.id.trim().length === 0 ||
+      typeof fileObj.name !== "string" ||
+      fileObj.name.trim().length === 0 ||
+      typeof fileObj.mimeType !== "string" ||
+      fileObj.mimeType.trim().length === 0 ||
+      typeof fileObj.size !== "number" ||
+      !Number.isFinite(fileObj.size) ||
+      fileObj.size < 0 ||
+      typeof fileObj.url !== "string" ||
+      fileObj.url.trim().length === 0
+    ) {
+      return { valid: false, error: "Invalid file data" }
+    }
+    if (control.file?.maxSize !== undefined && fileObj.size > control.file.maxSize) {
+      return { valid: false, error: `File size exceeds maximum of ${formatBytes(control.file.maxSize)}` }
+    }
+    if (control.file?.accept) {
+      const mimeType = fileObj.mimeType
+      if (!control.file.accept.some((pattern) => matchesMimeType(mimeType, pattern))) {
+        return { valid: false, error: `File type ${mimeType} is not accepted` }
+      }
+    }
+  }
+  return { valid: true }
+}
+
+function readHandlerNumber(value: JsonValue, handler: TypeHandler | ControlType | undefined): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined
+  const raw = String(value)
+  if (handler?.parse) {
+    const parsed = handler.parse(raw)
+    if (typeof parsed === "number" && Number.isFinite(parsed)) return parsed
+  }
+  const strict = parseStrictNumber(raw)
+  return Number.isFinite(strict) ? strict : undefined
+}
+
+function readHandlerDate(value: JsonValue, handler: TypeHandler | ControlType | undefined): string | undefined {
+  if (typeof value !== "string") return undefined
+  if (handler?.parse) {
+    const parsed = handler.parse(value)
+    if (typeof parsed === "string") {
+      const iso = parseCalendarDate(parsed)
+      if (iso) return iso
+    }
+  }
+  return parseCalendarDate(value)
+}
+
+function validateFieldConstraints(
+  value: JsonValue,
+  control: FormControl,
+  handler: TypeHandler | ControlType | undefined,
+): ValidationResult {
+  const hasBounds = control.min !== undefined || control.max !== undefined
+  switch (control.type) {
+    case "number": {
+      if (hasBounds) {
+        const numValue = readHandlerNumber(value, handler)
+        if (numValue === undefined) return { valid: false, error: `${control.label || control.key} must be a number` }
+        const bounds = checkNumberBounds(numValue, control)
+        if (!bounds.valid) return bounds
+      }
+      break
+    }
+    case "date": {
+      if (hasBounds) {
+        const iso = readHandlerDate(value, handler)
+        if (iso === undefined) return { valid: false, error: `${control.label || control.key} must be a valid date` }
+        const bounds = checkDateBounds(new Date(`${iso}T00:00:00.000Z`).getTime(), control)
+        if (!bounds.valid) return bounds
+      }
+      break
+    }
+    case "select": {
+      const selected = validateSelect(value, control)
+      if (!selected.valid) return selected
+      break
+    }
+    case "file": {
+      if (control.file) {
+        const files = validateFile(value, control)
+        if (!files.valid) return files
+      }
+      break
+    }
+    default:
+      break
+  }
+  return validateText(value, control)
+}
+
+export function validateField(value: JsonValue, control: FormControl, controlType?: ControlType): ValidationResult {
+  if (control.required && (value === undefined || value === null || value === "")) {
+    return { valid: false, error: `${control.label || control.key} is required` }
+  }
+  if (value === undefined || value === null || value === "") {
+    return { valid: true }
+  }
+  const handler = getTypeHandler(control.type, controlType)
+  if (handler?.validate && !(handler === controlType && controlType.builtin)) {
+    const result = handler.validate(value, control)
+    if (!result.valid) return result
+    if (controlType && !controlType.builtin) return validateText(value, control)
+    if (handler !== controlType) return validateFieldConstraints(value, control, handler)
+  }
+  switch (control.type) {
+    case "email":
+      return validateEmail(value, control)
+    case "number":
+      return validateNumber(value, control)
+    case "boolean":
+      return validateBoolean(value)
+    case "date":
+      return validateDate(value, control)
+    case "select":
+      return validateSelect(value, control)
+    case "file":
+      return validateFile(value, control)
+    default:
+      return validateText(value, control)
+  }
+}
+
+export function parseValue(value: string, control: FormControl, controlType?: ControlType): JsonValue {
+  const handler = getTypeHandler(control.type, controlType)
+  if (
+    handler?.parse &&
+    !(handler === controlType && controlType.builtin && (control.type === "number" || control.type === "boolean"))
+  ) {
+    return handler.parse(value)
+  }
+  switch (control.type) {
+    case "number": {
+      const parsed = parseStrictNumber(value)
+      return Number.isFinite(parsed) ? parsed : value
+    }
+    case "boolean": {
+      const parsed = parseBoolean(value)
+      return parsed.known ? parsed.value : value
+    }
+    case "date":
+      return parseCalendarDate(value) ?? value
+    default:
+      return value
+  }
+}
+
+export function formatValue(value: JsonValue, control: FormControl, controlType?: ControlType): string {
+  if (value === undefined || value === null) return ""
+  if (control.sensitive) return "****"
+  const handler = getTypeHandler(control.type, controlType)
+  if (handler?.format) return handler.format(value)
+  switch (control.type) {
+    case "number":
+      return typeof value === "number" ? value.toLocaleString() : String(value)
+    case "boolean": {
+      const parsed = parseBoolean(value)
+      if (!parsed.known) return String(value)
+      return parsed.value ? "Yes" : "No"
+    }
+    case "date":
+      return formatCalendarDate(String(value)) ?? String(value)
+    case "select": {
+      if (control.options) {
+        const option = control.options.find((opt) => opt.value === String(value))
+        if (option) return option.label
+      }
+      return String(value)
+    }
+    case "file": {
+      if (Array.isArray(value)) {
+        return value.map((file) => (file as { name?: string }).name || "file").join(", ")
+      }
+      return (value as { name?: string }).name || "file"
+    }
+    default:
+      return String(value)
+  }
+}

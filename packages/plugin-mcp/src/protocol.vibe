@@ -1,0 +1,569 @@
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "Provider schema projections retain the meaning of omitted constraints in the prompt"
+export const MAX_MCP_SCHEMA_JSON_BYTES = 256 * 1024
+export const MAX_MCP_SCHEMA_DEPTH = 32
+export const MAX_MCP_SCHEMA_NODES = 2048
+export const MCP_TOOL_SCHEMA_UNBOUNDED = "MCP_TOOL_SCHEMA_UNBOUNDED"
+
+export type McpModelProvider = "openai" | "anthropic" | "google" | "openrouter" | "bitrouter" | "unknown"
+
+export interface McpModelInfo {
+  readonly provider: McpModelProvider
+  readonly modelId: string
+  readonly supportsStructuredOutputs: boolean
+  readonly isReasoningModel: boolean
+}
+
+export interface McpRuntimeModelProjection {
+  readonly modelProvider?: unknown
+  readonly model?: unknown
+  readonly character?: {
+    readonly settings?: Readonly<Record<string, unknown>> | null
+  } | null
+}
+
+export interface McpKernelTool {
+  readonly name: string
+  readonly description?: string
+  readonly inputSchema?: Readonly<Record<string, unknown>>
+}
+
+export interface McpKernelResource {
+  readonly uri: string
+  readonly name: string
+  readonly description?: string
+  readonly mimeType?: string
+}
+
+export interface McpKernelServer {
+  readonly name: string
+  readonly status: string
+  readonly tools?: readonly McpKernelTool[]
+  readonly resources?: readonly McpKernelResource[]
+}
+
+export interface McpKernelProviderData {
+  readonly [serverName: string]: {
+    readonly status: string
+    readonly tools: Readonly<Record<string, { readonly description: string; readonly inputSchema?: Readonly<Record<string, unknown>> }>>
+    readonly resources: Readonly<Record<string, { readonly name: string; readonly description: string; readonly mimeType?: string }>>
+  }
+}
+
+export interface McpKernelProviderProjection {
+  readonly values: { readonly mcp: McpKernelProviderData; readonly mcpText?: string }
+  readonly data: { readonly mcp: McpKernelProviderData }
+  readonly text: string
+}
+
+export interface McpResourceSelection {
+  readonly serverName?: string
+  readonly uri?: string
+  readonly reasoning?: string
+  readonly noResourceAvailable?: boolean
+}
+
+export type McpSelectionValidation<T> =
+  | { readonly success: true; readonly data: T }
+  | { readonly success: false; readonly error: string }
+
+function normalizeSegment(str: string): string {
+  return str.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "")
+}
+
+export function toActionName(serverName: string, toolName: string): string {
+  const server = normalizeSegment(serverName)
+  const tool = normalizeSegment(toolName)
+  if (!server) return tool || "_"
+  if (!tool) return `${server}_`
+  if (tool.startsWith(`${server}_`)) return tool
+  return `${server}_${tool}`
+}
+
+export function generateSimiles(serverName: string, toolName: string): string[] {
+  const tool = normalizeSegment(toolName)
+  const fullName = toActionName(serverName, toolName)
+  const similes = [tool, `${serverName}/${toolName}`, `${serverName.toLowerCase()}/${toolName.toLowerCase()}`, `MCP_${fullName}`]
+  const parts = toolName.split("_")
+  if (parts.length === 2) {
+    const reversed = `${parts[1]}_${parts[0]}`.toUpperCase()
+    if (reversed !== tool) similes.push(reversed)
+  }
+  return [...new Set(similes)].filter((s) => s !== fullName)
+}
+
+export function parseActionName(actionName: string): { readonly serverName: string; readonly toolName: string } | null {
+  const normalized = normalizeSegment(actionName)
+  const idx = normalized.indexOf("_")
+  if (idx === -1) return null
+  return { serverName: normalized.substring(0, idx).toLowerCase(), toolName: normalized.substring(idx + 1).toLowerCase() }
+}
+
+export function actionNamesCollide(name1: string, name2: string): boolean {
+  return normalizeSegment(name1) === normalizeSegment(name2)
+}
+
+export function makeUniqueActionName(serverName: string, toolName: string, existing: ReadonlySet<string>): string {
+  const name = toActionName(serverName, toolName)
+  if (!existing.has(name)) return name
+  let suffix = 2
+  while (existing.has(`${name}_${suffix}`)) suffix += 1
+  return `${name}_${suffix}`
+}
+
+export function detectMcpModelProvider(runtime: McpRuntimeModelProjection): McpModelInfo {
+  const settings = runtime.character?.settings
+  const providerText = String(runtime.modelProvider ?? settings?.MODEL_PROVIDER ?? settings?.modelProvider ?? "").toLowerCase()
+  const modelId = String(runtime.model ?? settings?.MODEL ?? settings?.model ?? providerText).trim().toLowerCase() || "unknown"
+  const combined = `${providerText} ${modelId}`
+  const isReasoningModel = /(^|[\s/])(o1|o3)([-\s/]|$)/.test(combined)
+  let provider: McpModelProvider = "unknown"
+  if (/openai|gpt-|(^|[\s/])(o1|o3)([-\s/]|$)/.test(combined)) provider = "openai"
+  else if (/anthropic|claude/.test(combined)) provider = "anthropic"
+  else if (/google|gemini/.test(combined)) provider = "google"
+  else if (/bitrouter/.test(combined)) provider = "bitrouter"
+  else if (/openrouter/.test(combined)) provider = "openrouter"
+  return {
+    provider,
+    modelId,
+    supportsStructuredOutputs: provider === "anthropic" || provider === "google" || (provider === "openai" && /gpt-5|o1|o3/.test(modelId)),
+    isReasoningModel,
+  }
+}
+
+const NO_DESCRIPTION = "No description available"
+
+export function buildMcpProviderProjection(servers: readonly McpKernelServer[]): McpKernelProviderProjection {
+  if (servers.length === 0) {
+    return { values: { mcp: {} }, data: { mcp: {} }, text: "No MCP servers are currently connected." }
+  }
+  const mcp: Record<string, McpKernelProviderData[string]> = {}
+  const lines: string[] = ["# MCP Configuration", ""]
+  const orderedServers = [...servers].sort((a, b) => a.name.localeCompare(b.name))
+  for (const server of orderedServers) {
+    const tools: Record<string, { readonly description: string; readonly inputSchema?: Readonly<Record<string, unknown>> }> = {}
+    const resources: Record<string, { readonly name: string; readonly description: string; readonly mimeType?: string }> = {}
+    lines.push(`## Server: ${server.name} (${server.status})`, "")
+    if (server.tools?.length) {
+      lines.push("### Tools:", "")
+      for (const tool of [...server.tools].sort((a, b) => a.name.localeCompare(b.name))) {
+        const description = tool.description ?? NO_DESCRIPTION
+        tools[tool.name] = { description, ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}) }
+        lines.push(`- **${tool.name}**: ${description}`)
+      }
+      lines.push("")
+    }
+    if (server.resources?.length) {
+      lines.push("### Resources:", "")
+      for (const resource of [...server.resources].sort((a, b) => a.uri.localeCompare(b.uri))) {
+        const description = resource.description ?? NO_DESCRIPTION
+        resources[resource.uri] = { name: resource.name, description, ...(resource.mimeType ? { mimeType: resource.mimeType } : {}) }
+        lines.push(`- **${resource.name}** (${resource.uri}): ${description}`)
+      }
+      lines.push("")
+    }
+    mcp[server.name] = { status: server.status, tools, resources }
+  }
+  const text = lines.join("\n")
+  return { values: { mcp, mcpText: text }, data: { mcp }, text }
+}
+
+export function formatMcpProviderForPrompt(data: McpKernelProviderData): string {
+  const entries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b))
+  if (entries.length === 0) return "No MCP servers are available."
+  return [
+    `mcpServers[${entries.length}]:`,
+    ...entries.flatMap(([name, server]) => {
+      const tools = Object.keys(server.tools).sort()
+      const resources = Object.keys(server.resources).sort()
+      return [
+        `  - name: ${name}`,
+        `    status: ${server.status}`,
+        `    tools: ${tools.length ? tools.join(", ") : "none"}`,
+        `    resources: ${resources.length ? resources.join(", ") : "none"}`,
+      ]
+    }),
+  ].join("\n")
+}
+
+export function validateMcpResourceSelection(selection: unknown): McpSelectionValidation<McpResourceSelection> {
+  if (typeof selection !== "object" || selection === null || Array.isArray(selection)) {
+    return { success: false, error: "Resource selection must be an object" }
+  }
+  const rec = selection as Record<string, unknown>
+  const reasoning = typeof rec.reasoning === "string" ? { reasoning: rec.reasoning } : {}
+  if (rec.noResourceAvailable === true) return { success: true, data: { noResourceAvailable: true, ...reasoning } }
+  if (typeof rec.serverName !== "string" || rec.serverName.length === 0 || typeof rec.uri !== "string" || rec.uri.length === 0) {
+    return { success: false, error: "Resource selection requires non-empty serverName and uri" }
+  }
+  return { success: true, data: { serverName: rec.serverName, uri: rec.uri, noResourceAvailable: false, ...reasoning } }
+}
+
+export function describeMcpResources(data: McpKernelProviderData): string {
+  const lines: string[] = []
+  for (const [serverName, server] of Object.entries(data)) {
+    if (server.status !== "connected") continue
+    for (const [uri, resource] of Object.entries(server.resources)) {
+      lines.push(`Resource: ${uri} (Server: ${serverName})`, `Name: ${resource.name || "No name available"}`, `Description: ${resource.description || "No description available"}`, "")
+    }
+  }
+  return lines.join("\n")
+}
+
+export function createMcpResourceSelectionFeedback(input: {
+  readonly originalResponse: string
+  readonly errorMessage: string
+  readonly providerData: McpKernelProviderData
+  readonly userMessage: string
+}): string {
+  return `The previous resource selection could not be parsed or validated: ${input.errorMessage}\n\nYour original response:\n${input.originalResponse}\n\nReply again as compact JSON for resource selection.\nAvailable resources:\n${describeMcpResources(input.providerData)}\nUser request: ${input.userMessage}`
+}
+
+export function stringifyJSON(value: unknown): string {
+  return JSON.stringify(value)
+}
+
+export const errorAnalysisTemplate = `{{{mcpProvider.text}}}\n\n{{{recentMessages}}}\n\n# Prompt\n\nYou're an assistant helping a user, but there was an error accessing the resource you tried to use.\n\nUser request: "{{{userMessage}}}"\nError message: {{{error}}}\n\nCreate a helpful, conversational response without exposing unhelpful technical details.`
+export const ERROR_ANALYSIS_TEMPLATE = errorAnalysisTemplate
+
+export const feedbackTemplate = `{{{mcpProvider.text}}}\n\n{{{recentMessages}}}\n\n# Prompt\n\nYour previous selection could not be parsed or validated. Correct it as compact JSON.\n\nPREVIOUS RESPONSE:\n{{{originalResponse}}}\n\nERROR:\n{{{errorMessage}}}\n\nAvailable {{{itemType}}}s:\n{{{itemsDescription}}}\n\nUser request: "{{{userMessage}}}"`
+export const FEEDBACK_TEMPLATE = feedbackTemplate
+
+export const resourceAnalysisTemplate = `{{{mcpProvider.text}}}\n\n{{{recentMessages}}}\n\n# Prompt\n\nRespond to the user's request using the resource "{{{uri}}}".\n\nOriginal user request: "{{{userMessage}}}"\n\nResource metadata:\n{{{resourceMeta}}}\n\nResource content:\n{{{resourceContent}}}`
+export const RESOURCE_ANALYSIS_TEMPLATE = resourceAnalysisTemplate
+
+export const resourceSelectionTemplate = `{{{mcpProvider.text}}}\n\n{{{recentMessages}}}\n\n# Prompt\n\nSelect the right resource to address the user's request.\nRespond with compact JSON only with serverName, uri, reasoning, and noResourceAvailable.`
+export const RESOURCE_SELECTION_TEMPLATE = resourceSelectionTemplate
+
+export const toolReasoningTemplate = `{{{mcpProvider.text}}}\n\n{{{recentMessages}}}\n\n# Prompt\n\nSynthesize the result from the "{{{toolName}}}" tool into a response to the user's request.\n\nOriginal user request: "{{{userMessage}}}"\n\nTool response:\n{{{toolOutput}}}\n\n{{#if toolErrored}}\nIMPORTANT: The tool reported an ERROR — tell the user plainly that the operation failed.\n{{/if}}\n{{#if hasAttachments}}\nThe tool also returned images or other media.\n{{/if}}`
+export const TOOL_REASONING_TEMPLATE = toolReasoningTemplate
+
+export const toolSelectionArgumentTemplate = `{{recentMessages}}\n\n# TASK: Generate Tool Arguments for Tool Execution\n\nTool: "{{toolSelectionName.toolName}}" on server "{{toolSelectionName.serverName}}"\nReasoning: "{{toolSelectionName.reasoning}}"\nInput schema: {{toolInputSchema}}\nRespond with compact JSON containing toolArguments and reasoning.`
+export const TOOL_SELECTION_ARGUMENT_TEMPLATE = toolSelectionArgumentTemplate
+
+export const toolSelectionNameTemplate = `{{mcpProvider.text}}\n\n{{recentMessages}}\n\n# TASK: Select the Most Appropriate Tool and Server\n\nRespond with compact JSON containing serverName, toolName, reasoning, and noToolAvailable.`
+export const TOOL_SELECTION_NAME_TEMPLATE = toolSelectionNameTemplate
+
+export function renderMcpTemplate(template: string, values: Readonly<Record<string, unknown>>): string {
+  const lookup = (pathExpr: string): unknown => {
+    let cur: unknown = values
+    for (const part of pathExpr.trim().split(".")) {
+      if (cur && typeof cur === "object" && part in (cur as Record<string, unknown>)) {
+        cur = (cur as Record<string, unknown>)[part]
+      } else {
+        return undefined
+      }
+    }
+    return cur
+  }
+  const withConditionals = template.replace(/\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_m, cond: string, body: string) =>
+    lookup(cond) ? body : "",
+  )
+  return withConditionals
+    .replace(/\{\{\{([^}]+)\}\}\}/g, (_m, key: string) => {
+      const val = lookup(key)
+      return val === undefined || val === null ? "" : String(val)
+    })
+    .replace(/\{\{([^}]+)\}\}/g, (_m, key: string) => {
+      const val = lookup(key)
+      return val === undefined || val === null ? "" : String(val)
+    })
+}
+
+module node {
+  import { ElizaError } from "@elizaos/core"
+  import { Ajv } from "ajv"
+  import {
+    MAX_MCP_SCHEMA_DEPTH,
+    MAX_MCP_SCHEMA_JSON_BYTES,
+    MAX_MCP_SCHEMA_NODES,
+    MCP_TOOL_SCHEMA_UNBOUNDED,
+  } from "./protocol.vibe"
+
+  interface SchemaBudgetAccumulator {
+    nodes: number
+    serializedBytes: number
+    readonly seen: WeakSet<object>
+  }
+
+  const UTF8_ENCODER = new TextEncoder()
+  const IDENTIFIER_CHARACTER = /[A-Za-z0-9_$]/
+
+  function utf8ByteLength(value: string): number {
+    return UTF8_ENCODER.encode(value).byteLength
+  }
+
+  function addBytes(bytes: number, acc: SchemaBudgetAccumulator): string | undefined {
+    acc.serializedBytes += bytes
+    return acc.serializedBytes > MAX_MCP_SCHEMA_JSON_BYTES
+      ? `MCP JSON schema serialized size exceeds ${MAX_MCP_SCHEMA_JSON_BYTES}`
+      : undefined
+  }
+
+  function addStringBytes(value: string, acc: SchemaBudgetAccumulator): string | undefined {
+    const remaining = MAX_MCP_SCHEMA_JSON_BYTES - acc.serializedBytes
+    if (value.length > remaining) return `MCP JSON schema serialized size exceeds ${MAX_MCP_SCHEMA_JSON_BYTES}`
+    return addBytes(utf8ByteLength(JSON.stringify(value)), acc)
+  }
+
+  function hasUnsafeToJsonHook(value: object): boolean {
+    let owner: object | null = value
+    while (owner) {
+      const desc = Object.getOwnPropertyDescriptor(owner, "toJSON")
+      if (desc) return !("value" in desc) || typeof desc.value === "function"
+      owner = Object.getPrototypeOf(owner)
+    }
+    return false
+  }
+
+  function walkSchema(node: unknown, depth: number, acc: SchemaBudgetAccumulator): string | undefined {
+    if (depth > MAX_MCP_SCHEMA_DEPTH) return `MCP JSON schema nesting depth exceeds ${MAX_MCP_SCHEMA_DEPTH}`
+    acc.nodes += 1
+    if (acc.nodes > MAX_MCP_SCHEMA_NODES) return `MCP JSON schema node count exceeds ${MAX_MCP_SCHEMA_NODES}`
+    if (typeof node === "string") return addStringBytes(node, acc)
+    if (node === null) return addBytes(4, acc)
+    if (typeof node === "boolean") return addBytes(node ? 4 : 5, acc)
+    if (typeof node === "number") {
+      if (!Number.isFinite(node)) return "MCP JSON schema contains a non-JSON number"
+      return addBytes(utf8ByteLength(JSON.stringify(node)), acc)
+    }
+    if (typeof node !== "object") return "MCP JSON schema contains a non-JSON value"
+    if (acc.seen.has(node)) return "MCP JSON schema is not JSON-serializable"
+    acc.seen.add(node)
+    if (Array.isArray(node)) {
+      if (Object.getPrototypeOf(node) !== Array.prototype) return "MCP JSON schema is not plain JSON data"
+      if (node.length > MAX_MCP_SCHEMA_NODES - acc.nodes) return `MCP JSON schema node count exceeds ${MAX_MCP_SCHEMA_NODES}`
+      if (hasUnsafeToJsonHook(node)) return "MCP JSON schema contains a custom toJSON function"
+      let err = addBytes(2 + Math.max(0, node.length - 1), acc)
+      if (err) return err
+      for (let i = 0; i < node.length; i += 1) {
+        const desc = Object.getOwnPropertyDescriptor(node, String(i))
+        if (!desc) err = addBytes(4, acc)
+        else if (!("value" in desc)) return "MCP JSON schema contains an accessor"
+        else err = walkSchema(desc.value, depth + 1, acc)
+        if (err) return err
+      }
+    } else {
+      const proto = Object.getPrototypeOf(node)
+      if (proto !== Object.prototype && proto !== null) return "MCP JSON schema is not plain JSON data"
+      if (hasUnsafeToJsonHook(node)) return "MCP JSON schema contains a custom toJSON function"
+      const asyncFlag = Object.getOwnPropertyDescriptor(node, "$async")
+      if (asyncFlag && "value" in asyncFlag && asyncFlag.value === true) return "MCP JSON schema uses unsupported asynchronous validation"
+      let err = addBytes(2, acc)
+      if (err) return err
+      let entries = 0
+      for (const key in node as Record<string, unknown>) {
+        if (!Object.hasOwn(node, key)) continue
+        const desc = Object.getOwnPropertyDescriptor(node, key)
+        if (!desc?.enumerable) continue
+        if (!("value" in desc)) return "MCP JSON schema contains an accessor"
+        if (entries > 0) {
+          err = addBytes(1, acc)
+          if (err) return err
+        }
+        entries += 1
+        err = addStringBytes(key, acc) ?? addBytes(1, acc) ?? walkSchema(desc.value, depth + 1, acc)
+        if (err) return err
+      }
+    }
+    acc.seen.delete(node)
+    return undefined
+  }
+
+  export function getMcpJsonSchemaBudgetError(schema: unknown): string | undefined {
+    try {
+      return walkSchema(schema, 0, { nodes: 0, serializedBytes: 0, seen: new WeakSet() })
+    } catch {
+      return "MCP JSON schema is not safely traversable"
+    }
+  }
+
+  export function assertMcpJsonSchemaBudget(schema: unknown): void {
+    const error = getMcpJsonSchemaBudgetError(schema)
+    if (error) {
+      throw new ElizaError(error, { code: MCP_TOOL_SCHEMA_UNBOUNDED, context: { reason: error }, severity: "fatal" })
+    }
+  }
+
+  function scanTopLevelObjects(text: string): { readonly last?: { readonly start: number; readonly end: number }; readonly unfinished: boolean } {
+    let last: { readonly start: number; readonly end: number } | undefined
+    const open: number[] = []
+    let quote: string | undefined
+    for (let index = 0; index < text.length; index += 1) {
+      const ch = text[index]
+      if (quote) {
+        if (ch === "\\") index += 1
+        else if (ch === quote) quote = undefined
+        continue
+      }
+      if (open.length === 0) {
+        if (ch === "{") open.push(index)
+        continue
+      }
+      if (ch === '"' || ch === "'") {
+        if (!IDENTIFIER_CHARACTER.test(text[index - 1] ?? "")) quote = ch
+      } else if (ch === "/" && text[index + 1] === "/") {
+        const newline = text.indexOf("\n", index)
+        if (newline === -1) break
+        index = newline
+      } else if (ch === "/" && text[index + 1] === "*") {
+        const end = text.indexOf("*/", index + 2)
+        if (end === -1) break
+        index = end + 1
+      } else if (ch === "{") {
+        open.push(index)
+      } else if (ch === "}") {
+        const start = open.pop()
+        if (start !== undefined && open.length === 0) last = { start, end: index + 1 }
+      }
+    }
+    return { last, unfinished: open.length > 0 }
+  }
+
+  function normalizeJson5ToJson(source: string): string {
+    let out = ""
+    let i = 0
+    while (i < source.length) {
+      const ch = source[i]
+      if (ch === '"') {
+        out += ch
+        i += 1
+        while (i < source.length) {
+          const c = source[i]
+          out += c
+          i += 1
+          if (c === "\\" && i < source.length) {
+            out += source[i]
+            i += 1
+          } else if (c === '"') break
+        }
+        continue
+      }
+      if (ch === "'") {
+        out += '"'
+        i += 1
+        while (i < source.length) {
+          const c = source[i]
+          i += 1
+          if (c === "\\" && i < source.length) {
+            const next = source[i]
+            i += 1
+            out += next === "'" ? "'" : `\\${next}`
+          } else if (c === '"') {
+            out += '\\"'
+          } else if (c === "'") {
+            out += '"'
+            break
+          } else {
+            out += c
+          }
+        }
+        continue
+      }
+      if (ch === "/" && source[i + 1] === "/") {
+        while (i < source.length && source[i] !== "\n") i += 1
+        continue
+      }
+      if (ch === "/" && source[i + 1] === "*") {
+        const end = source.indexOf("*/", i + 2)
+        i = end === -1 ? source.length : end + 2
+        continue
+      }
+      out += ch
+      i += 1
+    }
+    return out
+      .replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$-]*)(\s*:)/g, '$1"$2"$3')
+      .replace(/,\s*([}\]])/g, "$1")
+  }
+
+  function parseLenientJson(raw: string): unknown {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return JSON.parse(normalizeJson5ToJson(raw))
+    }
+  }
+
+  export function parseJSON<T>(input: string): T {
+    const cleaned = input.replace(/^```(?:json)?\s*|\s*```$/g, "").trim()
+    const firstBrace = cleaned.indexOf("{")
+    const lastBrace = cleaned.lastIndexOf("}")
+    if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+      throw new Error("No valid JSON object found in input")
+    }
+    const wholeRange = cleaned.substring(firstBrace, lastBrace + 1)
+    const { last, unfinished } = scanTopLevelObjects(cleaned)
+    if (unfinished) throw new Error("No valid JSON object found in input: the reply ends inside an unclosed object")
+    let failure: string
+    try {
+      return parseLenientJson(wholeRange) as T
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error)
+    }
+    if (last) {
+      const candidate = cleaned.slice(last.start, last.end)
+      if (candidate !== wholeRange) {
+        try {
+          return parseLenientJson(candidate) as T
+        } catch (error) {
+          failure = error instanceof Error ? error.message : String(error)
+        }
+      }
+    }
+    throw new Error(`No valid JSON object found in input: ${failure}`)
+  }
+
+  export function parseStructuredModelOutput<T = Record<string, unknown>>(input: string): T {
+    try {
+      return parseJSON<T>(input)
+    } catch {
+      throw new Error("No valid JSON object found: JSON object parse failed")
+    }
+  }
+
+  export function validateJsonSchema<T>(
+    data: unknown,
+    schema: Readonly<Record<string, unknown>>,
+  ): { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string } {
+    const budgetError = getMcpJsonSchemaBudgetError(schema)
+    if (budgetError) return { success: false, error: budgetError }
+    try {
+      const isolated = new Ajv({ allErrors: true, validateFormats: false, strictSchema: false })
+      const validate = isolated.compile(schema)
+      if (!validate(data)) {
+        const msg = (validate.errors ?? [])
+          .map((err) => `${err.instancePath ? err.instancePath.replace(/^\//, "") : "value"}: ${err.message ?? "validation failed"}`)
+          .join(", ")
+        return { success: false, error: msg }
+      }
+      return { success: true, data: data as T }
+    } catch (error) {
+      return { success: false, error: `schema validation failed: ${error instanceof Error ? error.message : String(error)}` }
+    }
+  }
+
+  export function assertJsonObject(value: unknown, context: string): Record<string, unknown> {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error(`${context}: Expected a JSON object, got ${typeof value}`)
+    }
+    return value as Record<string, unknown>
+  }
+}
+
+import {
+  assertJsonObject,
+  assertMcpJsonSchemaBudget,
+  getMcpJsonSchemaBudgetError,
+  parseJSON,
+  parseStructuredModelOutput,
+  validateJsonSchema,
+} from node
+
+export {
+  assertJsonObject,
+  assertMcpJsonSchemaBudget,
+  getMcpJsonSchemaBudgetError,
+  parseJSON,
+  parseStructuredModelOutput,
+  validateJsonSchema,
+}

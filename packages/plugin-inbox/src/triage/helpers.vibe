@@ -1,0 +1,274 @@
+// spec/inbox/triage.md, "Triage windows are bounded, priority buckets are deterministic, and source failures remain visible"; spec/inbox/triage.md, "Email unsubscribe dispatch requires explicit owner authorization and a safe public HTTPS target"
+import {
+  mayDispatchUnsubscribe,
+  triagePriorityBucket,
+  type TriagePriority,
+} from "../../gen/inbox__triage.effect.vibe"
+
+export type InboxPlatform =
+  | "gmail"
+  | "slack"
+  | "discord"
+  | "telegram"
+  | "imessage"
+  | "whatsapp"
+  | "signal"
+  | "sms"
+  | "x_dm"
+
+export type PriorityCategory = "important" | "planning" | "casual"
+
+export interface InboxMessageRecord {
+  readonly id: string
+  readonly platform: InboxPlatform
+  readonly threadId?: string
+  readonly channelId?: string
+  readonly channelName?: string
+  readonly sender: string
+  readonly senderAddress?: string
+  readonly subject?: string
+  readonly snippet: string
+  readonly receivedAt: string
+  readonly unread: boolean
+  readonly directMention?: boolean
+  readonly headers?: Readonly<Record<string, string>>
+  readonly roomMeta?: Readonly<Record<string, unknown>>
+  readonly worldMeta?: Readonly<Record<string, unknown>>
+}
+
+export interface PriorityScore {
+  readonly score: number
+  readonly category: PriorityCategory
+  readonly priority: TriagePriority
+  readonly flags: readonly string[]
+}
+
+export interface UnsubscribeMetadata {
+  readonly oneClickUrl?: string
+  readonly httpUrl?: string
+  readonly mailtoAddress?: string
+  readonly method: "one_click_https" | "https_link" | "mailto" | "none"
+}
+
+function isAsciiAlphaNum(ch: string): boolean {
+  const code = ch.charCodeAt(0)
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+}
+
+function isLocalChar(ch: string): boolean {
+  return isAsciiAlphaNum(ch) || ".!#$%&'*+/=?^_~-".includes(ch)
+}
+
+function isDomainChar(ch: string): boolean {
+  return isAsciiAlphaNum(ch) || ch === "." || ch === "-"
+}
+
+function scanEmailToken(text: string): string | null {
+  let cursor = 0
+  while (cursor < text.length) {
+    const at = text.indexOf("@", cursor)
+    if (at < 0) return null
+    let start = at
+    while (start > 0 && isLocalChar(text[start - 1] ?? "")) start -= 1
+    let end = at + 1
+    while (end < text.length && isDomainChar(text[end] ?? "")) end += 1
+    const local = text.slice(start, at)
+    const domain = text.slice(at + 1, end)
+    if (local.length > 0 && domain.includes(".") && !domain.startsWith(".") && !domain.endsWith(".")) {
+      return `${local}@${domain}`.toLowerCase()
+    }
+    cursor = at + 1
+  }
+  return null
+}
+
+export function extractAsciiEmailAddress(raw: string): string | null {
+  if (!raw.includes("<") && !raw.includes(">")) {
+    return scanEmailToken(raw)
+  }
+  let pos = 0
+  while (pos < raw.length) {
+    const open = raw.indexOf("<", pos)
+    if (open < 0) return null
+    const close = raw.indexOf(">", open + 1)
+    if (close < 0) return null
+    const found = scanEmailToken(raw.slice(open + 1, close))
+    if (found) return found
+    pos = close + 1
+  }
+  return null
+}
+
+function strVal(value: unknown): string {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : ""
+}
+
+export function buildDeepLink(
+  source: string,
+  opts: {
+    readonly messageId?: string
+    readonly roomMeta?: Readonly<Record<string, unknown>>
+    readonly worldMeta?: Readonly<Record<string, unknown>>
+  },
+): string | null {
+  const room = opts.roomMeta ?? {}
+  const world = opts.worldMeta ?? {}
+  const msgId = opts.messageId
+  if (source === "discord" || source === "discord-local") {
+    const channelId = strVal(room.channelId)
+    if (!channelId) return null
+    const serverId = strVal(world.serverId) || strVal(room.serverId)
+    const base = serverId ? `https://discord.com/channels/${serverId}/${channelId}` : `https://discord.com/channels/@me/${channelId}`
+    return msgId ? `${base}/${msgId}` : base
+  }
+  if (source === "telegram" || source === "telegram-account") {
+    const username = strVal(room.username)
+    if (username) return msgId ? `https://t.me/${username}/${msgId}` : `https://t.me/${username}`
+    const chatId = strVal(room.chatId) || strVal(room.channelId)
+    return chatId ? `tg://openmessage?chat_id=${encodeURIComponent(chatId)}` : null
+  }
+  if (source === "slack") {
+    const teamId = strVal(world.teamId) || strVal(room.teamId)
+    const channelId = strVal(room.channelId)
+    if (!teamId || !channelId) return null
+    return msgId ? `https://app.slack.com/client/${teamId}/${channelId}/${msgId}` : `https://app.slack.com/client/${teamId}/${channelId}`
+  }
+  if (source === "whatsapp") {
+    const phone = strVal(room.phone) || strVal(room.chatId)
+    return phone ? `https://wa.me/${encodeURIComponent(phone.replace(/[^\d+]/g, ""))}` : null
+  }
+  if (source === "imessage") {
+    const handle = strVal(room.handle) || strVal(room.phone)
+    return handle ? `imessage://${encodeURIComponent(handle)}` : null
+  }
+  if (source === "gmail") {
+    const threadId = strVal(room.threadId) || msgId
+    return threadId ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}` : null
+  }
+  return null
+}
+
+const URGENT_RE = /\b(urgent|asap|emergency|immediately|deadline|overdue|action required|security alert|verification code)\b/i
+const PLANNING_RE = /\b(meeting|schedule|calendar|flight|reservation|invoice|payment|rsvp|confirm|tomorrow|friday|monday)\b/i
+const NOISE_RE = /\b(unsubscribe|newsletter|promo|sale|discount|weekly digest|no-reply|noreply)\b/i
+
+const SCORE_CACHE_LIMIT = 2000
+const scoreCache = new Map<string, PriorityScore>()
+
+export function clearPriorityScoreCache(): void {
+  scoreCache.clear()
+}
+
+export function scoreInboxMessage(
+  msg: InboxMessageRecord,
+  options?: { readonly vipSenders?: readonly string[] },
+): PriorityScore {
+  const vipKey = (options?.vipSenders ?? []).map((s) => s.toLowerCase()).sort().join(",")
+  const cacheKey = `${msg.platform}|${msg.id}|${msg.unread}|${msg.directMention === true}|${vipKey}|${msg.subject ?? ""}|${msg.snippet}`
+  const cached = scoreCache.get(cacheKey)
+  if (cached) return cached
+
+  let score = msg.unread ? 35 : 15
+  const flags: string[] = []
+  const text = `${msg.subject ?? ""} ${msg.snippet}`
+  const senderEmail = msg.senderAddress?.toLowerCase() ?? extractAsciiEmailAddress(msg.sender) ?? msg.sender.toLowerCase()
+  const isVip = (options?.vipSenders ?? []).some((vip) => senderEmail.includes(vip.trim().toLowerCase()))
+
+  if (isVip) {
+    score += 30
+    flags.push("vip")
+  }
+  if (msg.directMention) {
+    score += 20
+    flags.push("direct_mention")
+  }
+  if (URGENT_RE.test(text)) {
+    score += 40
+    flags.push("urgent_keyword")
+  }
+  if (PLANNING_RE.test(text)) {
+    score += 20
+    flags.push("planning")
+  }
+  if (text.includes("?")) {
+    score += 10
+    flags.push("question")
+  }
+  if (NOISE_RE.test(text) || NOISE_RE.test(senderEmail)) {
+    score -= 30
+    flags.push("bulk_or_promo")
+  }
+
+  const bounded = Math.max(0, Math.min(100, score))
+  const priority = triagePriorityBucket(bounded)
+  const category: PriorityCategory = priority === "TriageUrgent" || (priority === "TriageImportant" && !flags.includes("planning"))
+    ? "important"
+    : flags.includes("planning")
+      ? "planning"
+      : "casual"
+
+  const result: PriorityScore = { score: bounded, category, priority, flags }
+  if (scoreCache.size >= SCORE_CACHE_LIMIT) {
+    const first = scoreCache.keys().next().value
+    if (first !== undefined) scoreCache.delete(first)
+  }
+  scoreCache.set(cacheKey, result)
+  return result
+}
+
+function headerLookup(headers: Readonly<Record<string, string>> | undefined, name: string): string {
+  if (!headers) return ""
+  const target = name.toLowerCase()
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === target && v.trim().length > 0) return v.trim()
+  }
+  return ""
+}
+
+export function isPublicHttpsHost(rawUrl: string): { readonly httpsUrl: boolean; readonly publicHost: boolean } {
+  try {
+    const parsed = new URL(rawUrl)
+    const httpsUrl = parsed.protocol === "https:"
+    const host = parsed.hostname.toLowerCase()
+    const isPrivate = host === "localhost"
+      || host === "127.0.0.1"
+      || host === "::1"
+      || host.endsWith(".local")
+      || host.endsWith(".internal")
+      || /^10\./.test(host)
+      || /^192\.168\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+      || /^169\.254\./.test(host)
+      || /^fc00:|^fd|^fe80:/i.test(host)
+    return { httpsUrl, publicHost: host.length > 0 && !isPrivate }
+  } catch {
+    return { httpsUrl: false, publicHost: false }
+  }
+}
+
+export function canExecuteUnsubscribeUrl(url: string, userAuthorized: boolean): boolean {
+  const { httpsUrl, publicHost } = isPublicHttpsHost(url)
+  return mayDispatchUnsubscribe(userAuthorized, httpsUrl, publicHost)
+}
+
+export function parseListUnsubscribeHeaders(headers: Readonly<Record<string, string>> | undefined): UnsubscribeMetadata {
+  const raw = headerLookup(headers, "List-Unsubscribe")
+  if (!raw) return { method: "none" }
+  const postHeader = headerLookup(headers, "List-Unsubscribe-Post")
+  const supportsOneClick = postHeader.toLowerCase().includes("list-unsubscribe=one-click")
+  const tokens = [...raw.matchAll(/<([^>]+)>/g)].map((m) => (m[1] ?? "").trim()).filter((v) => v.length > 0)
+  const candidates = tokens.length > 0 ? tokens : raw.split(",").map((v) => v.trim()).filter((v) => v.length > 0)
+  const httpsTarget = candidates.find((c) => c.toLowerCase().startsWith("https://"))
+  const mailtoRaw = candidates.find((c) => c.toLowerCase().startsWith("mailto:"))
+  const mailtoAddress = mailtoRaw ? mailtoRaw.slice("mailto:".length).split("?")[0]?.trim() : undefined
+  if (httpsTarget && supportsOneClick) {
+    return { oneClickUrl: httpsTarget, httpUrl: httpsTarget, ...(mailtoAddress ? { mailtoAddress } : {}), method: "one_click_https" }
+  }
+  if (httpsTarget) {
+    return { httpUrl: httpsTarget, ...(mailtoAddress ? { mailtoAddress } : {}), method: "https_link" }
+  }
+  if (mailtoAddress) {
+    return { mailtoAddress, method: "mailto" }
+  }
+  return { method: "none" }
+}

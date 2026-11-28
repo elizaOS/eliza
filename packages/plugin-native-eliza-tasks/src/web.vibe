@@ -1,0 +1,57 @@
+// spec/nativeElizaTasks/index.md, "Story: Schedule a background wake without stacking duplicate requests"
+import type { PluginListenerHandle } from "@capacitor/core"
+import type {
+  ElizaTasksPlugin,
+  ElizaTasksScheduleOptions,
+  ElizaTasksScheduleResult,
+  ElizaTasksStatus,
+  ElizaTasksWakeEvent,
+} from "./native-contract.vibe"
+
+const WEB_UNSUPPORTED_REASON = "BGTaskScheduler is iOS-only; web has no background wake path."
+
+export class ElizaTasksWeb implements ElizaTasksPlugin {
+  private readonly wakeListeners: Array<(event: ElizaTasksWakeEvent) => void> = []
+
+  scheduleNext(_options?: ElizaTasksScheduleOptions): Promise<ElizaTasksScheduleResult> {
+    return Promise.resolve({
+      scheduled: false,
+      identifier: "ai.eliza.tasks.refresh",
+      earliestBeginAtMs: null,
+      reason: WEB_UNSUPPORTED_REASON,
+    })
+  }
+
+  getStatus(): Promise<ElizaTasksStatus> {
+    return Promise.resolve({
+      supported: false,
+      platform: "web",
+      refreshScheduled: false,
+      processingScheduled: false,
+      lastWakeFiredAtMs: null,
+      lastWakeKind: null,
+      reason: WEB_UNSUPPORTED_REASON,
+    })
+  }
+
+  cancelAll(): Promise<{ cancelled: boolean }> {
+    return Promise.resolve({ cancelled: false })
+  }
+
+  async addListener(
+    _eventName: "wake",
+    listenerFunc: (event: ElizaTasksWakeEvent) => void,
+  ): Promise<PluginListenerHandle> {
+    this.wakeListeners.push(listenerFunc)
+    return {
+      remove: async () => {
+        const index = this.wakeListeners.indexOf(listenerFunc)
+        if (index >= 0) this.wakeListeners.splice(index, 1)
+      },
+    }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    this.wakeListeners.length = 0
+  }
+}

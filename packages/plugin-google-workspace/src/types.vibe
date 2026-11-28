@@ -1,0 +1,819 @@
+// spec/googleWorkspace/index.md, "Story: Use only the Google account and permissions I connected"; spec/googleWorkspace/index.md, "Story: Send Gmail to the confirmed recipient"
+import type { Service } from "@elizaos/core"
+import type { WorkspaceAccount } from "../gen/googleWorkspace.effect.vibe"
+import type { GoogleCapability } from "./scopes.vibe"
+
+export const GOOGLE_SERVICE_NAME = "google"
+
+export type GoogleAccountId = string
+
+export interface GoogleAccountRef {
+  readonly accountId: GoogleAccountId
+  readonly ownerId?: string
+  readonly seenEpoch?: number
+}
+
+export interface GoogleAuthClient {
+  readonly accessToken: string
+  readonly refreshToken?: string
+  readonly expiryDate?: number
+  readonly scopes: readonly string[]
+  readonly accountId: GoogleAccountId
+  readonly email?: string
+  readonly epoch: number
+}
+
+export interface GoogleAuthResolutionRequest {
+  readonly accountId: GoogleAccountId
+  readonly requiredCapabilities?: readonly GoogleCapability[]
+  readonly requiredScopes?: readonly string[]
+  readonly ownerId?: string
+  readonly seenEpoch?: number
+}
+
+export interface GoogleCredentialResolver {
+  resolve(request: GoogleAuthResolutionRequest): Promise<GoogleAuthClient>
+  invalidate?(accountId: GoogleAccountId): Promise<void> | void
+}
+
+export interface GoogleOAuthProviderMetadata {
+  readonly provider: "google"
+  readonly displayName: string
+  readonly authorizationEndpoint: string
+  readonly tokenEndpoint: string
+  readonly revocationEndpoint: string
+  readonly userInfoEndpoint: string
+  readonly pkceRequired: boolean
+}
+
+export interface GoogleOAuthProviderConfig {
+  readonly provider: "google"
+  readonly clientId: string
+  readonly clientSecret: string
+  readonly redirectUri: string
+  readonly scopes: readonly string[]
+  readonly capabilities: readonly GoogleCapability[]
+  readonly authorizationEndpoint: string
+  readonly tokenEndpoint: string
+}
+
+export interface GoogleEmailAddress {
+  readonly email: string
+  readonly name?: string
+}
+
+export type GoogleCalendarAttendeeResponseStatus = "needsAction" | "declined" | "tentative" | "accepted"
+
+export interface GoogleCalendarAttendeeInput {
+  readonly email: string
+  readonly displayName?: string
+  readonly optional?: boolean
+  readonly responseStatus?: GoogleCalendarAttendeeResponseStatus
+}
+
+export interface GoogleCalendarAttendee {
+  readonly email: string
+  readonly displayName?: string
+  readonly optional?: boolean
+  readonly organizer?: boolean
+  readonly self?: boolean
+  readonly responseStatus?: GoogleCalendarAttendeeResponseStatus
+}
+
+export type GoogleCalendarSendUpdates = "all" | "externalOnly" | "none"
+export type GoogleCalendarTransparency = "opaque" | "transparent"
+export type GoogleCalendarVisibility = "default" | "public" | "private" | "confidential"
+
+export interface GoogleMessageSummary {
+  readonly id: string
+  readonly threadId: string
+  readonly snippet: string
+  readonly subject: string
+  readonly from: string
+  readonly to: readonly string[]
+  readonly cc?: readonly string[]
+  readonly date: string
+  readonly labelIds: readonly string[]
+  readonly bodyText?: string
+  readonly bodyHtml?: string
+}
+
+export interface GoogleSendEmailInput extends GoogleAccountRef {
+  readonly to: readonly string[]
+  readonly cc?: readonly string[]
+  readonly bcc?: readonly string[]
+  readonly subject: string
+  readonly bodyText: string
+  readonly bodyHtml?: string
+  readonly threadId?: string
+  readonly inReplyTo?: string
+  readonly references?: string
+  readonly confirmedContactEmail?: string
+}
+
+export type GoogleGmailBulkOperation = "archive" | "trash" | "markRead" | "markUnread" | "star" | "unstar" | "addLabels" | "removeLabels"
+
+export interface GoogleGmailMutationFailure {
+  readonly messageId: string
+  readonly code: string
+  readonly message: string
+}
+
+export interface GoogleGmailMutationReceipt {
+  readonly operation: GoogleGmailBulkOperation
+  readonly succeededIds: readonly string[]
+  readonly failed: readonly GoogleGmailMutationFailure[]
+}
+
+export interface GoogleGmailMessageSummary {
+  readonly id: string
+  readonly threadId: string
+  readonly historyId?: string
+  readonly internalDate?: string
+  readonly snippet: string
+  readonly subject: string
+  readonly from: string
+  readonly fromEmail?: string
+  readonly to: readonly string[]
+  readonly cc: readonly string[]
+  readonly date: string
+  readonly labelIds: readonly string[]
+  readonly isUnread: boolean
+  readonly isStarred: boolean
+  readonly isImportant: boolean
+  readonly isSentBySelf: boolean
+  readonly hasAttachments: boolean
+  readonly messageIdHeader?: string
+  readonly referencesHeader?: string
+}
+
+export interface GoogleGmailAttachment {
+  readonly partId: string
+  readonly filename: string
+  readonly mimeType: string
+  readonly size: number
+  readonly attachmentId: string | null
+}
+
+export interface GoogleGmailAttachmentContent extends GoogleGmailAttachment {
+  readonly messageId: string
+  readonly sha256: string
+  readonly data: Uint8Array
+}
+
+export interface GoogleGmailMessageDetail extends GoogleGmailMessageSummary {
+  readonly bodyText: string
+  readonly bodyHtml?: string
+  readonly attachments: readonly GoogleGmailAttachment[]
+}
+
+export interface GoogleGmailUnrespondedThread {
+  readonly threadId: string
+  readonly latestMessageId: string
+  readonly subject: string
+  readonly from: string
+  readonly fromEmail?: string
+  readonly lastReceivedAt: string
+  readonly ageDays: number
+  readonly messageCount: number
+  readonly snippet: string
+}
+
+export interface GoogleGmailSendResult {
+  readonly id: string
+  readonly threadId: string
+  readonly labelIds: readonly string[]
+}
+
+export interface GoogleGmailDraftResult {
+  readonly id: string
+  readonly messageId: string
+  readonly threadId: string
+}
+
+export interface GoogleGmailHistoryMessageRef {
+  readonly id: string
+  readonly threadId: string
+}
+
+export interface GoogleGmailHistoryChange {
+  readonly id: string
+  readonly messagesAdded: readonly GoogleGmailHistoryMessageRef[]
+  readonly messagesDeleted: readonly GoogleGmailHistoryMessageRef[]
+  readonly labelsAdded: readonly { readonly message: GoogleGmailHistoryMessageRef; readonly labelIds: readonly string[] }[]
+  readonly labelsRemoved: readonly { readonly message: GoogleGmailHistoryMessageRef; readonly labelIds: readonly string[] }[]
+}
+
+export interface GoogleGmailHistoryPage {
+  readonly historyId: string
+  readonly changes: readonly GoogleGmailHistoryChange[]
+  readonly nextPageToken?: string
+}
+
+export interface GoogleGmailSearchPage {
+  readonly messages: readonly GoogleGmailMessageSummary[]
+  readonly nextPageToken?: string
+  readonly resultSizeEstimate: number
+}
+
+export interface GoogleGmailSubscriptionMessageHeaders {
+  readonly messageId: string
+  readonly threadId: string
+  readonly from: string
+  readonly subject: string
+  readonly listUnsubscribe?: string
+  readonly listUnsubscribePost?: string
+  readonly listId?: string
+}
+
+export interface GoogleGmailFilterCreateResult {
+  readonly id: string
+  readonly fromAddress: string
+  readonly trash: boolean
+}
+
+export interface GoogleParsedMailto {
+  readonly to: string
+  readonly subject?: string
+  readonly body?: string
+}
+
+export interface GoogleCalendarEventInput extends GoogleAccountRef {
+  readonly calendarId?: string
+  readonly summary: string
+  readonly description?: string
+  readonly location?: string
+  readonly start: string
+  readonly end: string
+  readonly allDay?: boolean
+  readonly timeZone?: string
+  readonly attendees?: readonly GoogleCalendarAttendeeInput[]
+  readonly sendUpdates?: GoogleCalendarSendUpdates
+  readonly recurrence?: readonly string[]
+  readonly transparency?: GoogleCalendarTransparency
+  readonly visibility?: GoogleCalendarVisibility
+  readonly createMeetLink?: boolean
+  readonly idempotencyKey?: string
+}
+
+export interface GoogleCalendarEventPatchInput extends GoogleAccountRef {
+  readonly calendarId?: string
+  readonly eventId: string
+  readonly expectedEtag?: string
+  readonly summary?: string
+  readonly description?: string
+  readonly location?: string
+  readonly start?: string
+  readonly end?: string
+  readonly allDay?: boolean
+  readonly timeZone?: string
+  readonly attendees?: readonly GoogleCalendarAttendeeInput[]
+  readonly sendUpdates?: GoogleCalendarSendUpdates
+  readonly recurrence?: readonly string[]
+  readonly transparency?: GoogleCalendarTransparency
+  readonly visibility?: GoogleCalendarVisibility
+}
+
+export interface GoogleCalendarEventDeleteInput extends GoogleAccountRef {
+  readonly calendarId?: string
+  readonly eventId: string
+  readonly expectedEtag?: string
+  readonly sendUpdates?: GoogleCalendarSendUpdates
+}
+
+export interface GoogleCalendarEventResponseInput extends GoogleAccountRef {
+  readonly calendarId?: string
+  readonly eventId: string
+  readonly responseStatus: GoogleCalendarAttendeeResponseStatus
+  readonly attendeeEmail?: string
+  readonly comment?: string
+  readonly sendUpdates?: GoogleCalendarSendUpdates
+}
+
+export interface GoogleCalendarEvent {
+  readonly id: string
+  readonly calendarId: string
+  readonly etag?: string
+  readonly status?: string
+  readonly htmlLink?: string
+  readonly summary: string
+  readonly description?: string
+  readonly location?: string
+  readonly start: string
+  readonly end: string
+  readonly allDay: boolean
+  readonly timeZone?: string
+  readonly organizerEmail?: string
+  readonly attendees: readonly GoogleCalendarAttendee[]
+  readonly recurrence?: readonly string[]
+  readonly conferenceLink?: string
+  readonly updated?: string
+  readonly idempotencyKey?: string
+}
+
+export interface GoogleCalendarListEntry {
+  readonly id: string
+  readonly summary: string
+  readonly description?: string
+  readonly timeZone?: string
+  readonly primary: boolean
+  readonly accessRole?: string
+  readonly selected?: boolean
+}
+
+export interface GoogleCalendarListPageInput extends GoogleAccountRef {
+  readonly pageToken?: string
+  readonly maxResults?: number
+  readonly syncToken?: string
+}
+
+export interface GoogleCalendarListPage {
+  readonly calendars: readonly GoogleCalendarListEntry[]
+  readonly nextPageToken?: string
+  readonly nextSyncToken?: string
+}
+
+export interface GoogleCalendarEventListPageInput extends GoogleAccountRef {
+  readonly calendarId?: string
+  readonly timeMin?: string
+  readonly timeMax?: string
+  readonly maxResults?: number
+  readonly pageToken?: string
+  readonly syncToken?: string
+  readonly singleEvents?: boolean
+  readonly timeZone?: string
+}
+
+export interface GoogleCalendarEventListPage {
+  readonly events: readonly GoogleCalendarEvent[]
+  readonly nextPageToken?: string
+  readonly nextSyncToken?: string
+}
+
+export interface GoogleCalendarWatchInput extends GoogleAccountRef {
+  readonly calendarId?: string
+  readonly channelId: string
+  readonly address: string
+  readonly token?: string
+  readonly ttlSeconds?: number
+}
+
+export interface GoogleCalendarWatchResponse {
+  readonly id: string
+  readonly resourceId: string
+  readonly resourceUri?: string
+  readonly expiration?: string
+}
+
+export interface GoogleCalendarStopChannelInput extends GoogleAccountRef {
+  readonly channelId: string
+  readonly resourceId: string
+}
+
+export interface GoogleCalendarBusyInterval {
+  readonly start: string
+  readonly end: string
+}
+
+export interface GoogleCalendarFreeBusyError {
+  readonly domain?: string
+  readonly reason: string
+}
+
+export interface GoogleCalendarFreeBusyCalendar {
+  readonly calendarId: string
+  readonly busy: readonly GoogleCalendarBusyInterval[]
+  readonly errors: readonly GoogleCalendarFreeBusyError[]
+}
+
+export interface GoogleCalendarFreeBusyInput extends GoogleAccountRef {
+  readonly timeMin: string
+  readonly timeMax: string
+  readonly calendarIds: readonly string[]
+  readonly timeZone?: string
+}
+
+export interface GoogleCalendarFreeBusyResult {
+  readonly timeMin: string
+  readonly timeMax: string
+  readonly calendars: readonly GoogleCalendarFreeBusyCalendar[]
+}
+
+export interface GoogleDriveFile {
+  readonly id: string
+  readonly name: string
+  readonly mimeType: string
+  readonly size?: number
+  readonly modifiedTime?: string
+  readonly webViewLink?: string
+  readonly parents?: readonly string[]
+  readonly trashed?: boolean
+}
+
+export interface GoogleDriveFileList {
+  readonly files: readonly GoogleDriveFile[]
+  readonly nextPageToken?: string
+}
+
+export interface GoogleDocContent {
+  readonly documentId: string
+  readonly title: string
+  readonly bodyText: string
+  readonly revisionId?: string
+}
+
+export interface GoogleSheetContent {
+  readonly spreadsheetId: string
+  readonly title: string
+  readonly range: string
+  readonly values: readonly (readonly string[])[]
+}
+
+export interface GoogleDriveCreateFileInput extends GoogleAccountRef {
+  readonly name: string
+  readonly mimeType: string
+  readonly content?: string
+  readonly parentFolderId?: string
+}
+
+export interface GoogleSheetUpdateResult {
+  readonly spreadsheetId: string
+  readonly updatedRange: string
+  readonly updatedRows: number
+  readonly updatedColumns: number
+  readonly updatedCells: number
+}
+
+export interface GooglePersonEmailAddress {
+  readonly value: string
+  readonly type?: string
+  readonly primary?: boolean
+}
+
+export interface GooglePersonPhoneNumber {
+  readonly value: string
+  readonly type?: string
+  readonly primary?: boolean
+}
+
+export interface GooglePersonOrganization {
+  readonly name?: string
+  readonly title?: string
+}
+
+export interface GooglePersonContact {
+  readonly resourceName: string
+  readonly displayName: string
+  readonly givenName?: string
+  readonly familyName?: string
+  readonly emailAddresses: readonly GooglePersonEmailAddress[]
+  readonly phoneNumbers: readonly GooglePersonPhoneNumber[]
+  readonly organizations: readonly GooglePersonOrganization[]
+  readonly photoUrl?: string
+  readonly source: "contact" | "otherContact"
+}
+
+export interface GooglePeopleContactPage {
+  readonly contacts: readonly GooglePersonContact[]
+  readonly nextPageToken?: string
+  readonly totalItems?: number
+}
+
+export interface GooglePeopleListContactsInput extends GoogleAccountRef {
+  readonly pageSize?: number
+  readonly pageToken?: string
+}
+
+export interface GooglePeopleSearchContactsInput extends GoogleAccountRef {
+  readonly query: string
+  readonly maxResults?: number
+  readonly includeOtherContacts?: boolean
+}
+
+export interface GooglePeopleGetContactInput extends GoogleAccountRef {
+  readonly resourceName: string
+}
+
+export type GoogleMeetAccessType = "ACCESS_TYPE_UNSPECIFIED" | "OPEN" | "TRUSTED" | "RESTRICTED"
+export type GoogleMeetStatus = "scheduled" | "active" | "ended"
+
+export interface GoogleMeetSpace {
+  readonly name: string
+  readonly meetingUri: string
+  readonly meetingCode: string
+  readonly accessType?: GoogleMeetAccessType
+  readonly activeConference?: string
+}
+
+export interface GoogleMeetMeeting {
+  readonly spaceName: string
+  readonly meetingUri: string
+  readonly meetingCode: string
+  readonly status: GoogleMeetStatus
+  readonly activeConference?: string
+}
+
+export interface GoogleMeetConferenceRecord {
+  readonly name: string
+  readonly space: string
+  readonly startTime: string
+  readonly endTime?: string
+  readonly expireTime?: string
+}
+
+export interface GoogleMeetParticipant {
+  readonly name: string
+  readonly displayName: string
+  readonly email?: string
+  readonly earliestStartTime?: string
+  readonly latestEndTime?: string
+  readonly anonymous?: boolean
+}
+
+export interface GoogleMeetParticipantSession {
+  readonly name: string
+  readonly participantName: string
+  readonly startTime: string
+  readonly endTime?: string
+}
+
+export interface GoogleMeetTranscript {
+  readonly name: string
+  readonly participant?: string
+  readonly text: string
+  readonly languageCode?: string
+  readonly startOffset?: string
+  readonly endOffset?: string
+}
+
+export interface GoogleMeetTranscriptArtifact {
+  readonly name: string
+  readonly state: string
+  readonly startTime?: string
+  readonly endTime?: string
+  readonly docsDocumentId?: string
+  readonly docsExportUri?: string
+}
+
+export interface GoogleMeetRecording {
+  readonly name: string
+  readonly state: string
+  readonly startTime?: string
+  readonly endTime?: string
+  readonly driveFileId?: string
+  readonly exportUri?: string
+}
+
+export interface GoogleMeetActionItem {
+  readonly text: string
+  readonly owner?: string
+}
+
+export type GoogleMeetCanonicalStreamKind = "transcript" | "recording" | "notes"
+
+export interface GoogleMeetCanonicalStream {
+  readonly kind: GoogleMeetCanonicalStreamKind
+  readonly resourceName: string
+  readonly available: boolean
+}
+
+export interface GoogleMeetCanonicalParticipant {
+  readonly id: string
+  readonly displayName: string
+  readonly email?: string
+}
+
+export interface GoogleMeetCanonicalParticipantSession {
+  readonly sessionId: string
+  readonly participantId: string
+  readonly startTime: string
+  readonly endTime?: string
+}
+
+export interface GoogleMeetCanonicalTranscriptSpan {
+  readonly id: string
+  readonly speaker: string
+  readonly text: string
+  readonly startOffset?: string
+  readonly endOffset?: string
+}
+
+export interface GoogleMeetCanonicalGeneratedNote {
+  readonly title: string
+  readonly summary: string
+  readonly actionItems: readonly GoogleMeetActionItem[]
+}
+
+export type GoogleMeetMissingArtifactReason = "not_recorded" | "processing" | "permission_denied" | "not_found"
+
+export interface GoogleMeetMissingArtifact {
+  readonly kind: GoogleMeetCanonicalStreamKind
+  readonly reason: GoogleMeetMissingArtifactReason
+  readonly detail: string
+}
+
+export interface GoogleMeetCanonicalWarning {
+  readonly code: string
+  readonly message: string
+}
+
+export interface GoogleMeetBotFreeCaptureArtifact {
+  readonly source: "google_meet"
+  readonly conferenceRecord: string
+  readonly streams: readonly GoogleMeetCanonicalStream[]
+}
+
+export interface GoogleMeetCanonicalArtifact {
+  readonly source: "google_meet"
+  readonly conferenceRecord: GoogleMeetConferenceRecord
+  readonly participants: readonly GoogleMeetCanonicalParticipant[]
+  readonly sessions: readonly GoogleMeetCanonicalParticipantSession[]
+  readonly transcriptSpans: readonly GoogleMeetCanonicalTranscriptSpan[]
+  readonly generatedNote: GoogleMeetCanonicalGeneratedNote
+  readonly recordings: readonly GoogleMeetRecording[]
+  readonly missingArtifacts: readonly GoogleMeetMissingArtifact[]
+  readonly warnings: readonly GoogleMeetCanonicalWarning[]
+  readonly capture: GoogleMeetBotFreeCaptureArtifact
+}
+
+export interface GoogleMeetCanonicalArtifactInput {
+  readonly conferenceRecord: GoogleMeetConferenceRecord
+  readonly participants: readonly GoogleMeetParticipant[]
+  readonly sessions: readonly GoogleMeetParticipantSession[]
+  readonly transcriptEntries: readonly GoogleMeetTranscript[]
+  readonly recordings: readonly GoogleMeetRecording[]
+  readonly missingArtifacts?: readonly GoogleMeetMissingArtifact[]
+  readonly warnings?: readonly GoogleMeetCanonicalWarning[]
+}
+
+export interface GoogleMeetReport {
+  readonly conferenceRecord: string
+  readonly summary: string
+  readonly participantCount: number
+  readonly transcriptEntryCount: number
+  readonly actionItems: readonly GoogleMeetActionItem[]
+  readonly recordingUrls: readonly string[]
+}
+
+export interface GoogleMeetCreateMeetingInput extends GoogleAccountRef {
+  readonly accessType?: GoogleMeetAccessType
+}
+
+export interface GoogleMeetGetMeetingInput extends GoogleAccountRef {
+  readonly spaceNameOrCode: string
+}
+
+export interface GoogleMeetConferenceRecordInput extends GoogleAccountRef {
+  readonly conferenceRecordName: string
+}
+
+export interface GoogleMeetParticipantSessionInput extends GoogleAccountRef {
+  readonly participantName: string
+}
+
+export interface GoogleMeetTranscriptInput extends GoogleAccountRef {
+  readonly transcriptName: string
+}
+
+export interface GoogleMeetRecordingInput extends GoogleAccountRef {
+  readonly recordingName: string
+}
+
+export interface GoogleMeetGenerateReportInput extends GoogleAccountRef {
+  readonly conferenceRecordName: string
+}
+
+export interface IGoogleGmailService extends Service {
+  getGmailHistoryId(params: GoogleAccountRef): Promise<string>
+  listGmailHistoryPage(params: GoogleAccountRef & { readonly startHistoryId: string; readonly pageToken?: string; readonly maxResults?: number }): Promise<GoogleGmailHistoryPage>
+  searchMessages(params: GoogleAccountRef & { readonly query: string; readonly limit?: number }): Promise<GoogleMessageSummary[]>
+  getMessage(params: GoogleAccountRef & { readonly messageId: string; readonly includeBody?: boolean }): Promise<GoogleMessageSummary>
+  sendEmail(params: GoogleSendEmailInput): Promise<{ readonly id: string; readonly threadId?: string }>
+  listGmailTriageMessages(params: GoogleAccountRef & { readonly selfEmail?: string | null; readonly maxResults?: number }): Promise<GoogleGmailMessageSummary[]>
+  searchGmailMessages(params: GoogleAccountRef & { readonly query: string; readonly selfEmail?: string | null; readonly maxResults?: number; readonly includeSpamTrash?: boolean; readonly labelIds?: readonly string[] }): Promise<GoogleGmailMessageSummary[]>
+  searchGmailMessagesPage(params: GoogleAccountRef & { readonly query: string; readonly selfEmail?: string | null; readonly pageToken?: string | null; readonly pageSize?: number; readonly includeSpamTrash?: boolean }): Promise<GoogleGmailSearchPage>
+  getGmailMessage(params: GoogleAccountRef & { readonly messageId: string; readonly selfEmail?: string | null }): Promise<GoogleGmailMessageSummary | null>
+  getGmailMessageDetail(params: GoogleAccountRef & { readonly messageId: string; readonly selfEmail?: string | null }): Promise<GoogleGmailMessageDetail | null>
+  getGmailAttachment(params: GoogleAccountRef & { readonly messageId: string; readonly partId: string; readonly maxBytes: number }): Promise<GoogleGmailAttachmentContent>
+  getGmailMessageRevision(params: GoogleAccountRef & { readonly messageId: string }): Promise<string | null>
+  listGmailUnrespondedThreads(params: GoogleAccountRef & { readonly selfEmail?: string | null; readonly olderThanDays?: number; readonly maxResults?: number; readonly now?: Date }): Promise<GoogleGmailUnrespondedThread[]>
+  modifyGmailMessages(params: GoogleAccountRef & { readonly messageIds: readonly string[]; readonly operation: GoogleGmailBulkOperation; readonly labelIds?: readonly string[] }): Promise<GoogleGmailMutationReceipt>
+  sendGmailReply(params: GoogleAccountRef & { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly subject: string; readonly bodyText: string; readonly threadId: string; readonly inReplyTo?: string | null; readonly references?: string | null }): Promise<GoogleGmailSendResult>
+  sendGmailMessage(params: GoogleAccountRef & { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly bcc?: readonly string[]; readonly subject: string; readonly bodyText: string }): Promise<GoogleGmailSendResult>
+  createGmailDraft(params: GoogleAccountRef & { readonly to: readonly string[]; readonly cc?: readonly string[]; readonly bcc?: readonly string[]; readonly subject: string; readonly bodyText: string; readonly threadId?: string; readonly inReplyTo?: string | null; readonly references?: string | null }): Promise<GoogleGmailDraftResult>
+  getGmailSubscriptionHeaders(params: GoogleAccountRef & { readonly query?: string; readonly maxMessages?: number }): Promise<GoogleGmailSubscriptionMessageHeaders[]>
+  createGmailFilterForSender(params: GoogleAccountRef & { readonly fromAddress: string; readonly trash?: boolean }): Promise<GoogleGmailFilterCreateResult>
+  trashGmailThread(params: GoogleAccountRef & { readonly threadId: string }): Promise<void>
+  modifyGmailMessageLabels(params: GoogleAccountRef & { readonly messageId: string; readonly addLabelIds?: readonly string[]; readonly removeLabelIds?: readonly string[] }): Promise<void>
+  sendMailtoUnsubscribeEmail(params: GoogleAccountRef & { readonly mailto: GoogleParsedMailto }): Promise<void>
+}
+
+export interface IGoogleCalendarService extends Service {
+  listCalendars(params: GoogleAccountRef): Promise<GoogleCalendarListEntry[]>
+  listCalendarPage(params: GoogleCalendarListPageInput): Promise<GoogleCalendarListPage>
+  listEvents(params: GoogleAccountRef & { readonly calendarId?: string; readonly timeMin?: string; readonly timeMax?: string; readonly limit?: number; readonly timeZone?: string }): Promise<GoogleCalendarEvent[]>
+  listEventPage(params: GoogleCalendarEventListPageInput): Promise<GoogleCalendarEventListPage>
+  watchEvents(params: GoogleCalendarWatchInput): Promise<GoogleCalendarWatchResponse>
+  stopCalendarChannel(params: GoogleCalendarStopChannelInput): Promise<void>
+  queryFreeBusy(params: GoogleCalendarFreeBusyInput): Promise<GoogleCalendarFreeBusyResult>
+  getEvent(params: GoogleAccountRef & { readonly calendarId?: string; readonly eventId: string; readonly timeZone?: string }): Promise<GoogleCalendarEvent>
+  findEventByIdempotencyKey(params: GoogleAccountRef & { readonly calendarId: string; readonly idempotencyKey: string; readonly timeZone?: string }): Promise<GoogleCalendarEvent | null>
+  createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent>
+  updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent>
+  deleteEvent(params: GoogleCalendarEventDeleteInput): Promise<void>
+  respondToEvent(params: GoogleCalendarEventResponseInput): Promise<GoogleCalendarEvent>
+}
+
+export interface IGoogleDriveService extends Service {
+  searchFiles(params: GoogleAccountRef & { readonly query: string; readonly limit?: number }): Promise<GoogleDriveFile[]>
+  getFile(params: GoogleAccountRef & { readonly fileId: string }): Promise<GoogleDriveFile>
+  listDriveFiles(params: GoogleAccountRef & { readonly folderId?: string; readonly maxResults?: number; readonly pageToken?: string }): Promise<GoogleDriveFileList>
+  searchDriveFiles(params: GoogleAccountRef & { readonly query: string; readonly maxResults?: number; readonly pageToken?: string }): Promise<GoogleDriveFileList>
+  getDocContent(params: GoogleAccountRef & { readonly documentId: string }): Promise<GoogleDocContent>
+  getSheetContent(params: GoogleAccountRef & { readonly spreadsheetId: string; readonly range?: string }): Promise<GoogleSheetContent>
+  createDriveFile(params: GoogleDriveCreateFileInput): Promise<GoogleDriveFile>
+  appendToDoc(params: GoogleAccountRef & { readonly documentId: string; readonly text: string }): Promise<void>
+  updateSheetCells(params: GoogleAccountRef & { readonly spreadsheetId: string; readonly range: string; readonly values: readonly (readonly (string | number)[])[] }): Promise<GoogleSheetUpdateResult>
+}
+
+export interface IGooglePeopleService extends Service {
+  listContacts(params: GooglePeopleListContactsInput): Promise<GooglePeopleContactPage>
+  searchContacts(params: GooglePeopleSearchContactsInput): Promise<GooglePersonContact[]>
+  getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact>
+}
+
+export interface IGoogleMeetService extends Service {
+  createMeeting(params: GoogleMeetCreateMeetingInput): Promise<GoogleMeetMeeting>
+  getMeeting(params: GoogleMeetGetMeetingInput): Promise<GoogleMeetMeeting>
+  getMeetingSpace(params: GoogleMeetGetMeetingInput): Promise<GoogleMeetSpace>
+  getConferenceRecord(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetConferenceRecord>
+  listMeetingParticipants(params: GoogleMeetConferenceRecordInput & { readonly limit?: number }): Promise<GoogleMeetParticipant[]>
+  listMeetingParticipantSessions(params: GoogleMeetParticipantSessionInput & { readonly limit?: number }): Promise<GoogleMeetParticipantSession[]>
+  listMeetingTranscripts(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetTranscriptArtifact[]>
+  getMeetingTranscript(params: GoogleMeetTranscriptInput): Promise<GoogleMeetTranscript[]>
+  listMeetingRecordings(params: GoogleMeetConferenceRecordInput): Promise<GoogleMeetRecording[]>
+  getMeetingRecordingUrl(params: GoogleMeetRecordingInput): Promise<string | null>
+  endMeeting(params: GoogleAccountRef & { readonly spaceName: string }): Promise<void>
+  generateReport(params: GoogleMeetGenerateReportInput): Promise<GoogleMeetReport>
+}
+
+export interface IGoogleWorkspaceService
+  extends IGoogleGmailService,
+    IGoogleCalendarService,
+    IGoogleDriveService,
+    IGoogleMeetService,
+    IGooglePeopleService {
+  getOAuthProviderConfig(capabilities: readonly GoogleCapability[]): GoogleOAuthProviderConfig
+  getOAuthProviderMetadata(): GoogleOAuthProviderMetadata
+}
+
+export error WorkspaceAccessRefused { accountId: string }
+export error GoogleWorkspaceFailure { source: string; status: number }
+
+export interface WorkspaceCredential {
+  readonly account: WorkspaceAccount
+  readonly token: Redacted.Redacted<string>
+}
+
+export service WorkspaceCredentials {
+  account(ownerId: string, accountId: string): (WorkspaceCredential | undefined)!WorkspaceAccessRefused
+}
+
+export type WorkspaceQuery =
+  | { readonly kind: "gmail"; readonly query: string }
+  | { readonly kind: "calendar"; readonly calendarId: string; readonly updatedMin?: string }
+  | { readonly kind: "drive"; readonly query: string }
+  | { readonly kind: "meet"; readonly meetingCode: string }
+  | { readonly kind: "contacts"; readonly query: string }
+
+export interface WorkspacePrincipal {
+  readonly ownerId: string
+  readonly accountId: string
+  readonly seenEpoch: number
+}
+
+export interface GoogleApiBaseUrls {
+  readonly gmail: string
+  readonly calendar: string
+  readonly drive: string
+  readonly docs: string
+  readonly sheets: string
+  readonly meet: string
+  readonly people: string
+  readonly chat: string
+  readonly oauth: string
+  readonly userInfo: string
+}
+
+export const DEFAULT_GOOGLE_API_BASE_URLS: GoogleApiBaseUrls = {
+  gmail: "https://gmail.googleapis.com",
+  calendar: "https://www.googleapis.com",
+  drive: "https://www.googleapis.com",
+  docs: "https://docs.googleapis.com",
+  sheets: "https://sheets.googleapis.com",
+  meet: "https://meet.googleapis.com",
+  people: "https://people.googleapis.com",
+  chat: "https://chat.googleapis.com",
+  oauth: "https://oauth2.googleapis.com",
+  userInfo: "https://openidconnect.googleapis.com",
+}

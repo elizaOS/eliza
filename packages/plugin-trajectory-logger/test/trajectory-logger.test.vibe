@@ -1,0 +1,139 @@
+// spec/trajectoryLogger/index.md, "Story: Inspect the phases of an agent turn"; spec/trajectoryLogger/index.md, "Known calls and events are assigned to their canonical phase"; spec/trajectoryLogger/index.md, "An active turn highlights only its latest completed phase before evaluation"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  describeTrajectory,
+  extractShouldRespondDecision,
+  fetchTrajectoryDetail,
+  fetchTrajectoryList,
+  fetchTrajectoryTiming,
+  isTrajectoryRouteUnavailable,
+  phaseOf,
+  PHASES,
+  summarizePhases,
+  TrajectoryClientError,
+  trajectoryLoggerPlugin,
+  TrajectoryTransport,
+  type TrajectoryDetail,
+  type UILlmCall,
+} from "../src/index.vibe"
+
+function llmCall(overrides: Partial<UILlmCall>): UILlmCall {
+  return {
+    id: "c1",
+    model: "test-model",
+    response: "",
+    purpose: "",
+    actionType: "",
+    stepType: "",
+    ...overrides,
+  }
+}
+
+describe("plugin-trajectory-logger end-to-end journeys", () => {
+  it.effect(`Classify model calls, extract should-respond verdicts, and project active vs completed phase summaries (spec/trajectoryLogger/index.md, "Story: Inspect the phases of an agent turn"; spec/trajectoryLogger/index.md, "Known calls and events are assigned to their canonical phase"; spec/trajectoryLogger/index.md, "An active turn highlights only its latest completed phase before evaluation")`, effect () => {
+    assert.deepStrictEqual(PHASES, ["HANDLE", "PLAN", "ACTION", "EVALUATE"])
+    assert.strictEqual(phaseOf(llmCall({ stepType: "should_respond" })), "HANDLE")
+    assert.strictEqual(phaseOf(llmCall({ purpose: "reasoning" })), "PLAN")
+    assert.strictEqual(phaseOf(llmCall({ stepType: "observation_extraction" })), "EVALUATE")
+    assert.strictEqual(phaseOf(llmCall({ stepType: "unknown" })), null)
+
+    assert.deepStrictEqual(extractShouldRespondDecision(llmCall({ response: `{"action":"ignore","reasoning":"not addressed"}` })), {
+      decision: "IGNORE",
+      reasoning: "not addressed",
+    })
+    assert.deepStrictEqual(extractShouldRespondDecision(llmCall({ response: "<decision>RESPOND</decision>" })), { decision: "RESPOND" })
+    assert.deepStrictEqual(extractShouldRespondDecision(llmCall({ response: "IGNORE - talking to someone else" })), { decision: "IGNORE" })
+    assert.deepStrictEqual(extractShouldRespondDecision(llmCall({ response: "Respond? No, IGNORE." })), { decision: "IGNORE" })
+
+    const inFlight: TrajectoryDetail = {
+      trajectory: { id: "t1", status: "active", llmCallCount: 2 },
+      llmCalls: [
+        llmCall({ id: "c1", stepType: "should_respond", response: "RESPOND" }),
+        llmCall({ id: "c2", stepType: "reasoning", actionType: "SEARCH" }),
+      ],
+      providerAccesses: [{ id: "p1", providerName: "TIME", purpose: "ctx" }],
+    }
+    const activeSummary = summarizePhases(inFlight, { trajectoryActive: true })
+    assert.deepStrictEqual(activeSummary.map((p) => p.status), ["done", "active", "idle", "idle"])
+    const completedSummary = summarizePhases(inFlight, { trajectoryActive: false })
+    assert.deepStrictEqual(completedSummary.map((p) => p.status), ["done", "done", "idle", "idle"])
+
+    const skippedSummary = summarizePhases({
+      trajectory: { id: "t2", status: "completed", llmCallCount: 1 },
+      llmCalls: [llmCall({ id: "c1", stepType: "should_respond", response: "IGNORE" })],
+      providerAccesses: [],
+    })
+    assert.strictEqual(skippedSummary[0]?.status, "skipped")
+
+    const erroredSummary = summarizePhases({
+      trajectory: { id: "t3", status: "error", llmCallCount: 0 },
+      llmCalls: [],
+      providerAccesses: [],
+      toolEvents: [{ id: "e1", type: "tool_result", toolName: "SEARCH_WEB", status: "failed" }],
+      evaluationEvents: [{ id: "ev1", evaluatorName: "reflection", status: "failed" }],
+    })
+    assert.strictEqual(erroredSummary[2]?.status, "error")
+    assert.strictEqual(erroredSummary[3]?.status, "error")
+
+    const inspected = describeTrajectory({
+      runId: "r1",
+      active: true,
+      records: [
+        { id: "1", kind: { tag: "ModelCall", label: "reasoning" }, label: "plan" },
+        { id: "2", kind: { tag: "ProviderRead" }, label: "ctx" },
+        { id: "3", kind: { tag: "ToolInvocation" }, label: "tool" },
+        { id: "4", kind: { tag: "EvaluationRecord" }, label: "eval" },
+      ],
+      progress: { handling: "PhaseDone", planning: "PhaseDone", acting: "PhaseIdle", evaluating: "PhaseIdle" },
+    })
+    assert.strictEqual(inspected.status.planning, "PhaseActive")
+    assert.strictEqual(inspected.groups.PlanPhase.length, 1)
+    assert.strictEqual(trajectoryLoggerPlugin.name, "@elizaos/plugin-trajectory-logger")
+  })
+
+  it.effect(`Fetch trajectories and timing through injected transport with URI encoding and 404/503 unavailability classification (spec/trajectoryLogger/index.md, "Story: Inspect the phases of an agent turn")`, effect () => {
+    const calls: { readonly path: string; readonly timeoutMs: number }[] = []
+    const transportLayer = Layer.succeed(TrajectoryTransport, {
+      fetchJson: <T,>(path: string, _options: { readonly method: "GET"; readonly signal?: AbortSignal }, config: { readonly timeoutMs: number }) =>
+        effect {
+          calls.push({ path, timeoutMs: config.timeoutMs })
+          if (path.startsWith("/api/trajectories?")) {
+            return { trajectories: [], total: 0, offset: 0, limit: 10 } as T
+          }
+          if (path.startsWith("/api/trajectories/")) {
+            return { trajectory: { id: "a/b?c", status: "completed", llmCallCount: 0 }, llmCalls: [], providerAccesses: [] } as T
+          }
+          return {
+            turns: [
+              { turnId: "turn-1", spans: [{ meta: { trajectoryId: "t-1" } }] },
+              { turnId: "turn-2", spans: [{ meta: { trajectoryId: "t-2" } }] },
+            ],
+            flows: [{ turnId: "turn-1" }, { turnId: "turn-2" }],
+          } as T
+        },
+    })
+
+    provide transportLayer {
+      const list = try fetchTrajectoryList()
+      assert.strictEqual(list.total, 0)
+      const detail = try fetchTrajectoryDetail("a/b?c")
+      assert.strictEqual(detail.trajectory.id, "a/b?c")
+      const timing = try fetchTrajectoryTiming("t-1")
+      assert.deepStrictEqual(timing.turns.map((t) => t.turnId), ["turn-1"])
+      assert.deepStrictEqual(timing.flows.map((f) => f.turnId), ["turn-1"])
+    }
+
+    assert.deepStrictEqual(calls, [
+      { path: "/api/trajectories?limit=10", timeoutMs: 15_000 },
+      { path: "/api/trajectories/a%2Fb%3Fc", timeoutMs: 15_000 },
+      { path: "/api/dev/inference-timing?limit=200", timeoutMs: 15_000 },
+    ])
+
+    assert.strictEqual(isTrajectoryRouteUnavailable(new TrajectoryClientError({ kind: "http", path: "/api/trajectories", status: 404, message: "Not Found" })), true)
+    assert.strictEqual(isTrajectoryRouteUnavailable(new TrajectoryClientError({ kind: "http", path: "/api/trajectories", status: 503, message: "Unavailable" })), true)
+    assert.strictEqual(isTrajectoryRouteUnavailable(new TrajectoryClientError({ kind: "http", path: "/api/trajectories", status: 401, message: "Unauthorized" })), false)
+    assert.strictEqual(isTrajectoryRouteUnavailable(new TrajectoryClientError({ kind: "http", path: "/api/trajectories", status: 500, message: "Error" })), false)
+    assert.strictEqual(isTrajectoryRouteUnavailable(new TrajectoryClientError({ kind: "timeout", path: "/api/trajectories", message: "Timeout" })), false)
+    assert.strictEqual(isTrajectoryRouteUnavailable({ status: 404 }), false)
+  })
+})

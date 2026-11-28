@@ -1,0 +1,35 @@
+// spec/nativeElizaTasks/index.md, "Story: Schedule a background wake without stacking duplicate requests"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  ElizaTasksWeb,
+  createElizaTaskScheduleSession,
+  scheduleNativeWake,
+} from "../src/index.vibe"
+
+describe('plugin-native-eliza-tasks (spec/nativeElizaTasks/index.md, "Story: Schedule a background wake without stacking duplicate requests")', () => {
+  it('returns unsupported status on web and tracks wake schedule transitions (spec/nativeElizaTasks/index.md, "A platform wake consumes its slot and a remote push needs host opt-in")', async () => {
+    const web = new ElizaTasksWeb()
+    const status = await web.getStatus()
+    assert.strictEqual(status.supported, false)
+    assert.strictEqual(status.platform, "web")
+    const scheduled = await web.scheduleNext({ earliestBeginSec: 30 })
+    assert.strictEqual(scheduled.scheduled, false)
+    assert.deepStrictEqual(await web.cancelAll(), { cancelled: false })
+
+    const session = createElizaTaskScheduleSession()
+    assert.strictEqual(session.scheduleNext(1000, 30000, true, true), true)
+    assert.strictEqual(session.recordWake("RefreshWake", 31000, false), true)
+    assert.strictEqual(session.recordWake("RemotePushWake", 31000, false), false)
+    assert.strictEqual(session.recordWake("RemotePushWake", 31000, true), true)
+    assert.strictEqual(session.cancelWakes(), true)
+    assert.strictEqual(session.cancelWakes(), false)
+  })
+
+  it.effect('validates wake delay before forwarding through scheduleNativeWake (spec/nativeElizaTasks/index.md, "Story: Schedule a background wake without stacking duplicate requests")', effect () => {
+    const web = new ElizaTasksWeb()
+    const ok = try scheduleNativeWake({ earliestBeginSec: 30, alsoProcessing: true }, web)
+    try Effect.try(() => assert.strictEqual(ok.scheduled, false))
+    const bad = try Effect.exit(scheduleNativeWake({ earliestBeginSec: 0 }, web))
+    try Effect.try(() => assert.strictEqual(bad._tag, "Failure"))
+  })
+})

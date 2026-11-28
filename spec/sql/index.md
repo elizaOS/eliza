@@ -1,5 +1,7 @@
 # PostgreSQL and PGlite persistence
 
+[Connection and transaction lifecycle](./connectionLifecycle.md) governs adapter readiness, transaction bounds, PostgreSQL RLS session scoping, monotonic schema versions, and immutable embedding space pinning.
+
 ## Story: Attach a SQL adapter only after its schema is ready
 
 > As a host, I can attach PostgreSQL or embedded PGlite to my agent with the necessary extensions and verified migrations, and protect data scoped to that agent.

@@ -1,0 +1,667 @@
+// spec/imessage/index.md, "Blooio needs the signed raw body, exact configured channel and a dispatchable receipt state"
+import type { IAgentRuntime } from "@elizaos/core"
+import type http from "node:http"
+import { parseIMessageContactId } from "./contact-path.vibe"
+import type { ContactPatch, FullContact, NewContactInput } from "./contacts-reader.vibe"
+import {
+  IMESSAGE_SERVICE_NAME,
+  type IMessageChat,
+  type IMessageListMessagesOptions,
+  type IMessageMessage,
+  type IMessagePermissionAction,
+  type IMessageSendOptions,
+  type IMessageSendResult,
+  type IMessageServiceStatus,
+} from "./types.vibe"
+
+export interface IMessageRoute {
+  name?: string
+  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+  path: string
+  public?: boolean
+  rawPath?: boolean
+  publicReason?: string
+  publicWrite?: string
+  handler: (req: IMessageRouteRequest, res: IMessageRouteResponse, runtime: IAgentRuntime) => Promise<void>
+}
+
+module node {
+  export const WebResponse = globalThis.Response
+}
+import { WebResponse } from node
+
+export type IMessageSetupState = "idle" | "configuring" | "paired"
+
+export interface IMessageSetupError {
+  code: string
+  error: string
+}
+
+export interface IMessageSetupDetail {
+  transport?: "native" | "blooio"
+  available: boolean
+  connected: boolean
+  chatDbAvailable?: boolean
+  sendOnly?: boolean
+  chatDbPath?: string
+  reason?: string | null
+  permissionAction?: IMessagePermissionAction | null
+  webhookPath?: string | null
+  channelId?: string | null
+}
+
+export interface IMessageSetupStatusResponse<T = IMessageSetupDetail> {
+  connector: "imessage"
+  state: IMessageSetupState
+  detail?: T
+}
+
+export interface IMessageRouteRequest {
+  url?: string
+  body?: unknown
+  rawBody?: string
+  headers?: Record<string, string | string[] | undefined>
+}
+
+export interface IMessageRouteResponse {
+  status(code: number): IMessageRouteResponse
+  json(payload: unknown): unknown
+}
+
+export interface IMessageRouteReadJsonBodyOptions {
+  maxBytes?: number
+  requireObject?: boolean
+  readErrorStatus?: number
+  nonObjectStatus?: number
+  parseErrorStatus?: number
+  readErrorMessage?: string
+  nonObjectMessage?: string
+  parseErrorMessage?: string
+}
+
+export interface IMessageRouteRequestMeta {
+  req: http.IncomingMessage
+  res: http.ServerResponse
+  method: string
+  pathname: string
+}
+
+export interface IMessageRouteHelpers {
+  json(res: http.ServerResponse, data: unknown, status?: number): void
+  error(res: http.ServerResponse, message: string, status?: number): void
+  readJsonBody<T>(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    options?: IMessageRouteReadJsonBodyOptions,
+  ): Promise<T | null>
+}
+
+export interface IMessageRouteState {
+  runtime?: {
+    getService(type: string): unknown
+  }
+}
+
+interface IMessageServiceRouteShape {
+  isConnected(): boolean
+  getStatus?(): IMessageServiceStatus
+  handleBlooioWebhook?(
+    rawBody: string,
+    signature: string | undefined,
+  ): Promise<"accepted" | "ignored" | "unauthorized">
+  acceptWebhook?(raw: string, signature: string): Promise<"accepted" | "ignored" | "unauthorized">
+  getRecentMessages(limit?: number): Promise<IMessageMessage[]>
+  getMessages?(options?: IMessageListMessagesOptions): Promise<IMessageMessage[]>
+  sendMessage(to: string, text: string, options?: IMessageSendOptions): Promise<IMessageSendResult>
+  getChats(): Promise<IMessageChat[]>
+  listAllContacts(): Promise<FullContact[]>
+  addContact(input: NewContactInput): Promise<string | null>
+  updateContact(personId: string, patch: ContactPatch): Promise<boolean>
+  deleteContact(personId: string): Promise<boolean>
+}
+
+interface ConnectorSetupServiceLike {
+  getConfig(): Record<string, unknown>
+  updateConfig(updater: (config: Record<string, unknown>) => void): void
+}
+
+const DEFAULT_MESSAGES_LIMIT = 50
+const MAX_MESSAGES_LIMIT = 500
+const MAX_BODY_BYTES = 256 * 1024
+
+export function buildSetupError(code: string, message: string): IMessageSetupError {
+  return { code, error: message }
+}
+
+function resolveSetupService(runtime: IAgentRuntime): ConnectorSetupServiceLike | null {
+  const service = runtime.getService("connector-setup") as Partial<ConnectorSetupServiceLike> | null | undefined
+  if (!service || typeof service.getConfig !== "function" || typeof service.updateConfig !== "function") {
+    return null
+  }
+  return service as ConnectorSetupServiceLike
+}
+
+function resolveRouteService(runtime: { getService(type: string): unknown } | undefined): IMessageServiceRouteShape | null {
+  if (!runtime) return null
+  const service = runtime.getService(IMESSAGE_SERVICE_NAME) as Partial<IMessageServiceRouteShape> | null | undefined
+  if (!service || typeof service.isConnected !== "function") return null
+  return service as IMessageServiceRouteShape
+}
+
+function resolveDataService(runtime: { getService(type: string): unknown } | undefined): IMessageServiceRouteShape | null {
+  const service = resolveRouteService(runtime)
+  if (
+    !service ||
+    typeof service.getRecentMessages !== "function" ||
+    typeof service.sendMessage !== "function" ||
+    typeof service.getChats !== "function" ||
+    typeof service.listAllContacts !== "function" ||
+    typeof service.addContact !== "function" ||
+    typeof service.updateContact !== "function" ||
+    typeof service.deleteContact !== "function"
+  ) {
+    return null
+  }
+  return service
+}
+
+function parsePositiveMessagesLimit(raw: string | null): number | null {
+  if (raw === null || raw === "") return DEFAULT_MESSAGES_LIMIT
+  if (!/^[1-9]\d*$/.test(raw)) return null
+  return Math.min(Number.parseInt(raw, 10), MAX_MESSAGES_LIMIT)
+}
+
+function parseLegacyMessagesLimit(raw: string | null): number | null {
+  if (raw === null || raw.trim() === "") return DEFAULT_MESSAGES_LIMIT
+  const trimmed = raw.trim()
+  if (!/^[+-]?\d+$/.test(trimmed)) return null
+  const value = Number(trimmed)
+  if (!Number.isSafeInteger(value)) return null
+  return Math.min(Math.max(1, value), MAX_MESSAGES_LIMIT)
+}
+
+function readHeader(req: IMessageRouteRequest, name: string): string | undefined {
+  const value = req.headers?.[name.toLowerCase()] ?? req.headers?.[name]
+  return Array.isArray(value) ? value[0] : value
+}
+
+function contactPathError(pathname: string): { ok: true; id: string } | { ok: false; message: string } {
+  const parsed = parseIMessageContactId(pathname.split("?")[0] ?? "")
+  if (parsed.ok) return parsed
+  return {
+    ok: false,
+    message:
+      parsed.reason === "malformed"
+        ? "Invalid contact id: malformed URL encoding"
+        : "contact id is required in the path",
+  }
+}
+
+function buildStatusResponse(runtime: IAgentRuntime): IMessageSetupStatusResponse<IMessageSetupDetail> {
+  const service = resolveRouteService(runtime)
+  if (!service) {
+    return {
+      connector: "imessage",
+      state: "idle",
+      detail: {
+        available: false,
+        connected: false,
+        reason: "imessage service not registered",
+      },
+    }
+  }
+  const connected = service.isConnected()
+  const status = service.getStatus?.()
+  const state: IMessageSetupState = connected ? "paired" : status?.available ? "configuring" : "idle"
+  return {
+    connector: "imessage",
+    state,
+    detail: {
+      available: status?.available ?? true,
+      connected,
+      ...(status
+        ? {
+            transport: status.transport,
+            chatDbAvailable: status.chatDbAvailable,
+            sendOnly: status.sendOnly,
+            chatDbPath: status.chatDbPath,
+            reason: status.reason,
+            permissionAction: status.permissionAction,
+            webhookPath: status.webhookPath,
+            channelId: status.channelId,
+          }
+        : {}),
+    },
+  }
+}
+
+async function withSetupService(
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+  action: (setupService: ConnectorSetupServiceLike) => void,
+): Promise<void> {
+  const setupService = resolveSetupService(runtime)
+  if (!setupService) {
+    res.status(503).json(buildSetupError("service_unavailable", "connector-setup service not registered"))
+    return
+  }
+  action(setupService)
+}
+
+async function handleSetupStatus(
+  _req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  res.status(200).json(buildStatusResponse(runtime))
+}
+
+async function handleSetupStart(
+  _req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withSetupService(res, runtime, (setupService) => {
+    setupService.updateConfig((cfg) => {
+      if (!cfg.connectors || typeof cfg.connectors !== "object") cfg.connectors = {}
+      const connectors = cfg.connectors as Record<string, unknown>
+      const previous = (connectors.imessage as Record<string, unknown> | undefined) ?? {}
+      connectors.imessage = { ...previous, enabled: true }
+    })
+    res.status(200).json(buildStatusResponse(runtime))
+  })
+}
+
+async function handleSetupCancel(
+  _req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withSetupService(res, runtime, (setupService) => {
+    setupService.updateConfig((cfg) => {
+      const connectors = (cfg.connectors ?? {}) as Record<string, unknown>
+      delete connectors.imessage
+    })
+    res.status(200).json({ connector: "imessage", state: "idle" } satisfies IMessageSetupStatusResponse<undefined>)
+  })
+}
+
+async function withDataService(
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+  label: string,
+  action: (service: IMessageServiceRouteShape) => Promise<void>,
+): Promise<void> {
+  const service = resolveDataService(runtime)
+  if (!service) {
+    res.status(503).json(buildSetupError("service_unavailable", "imessage service not registered"))
+    return
+  }
+  try {
+    await action(service)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    res.status(500).json(buildSetupError("internal_error", `${label}: ${message}`))
+  }
+}
+
+async function withContactIdDataRoute(
+  req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+  label: string,
+  action: (service: IMessageServiceRouteShape, contactId: string) => Promise<void>,
+): Promise<void> {
+  const parsed = contactPathError(req.url ?? "")
+  if (!parsed.ok) {
+    res.status(400).json(buildSetupError("bad_request", parsed.message))
+    return
+  }
+  await withDataService(res, runtime, label, (service) => action(service, parsed.id))
+}
+
+async function handleBlooioWebhookRoute(
+  req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const service = resolveRouteService(runtime)
+  const webhookFn = service?.handleBlooioWebhook?.bind(service)
+  if (!webhookFn) {
+    res.status(503).json(buildSetupError("service_unavailable", "imessage Blooio transport is unavailable"))
+    return
+  }
+  if (typeof req.rawBody !== "string" || req.rawBody.length === 0) {
+    res.status(400).json(buildSetupError("bad_request", "raw webhook body is required"))
+    return
+  }
+  const result = await webhookFn(req.rawBody, readHeader(req, "x-blooio-signature"))
+  if (result === "unauthorized") {
+    res.status(401).json(buildSetupError("unauthorized", "invalid Blooio webhook signature"))
+    return
+  }
+  res.status(200).json({ received: true, dispatched: result === "accepted" })
+}
+
+async function handleMessagesRoute(
+  req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withDataService(res, runtime, "failed to read messages", async (service) => {
+    const url = new URL(req.url ?? "/api/imessage/messages", "http://localhost")
+    const limit = parsePositiveMessagesLimit(url.searchParams.get("limit"))
+    if (limit === null) {
+      res.status(400).json(buildSetupError("bad_request", "limit must be a positive integer"))
+      return
+    }
+    const chatId = url.searchParams.get("chatId")?.trim() || undefined
+    const messages =
+      typeof service.getMessages === "function"
+        ? await service.getMessages({ chatId, limit })
+        : await service.getRecentMessages(limit)
+    res.status(200).json({ messages, count: messages.length })
+  })
+}
+
+async function handleSendMessageRoute(
+  req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withDataService(res, runtime, "sendMessage threw", async (service) => {
+    const body = (req.body ?? {}) as {
+      to?: string
+      chatId?: string
+      text?: string
+      mediaUrl?: string
+      maxBytes?: number
+    }
+    const to = body.to?.trim() || ""
+    const chatId = body.chatId?.trim() || ""
+    const text = body.text?.trim() || ""
+    const mediaUrl = body.mediaUrl?.trim() || undefined
+    if (!to && !chatId) {
+      res.status(400).json(buildSetupError("bad_request", "either to or chatId is required"))
+      return
+    }
+    if (!text && !mediaUrl) {
+      res.status(400).json(buildSetupError("bad_request", "either text or mediaUrl is required"))
+      return
+    }
+    const result = await service.sendMessage(chatId ? `chat_id:${chatId}` : to, text, {
+      ...(mediaUrl ? { mediaUrl } : {}),
+      ...(typeof body.maxBytes === "number" ? { maxBytes: body.maxBytes } : {}),
+    })
+    if (!result.success) {
+      res.status(500).json(buildSetupError("internal_error", result.error ?? "failed to send iMessage"))
+      return
+    }
+    res.status(200).json(result)
+  })
+}
+
+async function handleChatsRoute(
+  _req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withDataService(res, runtime, "failed to read chats", async (service) => {
+    const chats = await service.getChats()
+    res.status(200).json({ chats, count: chats.length })
+  })
+}
+
+async function handleListContactsRoute(
+  _req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withDataService(res, runtime, "failed to read contacts", async (service) => {
+    const contacts = await service.listAllContacts()
+    res.status(200).json({ contacts, count: contacts.length })
+  })
+}
+
+async function handleCreateContactRoute(
+  req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withDataService(res, runtime, "addContact threw", async (service) => {
+    const body = (req.body ?? {}) as NewContactInput
+    if (!body.firstName && !body.lastName && !body.phones?.length && !body.emails?.length) {
+      res
+        .status(400)
+        .json(buildSetupError("bad_request", "at least one of firstName, lastName, phones, or emails is required"))
+      return
+    }
+    const id = await service.addContact(body)
+    if (!id) {
+      res.status(500).json(buildSetupError("internal_error", "contact creation failed"))
+      return
+    }
+    res.status(201).json({ id, created: true })
+  })
+}
+
+async function handleUpdateContactRoute(
+  req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withContactIdDataRoute(req, res, runtime, "updateContact threw", async (service, id) => {
+    const ok = await service.updateContact(id, (req.body ?? {}) as ContactPatch)
+    if (!ok) {
+      res.status(500).json(buildSetupError("internal_error", "contact update failed"))
+      return
+    }
+    res.status(200).json({ id, updated: true })
+  })
+}
+
+async function handleDeleteContactRoute(
+  req: IMessageRouteRequest,
+  res: IMessageRouteResponse,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await withContactIdDataRoute(req, res, runtime, "deleteContact threw", async (service, id) => {
+    const ok = await service.deleteContact(id)
+    if (!ok) {
+      res.status(500).json(buildSetupError("internal_error", "contact delete failed"))
+      return
+    }
+    res.status(200).json({ id, deleted: true })
+  })
+}
+
+export const imessageSetupRoutes: IMessageRoute[] = [
+  { type: "GET", path: "/api/setup/imessage/status", handler: handleSetupStatus, rawPath: true },
+  { type: "POST", path: "/api/setup/imessage/start", handler: handleSetupStart, rawPath: true },
+  { type: "POST", path: "/api/setup/imessage/cancel", handler: handleSetupCancel, rawPath: true },
+]
+
+export const imessageDataRoutes: IMessageRoute[] = [
+  {
+    name: "imessage-blooio-webhook",
+    type: "POST",
+    path: "/api/imessage/webhook/blooio",
+    public: true,
+    rawPath: true,
+    publicReason: "Blooio webhook delivery is authenticated by its HMAC signature.",
+    publicWrite: "Inbound Blooio webhook POST authenticated by X-Blooio-Signature.",
+    handler: handleBlooioWebhookRoute,
+  },
+  { type: "GET", path: "/api/imessage/messages", handler: handleMessagesRoute, rawPath: true },
+  { type: "POST", path: "/api/imessage/messages", handler: handleSendMessageRoute, rawPath: true },
+  { type: "GET", path: "/api/imessage/chats", handler: handleChatsRoute, rawPath: true },
+  { type: "GET", path: "/api/imessage/contacts", handler: handleListContactsRoute, rawPath: true },
+  { type: "POST", path: "/api/imessage/contacts", handler: handleCreateContactRoute, rawPath: true },
+  { type: "PATCH", path: "/api/imessage/contacts/:id", handler: handleUpdateContactRoute, rawPath: true },
+  { type: "DELETE", path: "/api/imessage/contacts/:id", handler: handleDeleteContactRoute, rawPath: true },
+]
+
+async function runLegacyAction(
+  res: http.ServerResponse,
+  helpers: IMessageRouteHelpers,
+  label: string,
+  action: () => Promise<void>,
+): Promise<boolean> {
+  try {
+    await action()
+  } catch (error) {
+    helpers.error(res, `${label}: ${error instanceof Error ? error.message : String(error)}`, 500)
+  }
+  return true
+}
+
+export async function handleIMessageRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+  state: IMessageRouteState,
+  helpers: IMessageRouteHelpers,
+): Promise<boolean> {
+  if (!pathname.startsWith("/api/imessage")) return false
+  if (method === "GET" && pathname === "/api/imessage/status") {
+    const service = resolveRouteService(state.runtime)
+    if (!service) {
+      helpers.json(res, { available: false, reason: "imessage service not registered" })
+      return true
+    }
+    helpers.json(res, { available: true, connected: service.isConnected(), ...(service.getStatus?.() ?? {}) })
+    return true
+  }
+  const service = resolveDataService(state.runtime)
+  if (method === "GET" && pathname === "/api/imessage/messages") {
+    if (!service) {
+      helpers.error(res, "imessage service not registered", 503)
+      return true
+    }
+    const url = new URL(req.url ?? pathname, "http://localhost")
+    const limit = parseLegacyMessagesLimit(url.searchParams.get("limit"))
+    if (limit === null) {
+      helpers.error(res, "limit must be an integer", 400)
+      return true
+    }
+    return runLegacyAction(res, helpers, "failed to read messages", async () => {
+      const messages = await service.getRecentMessages(limit)
+      helpers.json(res, { messages, count: messages.length })
+    })
+  }
+  if (method === "GET" && pathname === "/api/imessage/chats") {
+    if (!service) {
+      helpers.error(res, "imessage service not registered", 503)
+      return true
+    }
+    return runLegacyAction(res, helpers, "failed to read chats", async () => {
+      const chats = await service.getChats()
+      helpers.json(res, { chats, count: chats.length })
+    })
+  }
+  if (method === "GET" && pathname === "/api/imessage/contacts") {
+    if (!service) {
+      helpers.error(res, "imessage service not registered", 503)
+      return true
+    }
+    return runLegacyAction(res, helpers, "failed to read contacts", async () => {
+      const contacts = await service.listAllContacts()
+      helpers.json(res, { contacts, count: contacts.length })
+    })
+  }
+  if (method === "POST" && pathname === "/api/imessage/contacts") {
+    if (!service) {
+      helpers.error(res, "imessage service not registered", 503)
+      return true
+    }
+    const body = await helpers.readJsonBody<NewContactInput>(req, res, { maxBytes: MAX_BODY_BYTES })
+    if (!body) return true
+    if (!body.firstName && !body.lastName && !body.phones?.length && !body.emails?.length) {
+      helpers.error(res, "at least one of firstName, lastName, phones, or emails is required", 400)
+      return true
+    }
+    return runLegacyAction(res, helpers, "addContact threw", async () => {
+      const id = await service.addContact(body)
+      if (!id) {
+        helpers.error(res, "contact creation failed", 500)
+        return
+      }
+      helpers.json(res, { id, created: true }, 201)
+    })
+  }
+  if ((method === "PATCH" || method === "DELETE") && pathname.startsWith("/api/imessage/contacts/")) {
+    const parsed = contactPathError(pathname)
+    if (!parsed.ok) {
+      helpers.error(res, parsed.message, 400)
+      return true
+    }
+    if (!service) {
+      helpers.error(res, "imessage service not registered", 503)
+      return true
+    }
+    if (method === "PATCH") {
+      const body = await helpers.readJsonBody<ContactPatch>(req, res, { maxBytes: MAX_BODY_BYTES })
+      if (!body) return true
+      return runLegacyAction(res, helpers, "updateContact threw", async () => {
+        const ok = await service.updateContact(parsed.id, body)
+        if (!ok) {
+          helpers.error(res, "contact update failed", 500)
+          return
+        }
+        helpers.json(res, { id: parsed.id, updated: true })
+      })
+    }
+    return runLegacyAction(res, helpers, "deleteContact threw", async () => {
+      const ok = await service.deleteContact(parsed.id)
+      if (!ok) {
+        helpers.error(res, "contact delete failed", 500)
+        return
+      }
+      helpers.json(res, { id: parsed.id, deleted: true })
+    })
+  }
+  return false
+}
+
+export async function handleBlooioRequest(
+  runtime: IAgentRuntime,
+  request: Request,
+): Promise<globalThis.Response> {
+  const service = resolveRouteService(runtime)
+  const accept =
+    service?.acceptWebhook?.bind(service) ??
+    (service?.handleBlooioWebhook
+      ? (raw: string, signature: string) => service.handleBlooioWebhook!(raw, signature)
+      : undefined)
+  if (request.method !== "POST" || accept === undefined) {
+    return WebResponse.json({ error: "unavailable" }, { status: 404 })
+  }
+  const signature = request.headers.get("x-blooio-signature")
+  if (signature === null || request.body === null) {
+    return WebResponse.json({ error: "unauthorized" }, { status: 401 })
+  }
+  const reader = request.body.getReader()
+  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+  let size = 0
+  let raw = ""
+  try {
+    for (;;) {
+      const read = await reader.read()
+      if (read.done) break
+      size += read.value.byteLength
+      if (size > MAX_BODY_BYTES) return WebResponse.json({ error: "body_too_large" }, { status: 413 })
+      raw += decoder.decode(read.value, { stream: true })
+    }
+    raw += decoder.decode()
+    const outcome = await accept(raw, signature)
+    return outcome === "unauthorized"
+      ? WebResponse.json({ error: "unauthorized" }, { status: 401 })
+      : WebResponse.json({ outcome })
+  } catch {
+    return WebResponse.json({ error: "processing_unavailable" }, { status: 503 })
+  } finally {
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+}

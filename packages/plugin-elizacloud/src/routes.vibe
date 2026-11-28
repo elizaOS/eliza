@@ -1,0 +1,184 @@
+// spec/elizaCloud/index.md, "Funding links are scoped to the current account and approved destination"; spec/elizaCloud/delegation.md, "Story: Gate managed Google delegation and gateway relay on owner consent"
+import type { LocalRoute, RouteInput } from "@elizaos/agent-host"
+import type { IAgentRuntime } from "@elizaos/core"
+import { mayOpenCloudFunding } from "../gen/elizaCloud.effect.vibe"
+import { getApiKey, getBaseURL, isApprovedCloudOrigin, resolveCloudBillingUrl } from "./config.vibe"
+import { CloudApiFailure, cloudJsonFetch } from "./http.vibe"
+import { fetchTextToSpeech, handleTranscription } from "./models.vibe"
+import { fetchCreditBalance, invalidateCloudAccountCache } from "./providers.vibe"
+import {
+  CLOUD_AUTH_SERVICE_TYPE,
+  CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE,
+  CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE,
+  CLOUD_MODEL_REGISTRY_SERVICE_TYPE,
+  type CloudAuthService,
+  type CloudGoogleDelegationService,
+  type CloudManagedGatewayRelayService,
+  type CloudModelRegistryService,
+} from "./services.vibe"
+import { fetchCloudVoiceCatalog } from "./voice-catalog.vibe"
+
+module node {
+  /** @throws {never} */
+  export function encodeBase64Bytes(bytes: Uint8Array): string {
+    return Buffer.from(bytes).toString("base64")
+  }
+
+  /** @throws {never} */
+  export function decodeBase64Bytes(encoded: string): Uint8Array {
+    return new Uint8Array(Buffer.from(encoded, "base64"))
+  }
+}
+import { decodeBase64Bytes, encodeBase64Bytes } from node
+
+export type CloudRouteRuntimeTarget = () => IAgentRuntime | undefined
+
+type RouteAnswer = { readonly status: number; readonly body: object }
+
+function mapRouteError(err: unknown): RouteAnswer {
+  if (err instanceof CloudApiFailure) {
+    return { status: err.status, body: { error: err.reason, code: err.code } }
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  return { status: 500, body: { error: message } }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function routeWith(target: CloudRouteRuntimeTarget) {
+  return (
+    method: "GET" | "POST",
+    path: string,
+    handle: (input: RouteInput, runtime: IAgentRuntime) => Promise<RouteAnswer> | RouteAnswer,
+  ): LocalRoute => ({
+    method,
+    path,
+    handler: async (input) => {
+      const runtime = target()
+      if (!runtime) return { status: 503, body: { error: "Eliza Cloud runtime is not active." } }
+      try {
+        return await handle(input, runtime)
+      } catch (err) {
+        return mapRouteError(err)
+      }
+    },
+  })
+}
+
+function checkFundingPermission(runtime: IAgentRuntime, requestedUrl?: string): boolean {
+  const auth = runtime.getService<CloudAuthService>(CLOUD_AUTH_SERVICE_TYPE)
+  if (!auth) return getApiKey(runtime) !== "" && isApprovedCloudOrigin(requestedUrl ?? getBaseURL(runtime))
+  const view = auth.getView()
+  const checkoutTarget = requestedUrl ?? getBaseURL(runtime)
+  return mayOpenCloudFunding(view.link, view.link.accountId, view.link.originId, view.link.epoch, isApprovedCloudOrigin(checkoutTarget))
+}
+
+export function elizaCloudRoutes(target: CloudRouteRuntimeTarget): LocalRoute[] {
+  const route = routeWith(target)
+  return [
+    route("GET", "/api/cloud/status", async (_input, runtime) => {
+      const auth = runtime.getService<CloudAuthService>(CLOUD_AUTH_SERVICE_TYPE)
+      const registry = runtime.getService<CloudModelRegistryService>(CLOUD_MODEL_REGISTRY_SERVICE_TYPE)
+      const relay = runtime.getService<CloudManagedGatewayRelayService>(CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE)
+      const connected = auth ? auth.isAuthenticated() : getApiKey(runtime) !== ""
+      const readiness = connected && registry ? await registry.checkTextModelReadiness() : undefined
+      return {
+        status: 200,
+        body: {
+          connected,
+          baseUrl: getBaseURL(runtime),
+          billingUrl: resolveCloudBillingUrl(getBaseURL(runtime)),
+          accountId: auth?.getAccountId() ?? "",
+          epoch: auth?.getEpoch() ?? 0,
+          readiness,
+          relay: relay?.getRelayStatus() ?? { connected, relayActive: false },
+        },
+      }
+    }),
+    route("GET", "/api/cloud/credits", async (_input, runtime) => {
+      const snapshot = await fetchCreditBalance(runtime)
+      return { status: 200, body: { balance: snapshot.balance, billingUrl: resolveCloudBillingUrl(getBaseURL(runtime)) } }
+    }),
+    route("GET", "/api/cloud/models", async (input, runtime) => {
+      const registry = runtime.getService<CloudModelRegistryService>(CLOUD_MODEL_REGISTRY_SERVICE_TYPE)
+      if (!registry) return { status: 503, body: { error: "CloudModelRegistryService unavailable." } }
+      const refresh = input.query.get("refresh") === "true"
+      const models = await registry.getModels(refresh)
+      return { status: 200, body: { object: "list", data: models } }
+    }),
+    route("GET", "/api/cloud/voices", async (_input, runtime) => {
+      const voices = await fetchCloudVoiceCatalog(runtime)
+      return { status: 200, body: { voices } }
+    }),
+    route("POST", "/api/cloud/disconnect", (_input, runtime) => {
+      const auth = runtime.getService<CloudAuthService>(CLOUD_AUTH_SERVICE_TYPE)
+      const google = runtime.getService<CloudGoogleDelegationService>(CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE)
+      const relay = runtime.getService<CloudManagedGatewayRelayService>(CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE)
+      auth?.disconnect()
+      google?.disconnect()
+      relay?.disconnect()
+      invalidateCloudAccountCache(runtime)
+      return { status: 200, body: { disconnected: true, epoch: auth?.getEpoch() ?? 0 } }
+    }),
+    route("GET", "/api/cloud/billing/summary", async (_input, runtime) => {
+      const body = await runPromise(cloudJsonFetch(runtime, { method: "GET", path: "/api/v1/billing/summary", maxWarmingRetries: 1 }))
+      return { status: 200, body: asRecord(body) }
+    }),
+    route("GET", "/api/cloud/billing/payment-methods", async (_input, runtime) => {
+      const body = await runPromise(cloudJsonFetch(runtime, { method: "GET", path: "/api/v1/billing/payment-methods", maxWarmingRetries: 1 }))
+      return { status: 200, body: asRecord(body) }
+    }),
+    route("GET", "/api/cloud/billing/history", async (_input, runtime) => {
+      const body = await runPromise(cloudJsonFetch(runtime, { method: "GET", path: "/api/v1/billing/history", maxWarmingRetries: 1 }))
+      return { status: 200, body: asRecord(body) }
+    }),
+    route("POST", "/api/cloud/billing/checkout", async (input, runtime) => {
+      if (!checkFundingPermission(runtime)) {
+        return { status: 403, body: { error: "Funding checkout requires an active approved Cloud connection." } }
+      }
+      const payload = asRecord(input.body)
+      const body = await runPromise(cloudJsonFetch(runtime, { method: "POST", path: "/api/v1/billing/checkout", body: payload, maxWarmingRetries: 0 }))
+      const rec = asRecord(body)
+      if (typeof rec.url === "string" && !isApprovedCloudOrigin(rec.url)) {
+        return { status: 502, body: { error: "Upstream checkout returned an unapproved destination." } }
+      }
+      return { status: 200, body: rec }
+    }),
+    route("POST", "/api/cloud/billing/crypto/quote", async (input, runtime) => {
+      if (!checkFundingPermission(runtime)) {
+        return { status: 403, body: { error: "Crypto quote requires an active approved Cloud connection." } }
+      }
+      const body = await runPromise(cloudJsonFetch(runtime, { method: "POST", path: "/api/v1/billing/crypto/quote", body: asRecord(input.body), maxWarmingRetries: 0 }))
+      return { status: 200, body: asRecord(body) }
+    }),
+    route("POST", "/api/cloud/tts/preview", async (input, runtime) => {
+      const payload = asRecord(input.body)
+      const text = typeof payload.text === "string" ? payload.text : ""
+      if (!text.trim()) return { status: 400, body: { error: "Missing text for TTS preview." } }
+      const voice = typeof payload.voice === "string" ? payload.voice : undefined
+      const audio = await fetchTextToSpeech(runtime, { text, ...(voice ? { voice } : {}) })
+      return { status: 200, body: { contentType: "audio/mpeg", audioBase64: encodeBase64Bytes(audio), byteLength: audio.byteLength } }
+    }),
+    route("POST", "/api/cloud/stt", async (input, runtime) => {
+      const payload = asRecord(input.body)
+      const audioBase64 = typeof payload.audioBase64 === "string" ? payload.audioBase64 : ""
+      if (!audioBase64) return { status: 400, body: { error: "Missing audioBase64 payload." } }
+      const bytes = decodeBase64Bytes(audioBase64)
+      const text = await handleTranscription(runtime, { audioUrl: "", audio: bytes } as unknown as Parameters<typeof handleTranscription>[1])
+      return { status: 200, body: { text } }
+    }),
+    route("GET", "/api/cloud/relay-status", async (_input, runtime) => {
+      const relay = runtime.getService<CloudManagedGatewayRelayService>(CLOUD_MANAGED_GATEWAY_RELAY_SERVICE_TYPE)
+      if (!relay) return { status: 200, body: { connected: false, relayActive: false } }
+      return { status: 200, body: relay.getRelayStatus() }
+    }),
+    route("GET", "/api/cloud/google/status", (_input, runtime) => {
+      const google = runtime.getService<CloudGoogleDelegationService>(CLOUD_GOOGLE_DELEGATION_SERVICE_TYPE)
+      if (!google) return { status: 200, body: { connected: false, gmailConsent: false, calendarConsent: false } }
+      const state = google.getState()
+      return { status: 200, body: { connected: state.connected, gmailConsent: state.gmailConsent, calendarConsent: state.calendarConsent, epoch: state.epoch } }
+    }),
+  ]
+}

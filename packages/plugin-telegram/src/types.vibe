@@ -1,0 +1,143 @@
+// spec/telegram/index.md, "Story: Run one Telegram long-poller for each bot credential"; spec/telegram/delivery.md, "Story: Enforce fail-closed owner pairing, canonical world ownership, and bounded history queries"
+import type { Content, IAgentRuntime, Role, RolesWorldMetadata } from "@elizaos/core"
+import type { Context, Telegraf } from "telegraf"
+import type { TelegramChatList, TelegramDmPolicy, TelegramMode } from "../gen/telegram.effect.vibe"
+
+export const MESSAGE_CONSTANTS = {
+  MAX_MESSAGES: 50,
+  RECENT_MESSAGE_COUNT: 5,
+  CHAT_HISTORY_COUNT: 10,
+  DEFAULT_SIMILARITY_THRESHOLD: 0.6,
+  DEFAULT_SIMILARITY_THRESHOLD_FOLLOW_UPS: 0.4,
+  INTEREST_DECAY_TIME: 5 * 60 * 1000,
+  PARTIAL_INTEREST_DECAY: 3 * 60 * 1000,
+} as const
+
+export const TELEGRAM_SERVICE_NAME = "telegram"
+export const TELEGRAM_STANDALONE_SERVICE_NAME = "telegram-standalone"
+export const TELEGRAM_OWNER_PAIRING_SERVICE_TYPE = "OWNER_PAIRING_TELEGRAM"
+export const TELEGRAM_PERSONAL_SERVICE_TYPE = "telegram-account"
+export const TELEGRAM_PERSONAL_ACCOUNT_SUFFIX = ":personal"
+export const TELEGRAM_LOCAL_MOCK_SESSION_PREFIX = "mock-lifeops-simulator:"
+export const TELEGRAM_DEFAULT_API_ROOT = "https://api.telegram.org"
+
+export type Button = {
+  readonly kind: "login" | "url" | "web_app"
+  readonly text: string
+  readonly url: string
+}
+
+export type TelegramContent = {
+  readonly text?: string
+  readonly attachments?: Content["attachments"]
+  readonly buttons?: readonly Button[]
+}
+
+export const TelegramEventTypes = {
+  WORLD_JOINED: "TELEGRAM_WORLD_JOINED",
+  WORLD_CONNECTED: "TELEGRAM_WORLD_CONNECTED",
+  WORLD_LEFT: "TELEGRAM_WORLD_LEFT",
+  ENTITY_JOINED: "TELEGRAM_ENTITY_JOINED",
+  ENTITY_LEFT: "TELEGRAM_ENTITY_LEFT",
+  ENTITY_UPDATED: "TELEGRAM_ENTITY_UPDATED",
+  MESSAGE_RECEIVED: "TELEGRAM_MESSAGE_RECEIVED",
+  MESSAGE_SENT: "TELEGRAM_MESSAGE_SENT",
+  REACTION_RECEIVED: "TELEGRAM_REACTION_RECEIVED",
+  INTERACTION_RECEIVED: "TELEGRAM_INTERACTION_RECEIVED",
+  SLASH_START: "TELEGRAM_SLASH_START",
+} as const
+
+export type TelegramEventType = (typeof TelegramEventTypes)[keyof typeof TelegramEventTypes]
+
+export interface TelegramWorldOwnership {
+  ownership?: { readonly ownerId: string }
+  readonly roles: Record<string, Role>
+  roleSources?: RolesWorldMetadata["roleSources"]
+}
+
+export interface TelegramPersonalAccountConfig {
+  readonly phone?: string
+  readonly appId?: string
+  readonly appHash?: string
+  readonly session?: string
+  readonly enabled?: boolean
+  readonly subjectId?: string
+  readonly deviceModel?: string
+  readonly systemVersion?: string
+}
+
+export interface TelegramAccountConfig {
+  readonly name?: string
+  readonly enabled?: boolean
+  readonly botToken?: string
+  readonly apiRoot?: string
+  readonly allowedChats?: readonly string[]
+  readonly autoReply?: boolean
+  readonly personal?: TelegramPersonalAccountConfig
+}
+
+export interface TelegramMultiAccountConfig {
+  readonly enabled?: boolean
+  readonly botToken?: string
+  readonly apiRoot?: string
+  readonly accounts?: Readonly<Record<string, TelegramAccountConfig>>
+}
+
+export interface ResolvedTelegramAccount {
+  readonly accountId: string
+  readonly enabled: boolean
+  readonly name?: string
+  readonly botToken?: string
+  readonly apiRoot: string
+  readonly config: TelegramAccountConfig
+}
+
+export type TelegramPollerMode = "full" | "standalone"
+
+export interface TelegramPollerHealth {
+  readonly ok: boolean
+  readonly mode: TelegramPollerMode
+  readonly accountId: string
+  readonly ownerId: string
+  readonly connected: boolean
+  readonly lastUpdateAt?: number
+  readonly lastError?: string
+}
+
+export interface TelegramPollerClaim extends TelegramPollerHealth {
+  readonly bot?: Telegraf<Context>
+}
+
+export error TelegramRequestFailed { stage: string }
+
+export interface TelegramConnection {
+  readonly accountId: string
+  readonly token: Redacted.Redacted<string>
+  readonly ownerId: string
+  readonly apiRoot?: string
+  readonly dmPolicy: TelegramDmPolicy
+  readonly accountChats: ReadonlySet<string>
+  readonly globalChats: TelegramChatList
+  readonly mode: TelegramMode
+  readonly autoReply: boolean
+  readonly passive: boolean
+}
+
+export interface TelegramRouteRequest {
+  readonly method: "GET" | "POST" | "DELETE"
+  readonly path: string
+  readonly body?: unknown
+  readonly query?: Readonly<Record<string, string | undefined>>
+}
+
+export interface TelegramRouteResponse {
+  readonly status: number
+  readonly body: unknown
+}
+
+export interface TelegramRoute {
+  readonly method: "GET" | "POST" | "DELETE"
+  readonly path: string
+  readonly rawPath: true
+  readonly handler: (runtime: IAgentRuntime, request: TelegramRouteRequest) => Promise<TelegramRouteResponse>
+}

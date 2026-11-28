@@ -1,0 +1,74 @@
+// spec/nativeSwabble/index.md, "Story: Listen for a wake phrase only during the current authorized session"; spec/nativeSwabble/session.md, "Story: Rotate wake leases on start, audio-device switch and stop"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  SwabbleWeb,
+  currentWakeListener,
+  matchWakeTrigger,
+  observeWakeTranscript,
+} from "../src/index.vibe"
+
+describe("Swabble wake detection (spec/nativeSwabble/index.md, \"Story: Listen for a wake phrase only during the current authorized session\")", () => {
+  it("Matches triggers across Unicode folds and continuous scripts, rotates leases on device switch, and discards retired callbacks (spec/nativeSwabble/session.md, \"Each wake start or device switch advances the lease generation and stop clears the active lease\")", async () => {
+    assert.deepStrictEqual(matchWakeTrigger("Hey Eliza, turn on lights", ["hey eliza"]), {
+      wakeWord: "hey eliza",
+      command: "turn on lights",
+    })
+    assert.deepStrictEqual(matchWakeTrigger("\u0130STANBUL status", ["\u0130stanbul"]), {
+      wakeWord: "\u0130stanbul",
+      command: "status",
+    })
+    assert.deepStrictEqual(matchWakeTrigger("\u039f\u0394\u039f\u03a3 now", ["\u03bf\u03b4\u03bf\u03c2"]), {
+      wakeWord: "\u03bf\u03b4\u03bf\u03c2",
+      command: "now",
+    })
+    assert.deepStrictEqual(matchWakeTrigger("エリザ天気教えて", ["エリザ"]), {
+      wakeWord: "エリザ",
+      command: "天気教えて",
+    })
+
+    const web = new SwabbleWeb()
+    const wakes: string[] = []
+    const handle = await web.addListener("wakeWord", (ev) => wakes.push(ev.command))
+    const started = await web.start({ config: { triggers: ["hey eliza"], minCommandLength: 2 } })
+    assert.strictEqual(started.started, true)
+    assert.strictEqual((await web.isListening()).listening, true)
+    const firstLease = web.getSessionState().activeLeaseId
+    await web.setAudioDevice({ deviceId: "mic-usb" })
+    assert.notStrictEqual(web.getSessionState().activeLeaseId, firstLease)
+    assert.strictEqual(web.getSessionState().leaseEpoch, 2)
+    web.emitTranscript({ transcript: "hey eliza check calendar", isFinal: true, segments: [] })
+    assert.deepStrictEqual(wakes, ["check calendar"])
+    await web.stop()
+    web.emitTranscript({ transcript: "hey eliza ignored after stop", isFinal: true, segments: [] })
+    assert.deepStrictEqual(wakes, ["check calendar"])
+    await handle.remove()
+
+    const forwarded: string[] = []
+    let activeLeaseId = "lease-1"
+    const listener = currentWakeListener(
+      () => ({ leaseId: activeLeaseId, enabled: true, microphoneGranted: true, ownerEnabled: true }),
+      "lease-1",
+      "FinalWakeTranscript",
+      (v: string) => forwarded.push(v),
+    )
+    listener("live")
+    activeLeaseId = "lease-2"
+    listener("stale")
+    assert.deepStrictEqual(forwarded, ["live"])
+  })
+
+  it.effect("observeWakeTranscript forwards only while the scoped lease matches (spec/nativeSwabble/index.md, \"Wake observations and transcripts are bound to a current microphone lease\")", () => effect {
+    const web = new SwabbleWeb()
+    try promise(() => web.start({ config: { triggers: ["eliza"] } }))
+    const seen: string[] = []
+    const current = { leaseId: "lease-a", enabled: true, microphoneGranted: true, ownerEnabled: true }
+    try Effect.scoped(effect {
+      try observeWakeTranscript(() => current, (ev) => seen.push(ev.transcript), web)
+      web.emitTranscript({ transcript: "hello", isFinal: true, segments: [] })
+      current.leaseId = "lease-b"
+      web.emitTranscript({ transcript: "dropped", isFinal: true, segments: [] })
+    })
+    web.emitTranscript({ transcript: "after-scope", isFinal: true, segments: [] })
+    try Effect.try(() => assert.deepStrictEqual(seen, ["hello"]))
+  })
+})

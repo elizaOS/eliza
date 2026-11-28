@@ -1,0 +1,406 @@
+// spec/reminders/migration.md, "Story: Copy prior reminder tables once without losing or replaying owner edits"; spec/reminders/migration.md, "Migration copies only into an empty target, records a durable marker, and never alters the source"
+import { logger, Service, type IAgentRuntime } from "@elizaos/core"
+import type { ReminderDelivery, ReminderStatus } from "../gen/reminders.effect.vibe"
+import { runMigration, type MigrationOutcome } from "../gen/reminders__migration.effect.vibe"
+import {
+  MIGRATED_REMINDER_TABLES,
+  REMINDERS_SCHEMA_NAME,
+  REMINDERS_SOURCE_SCHEMA,
+  REMINDERS_SQLITE_DDL,
+  type MigratedReminderTable,
+} from "./schema.vibe"
+
+module node {
+  import { DatabaseSync } from "node:sqlite"
+
+  export interface SqliteStatement {
+    all(...params: unknown[]): unknown[]
+    get(...params: unknown[]): unknown
+    run(...params: unknown[]): { changes: number | bigint }
+  }
+
+  export interface SqliteDb {
+    readonly openError: string | null
+    exec(sql: string): void
+    prepare(sql: string): SqliteStatement
+    close(): void
+  }
+
+  /** @throws {never} */
+  export function openRawSqlite(dbPath: string): SqliteDb {
+    try {
+      const db = new DatabaseSync(dbPath) as unknown as Omit<SqliteDb, "openError">
+      return {
+        openError: null,
+        exec: (sql: string) => db.exec(sql),
+        prepare: (sql: string) => db.prepare(sql),
+        close: () => db.close(),
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        openError: message,
+        exec: () => {},
+        prepare: () => ({ all: () => [], get: () => undefined, run: () => ({ changes: 0 }) }),
+        close: () => {},
+      }
+    }
+  }
+}
+import { openRawSqlite, type SqliteDb } from node
+
+export const REMINDERS_LOG_PREFIX = "[Reminders]"
+export const REMINDERS_MIGRATION_SERVICE_TYPE = "reminders_migration"
+
+export type SqlExecutor = (sql: string) => Promise<Array<Record<string, unknown>>>
+
+export interface CarveOutDatabase {
+  readonly execute: SqlExecutor
+  readonly transaction?: <T>(work: (execute: SqlExecutor) => Promise<T>) => Promise<T>
+}
+
+export type TableMigrationOutcome =
+  | "copied"
+  | "source-missing"
+  | "target-non-empty"
+  | "already-migrated"
+
+export interface TableMigrationResult {
+  readonly table: MigratedReminderTable
+  readonly outcome: TableMigrationOutcome
+}
+
+export interface SqliteCarveOutHandle {
+  readonly db: SqliteDb
+  readonly close: () => void
+  readonly migrateTable: (table: MigratedReminderTable) => TableMigrationResult
+  readonly migrateAll: () => TableMigrationResult[]
+  readonly listIdsForOwner: (ownerId: string) => string[]
+  readonly insertDelivery: (row: ReminderDelivery) => boolean
+  readonly listPendingForOwner: (ownerId: string) => ReminderDelivery[]
+}
+
+const MIGRATION_MARKER_TABLE = "reminders_migration_state"
+
+function quoteIdent(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`
+}
+
+function asBool(value: unknown): boolean {
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
+function asCount(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value)
+  return Number.isSafeInteger(n) && n >= 0 ? n : 0
+}
+
+function mapOutcome(outcome: MigrationOutcome): TableMigrationOutcome {
+  if (outcome === "OutcomeCopied") return "copied"
+  if (outcome === "OutcomeTargetNonEmpty") return "target-non-empty"
+  if (outcome === "OutcomeAlreadyMigrated") return "already-migrated"
+  return "source-missing"
+}
+
+function decodeStatus(value: string): ReminderStatus {
+  if (value === "ReminderDelivered") return "ReminderDelivered"
+  if (value === "ReminderSnoozed") return "ReminderSnoozed"
+  if (value === "ReminderDismissed") return "ReminderDismissed"
+  return "ReminderPending"
+}
+
+async function sourceTableExists(exec: SqlExecutor, table: MigratedReminderTable): Promise<boolean> {
+  const rows = await exec(`SELECT to_regclass('${REMINDERS_SOURCE_SCHEMA}.${table}') IS NOT NULL AS present`)
+  return asBool(rows[0]?.present)
+}
+
+async function ensureMigrationMarkerTable(exec: SqlExecutor): Promise<void> {
+  await exec(
+    `CREATE TABLE IF NOT EXISTS ${REMINDERS_SCHEMA_NAME}.${quoteIdent(MIGRATION_MARKER_TABLE)} (
+      table_name TEXT PRIMARY KEY,
+      migrated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`,
+  )
+}
+
+async function migrationMarkerExists(exec: SqlExecutor, table: MigratedReminderTable): Promise<boolean> {
+  const rows = await exec(
+    `SELECT EXISTS (
+      SELECT 1 FROM ${REMINDERS_SCHEMA_NAME}.${quoteIdent(MIGRATION_MARKER_TABLE)}
+      WHERE table_name = '${table}'
+    ) AS done`,
+  )
+  return asBool(rows[0]?.done)
+}
+
+async function writeMigrationMarker(exec: SqlExecutor, table: MigratedReminderTable): Promise<void> {
+  await exec(
+    `INSERT INTO ${REMINDERS_SCHEMA_NAME}.${quoteIdent(MIGRATION_MARKER_TABLE)} (table_name)
+     VALUES ('${table}')
+     ON CONFLICT (table_name) DO NOTHING`,
+  )
+}
+
+async function targetTableIsEmpty(exec: SqlExecutor, table: MigratedReminderTable): Promise<boolean> {
+  const rows = await exec(
+    `SELECT NOT EXISTS (SELECT 1 FROM ${REMINDERS_SCHEMA_NAME}.${quoteIdent(table)}) AS empty`,
+  )
+  return asBool(rows[0]?.empty)
+}
+
+async function countRows(exec: SqlExecutor, schema: string, table: MigratedReminderTable): Promise<number> {
+  const rows = await exec(`SELECT COUNT(*) AS count FROM ${schema}.${quoteIdent(table)}`)
+  return asCount(rows[0]?.count)
+}
+
+function planTableMigration(args: {
+  readonly sourcePresent: boolean
+  readonly targetEmpty: boolean
+  readonly markerRecorded: boolean
+  readonly sourceRows: number
+  readonly targetRows: number
+}): TableMigrationOutcome {
+  const next = runMigration({
+    ...args,
+    sourceUntouched: true,
+    lastOutcome: "OutcomeNone",
+  })
+  return mapOutcome(next.lastOutcome)
+}
+
+export async function migrateReminderTable(
+  exec: SqlExecutor,
+  table: MigratedReminderTable,
+): Promise<TableMigrationResult> {
+  const markerRecorded = await migrationMarkerExists(exec, table)
+  const sourcePresent = markerRecorded ? false : await sourceTableExists(exec, table)
+  const targetEmpty = markerRecorded || !sourcePresent ? true : await targetTableIsEmpty(exec, table)
+  const sourceRows = sourcePresent && targetEmpty ? await countRows(exec, REMINDERS_SOURCE_SCHEMA, table) : 0
+  const outcome = planTableMigration({
+    sourcePresent,
+    targetEmpty,
+    markerRecorded,
+    sourceRows,
+    targetRows: targetEmpty ? 0 : 1,
+  })
+
+  if (outcome === "already-migrated" || outcome === "source-missing") {
+    return { table, outcome }
+  }
+  if (outcome === "target-non-empty") {
+    await writeMigrationMarker(exec, table)
+    return { table, outcome }
+  }
+
+  const target = `${REMINDERS_SCHEMA_NAME}.${quoteIdent(table)}`
+  const source = `${REMINDERS_SOURCE_SCHEMA}.${quoteIdent(table)}`
+  await exec(
+    `INSERT INTO ${target}
+     SELECT s.* FROM ${source} AS s
+     WHERE NOT EXISTS (SELECT 1 FROM ${target} AS t WHERE t.id = s.id)
+     ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
+  )
+  const missing = await exec(
+    `SELECT COUNT(*) AS missing FROM ${source} AS s
+     WHERE NOT EXISTS (SELECT 1 FROM ${target} AS t WHERE t.id = s.id)`,
+  )
+  if (asCount(missing[0]?.missing) > 0) {
+    throw new Error(`${REMINDERS_LOG_PREFIX} projection incomplete for ${table}`)
+  }
+  await writeMigrationMarker(exec, table)
+  return { table, outcome: "copied" }
+}
+
+export async function migrateReminderTables(database: CarveOutDatabase): Promise<TableMigrationResult[]> {
+  await database.execute(`CREATE SCHEMA IF NOT EXISTS ${REMINDERS_SCHEMA_NAME}`)
+  await ensureMigrationMarkerTable(database.execute)
+  const results: TableMigrationResult[] = []
+  for (const table of MIGRATED_REMINDER_TABLES) {
+    const runOne = (exec: SqlExecutor) => migrateReminderTable(exec, table)
+    const result = database.transaction ? await database.transaction(runOne) : await runOne(database.execute)
+    results.push(result)
+  }
+  return results
+}
+
+function migrateSqliteTable(db: SqliteDb, table: MigratedReminderTable, priorPrefix: string): TableMigrationResult {
+  const markerRow = db
+    .prepare("SELECT 1 AS done FROM reminders_migration_state WHERE table_name = ?")
+    .get(table) as { done?: number } | undefined
+  const markerRecorded = markerRow?.done === 1
+
+  const priorName = `${priorPrefix}${table}`
+  const sourceMeta = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(priorName) as { name?: string } | undefined
+  const sourcePresent = sourceMeta?.name === priorName
+
+  const targetCountRow = db.prepare(`SELECT COUNT(*) AS count FROM "${table}"`).get() as { count?: number }
+  const targetRows = Number(targetCountRow?.count ?? 0)
+  const targetEmpty = targetRows === 0
+  const sourceRows = sourcePresent
+    ? Number((db.prepare(`SELECT COUNT(*) AS count FROM "${priorName}"`).get() as { count?: number })?.count ?? 0)
+    : 0
+
+  const outcome = planTableMigration({
+    sourcePresent,
+    targetEmpty,
+    markerRecorded,
+    sourceRows,
+    targetRows,
+  })
+
+  if (outcome === "already-migrated" || outcome === "source-missing") {
+    return { table, outcome }
+  }
+  if (outcome === "target-non-empty") {
+    db.prepare("INSERT OR IGNORE INTO reminders_migration_state (table_name, migrated_at) VALUES (?, ?)").run(
+      table,
+      new Date().toISOString(),
+    )
+    return { table, outcome }
+  }
+
+  db.exec("BEGIN IMMEDIATE")
+  db.exec(`INSERT OR IGNORE INTO "${table}" SELECT * FROM "${priorName}"`)
+  db.prepare("INSERT OR IGNORE INTO reminders_migration_state (table_name, migrated_at) VALUES (?, ?)").run(
+    table,
+    new Date().toISOString(),
+  )
+  db.exec("COMMIT")
+  return { table, outcome: "copied" }
+}
+
+export function openSqliteRemindersStore(dbPath: string, priorPrefix = "legacy_"): SqliteCarveOutHandle {
+  const db = openRawSqlite(dbPath)
+  for (const ddl of REMINDERS_SQLITE_DDL) {
+    db.exec(ddl)
+  }
+  const migrateTable = (table: MigratedReminderTable): TableMigrationResult =>
+    migrateSqliteTable(db, table, priorPrefix)
+  const migrateAll = (): TableMigrationResult[] => MIGRATED_REMINDER_TABLES.map((table) => migrateTable(table))
+  const listIdsForOwner = (ownerId: string): string[] => {
+    const rows = db
+      .prepare("SELECT reminder_id FROM reminder_deliveries WHERE owner_id = ?")
+      .all(ownerId) as Array<{ reminder_id: string }>
+    return rows.map((r) => r.reminder_id)
+  }
+  const insertDelivery = (row: ReminderDelivery): boolean => {
+    const res = db
+      .prepare(
+        "INSERT OR IGNORE INTO reminder_deliveries (owner_id, reminder_id, scheduled_at, escalation_at, delivery_status, attempt) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(row.ownerId, row.reminderId, row.scheduledAt, row.escalationAt, row.deliveryStatus, row.attempt)
+    return Number(res.changes) > 0
+  }
+  const listPendingForOwner = (ownerId: string): ReminderDelivery[] => {
+    const rows = db
+      .prepare(
+        "SELECT owner_id, reminder_id, scheduled_at, escalation_at, delivery_status, attempt FROM reminder_deliveries WHERE owner_id = ? AND delivery_status IN ('ReminderPending', 'ReminderSnoozed')",
+      )
+      .all(ownerId) as Array<{
+      owner_id: string
+      reminder_id: string
+      scheduled_at: number
+      escalation_at: number
+      delivery_status: string
+      attempt: number
+    }>
+    return rows.map((r) => ({
+      ownerId: r.owner_id,
+      reminderId: r.reminder_id,
+      scheduledAt: Number(r.scheduled_at),
+      escalationAt: Number(r.escalation_at),
+      deliveryStatus: decodeStatus(r.delivery_status),
+      attempt: Number(r.attempt),
+    }))
+  }
+  return {
+    db,
+    close: () => db.close(),
+    migrateTable,
+    migrateAll,
+    listIdsForOwner,
+    insertDelivery,
+    listPendingForOwner,
+  }
+}
+
+type RuntimeSqlCandidate = {
+  readonly execute?: (statement: unknown) => Promise<unknown>
+  readonly transaction?: <T>(work: (tx: RuntimeSqlCandidate) => Promise<T>) => Promise<T>
+}
+
+function extractRows(result: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(result)) {
+    return result.filter(
+      (row): row is Record<string, unknown> => typeof row === "object" && row !== null && !Array.isArray(row),
+    )
+  }
+  if (typeof result === "object" && result !== null && "rows" in result) {
+    return extractRows((result as { rows: unknown }).rows)
+  }
+  return []
+}
+
+function runtimeCarveOutDatabase(runtime: IAgentRuntime): CarveOutDatabase | undefined {
+  const candidate = (runtime as unknown as { db?: RuntimeSqlCandidate }).db
+  if (!candidate || typeof candidate.execute !== "function") return undefined
+  const execFn = candidate.execute.bind(candidate)
+  const execute: SqlExecutor = async (sqlText) => extractRows(await execFn(sqlText))
+  const transaction =
+    typeof candidate.transaction === "function"
+      ? <T>(work: (exec: SqlExecutor) => Promise<T>): Promise<T> =>
+          candidate.transaction!(async (tx) => {
+            const txExec: SqlExecutor = async (sqlText) =>
+              extractRows(await (tx.execute ? tx.execute(sqlText) : execFn(sqlText)))
+            return work(txExec)
+          })
+      : undefined
+  return transaction ? { execute, transaction } : { execute }
+}
+
+export class RemindersMigrationService extends Service {
+  static override readonly serviceType = REMINDERS_MIGRATION_SERVICE_TYPE
+
+  override capabilityDescription =
+    "Non-destructive one-time copy of reminder rows from app_lifeops into app_reminders during the plugin-reminders carve-out."
+
+  private lastResults: TableMigrationResult[] = []
+
+  static override async start(runtime: IAgentRuntime): Promise<RemindersMigrationService> {
+    const service = new RemindersMigrationService(runtime)
+    await service.run()
+    return service
+  }
+
+  getResults(): readonly TableMigrationResult[] {
+    return this.lastResults
+  }
+
+  async run(): Promise<TableMigrationResult[]> {
+    const database = runtimeCarveOutDatabase(this.runtime)
+    if (!database) {
+      logger.debug(`${REMINDERS_LOG_PREFIX} no runtime SQL database attached; skipping SQL carve-out migration`)
+      this.lastResults = MIGRATED_REMINDER_TABLES.map((table) => ({ table, outcome: "source-missing" }))
+      return this.lastResults
+    }
+    const results = await migrateReminderTables(database)
+    this.lastResults = results
+    const copied = results.filter((r) => r.outcome === "copied")
+    if (copied.length > 0) {
+      logger.info(
+        { tables: copied.map((r) => r.table) },
+        `${REMINDERS_LOG_PREFIX} copied ${copied.length} reminder table(s) from ${REMINDERS_SOURCE_SCHEMA} to ${REMINDERS_SCHEMA_NAME}`,
+      )
+    } else {
+      logger.debug(
+        { results },
+        `${REMINDERS_LOG_PREFIX} no reminder tables required copying (already migrated or fresh install)`,
+      )
+    }
+    return results
+  }
+
+  override async stop(): Promise<void> {}
+}

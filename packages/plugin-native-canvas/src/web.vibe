@@ -1,0 +1,472 @@
+// spec/nativeCanvas/index.md, "Story: Render and interact with the current canvas only"
+import type { PluginListenerHandle } from "@capacitor/core"
+import { validCanvasSize } from "../gen/nativeCanvas.effect.vibe"
+import type {
+  A2UIActionEvent,
+  A2UIMessage,
+  A2UIPayload,
+  A2UIPushOptions,
+  CanvasColor,
+  CanvasDrawBatchCommand,
+  CanvasDrawOptions,
+  CanvasFillStyle,
+  CanvasGradient,
+  CanvasImageData,
+  CanvasLayer,
+  CanvasPath,
+  CanvasPlugin,
+  CanvasPoint,
+  CanvasRect,
+  CanvasRenderEvent,
+  CanvasSize,
+  CanvasStrokeStyle,
+  CanvasTextStyle,
+  CanvasTouchEvent,
+  CanvasTransform,
+  DeepLinkEvent,
+  EvalOptions,
+  EvalResult,
+  NavigateOptions,
+  NavigationErrorEvent,
+  SnapshotFormat,
+  SnapshotOptions,
+  SnapshotResult,
+  WebViewReadyEvent,
+} from "./native-contract.vibe"
+
+const MAX_CANVAS_DIMENSION = 16384
+
+interface ManagedLayerState {
+  id: string
+  name?: string
+  visible: boolean
+  opacity: number
+  zIndex: number
+  transform?: CanvasTransform
+  drawOps: number
+}
+
+interface ManagedCanvasState {
+  id: string
+  size: CanvasSize
+  backgroundColor?: CanvasColor | string
+  transform: CanvasTransform
+  touchEnabled: boolean
+  attached: boolean
+  layers: Map<string, ManagedLayerState>
+  element: HTMLElement | null
+}
+
+module canvasEdge {
+  export function failCanvas(message: string): never {
+    throw new Error(message)
+  }
+
+  export function parseCanvasUrl(raw: string): URL | null {
+    try {
+      return new URL(raw)
+    } catch {
+      return null
+    }
+  }
+}
+import { failCanvas, parseCanvasUrl } from canvasEdge
+
+function assertFinite(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    failCanvas(`${label} must be a finite number`)
+  }
+  return value
+}
+
+export function assertCanvasSize(size: CanvasSize, label = "size"): CanvasSize {
+  if (!size || typeof size !== "object") {
+    failCanvas(`${label} must include finite width and height`)
+  }
+  const width = assertFinite(size.width, `${label}.width`)
+  const height = assertFinite(size.height, `${label}.height`)
+  if (!validCanvasSize(Math.trunc(width), Math.trunc(height)) || width <= 0 || height <= 0 || width > MAX_CANVAS_DIMENSION || height > MAX_CANVAS_DIMENSION) {
+    failCanvas(`${label}.width and ${label}.height must be between 1 and ${MAX_CANVAS_DIMENSION}`)
+  }
+  return { width, height }
+}
+
+function assertUnitInterval(value: unknown, label: string): number {
+  const num = assertFinite(value, label)
+  if (num < 0 || num > 1) failCanvas(`${label} must be between 0 and 1`)
+  return num
+}
+
+function assertQualityPercent(value: unknown, label: string, fallback: number): number {
+  if (value === undefined) return fallback
+  const num = assertFinite(value, label)
+  if (num < 0 || num > 100) failCanvas(`${label} must be between 0 and 100`)
+  return num / 100
+}
+
+function assertFractionQuality(value: unknown, label: string, fallback: number): number {
+  if (value === undefined) return fallback
+  const num = assertFinite(value, label)
+  if (num < 0 || num > 1) failCanvas(`${label} must be between 0 and 1`)
+  return num
+}
+
+export class CanvasWeb implements CanvasPlugin {
+  private readonly canvases = new Map<string, ManagedCanvasState>()
+  private readonly listeners = new Map<string, Array<(event: unknown) => void>>()
+  private canvasSeq = 0
+  private layerSeq = 0
+  private currentUrl = "about:blank"
+  private a2uiMessages: A2UIMessage[] = []
+  private a2uiPayload: A2UIPayload | null = null
+
+  private requireCanvas(canvasId: string): ManagedCanvasState {
+    const canvas = this.canvases.get(canvasId)
+    if (!canvas) failCanvas(`Canvas not found: ${canvasId}`)
+    return canvas
+  }
+
+  private resolveLayer(canvas: ManagedCanvasState, layerId?: string): ManagedLayerState {
+    const id = layerId ?? "default"
+    const layer = canvas.layers.get(id)
+    if (!layer) failCanvas(`Layer not found: ${id}`)
+    return layer
+  }
+
+  async create(options: { size: CanvasSize; backgroundColor?: CanvasColor | string }): Promise<{ canvasId: string }> {
+    const size = assertCanvasSize(options.size)
+    this.canvasSeq += 1
+    const canvasId = `canvas-${this.canvasSeq}`
+    const layers = new Map<string, ManagedLayerState>()
+    layers.set("default", { id: "default", name: "Default", visible: true, opacity: 1, zIndex: 0, drawOps: 0 })
+    this.canvases.set(canvasId, {
+      id: canvasId,
+      size,
+      backgroundColor: options.backgroundColor,
+      transform: {},
+      touchEnabled: true,
+      attached: false,
+      layers,
+      element: null,
+    })
+    return { canvasId }
+  }
+
+  async destroy(options: { canvasId: string }): Promise<void> {
+    this.requireCanvas(options.canvasId)
+    this.canvases.delete(options.canvasId)
+  }
+
+  async attach(options: { canvasId: string; element: HTMLElement }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    canvas.element = options.element
+    canvas.attached = true
+  }
+
+  async detach(options: { canvasId: string }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    canvas.element = null
+    canvas.attached = false
+  }
+
+  async resize(options: { canvasId: string; size: CanvasSize }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    canvas.size = assertCanvasSize(options.size)
+  }
+
+  async clear(options: { canvasId: string; rect?: CanvasRect; layerId?: string }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    const layer = this.resolveLayer(canvas, options.layerId)
+    layer.drawOps = 0
+  }
+
+  async createLayer(options: { canvasId: string; layer: Omit<CanvasLayer, "id"> }): Promise<{ layerId: string }> {
+    const canvas = this.requireCanvas(options.canvasId)
+    const opacity = assertUnitInterval(options.layer.opacity, "layer.opacity")
+    const zIndex = assertFinite(options.layer.zIndex, "layer.zIndex")
+    this.layerSeq += 1
+    const layerId = `layer-${this.layerSeq}`
+    canvas.layers.set(layerId, {
+      id: layerId,
+      name: options.layer.name,
+      visible: options.layer.visible,
+      opacity,
+      zIndex,
+      transform: options.layer.transform,
+      drawOps: 0,
+    })
+    return { layerId }
+  }
+
+  async updateLayer(options: { canvasId: string; layerId: string; layer: Partial<CanvasLayer> }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    const existing = this.resolveLayer(canvas, options.layerId)
+    if (options.layer.opacity !== undefined) existing.opacity = assertUnitInterval(options.layer.opacity, "layer.opacity")
+    if (options.layer.zIndex !== undefined) existing.zIndex = assertFinite(options.layer.zIndex, "layer.zIndex")
+    if (options.layer.visible !== undefined) existing.visible = options.layer.visible
+    if (options.layer.name !== undefined) existing.name = options.layer.name
+    if (options.layer.transform !== undefined) existing.transform = options.layer.transform
+  }
+
+  async deleteLayer(options: { canvasId: string; layerId: string }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    if (options.layerId === "default") failCanvas("Cannot delete default layer")
+    if (!canvas.layers.delete(options.layerId)) failCanvas(`Layer not found: ${options.layerId}`)
+  }
+
+  async getLayers(options: { canvasId: string }): Promise<{ layers: CanvasLayer[] }> {
+    const canvas = this.requireCanvas(options.canvasId)
+    const layers: CanvasLayer[] = [...canvas.layers.values()]
+      .sort((a, b) => a.zIndex - b.zIndex)
+      .map((l) => ({
+        id: l.id,
+        name: l.name,
+        visible: l.visible,
+        opacity: l.opacity,
+        zIndex: l.zIndex,
+        transform: l.transform,
+      }))
+    return { layers }
+  }
+
+  private recordDraw(canvasId: string, drawOptions?: CanvasDrawOptions): void {
+    const canvas = this.requireCanvas(canvasId)
+    if (drawOptions?.opacity !== undefined) assertUnitInterval(drawOptions.opacity, "drawOptions.opacity")
+    const layer = this.resolveLayer(canvas, drawOptions?.layerId)
+    layer.drawOps += 1
+  }
+
+  async drawRect(options: {
+    canvasId: string
+    rect: CanvasRect
+    fill?: CanvasFillStyle | CanvasGradient
+    stroke?: CanvasStrokeStyle
+    cornerRadius?: number
+    drawOptions?: CanvasDrawOptions
+  }): Promise<void> {
+    assertFinite(options.rect.x, "rect.x")
+    assertFinite(options.rect.y, "rect.y")
+    assertFinite(options.rect.width, "rect.width")
+    assertFinite(options.rect.height, "rect.height")
+    this.recordDraw(options.canvasId, options.drawOptions)
+  }
+
+  async drawEllipse(options: {
+    canvasId: string
+    center: CanvasPoint
+    radiusX: number
+    radiusY: number
+    fill?: CanvasFillStyle | CanvasGradient
+    stroke?: CanvasStrokeStyle
+    drawOptions?: CanvasDrawOptions
+  }): Promise<void> {
+    assertFinite(options.center.x, "center.x")
+    assertFinite(options.center.y, "center.y")
+    assertFinite(options.radiusX, "radiusX")
+    assertFinite(options.radiusY, "radiusY")
+    this.recordDraw(options.canvasId, options.drawOptions)
+  }
+
+  async drawLine(options: {
+    canvasId: string
+    from: CanvasPoint
+    to: CanvasPoint
+    stroke: CanvasStrokeStyle
+    drawOptions?: CanvasDrawOptions
+  }): Promise<void> {
+    assertFinite(options.from.x, "from.x")
+    assertFinite(options.from.y, "from.y")
+    assertFinite(options.to.x, "to.x")
+    assertFinite(options.to.y, "to.y")
+    this.recordDraw(options.canvasId, options.drawOptions)
+  }
+
+  async drawPath(options: {
+    canvasId: string
+    path: CanvasPath
+    fill?: CanvasFillStyle | CanvasGradient
+    stroke?: CanvasStrokeStyle
+    drawOptions?: CanvasDrawOptions
+  }): Promise<void> {
+    this.recordDraw(options.canvasId, options.drawOptions)
+  }
+
+  async drawText(options: {
+    canvasId: string
+    text: string
+    position: CanvasPoint
+    style: CanvasTextStyle
+    drawOptions?: CanvasDrawOptions
+  }): Promise<void> {
+    assertFinite(options.position.x, "position.x")
+    assertFinite(options.position.y, "position.y")
+    this.recordDraw(options.canvasId, options.drawOptions)
+  }
+
+  async drawImage(options: {
+    canvasId: string
+    image: CanvasImageData | string
+    destRect: CanvasRect
+    srcRect?: CanvasRect
+    drawOptions?: CanvasDrawOptions
+  }): Promise<void> {
+    assertFinite(options.destRect.width, "destRect.width")
+    assertFinite(options.destRect.height, "destRect.height")
+    this.recordDraw(options.canvasId, options.drawOptions)
+  }
+
+  async drawBatch(options: { canvasId: string; commands: CanvasDrawBatchCommand[] }): Promise<void> {
+    for (const command of options.commands) {
+      if (command.type === "clear") {
+        await this.clear({ canvasId: options.canvasId, rect: command.args.rect, layerId: command.args.layerId })
+      } else if (command.type === "rect") {
+        await this.drawRect({ canvasId: options.canvasId, ...command.args })
+      } else if (command.type === "ellipse") {
+        await this.drawEllipse({ canvasId: options.canvasId, ...command.args })
+      } else if (command.type === "line") {
+        await this.drawLine({ canvasId: options.canvasId, ...command.args })
+      } else if (command.type === "path") {
+        await this.drawPath({ canvasId: options.canvasId, ...command.args })
+      } else if (command.type === "text") {
+        await this.drawText({ canvasId: options.canvasId, ...command.args })
+      } else {
+        await this.drawImage({ canvasId: options.canvasId, ...command.args })
+      }
+    }
+  }
+
+  async getPixelData(options: { canvasId: string; rect?: CanvasRect }): Promise<{
+    data: Uint8ClampedArray
+    width: number
+    height: number
+  }> {
+    const canvas = this.requireCanvas(options.canvasId)
+    const width = Math.max(1, Math.trunc(options.rect?.width ?? canvas.size.width))
+    const height = Math.max(1, Math.trunc(options.rect?.height ?? canvas.size.height))
+    return {
+      data: new Uint8ClampedArray(width * height * 4),
+      width,
+      height,
+    }
+  }
+
+  async toImage(options: {
+    canvasId: string
+    format?: SnapshotFormat
+    quality?: number
+    layerIds?: string[]
+  }): Promise<CanvasImageData> {
+    const canvas = this.requireCanvas(options.canvasId)
+    assertQualityPercent(options.quality, "quality", 0.92)
+    return {
+      base64: "",
+      format: options.format ?? "png",
+      width: canvas.size.width,
+      height: canvas.size.height,
+    }
+  }
+
+  async setTransform(options: { canvasId: string; transform: CanvasTransform }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    canvas.transform = { ...options.transform }
+  }
+
+  async resetTransform(options: { canvasId: string }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    canvas.transform = {}
+  }
+
+  async setTouchEnabled(options: { canvasId: string; enabled: boolean }): Promise<void> {
+    const canvas = this.requireCanvas(options.canvasId)
+    canvas.touchEnabled = options.enabled
+  }
+
+  async navigate(options: NavigateOptions): Promise<void> {
+    const parsed = parseCanvasUrl(options.url)
+    if (!parsed) failCanvas(`Invalid canvas URL: ${options.url}`)
+    if (parsed.protocol === "eliza:") {
+      const params: Record<string, string> = {}
+      parsed.searchParams.forEach((value, key) => {
+        params[key] = value
+      })
+      const event: DeepLinkEvent = { url: options.url, path: parsed.pathname || parsed.host, params }
+      this.notifyListeners("deepLink", event)
+      return
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:" && parsed.protocol !== "about:") {
+      failCanvas(`Unsupported canvas navigation scheme: ${parsed.protocol}`)
+    }
+    this.currentUrl = options.url
+    const ready: WebViewReadyEvent = { url: this.currentUrl, title: "" }
+    this.notifyListeners("webViewReady", ready)
+  }
+
+  async eval(options: EvalOptions): Promise<EvalResult> {
+    return { result: JSON.stringify({ evaluated: options.script.length > 0, url: this.currentUrl }) }
+  }
+
+  async snapshot(options: SnapshotOptions = {}): Promise<SnapshotResult> {
+    assertFractionQuality(options.quality, "quality", 0.82)
+    const first = [...this.canvases.values()][0]
+    const rawWidth = first?.size.width ?? 1
+    const rawHeight = first?.size.height ?? 1
+    const maxWidth = options.maxWidth !== undefined ? assertFinite(options.maxWidth, "maxWidth") : rawWidth
+    const width = Math.max(1, Math.min(rawWidth, Math.trunc(maxWidth)))
+    const height = Math.max(1, Math.round((rawHeight * width) / rawWidth))
+    return {
+      base64: "",
+      width,
+      height,
+      format: options.format ?? "png",
+    }
+  }
+
+  async a2uiPush(options: A2UIPushOptions): Promise<void> {
+    if (options.messages) this.a2uiMessages = [...this.a2uiMessages, ...options.messages]
+    if (options.payload) {
+      this.a2uiPayload = options.payload
+      const event: A2UIActionEvent = { action: options.payload.action, data: options.payload.data ?? {} }
+      this.notifyListeners("a2uiAction", event)
+    }
+  }
+
+  async a2uiReset(): Promise<void> {
+    this.a2uiMessages = []
+    this.a2uiPayload = null
+  }
+
+  getA2UIState(): { messages: readonly A2UIMessage[]; payload: A2UIPayload | null } {
+    return { messages: this.a2uiMessages, payload: this.a2uiPayload }
+  }
+
+  private notifyListeners(eventName: string, data: unknown): void {
+    const bucket = this.listeners.get(eventName)
+    if (!bucket) return
+    for (const cb of bucket) cb(data)
+  }
+
+  addListener(eventName: "touch", listenerFunc: (event: CanvasTouchEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "render", listenerFunc: (event: CanvasRenderEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "webViewReady", listenerFunc: (event: WebViewReadyEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "navigationError", listenerFunc: (event: NavigationErrorEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "deepLink", listenerFunc: (event: DeepLinkEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "a2uiAction", listenerFunc: (event: A2UIActionEvent) => void): Promise<PluginListenerHandle>
+  async addListener(eventName: string, listenerFunc: (event: never) => void): Promise<PluginListenerHandle> {
+    const cb = listenerFunc as unknown as (event: unknown) => void
+    const bucket = this.listeners.get(eventName) ?? []
+    bucket.push(cb)
+    this.listeners.set(eventName, bucket)
+    return {
+      remove: async () => {
+        const list = this.listeners.get(eventName)
+        if (!list) return
+        const idx = list.indexOf(cb)
+        if (idx >= 0) list.splice(idx, 1)
+      },
+    }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    this.listeners.clear()
+  }
+}

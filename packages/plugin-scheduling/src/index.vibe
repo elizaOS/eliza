@@ -1,16 +1,28 @@
-// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"
+// spec/scheduling/index.md, "Story: Automatically run an eligible task without consuming its anchor during a manual run"; spec/scheduling/dispatch.md, "Story: Dispatch scheduled tasks safely through escalation ladders without duplicating uncertain deliveries"
+import type { Plugin } from "@elizaos/core"
+import type { ScheduledTask as SpecScheduledTask } from "../gen/agent__schedule__scheduledTasks.effect.vibe"
 import { classifyAnchor, classifyManualRun, nextAnchor, type AnchorState } from "../gen/scheduling.effect.vibe"
-import type { ScheduledTask } from "../gen/agent__schedule__scheduledTasks.effect.vibe"
+import { buildSchedulingRoutes, scheduledTasksAction, scheduledTasksProvider } from "./routes.vibe"
+import {
+  ScheduledTaskRunnerService,
+  SchedulingMigrationService,
+  type ScheduledTaskSqliteStore,
+} from "./store.vibe"
 
 export error AnchorStoreUnavailable { reason: string }
 
 export service ScheduleAnchors {
   read(taskId: string): (AnchorState | undefined)!AnchorStoreUnavailable
-  compareAndSwap(taskId: string, seenTaskRevision: number, current: AnchorState, replacement: AnchorState): boolean!AnchorStoreUnavailable
+  compareAndSwap(
+    taskId: string,
+    seenTaskRevision: number,
+    current: AnchorState,
+    replacement: AnchorState,
+  ): boolean!AnchorStoreUnavailable
 }
 
 export interface AnchorClaim {
-  readonly task: ScheduledTask
+  readonly task: SpecScheduledTask
   readonly taskId: string
   readonly taskRevision: number
   readonly anchorRevision: number
@@ -23,8 +35,47 @@ export effect function claimScheduledTask(request: AnchorClaim) {
   const anchors = try ScheduleAnchors
   const anchor = try anchors.read(request.taskId)
   if (anchor === undefined) return "AnchorIneligible" as const
-  const decision = classifyAnchor(request.task, request.taskId, anchor, request.taskRevision, request.anchorRevision, request.manual, now)
+  const decision = classifyAnchor(
+    request.task,
+    request.taskId,
+    anchor,
+    request.taskRevision,
+    request.anchorRevision,
+    request.manual,
+    now,
+  )
   if (decision !== "ClaimAnchor") return decision
   const applied = try anchors.compareAndSwap(request.taskId, request.taskRevision, anchor, nextAnchor(anchor, decision))
   return applied ? decision : "ClaimRaced" as const
 }
+
+export function createSqliteScheduleAnchorsLayer(store: ScheduledTaskSqliteStore) {
+  return Layer.succeed(ScheduleAnchors, {
+    read: (taskId: string) => Effect.succeed(store.readAnchor(taskId)),
+    compareAndSwap: (taskId: string, _seenTaskRevision: number, current: AnchorState, replacement: AnchorState) =>
+      Effect.succeed(store.compareAndSwapAnchor(taskId, current, replacement)),
+  })
+}
+
+export type SchedulingPlugin = Plugin & {
+  readonly routes: ReturnType<typeof buildSchedulingRoutes>
+}
+
+export const schedulingPlugin: SchedulingPlugin = {
+  name: "@elizaos/plugin-scheduling",
+  description: "Scheduling spine with trigger evaluation, escalation ladders, revision CAS runner, HTTP routes, and PR shepherd schedules",
+  actions: [scheduledTasksAction],
+  providers: [scheduledTasksProvider],
+  services: [ScheduledTaskRunnerService, SchedulingMigrationService],
+  routes: buildSchedulingRoutes(),
+}
+
+export default schedulingPlugin
+
+export * from "./types.vibe"
+export * from "./dispatch-policy.vibe"
+export * from "./registries.vibe"
+export * from "./due.vibe"
+export * from "./store.vibe"
+export * from "./coding-agent-schedules.vibe"
+export * from "./routes.vibe"

@@ -1,0 +1,390 @@
+// spec/meetings/index.md, "Story: Join a meeting as a disclosed transcription guest"; spec/meetings/urlAndDisclosure.md, "Story: Enforce HTTPS provider matching, fail-closed transcript disclosure, and clean segment admission"
+import {
+  type Action,
+  type ActionResult,
+  type EffectReceipt,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core"
+import { getMeetingService, type MeetingService } from "./service.vibe"
+import { formatTranscriptPlainText } from "./transcript-writer.vibe"
+import {
+  MEETING_PLATFORM_LABELS,
+  MEETING_PLATFORMS,
+  MEETINGS_CONTEXTS,
+  MeetingJoinError,
+  ZoomCloudImportError,
+  type MeetingJoinErrorCode,
+  type MeetingPlatform,
+  type ViewerAccessContext,
+} from "./types.vibe"
+import { extractMeetingUrlFromText, parseMeetingUrl } from "./url-and-disclosure.vibe"
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+  if (!options || typeof options !== "object") return {}
+  const rec = options as Record<string, unknown>
+  if (rec.parameters && typeof rec.parameters === "object" && !Array.isArray(rec.parameters)) {
+    return rec.parameters as Record<string, unknown>
+  }
+  return rec
+}
+
+function readString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function makeMeetingReceipt(operation: string, targetId: string): EffectReceipt {
+  const now = new Date().toISOString()
+  return {
+    outcome: "applied",
+    receiptId: `meetings:${operation}:${targetId}:${now}`,
+    operation,
+    resource: { kind: "meetings.session", id: targetId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: now,
+    commit: { kind: "durable", id: targetId, committedAt: now },
+  }
+}
+
+function resolveSessionTarget(
+  service: MeetingService,
+  params: Record<string, unknown>,
+  activeOnly: boolean,
+): { readonly hit: string } | { readonly error: string; readonly candidates?: readonly string[] } {
+  const explicitId = readString(params.sessionId)
+  if (explicitId) return { hit: explicitId }
+  const url = readString(params.meetingUrl)
+  const pool = activeOnly ? service.listActiveSessions() : service.listSessions()
+  if (url) {
+    const parsed = parseMeetingUrl(url)
+    const match = pool.find(
+      (s) => s.meetingUrl === url || (parsed !== null && s.nativeMeetingId === parsed.nativeMeetingId),
+    )
+    return match ? { hit: match.id } : { error: `no matching meeting found for ${url}` }
+  }
+  if (pool.length === 1) return { hit: pool[0]!.id }
+  if (pool.length === 0) return { error: activeOnly ? "no active meetings to leave" : "no meetings found" }
+  return {
+    error: `multiple meetings found (${pool.map((s) => `${s.id}:${s.nativeMeetingId}`).join(", ")}); specify sessionId`,
+    candidates: pool.map((s) => s.id),
+  }
+}
+
+const MEETING_ACTION_BASE = {
+  toolSchemaStrict: true as const,
+  cacheStable: true as const,
+  roleGate: { minRole: "OWNER" as const },
+  contexts: [...MEETINGS_CONTEXTS],
+  contextGate: { anyOf: [...MEETINGS_CONTEXTS] },
+  validate: async (runtime: IAgentRuntime): Promise<boolean> => getMeetingService(runtime) !== null,
+  summarize: (result: ActionResult | undefined): string | undefined =>
+    result?.text ? result.text.slice(0, 140) : undefined,
+}
+
+function makeMeetingHandler(
+  actionName: string,
+  run: (
+    service: MeetingService,
+    runtime: IAgentRuntime,
+    message: Memory,
+    params: Record<string, unknown>,
+  ) => Promise<ActionResult>,
+) {
+  return async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    const service = getMeetingService(runtime)
+    if (!service) return { success: false, text: "MeetingService is unavailable.", error: "MEETINGS_UNAVAILABLE" }
+    const result = await run(service, runtime, message, readParams(options))
+    if (callback && result.text) await callback({ text: result.text, action: actionName })
+    return result
+  }
+}
+
+export const joinMeetingAction: Action = {
+  ...MEETING_ACTION_BASE,
+  name: "JOIN_MEETING",
+  similes: ["ATTEND_MEETING", "TAKE_MEETING_NOTES", "TRANSCRIBE_MEETING", "JOIN_CALL"],
+  description: "Join a live Google Meet, Microsoft Teams, or Zoom meeting as a disclosed transcription guest.",
+  descriptionCompressed: "Join a Meet/Teams/Zoom call as a disclosed transcription bot.",
+  parameters: [
+    {
+      name: "botName",
+      description: "Optional display name for the transcription guest",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "language",
+      description: "Optional BCP-47 language hint for ASR",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "meetingUrl",
+      description: "HTTPS Google Meet, Microsoft Teams, or Zoom join URL",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "platform",
+      description: "Optional explicit platform: google_meet, teams, or zoom",
+      required: false,
+      schema: { type: "string", enum: [...MEETING_PLATFORMS] },
+    },
+  ],
+  handler: makeMeetingHandler("JOIN_MEETING", async (service, runtime, message, params) => {
+    const rawUrl = readString(params.meetingUrl)
+    const msgText =
+      message.content && typeof message.content === "object" && typeof (message.content as { text?: unknown }).text === "string"
+        ? (message.content as { text: string }).text
+        : ""
+    const parsed = rawUrl ? parseMeetingUrl(rawUrl) : extractMeetingUrlFromText(msgText)
+    if (!parsed) {
+      return { success: false, text: "Provide a valid HTTPS Google Meet, Teams, or Zoom URL.", error: "INVALID_URL" }
+    }
+    const platformParam = readString(params.platform)
+    const platform =
+      platformParam && (MEETING_PLATFORMS as readonly string[]).includes(platformParam)
+        ? (platformParam as MeetingPlatform)
+        : undefined
+    try {
+      const session = await service.requestJoin({
+        platform,
+        meetingUrl: parsed.meetingUrl,
+        botName: readString(params.botName),
+        language: readString(params.language),
+        ownerId: typeof message.entityId === "string" && message.entityId.trim() ? message.entityId.trim() : runtime.agentId,
+      })
+      const text = `Joined ${MEETING_PLATFORM_LABELS[session.platform]} ${session.nativeMeetingId} as "${session.botName}" (${session.status}).`
+      return {
+        success: session.status === "recording",
+        text,
+        data: { session, sessionId: session.id, transcriptId: session.transcriptId },
+        ...(session.status === "recording" ? { effectReceipts: [makeMeetingReceipt("JOIN_MEETING", session.id)] } : {}),
+      }
+    } catch (error) {
+      const msg = error instanceof MeetingJoinError ? error.message : error instanceof Error ? error.message : String(error)
+      return { success: false, text: msg, error: msg }
+    }
+  }),
+}
+
+export const leaveMeetingAction: Action = {
+  ...MEETING_ACTION_BASE,
+  name: "LEAVE_MEETING",
+  similes: ["EXIT_MEETING", "STOP_TRANSCRIBING", "END_MEETING_BOT"],
+  description: "Leave an active meeting session and finalize its diarized transcript.",
+  descriptionCompressed: "Leave an active meeting and finalize its transcript.",
+  parameters: [
+    {
+      name: "meetingUrl",
+      description: "Optional meeting URL to disambiguate active sessions",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "sessionId",
+      description: "Optional active meeting session ID",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  handler: makeMeetingHandler("LEAVE_MEETING", async (service, _runtime, _message, params) => {
+    const target = resolveSessionTarget(service, params, true)
+    if ("error" in target) {
+      return {
+        success: false,
+        text: target.error,
+        error: target.candidates ? "AMBIGUOUS_MEETING" : "NO_ACTIVE_MEETING",
+        data: target.candidates ? { candidates: target.candidates } : undefined,
+      }
+    }
+    const ended = await service.leaveMeeting(target.hit, "owner_left")
+    if (!ended) return { success: false, text: `Session ${target.hit} not found.`, error: "NOT_FOUND" }
+    const text = `Left ${MEETING_PLATFORM_LABELS[ended.platform]} ${ended.nativeMeetingId} and finalized transcript ${ended.transcriptId ?? ""}.`
+    return {
+      success: true,
+      text,
+      data: { session: ended, transcriptId: ended.transcriptId },
+      effectReceipts: [makeMeetingReceipt("LEAVE_MEETING", ended.id)],
+    }
+  }),
+}
+
+export const getMeetingTranscriptAction: Action = {
+  ...MEETING_ACTION_BASE,
+  name: "GET_MEETING_TRANSCRIPT",
+  similes: ["READ_MEETING_TRANSCRIPT", "MEETING_NOTES", "MEETING_SUMMARY"],
+  description: "Read a bounded diarized transcript for an active or completed meeting session.",
+  descriptionCompressed: "Read diarized meeting transcript for a session.",
+  parameters: [
+    {
+      name: "maxSegments",
+      description: "Maximum transcript segments to return (capped at 80)",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "meetingUrl",
+      description: "Optional meeting URL to resolve session",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "sessionId",
+      description: "Session ID or transcript ID",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  handler: makeMeetingHandler("GET_MEETING_TRANSCRIPT", async (service, _runtime, _message, params) => {
+    const target = resolveSessionTarget(service, params, false)
+    if ("error" in target) {
+      return { success: false, text: target.error, error: "TRANSCRIPT_NOT_FOUND" }
+    }
+    const transcript = service.getTranscript(target.hit)
+    if (!transcript) return { success: false, text: "Transcript not found.", error: "TRANSCRIPT_NOT_FOUND" }
+    const maxSegments =
+      typeof params.maxSegments === "number" && params.maxSegments > 0 ? Math.min(params.maxSegments, 80) : 80
+    const text = formatTranscriptPlainText(transcript, maxSegments)
+    return {
+      success: true,
+      text,
+      data: {
+        transcriptId: transcript.id,
+        sessionId: transcript.sessionId,
+        segmentCount: transcript.segments.length,
+        segments: transcript.segments.slice(0, maxSegments),
+      },
+    }
+  }),
+}
+
+export const activeMeetingsProvider: Provider = {
+  name: "ACTIVE_MEETINGS",
+  description: "Bounded list of live meeting transcription sessions currently attended by the agent",
+  dynamic: true,
+  contexts: [...MEETINGS_CONTEXTS],
+  get: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<ProviderResult> => {
+    const service = getMeetingService(runtime)
+    if (!service) return { text: "", values: { activeMeetingCount: 0 }, data: { sessions: [] } }
+    const active = service.listActiveSessions().slice(0, 10)
+    if (active.length === 0) return { text: "", values: { activeMeetingCount: 0 }, data: { sessions: [] } }
+    const text = [
+      "Active meetings:",
+      ...active.map((s) => `- ${MEETING_PLATFORM_LABELS[s.platform]} ${s.nativeMeetingId} [${s.status}] (${s.id})`),
+    ].join("\n")
+    return { text, values: { activeMeetingCount: active.length }, data: { sessions: active } }
+  },
+}
+
+export interface MeetingsRouteDescriptor {
+  readonly type: "GET" | "POST" | "DELETE"
+  readonly path: string
+  readonly rawPath: true
+}
+
+export const meetingsRoutes: readonly MeetingsRouteDescriptor[] = [
+  { type: "GET", path: "/api/meetings", rawPath: true },
+  { type: "POST", path: "/api/meetings", rawPath: true },
+  { type: "GET", path: "/api/meetings/:id", rawPath: true },
+  { type: "DELETE", path: "/api/meetings/:id", rawPath: true },
+  { type: "GET", path: "/api/meetings/:id/transcript", rawPath: true },
+  { type: "POST", path: "/api/meetings/zoom/import", rawPath: true },
+]
+
+const JOIN_ERROR_HTTP_STATUS: Readonly<Record<MeetingJoinErrorCode, number>> = {
+  invalid_url: 400,
+  unsupported_platform: 422,
+  unsupported_host: 422,
+  policy_blocked: 403,
+  already_joined: 409,
+  invalid_duration_cap: 400,
+  insufficient_credits: 402,
+}
+
+export async function handleMeetingsRoute(args: {
+  readonly service: MeetingService
+  readonly method: string
+  readonly pathname: string
+  readonly body?: Record<string, unknown>
+  readonly viewer?: ViewerAccessContext
+}): Promise<{ readonly status: number; readonly body: Record<string, unknown> } | null> {
+  const method = args.method.toUpperCase()
+  const path = args.pathname.replace(/\/+$/, "") || "/"
+  if (path !== "/api/meetings" && !path.startsWith("/api/meetings/")) return null
+
+  if (path === "/api/meetings" && method === "GET") {
+    const sessions = args.service.listSessions(args.viewer)
+    return { status: 200, body: { sessions, count: sessions.length } }
+  }
+  if (path === "/api/meetings" && method === "POST") {
+    const body = args.body ?? {}
+    const meetingUrl = readString(body.meetingUrl)
+    if (!meetingUrl) return { status: 400, body: { error: "meetingUrl is required" } }
+    try {
+      const session = await args.service.requestJoin({
+        meetingUrl,
+        platform: readString(body.platform) as MeetingPlatform | undefined,
+        botName: readString(body.botName),
+        language: readString(body.language),
+        ownerId: args.viewer?.viewerId,
+      })
+      return { status: 201, body: { session } }
+    } catch (error) {
+      if (error instanceof MeetingJoinError) {
+        return { status: JOIN_ERROR_HTTP_STATUS[error.code], body: { error: error.message, code: error.code } }
+      }
+      return { status: 500, body: { error: error instanceof Error ? error.message : String(error) } }
+    }
+  }
+  if (path === "/api/meetings/zoom/import" && method === "POST") {
+    const body = args.body ?? {}
+    try {
+      const imported = await args.service.importZoomCloud({
+        meetingId: readString(body.meetingId) ?? "",
+        accessToken: readString(body.accessToken) ?? "",
+        ownerId: args.viewer?.viewerId ?? "owner",
+        baseUrl: readString(body.baseUrl),
+      })
+      return { status: 201, body: { transcript: imported.transcript, warnings: imported.warnings } }
+    } catch (error) {
+      if (error instanceof ZoomCloudImportError) {
+        return { status: error.status ?? 400, body: { error: error.message, code: error.code } }
+      }
+      return { status: 500, body: { error: error instanceof Error ? error.message : String(error) } }
+    }
+  }
+  const rest = path.slice("/api/meetings/".length).split("/")
+  const sessionId = rest[0] ?? ""
+  if (rest.length === 1 && method === "GET") {
+    const session = args.service.getSession(sessionId, args.viewer)
+    return session ? { status: 200, body: { session } } : { status: 404, body: { error: "session not found" } }
+  }
+  if (rest.length === 1 && method === "DELETE") {
+    const ended = await args.service.leaveMeeting(sessionId, "owner_left")
+    return ended ? { status: 200, body: { session: ended } } : { status: 404, body: { error: "session not found" } }
+  }
+  if (rest.length === 2 && rest[1] === "transcript" && method === "GET") {
+    const session = args.service.getSession(sessionId, args.viewer)
+    if (!session || !session.transcriptId) {
+      return { status: 404, body: { error: "transcript not available" } }
+    }
+    const transcript = args.service.getTranscript(session.transcriptId)
+    return transcript ? { status: 200, body: { transcript } } : { status: 404, body: { error: "transcript not found" } }
+  }
+  return null
+}

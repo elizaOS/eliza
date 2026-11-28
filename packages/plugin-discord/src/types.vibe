@@ -1,0 +1,537 @@
+// spec/discord/index.md, "Account DM and guild rules decide admission before an agent turn"; spec/discord/coordination.md, "A durable turn claims a bounded speaker lease, budgets human and bot lanes independently, and reconciles already-stored replies"
+import type { IAgentRuntime } from "@elizaos/core"
+
+export const DISCORD_SERVICE_NAME = "discord"
+export const DISCORD_LOCAL_SERVICE_NAME = "discord-local"
+export const DISCORD_LOCAL_ACCOUNT_ID = "default"
+export const DISCORD_OWNER_PAIRING_SERVICE_TYPE = "OWNER_PAIRING_DISCORD"
+export const DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE = "discord_user_account_scraper"
+export const DISCORD_PROVIDER_ID = "discord"
+export const DISCORD_SNOWFLAKE_EPOCH_MS = 1420070400000
+
+export const DiscordEventTypes = {
+  MESSAGE_RECEIVED: "DISCORD_MESSAGE_RECEIVED",
+  MESSAGE_SENT: "DISCORD_MESSAGE_SENT",
+  REACTION_RECEIVED: "DISCORD_REACTION_RECEIVED",
+  REACTION_REMOVED: "DISCORD_REACTION_REMOVED",
+  WORLD_JOINED: "DISCORD_WORLD_JOINED",
+  WORLD_CONNECTED: "DISCORD_WORLD_CONNECTED",
+  ENTITY_JOINED: "DISCORD_ENTITY_JOINED",
+  ENTITY_LEFT: "DISCORD_ENTITY_LEFT",
+  VOICE_STATE_CHANGED: "DISCORD_VOICE_STATE_CHANGED",
+  LISTEN_CHANNEL_MESSAGE: "DISCORD_LISTEN_CHANNEL_MESSAGE",
+  NOT_IN_CHANNELS_MESSAGE: "DISCORD_NOT_IN_CHANNELS_MESSAGE",
+  CHANNEL_PERMISSIONS_CHANGED: "DISCORD_CHANNEL_PERMISSIONS_CHANGED",
+  ROLE_PERMISSIONS_CHANGED: "DISCORD_ROLE_PERMISSIONS_CHANGED",
+  MEMBER_ROLES_CHANGED: "DISCORD_MEMBER_ROLES_CHANGED",
+  ROLE_CREATED: "DISCORD_ROLE_CREATED",
+  ROLE_DELETED: "DISCORD_ROLE_DELETED",
+  SLASH_COMMAND: "DISCORD_SLASH_COMMAND",
+} as const
+
+export type DiscordEventType = (typeof DiscordEventTypes)[keyof typeof DiscordEventTypes]
+
+export type DiscordReactionNotificationMode = "off" | "own" | "all" | "allowlist"
+export type DiscordDmPolicyMode = "open" | "disabled" | "allowlist" | "pairing"
+export type DiscordGroupPolicyMode = "open" | "disabled" | "allowlist"
+
+export interface DiscordPluralKitConfig {
+  readonly enabled?: boolean
+  readonly token?: string
+}
+
+export interface DiscordDmConfig {
+  readonly enabled?: boolean
+  readonly policy?: DiscordDmPolicyMode
+  readonly allowFrom?: ReadonlyArray<string | number>
+  readonly groupEnabled?: boolean
+  readonly groupChannels?: ReadonlyArray<string | number>
+}
+
+export interface DiscordGuildChannelConfig {
+  readonly allow?: boolean
+  readonly enabled?: boolean
+  readonly requireMention?: boolean
+  readonly users?: ReadonlyArray<string | number>
+  readonly skills?: readonly string[]
+  readonly systemPrompt?: string
+  readonly autoThread?: boolean
+}
+
+export interface DiscordGuildEntry {
+  readonly slug?: string
+  readonly requireMention?: boolean
+  readonly reactionNotifications?: DiscordReactionNotificationMode
+  readonly users?: ReadonlyArray<string | number>
+  readonly channels?: Readonly<Record<string, DiscordGuildChannelConfig>>
+}
+
+export interface DiscordActionConfig {
+  readonly reactions?: boolean
+  readonly stickers?: boolean
+  readonly polls?: boolean
+  readonly permissions?: boolean
+  readonly messages?: boolean
+  readonly threads?: boolean
+  readonly pins?: boolean
+  readonly search?: boolean
+  readonly memberInfo?: boolean
+  readonly roleInfo?: boolean
+  readonly channelInfo?: boolean
+  readonly voiceStatus?: boolean
+  readonly events?: boolean
+  readonly moderation?: boolean
+  readonly channels?: boolean
+}
+
+export interface DiscordIntentsConfig {
+  readonly presence?: boolean
+  readonly guildMembers?: boolean
+  readonly messageContent?: boolean
+}
+
+export interface DiscordExecApprovalConfig {
+  readonly enabled?: boolean
+  readonly approvers?: ReadonlyArray<string | number>
+  readonly agentFilter?: readonly string[]
+  readonly sessionFilter?: readonly string[]
+}
+
+export interface DiscordAccountConfig {
+  readonly name?: string
+  readonly enabled?: boolean
+  readonly token?: string
+  readonly allowBots?: boolean
+  readonly groupPolicy?: DiscordGroupPolicyMode
+  readonly textChunkLimit?: number
+  readonly maxLinesPerMessage?: number
+  readonly mediaMaxMb?: number
+  readonly historyLimit?: number
+  readonly dmHistoryLimit?: number
+  readonly dm?: DiscordDmConfig
+  readonly guilds?: Readonly<Record<string, DiscordGuildEntry>>
+  readonly channelIds?: readonly string[]
+  readonly listenChannelIds?: readonly string[]
+  readonly shouldIgnoreBotMessages?: boolean
+  readonly shouldIgnoreDirectMessages?: boolean
+  readonly shouldRespondOnlyToMentions?: boolean
+  readonly actions?: DiscordActionConfig
+  readonly intents?: DiscordIntentsConfig
+  readonly execApprovals?: DiscordExecApprovalConfig
+  readonly pluralkit?: DiscordPluralKitConfig
+}
+
+export interface DiscordChannelConfig extends DiscordAccountConfig {
+  readonly accounts?: Readonly<Record<string, DiscordAccountConfig>>
+}
+
+export interface DiscordConfig {
+  readonly DISCORD_APPLICATION_ID?: string
+  readonly DISCORD_API_TOKEN?: string
+  readonly DISCORD_BOT_TOKENS?: string
+  readonly CHANNEL_IDS?: string
+  readonly DISCORD_LISTEN_CHANNEL_IDS?: string
+  readonly DISCORD_VOICE_CHANNEL_ID?: string
+  readonly DISCORD_VOICE_TRANSCRIPTS?: string
+  readonly DISCORD_DM_POLICY: DiscordDmPolicyMode
+  readonly DISCORD_GROUP_POLICY: DiscordGroupPolicyMode
+  readonly DISCORD_ALLOW_FROM?: string
+  readonly DISCORD_GUILD_IDS?: string
+  readonly DISCORD_SHOULD_IGNORE_BOT_MESSAGES: boolean
+  readonly DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: boolean
+  readonly DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS: boolean
+  readonly DISCORD_REQUIRE_MENTION: boolean
+  readonly DISCORD_TEST_CHANNEL_ID?: string
+}
+
+export interface PermissionState {
+  readonly allow: readonly string[]
+  readonly deny: readonly string[]
+}
+
+export interface PermissionDiff {
+  readonly addedAllow: readonly string[]
+  readonly removedAllow: readonly string[]
+  readonly addedDeny: readonly string[]
+  readonly removedDeny: readonly string[]
+}
+
+export interface AuditInfo {
+  readonly executorId?: string
+  readonly executorTag?: string
+  readonly reason?: string
+  readonly auditLogId?: string
+}
+
+export interface ChannelPermissionsChangedPayload {
+  readonly guildId: string
+  readonly channelId: string
+  readonly targetId: string
+  readonly targetType: "role" | "member"
+  readonly before: PermissionState
+  readonly after: PermissionState
+  readonly diff: PermissionDiff
+  readonly audit?: AuditInfo
+}
+
+export interface RolePermissionsChangedPayload {
+  readonly guildId: string
+  readonly roleId: string
+  readonly roleName: string
+  readonly added: readonly string[]
+  readonly removed: readonly string[]
+  readonly isElevated: boolean
+  readonly audit?: AuditInfo
+}
+
+export interface MemberRolesChangedPayload {
+  readonly guildId: string
+  readonly memberId: string
+  readonly addedRoleIds: readonly string[]
+  readonly removedRoleIds: readonly string[]
+  readonly audit?: AuditInfo
+}
+
+export interface RoleLifecyclePayload {
+  readonly guildId: string
+  readonly roleId: string
+  readonly roleName: string
+  readonly permissions: readonly string[]
+  readonly audit?: AuditInfo
+}
+
+export interface DiscordMessageReceivedPayload {
+  readonly messageId: string
+  readonly channelId: string
+  readonly guildId?: string
+  readonly authorId: string
+  readonly accountId: string
+  readonly text: string
+}
+
+export interface DiscordMessageSentPayload {
+  readonly messageId: string
+  readonly channelId: string
+  readonly guildId?: string
+  readonly accountId: string
+  readonly text: string
+}
+
+export interface DiscordReactionPayload {
+  readonly messageId: string
+  readonly channelId: string
+  readonly guildId?: string
+  readonly userId: string
+  readonly emoji: string
+  readonly accountId: string
+}
+
+export interface DiscordServerPayload {
+  readonly guildId: string
+  readonly guildName: string
+  readonly accountId: string
+}
+
+export interface DiscordUserJoinedPayload {
+  readonly guildId: string
+  readonly userId: string
+  readonly username: string
+  readonly accountId: string
+}
+
+export interface DiscordUserLeftPayload {
+  readonly guildId: string
+  readonly userId: string
+  readonly username: string
+  readonly accountId: string
+}
+
+export interface DiscordVoiceStateChangedPayload {
+  readonly guildId: string
+  readonly userId: string
+  readonly oldChannelId: string | null
+  readonly newChannelId: string | null
+  readonly accountId: string
+}
+
+export interface DiscordListenChannelPayload {
+  readonly messageId: string
+  readonly channelId: string
+  readonly guildId?: string
+  readonly authorId: string
+  readonly content: string
+}
+
+export interface DiscordNotInChannelsPayload {
+  readonly messageId: string
+  readonly channelId: string
+  readonly guildId?: string
+  readonly authorId: string
+}
+
+export const DEFAULT_DISCORD_DM_POLICY: DiscordDmPolicyMode = "pairing"
+
+export const DISCORD_DEFAULTS = {
+  dmPolicy: DEFAULT_DISCORD_DM_POLICY,
+  groupPolicy: "allowlist" as DiscordGroupPolicyMode,
+  shouldIgnoreBotMessages: false,
+  shouldIgnoreDirectMessages: true,
+  shouldRespondOnlyToMentions: false,
+  requireMention: true,
+  textChunkLimit: 2000,
+  maxLinesPerMessage: 17,
+  mediaMaxMb: 8,
+} as const
+
+module node {
+  export function snowflakeBefore(sinceMs: number): string | undefined {
+    const timestamp = Math.floor(sinceMs)
+    if (!Number.isFinite(timestamp) || timestamp <= 1420070400000) return undefined
+    const shifted = (BigInt(timestamp - 1420070400000) << 22n) - 1n
+    return shifted > 0n ? shifted.toString() : undefined
+  }
+}
+import { snowflakeBefore } from node
+export { snowflakeBefore }
+
+export function isValidSnowflake(value: unknown): value is string {
+  return typeof value === "string" && /^\d{15,20}$/.test(value.trim())
+}
+
+export function resolveDiscordDmPolicy(raw: unknown): DiscordDmPolicyMode {
+  if (typeof raw !== "string") return DEFAULT_DISCORD_DM_POLICY
+  const normalized = raw.trim().toLowerCase()
+  if (normalized === "open" || normalized === "disabled" || normalized === "allowlist" || normalized === "pairing") {
+    return normalized
+  }
+  return DEFAULT_DISCORD_DM_POLICY
+}
+
+function parseBoolSetting(raw: unknown, fallback: boolean): boolean {
+  if (typeof raw === "boolean") return raw
+  if (typeof raw !== "string") return fallback
+  const lower = raw.trim().toLowerCase()
+  if (lower === "true" || lower === "1" || lower === "yes" || lower === "on") return true
+  if (lower === "false" || lower === "0" || lower === "no" || lower === "off") return false
+  return fallback
+}
+
+function readStringSetting(runtime: Pick<IAgentRuntime, "getSetting">, key: string): string | undefined {
+  const value = runtime.getSetting(key)
+  if (typeof value === "string" && value.trim().length > 0) return value.trim()
+  return undefined
+}
+
+export function getDiscordSettings(runtime: Pick<IAgentRuntime, "getSetting">): DiscordConfig {
+  const rawGroup = readStringSetting(runtime, "DISCORD_GROUP_POLICY")?.toLowerCase()
+  const groupPolicy: DiscordGroupPolicyMode =
+    rawGroup === "open" || rawGroup === "disabled" || rawGroup === "allowlist" ? rawGroup : DISCORD_DEFAULTS.groupPolicy
+  return {
+    DISCORD_APPLICATION_ID: readStringSetting(runtime, "DISCORD_APPLICATION_ID"),
+    DISCORD_API_TOKEN: readStringSetting(runtime, "DISCORD_API_TOKEN"),
+    DISCORD_BOT_TOKENS: readStringSetting(runtime, "DISCORD_BOT_TOKENS"),
+    CHANNEL_IDS: readStringSetting(runtime, "CHANNEL_IDS"),
+    DISCORD_LISTEN_CHANNEL_IDS: readStringSetting(runtime, "DISCORD_LISTEN_CHANNEL_IDS"),
+    DISCORD_VOICE_CHANNEL_ID: readStringSetting(runtime, "DISCORD_VOICE_CHANNEL_ID"),
+    DISCORD_VOICE_TRANSCRIPTS: readStringSetting(runtime, "DISCORD_VOICE_TRANSCRIPTS"),
+    DISCORD_DM_POLICY: resolveDiscordDmPolicy(runtime.getSetting("DISCORD_DM_POLICY")),
+    DISCORD_GROUP_POLICY: groupPolicy,
+    DISCORD_ALLOW_FROM: readStringSetting(runtime, "DISCORD_ALLOW_FROM"),
+    DISCORD_GUILD_IDS: readStringSetting(runtime, "DISCORD_GUILD_IDS"),
+    DISCORD_SHOULD_IGNORE_BOT_MESSAGES: parseBoolSetting(
+      runtime.getSetting("DISCORD_SHOULD_IGNORE_BOT_MESSAGES"),
+      DISCORD_DEFAULTS.shouldIgnoreBotMessages,
+    ),
+    DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: parseBoolSetting(
+      runtime.getSetting("DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES"),
+      DISCORD_DEFAULTS.shouldIgnoreDirectMessages,
+    ),
+    DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS: parseBoolSetting(
+      runtime.getSetting("DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS"),
+      DISCORD_DEFAULTS.shouldRespondOnlyToMentions,
+    ),
+    DISCORD_REQUIRE_MENTION: parseBoolSetting(
+      runtime.getSetting("DISCORD_REQUIRE_MENTION"),
+      DISCORD_DEFAULTS.requireMention,
+    ),
+    DISCORD_TEST_CHANNEL_ID: readStringSetting(runtime, "DISCORD_TEST_CHANNEL_ID"),
+  }
+}
+
+export function validateDiscordConfig(runtime: Pick<IAgentRuntime, "getSetting">): DiscordConfig {
+  return getDiscordSettings(runtime)
+}
+
+export function shouldEnable(
+  env: Readonly<Record<string, string | undefined>>,
+  config: Readonly<Record<string, unknown>> = {},
+): boolean {
+  if (typeof env.DISCORD_API_TOKEN === "string" && env.DISCORD_API_TOKEN.trim().length > 0) return true
+  if (typeof env.DISCORD_BOT_TOKENS === "string" && env.DISCORD_BOT_TOKENS.trim().length > 0) return true
+  if (typeof env.DISCORD_LOCAL_CLIENT_ID === "string" && env.DISCORD_LOCAL_CLIENT_ID.trim().length > 0) return true
+  const connectors = config.connectors as Record<string, Record<string, unknown>> | undefined
+  if (connectors?.discord && connectors.discord.enabled !== false) return true
+  if (connectors?.discordLocal && connectors.discordLocal.enabled !== false) return true
+  return false
+}
+
+export interface DiscordSchemaTableDescriptor {
+  readonly tableName: string
+  readonly columns: Readonly<Record<string, string>>
+  readonly primaryKey: readonly string[]
+  readonly indexes: readonly string[]
+}
+
+export const discordCoordinationTrustMembersTable: DiscordSchemaTableDescriptor = {
+  tableName: "discord_coordination_trust_members",
+  columns: {
+    serverId: "uuid not null",
+    accountId: "text not null",
+    trustGroupId: "text not null",
+    runtimeInstanceId: "text not null",
+    agentId: "uuid not null",
+    allowed: "boolean not null default true",
+    updatedAt: "timestamptz not null default now()",
+  },
+  primaryKey: ["server_id", "account_id", "trust_group_id", "agent_id"],
+  indexes: ["discord_coord_trust_server_idx"],
+}
+
+export const discordCoordinationHumanEdgesTable: DiscordSchemaTableDescriptor = {
+  tableName: "discord_coordination_human_edges",
+  columns: {
+    serverId: "uuid not null",
+    trustGroupId: "text not null",
+    channelId: "text not null",
+    edgeMessageId: "text not null",
+    edgeEpoch: "text not null",
+    updatedAt: "timestamptz not null default now()",
+  },
+  primaryKey: ["server_id", "trust_group_id", "channel_id"],
+  indexes: ["discord_coord_human_edge_epoch_unique"],
+}
+
+export const discordCoordinationReplySlotsTable: DiscordSchemaTableDescriptor = {
+  tableName: "discord_coordination_reply_slots",
+  columns: {
+    serverId: "uuid not null",
+    trustGroupId: "text not null",
+    accountId: "text not null",
+    channelId: "text not null",
+    edgeEpoch: "text not null",
+    lane: "text not null default 'human'",
+    slotIndex: "integer not null",
+    contenderToken: "text not null",
+    inboundMessageId: "text not null",
+    nonce: "text not null",
+    state: "text not null default 'claimed'",
+    claimedAt: "timestamptz not null default now()",
+    heartbeatAt: "timestamptz not null default now()",
+    expiresAt: "timestamptz not null",
+    deliveredMessageId: "text",
+    recoveryAttempts: "integer not null default 0",
+    updatedAt: "timestamptz not null default now()",
+  },
+  primaryKey: ["server_id", "trust_group_id", "channel_id", "edge_epoch", "lane", "slot_index"],
+  indexes: [
+    "discord_coord_reply_slots_bot_inbound_uq",
+    "discord_coord_reply_slots_nonce_idx",
+    "discord_coord_reply_slots_expiry_idx",
+  ],
+}
+
+export const discordCoordinationReceiptsTable: DiscordSchemaTableDescriptor = {
+  tableName: "discord_coordination_receipts",
+  columns: {
+    id: "uuid primary key",
+    serverId: "uuid not null",
+    accountId: "text not null",
+    trustGroupId: "text not null",
+    channelId: "text not null",
+    edgeMessageId: "text not null",
+    edgeEpoch: "text",
+    kind: "text not null",
+    outcome: "text",
+    contenderToken: "text",
+    holderToken: "text",
+    detail: "text",
+    createdAt: "timestamptz not null default now()",
+  },
+  primaryKey: ["id"],
+  indexes: ["discord_coord_receipts_server_idx", "discord_coord_receipts_channel_idx"],
+}
+
+export const discordCoordinationSchema = {
+  discordCoordinationTrustMembersTable,
+  discordCoordinationHumanEdgesTable,
+  discordCoordinationReplySlotsTable,
+  discordCoordinationReceiptsTable,
+} as const
+
+export interface DiscordMachineHandle<S, E> {
+  readonly state: () => S
+  readonly dispatch: (event: E) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown) => Promise<"accepted" | "refused">
+}
+
+export function wrapDiscordMachineHandle<S, E>(created: {
+  readonly get: () => S!never!never
+  readonly send: (event: E) => unknown!({ readonly _tag: "Rejected" })!never
+  readonly receive: (raw: unknown) => unknown!({ readonly _tag: "NotAnEvent" | "Rejected" })!never
+}): DiscordMachineHandle<S, E> {
+  return {
+    state: () => runSync(created.get()),
+    dispatch: (event) => runPromise(created.send(event).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+    receive: (raw) => runPromise(created.receive(raw).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("NotAnEvent", () => Effect.succeed("refused" as const)),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+  }
+}
+
+export interface DiscordSenderMachineHandle<S, E, C, O> {
+  readonly state: () => S
+  readonly lastOutput: () => readonly O[]
+  readonly dispatch: (event: E, by: C) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown, by: C) => Promise<"accepted" | "refused">
+}
+
+export function wrapDiscordSenderMachineHandle<S, E, C, O>(created: {
+  readonly get: () => S!never!never
+  readonly send: (event: E, by: C) => ({ readonly state: S; readonly out: readonly O[] })!({ readonly _tag: "Rejected" })!never
+  readonly receive: (raw: unknown, by: C) => ({ readonly state: S; readonly out: readonly O[] })!({ readonly _tag: "NotAnEvent" | "Rejected" })!never
+}): DiscordSenderMachineHandle<S, E, C, O> {
+  let latestOut: readonly O[] = []
+  return {
+    state: () => runSync(created.get()),
+    lastOutput: () => latestOut,
+    dispatch: (event, by) => runPromise(created.send(event, by).pipe(
+      Effect.map((step) => {
+        latestOut = step.out
+        return "accepted" as const
+      }),
+      Effect.catchTag("Rejected", () => {
+        latestOut = []
+        return Effect.succeed("refused" as const)
+      }),
+    )),
+    receive: (raw, by) => runPromise(created.receive(raw, by).pipe(
+      Effect.map((step) => {
+        latestOut = step.out
+        return "accepted" as const
+      }),
+      Effect.catchTag("NotAnEvent", () => {
+        latestOut = []
+        return Effect.succeed("refused" as const)
+      }),
+      Effect.catchTag("Rejected", () => {
+        latestOut = []
+        return Effect.succeed("refused" as const)
+      }),
+    )),
+  }
+}

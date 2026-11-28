@@ -1,10 +1,60 @@
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Open an address on the screen I asked from"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "Story: Tell me you cannot read my page, and never reload it unasked"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "Story: Open an address on the screen I asked from"; spec/browser/control.md, "Story: Offer only the Browser controls my phone negotiated"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "Story: Tell me you cannot read my page, and never reload it unasked"; spec/browser/arbitration.md, "Story: Follow the browser the person can see"; spec/browser/arbitration.md, "Story: Keep task binding authority on its original browser"; spec/browser/clipboardLease.md, "Story: A copied credential is erased by the command that wrote it"; spec/browser/inference.md, "Story: Send each model call through my account's route with private text removed, and drop stale results"; spec/browser/manualActivity.md, "Story: Ask about manual activity when the browser's record leaves it uncertain"; spec/browser/manualActivity.md, "Story: Let a known harmless form step explain only its own readback"; spec/browser/paymentControl.md, "Story: Distinguish a control that may pay from entry, navigation and other sends"; spec/browser/paymentControl.md, "Story: Ask before guiding the person to a payment control"; spec/browser/websiteGoal.md, "Story: Show a website answer for the entire request with the supporting words"; spec/browser/websiteGoal.md, "Story: Preserve a checked answer while honoring the task's completion and ownership fences"
 import { assert, it } from "@effect/vitest"
-import { canActionRun, ContextRegistry, resolveActionContexts, type Action, type ActionResult, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { canActionRun, ContextRegistry, resolveActionContexts, validateToolArgs, type Action, type ActionResult, type AgentRuntime, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
 import { activityLabel, deviceTurnPort, offeredActions, registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { capabilitiesHeader, type DeviceOperation } from "@elizaos/agent"
 import { BROWSER_CONTROL_DIRECT_TYPES, BROWSER_FIND_CAPABILITY, BROWSER_RELOAD_WITHHELD_REFUSAL, BROWSER_NO_TABS_TO_CLOSE_NOTICE, BROWSER_OPEN_NEW_TAB_CAPABILITY, BROWSER_TABS_CAPABILITY, BROWSER_TABS_CLOSE_ALL_CAPABILITY, BROWSER_TABS_UNLISTED_NOTICE, browserCloseAllApprovable, browserCloseAllNotice, browserControlCapabilityAvailable, BROWSER_TABS_SHOW_CAPABILITY, browserControlFormAvailable, browserControlRefusal, browserControlReviewNotice, browserControlRunsUnreviewed, browserNavigationAvailable, describeBrowserControl, parseBrowserControl, parseBrowserNavigate, browserDestinationMatches, browserSearchQueryMatches, directBrowserDestination, directBrowserSearchQuery, groundBrowserDestination, groundBrowserSearchQuery, spokenBrowserDestination, typedBrowserWords, observedTabCurrent, parseNativeHistoryCommand } from "@elizaos/plugin-browser-client"
-import { browserAction, browserOpenAction, browserPlugin, opensOnScreen } from "../src/index.vibe"
+import {
+  BROWSER_SERVICE_TYPE,
+  BrowserInferenceChannel,
+  BrowserService,
+  ClipboardPort,
+  ManualActivityTracker,
+  WEBSITE_GOAL_RETENTION_MS,
+  assessPaymentControl,
+  assessReplacementPaymentControl,
+  browserAction,
+  browserOpenAction,
+  browserPlugin,
+  browserWorkspaceAction,
+  browserWorkspaceProvider,
+  buildWaitForUrlPredicate,
+  canHostCoverLanding,
+  canUpstreamPointExplainGap,
+  createBrowserArbitrationSession,
+  createClipboardLeaseSession,
+  createWebsiteGoalSession,
+  evaluateHostWebsiteResult,
+  evaluateRouteAfterWebsiteSave,
+  evaluateWebsiteCompletionAdmission,
+  evaluateWebsiteGoalReview,
+  evaluateWebsiteResultExpiry,
+  evaluateWebsiteResultProjection,
+  evaluateWebsiteResultRoute,
+  evaluateWebsiteResultSave,
+  filterReportedOptInBoxes,
+  handleBrowserWorkspaceRoute,
+  isBindingEpochAdmitted,
+  isBindingEpochCurrent,
+  isPaymentHandoffPresent,
+  opensOnScreen,
+  redactNonSystemText,
+  resolveActiveBrowserPeer,
+  resolveBrowserGuideComposition,
+  resolveBrowserOperationRoute,
+  resolveBrowserPageRoute,
+  resolveBrowserRevokeOutcome,
+  resolveManualActivityQuestion,
+  resolvePaymentPointer,
+  runBoundedBrowserInference,
+  shouldWithdrawHostAnswer,
+  validateGoalRequirementReview,
+  validateManualActivity,
+  validateObservedWebsiteAnswer,
+  validateWebsiteGoal,
+  waitForUrl,
+  withCredentialClipboardLease,
+} from "../src/index.vibe"
 import { browserProposalFamily } from "../src/proposal.vibe"
 import { BROWSER_VIEW, type BrowserViewAsked, type BrowserViewAsker, type BrowserViewWait } from "../src/native-browser.vibe"
 
@@ -587,5 +637,356 @@ it.effect('Open on the screen the owner asked from an address their whole messag
     assert.notMatch(results.slice(1, 4).map((result) => result.text ?? "").join(" "), /Opening|with no review/)
     assert.isTrue(browserPlugin.actions?.includes(browserOpenAction))
     assert.match(browserOpenAction.description ?? "", /To show Browser itself, with no address to open, use VIEWS\./)
+  })
+})
+
+it.effect(`Arbitrate visible browser targets, preserve epoch binding fences, lease credentials safely, and bound redacted inference retries (spec/browser/arbitration.md, "Story: Follow the browser the person can see"; spec/browser/arbitration.md, "Story: Keep task binding authority on its original browser"; spec/browser/clipboardLease.md, "Story: A copied credential is erased by the command that wrote it"; spec/browser/inference.md, "Story: Send each model call through my account's route with private text removed, and drop stale results")`, effect () => {
+  const arb = createBrowserArbitrationSession()
+  const begun = try promise(() => arb.beginBind(1))
+  const chosen = try promise(() => arb.choosePeer("EmbeddedPeer"))
+  const finished = try promise(() => arb.finishBind(true))
+  const boundSnap = try promise(() => arb.snapshot())
+  const staleRejected = try promise(() => arb.beginBind(0))
+  const revoked = try promise(() => arb.revokeBrowser(1))
+  const revokedSnap = try promise(() => arb.snapshot())
+  const postRevokeRejected = try promise(() => arb.beginBind(1))
+
+  let activeClipboardPort = 0
+  const clipStore = new Map<number, string>([[0, ""], [1, ""]])
+  const clipCleared: number[] = []
+  const clipLayer = Layer.succeed(ClipboardPort, {
+    effect currentPort() {
+      return activeClipboardPort
+    },
+    effect writeSecret(port: number, secret: string) {
+      clipStore.set(port, secret)
+    },
+    effect readText(port: number) {
+      return clipStore.get(port) ?? ""
+    },
+    effect clear(port: number) {
+      clipCleared.push(port)
+      clipStore.set(port, "")
+    },
+  })
+  const runClipLease = effect () => {
+    provide clipLayer {
+      const first = try withCredentialClipboardLease("top-secret-password", (boundPort) => effect {
+        activeClipboardPort = 1
+        return `pasted-from-${boundPort}`
+      })
+      const second = try withCredentialClipboardLease("second-secret", (boundPort) => effect {
+        clipStore.set(boundPort, "user-copied-note")
+        return boundPort
+      })
+      return { first, second }
+    }
+  }
+  const { first: pasted, second: keptNewer } = try runClipLease()
+  const clipSession = createClipboardLeaseSession()
+  try promise(() => clipSession.admitLease())
+  const activeClipValue = try promise(() => clipSession.valueAtPort(0))
+  try promise(() => clipSession.finishLease())
+  const clearedClipValue = try promise(() => clipSession.valueAtPort(0))
+
+  const sentPayloads: string[] = []
+  let callIndex = 0
+  const inferLayer = Layer.succeed(BrowserInferenceChannel, {
+    effect send(request) {
+      sentPayloads.push(request.payload)
+      callIndex += 1
+      if (callIndex === 1) return { reply: "ReplyQuota", waitAcceptable: true }
+      return { reply: "ReplyObject", waitAcceptable: false, advice: "click submit" }
+    },
+  })
+  const runInferenceChecks = effect () => {
+    provide inferLayer {
+      const first = try runBoundedBrowserInference({
+        bodyId: 10,
+        accountRoute: 2,
+        content: "PlainText",
+        rawText: "Contact alice@example.com card 4111 1111 1111 1111 key sk-abcdefghijklmnop",
+        isLookCurrent: () => true,
+      })
+      const second = try runBoundedBrowserInference({
+        bodyId: 11,
+        accountRoute: 2,
+        content: "SystemText",
+        rawText: "keep alice@example.com",
+        isLookCurrent: () => false,
+      })
+      return { first, second }
+    }
+  }
+  const { first: accepted, second: stale } = try runInferenceChecks()
+  try Effect.try(() => {
+    assert.strictEqual(resolveBrowserGuideComposition(true, true, "trusted"), "DualTargets")
+    assert.strictEqual(resolveBrowserGuideComposition(true, true, "untrusted"), "EmbeddedOnly")
+    assert.strictEqual(resolveActiveBrowserPeer("EmbeddedPeer", true, true), "EmbeddedPeer")
+    assert.strictEqual(resolveBrowserPageRoute({ embeddedProfile: true, ownedProfile: true, gotPage: true, failed: false, errorKind: "", errorCode: "" }), "EmbeddedPage")
+    assert.deepStrictEqual(resolveBrowserOperationRoute({ matchedPeer: "OwnedPeer", cleanup: false, readFailed: false, observedPeer: "EmbeddedPeer" }), { tag: "StaleRef" })
+    assert.strictEqual(
+      resolveBrowserRevokeOutcome(
+        { reached: true, accepted: true, kindPresent: false, kind: "", code: "" },
+        { reached: false, accepted: false, kindPresent: false, kind: "", code: "" },
+      ),
+      "OwnedAccepted",
+    )
+    assert.deepStrictEqual([begun, chosen, finished, boundSnap.phase, boundSnap.boundPeer, staleRejected, revoked, revokedSnap.boundPeer, postRevokeRejected], [true, true, true, "Bound", "EmbeddedPeer", false, true, "NoPeer", false])
+    assert.isTrue(isBindingEpochAdmitted(revokedSnap.fence, 2))
+    assert.isFalse(isBindingEpochCurrent(revokedSnap.fence, 1))
+    assert.strictEqual(pasted, "pasted-from-0")
+    assert.deepStrictEqual(clipCleared, [0])
+    assert.strictEqual(clipStore.get(0), "")
+    assert.strictEqual(keptNewer, 1)
+    assert.strictEqual(clipStore.get(1), "user-copied-note")
+    assert.deepStrictEqual([activeClipValue, clearedClipValue], ["ClipOwned", "ClipEmpty"])
+    assert.deepStrictEqual(accepted, { status: "AcceptedObject", attempts: 2, advice: "click submit" })
+    assert.strictEqual(sentPayloads[0], sentPayloads[1])
+    assert.notInclude(sentPayloads[0] ?? "", "alice@example.com")
+    assert.notInclude(sentPayloads[0] ?? "", "sk-abcdefghijklmnop")
+    assert.strictEqual(redactNonSystemText("SystemText", "alice@example.com").redaction, "Preserved")
+    assert.deepStrictEqual(stale, { status: "DiscardedStale", attempts: 1 })
+  })
+})
+
+it.effect(`Enforce manual activity readback, payment control confirmation, and website goal completion retention (spec/browser/manualActivity.md, "Story: Ask about manual activity when the browser's record leaves it uncertain"; spec/browser/manualActivity.md, "Story: Let a known harmless form step explain only its own readback"; spec/browser/paymentControl.md, "Story: Distinguish a control that may pay from entry, navigation and other sends"; spec/browser/paymentControl.md, "Story: Ask before guiding the person to a payment control"; spec/browser/websiteGoal.md, "Story: Show a website answer for the entire request with the supporting words"; spec/browser/websiteGoal.md, "Story: Preserve a checked answer while honoring the task's completion and ownership fences")`, effect () => {
+  const tracker = new ManualActivityTracker()
+  tracker.shownFormStep({
+    stepKey: "search", origin: "site", documentId: "doc1", epoch: 1,
+    idsKnown: true, ids: [], isPerson: true, knownControl: true, hasFormIndex: true, sameTaskOrigin: true, quiet: true, commits: false,
+  })
+  tracker.shownFormStep({
+    stepKey: "next", origin: "site", documentId: "doc1", epoch: 1,
+    idsKnown: true, ids: ["ev1"], isPerson: true, knownControl: false, hasFormIndex: false, sameTaskOrigin: true, quiet: true, commits: false,
+  })
+  const submit = {
+    formSubmit: true, originString: true, documentString: true, origin: "site", documentId: "doc1",
+    epoch: 1, observedAt: 5, credentialMarkerValid: true, credential: false, idPresent: true, eventId: "ev1",
+  }
+  const attribution = tracker.attributeSubmits([submit], "site", 2)
+  const cleanActivity = {
+    present: true, eventsArray: true, events: [], overflowBoolean: true, overflow: false,
+    gapBoolean: true, captureGap: false, idsPresent: false, idsArray: true, gapIds: [],
+  }
+  const submitActivity = { ...cleanActivity, events: [submit] }
+  const landingGapActivity = { ...cleanActivity, captureGap: true }
+  const waiting = {
+    waits: true, theirs: true, commits: false, quietBefore: true, gapBefore: false,
+    leadsAnywhere: true, exactDestination: false, readable: true, pageUnchanged: false, addressPresent: true, addressChanged: true,
+  }
+  const paymentAssessment = assessPaymentControl(
+    {
+      controlPresent: true, controlKind: "GuideButton", ownViewsOnlyOnward: false, narrowMoneyWords: true,
+      narrowSectionWords: false, narrowSubmits: true, narrowSendWords: false, narrowOwnCode: false,
+      ownNamePresent: true, rawReadable: true, handedMoneyForRef: false,
+    },
+    {
+      elementPresent: true, disabled: false, sensitive: false, fieldElement: false, explicitPreparation: false,
+      ownMoney: true, payWords: true, sectionWords: false, linkElement: false, nonCommitName: false,
+      sendsForm: true, formFunding: true, addToCart: false, allSelectionFields: false, formMoney: true, editableAmount: false, pageTotal: true,
+    },
+  )
+  const reportedBoxes = filterReportedOptInBoxes(true, [
+    { choice: true, enabledBox: true, optInWords: true, sameForm: true, observedState: "BoxUnknown" },
+    { choice: true, enabledBox: true, optInWords: true, sameForm: true, observedState: "BoxClear" },
+  ])
+
+  const goalSession = createWebsiteGoalSession()
+  const t0 = WEBSITE_GOAL_RETENTION_MS * 2
+  const reading = {
+    versionOne: true, redactedGoal: true, cleanHttps: true, answerValid: true,
+    observedAt: t0, revision: 3, epoch: 2, hasConstraint: false,
+  }
+  const saved = try promise(() => goalSession.saveReading(reading, t0, true))
+  const completed = try promise(() => goalSession.completeReading(true, false))
+  const completedSnap = try promise(() => goalSession.snapshot())
+  const swept = try promise(() => goalSession.sweepReading(t0 + WEBSITE_GOAL_RETENTION_MS + 1))
+  const sweptSnap = try promise(() => goalSession.snapshot())
+  const taskShape = { taskStatus: "active", taskRevision: 3, taskEpoch: 2 }
+
+  try Effect.try(() => {
+    assert.strictEqual(tracker.getWindows().length, 1)
+    assert.isTrue(attribution.sawEarlier)
+    assert.isTrue(validateManualActivity(cleanActivity))
+    assert.strictEqual(resolveManualActivityQuestion({ ...cleanActivity, overflow: true }, "site", 2, 0, false), "manual-activity")
+    assert.isTrue(canUpstreamPointExplainGap({
+      pointExists: true, gapAlreadyOpen: false, sameEpoch: true, pointedDocumentString: true,
+      sameDocument: true, pointAddressPresent: true, readAddressPresent: true, addressChanged: true,
+    }, 1, true))
+    assert.isTrue(canHostCoverLanding(waiting, landingGapActivity, "site", 2, true, true))
+    assert.isTrue(shouldWithdrawHostAnswer(waiting))
+    assert.isFalse(shouldWithdrawHostAnswer({ ...waiting, pageUnchanged: true, addressChanged: false }))
+    assert.isTrue(tracker.isPointedOnly(submitActivity, "site", 2, true))
+
+    assert.deepStrictEqual(paymentAssessment, {
+      isPaymentCommit: true, rendered: "GuideMoney", person: "GuideMoney", agentMayPress: false,
+    })
+    assert.strictEqual(assessReplacementPaymentControl(
+      {
+        controlPresent: true, controlKind: "GuideButton", ownViewsOnlyOnward: false, narrowMoneyWords: false,
+        narrowSectionWords: false, narrowSubmits: true, narrowSendWords: false, narrowOwnCode: false,
+        ownNamePresent: true, rawReadable: true, handedMoneyForRef: false,
+      },
+      {
+        elementPresent: true, disabled: false, sensitive: false, fieldElement: false, explicitPreparation: false,
+        ownMoney: true, payWords: true, sectionWords: false, linkElement: false, nonCommitName: false,
+        sendsForm: true, formFunding: true, addToCart: false, allSelectionFields: false, formMoney: true, editableAmount: false, pageTotal: true,
+      },
+      true,
+    ), "GuideMoney")
+    assert.isTrue(isPaymentHandoffPresent(true, true, true, true, true))
+    assert.strictEqual(reportedBoxes.length, 1)
+    assert.strictEqual(resolvePaymentPointer({ currentObservation: true, optInNeedsAnswer: true, moneyAnswerCurrent: true }), "AskAboutOptIns")
+    assert.strictEqual(resolvePaymentPointer({ currentObservation: true, optInNeedsAnswer: false, moneyAnswerCurrent: true }), "PointForPerson")
+
+    assert.isTrue(validateWebsiteGoal({
+      exactKeys: true, goalNonblank: true, goalUnits: 20, exactSourceText: true,
+      segments: [{ exactKeys: true, textNonempty: true, conditionNonblank: true, conditionUnits: 8, role: "requirement", kind: "read" }],
+    }))
+    assert.isTrue(validateGoalRequirementReview({
+      exactKeys: true, requirementKind: "read", status: "supported",
+      quotes: [{ exactKeys: true, sourceKnown: true, textNonblank: true, textUnits: 7, exactSubstring: true }],
+    }))
+    assert.strictEqual(evaluateWebsiteGoalReview({
+      exactTopKeys: true, exactRequirementIds: true,
+      entries: [{
+        exactKeys: true, requirementKind: "read", status: "supported",
+        quotes: [{ exactKeys: true, sourceKnown: true, textNonblank: true, textUnits: 7, exactSubstring: true }],
+      }],
+    }, 1), "supported")
+    assert.isTrue(validateObservedWebsiteAnswer(
+      {
+        goalRevalidated: true, reportsAllSupported: true, requirementCountMatches: true,
+        coverage: [{ requirementKind: "read", onceSupported: true, quotes: [{ sourceIsCurrent: true, inRedactedBody: true, exactTextId: 1 }] }],
+      },
+      { versionOne: true, canonicalGoal: true, addressMatches: true, observationOnly: true, excerptsArray: true, excerptsTotal: 1, excerptsAllCurrent: true, messageUnits: 37 },
+    ))
+    assert.isTrue(evaluateHostWebsiteResult({ done: true, heldAnswer: true, taskActive: true, sameEpoch: true, sameGoalRevision: true }))
+    assert.strictEqual(evaluateWebsiteResultSave({ task: taskShape, record: reading, clock: t0, previous: "none", equalExceptTime: false }), "write")
+    const completedTask = { taskStatus: "completed", taskRevision: 4, taskEpoch: 3 }
+    const projected = evaluateWebsiteResultProjection(completedTask, "answer", true, true, 3, 2)
+    assert.isTrue(projected.saved && projected.completed)
+    assert.strictEqual(evaluateWebsiteResultRoute(completedTask, projected, "GET", "read"), "retained-finished")
+    assert.strictEqual(evaluateWebsiteResultExpiry({
+      marker: false, selectedBySweep: true, fieldsReadable: true, observedAt: t0, revision: 3, epoch: 2, constraintScanReadable: true, hasConstraint: false,
+    }), "marker")
+    assert.strictEqual(evaluateWebsiteCompletionAdmission(taskShape, 3, true, false), "complete")
+    assert.strictEqual(evaluateRouteAfterWebsiteSave(true, true), "finished")
+    assert.deepStrictEqual([saved, completed, completedSnap.task.taskStatus, completedSnap.answerFields, swept, sweptSnap.answerFields, sweptSnap.task.taskStatus], [true, true, "completed", true, true, false, "completed"])
+  })
+})
+
+it.effect(`Manage browser workspace service, provider, strict action, waitForUrl, routes, autoEnable, and dispose (spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/arbitration.md, "Story: Follow the browser the person can see")`, effect () => {
+  const service = try promise(() => BrowserService.start({} as IAgentRuntime))
+  const runtime = {
+    getService: (name: string) => (name === BROWSER_SERVICE_TYPE ? service : null),
+  } as unknown as IAgentRuntime
+  const offeredWithWorkspace = offeredActions({ actions: browserPlugin.actions ?? [], getService: runtime.getService } as unknown as AgentRuntime, turn(browserTab), () => undefined).map(({ name }) => name)
+  const opened = try promise(() => browserWorkspaceAction.handler(runtime, turn(browserTab), undefined, {
+    parameters: { action: "open", title: "Docs", url: "https://docs.example.com/start" },
+  }))
+  const badScheme = try promise(() => browserWorkspaceAction.handler(runtime, turn(browserTab), undefined, {
+    parameters: { action: "open", url: "javascript:alert(1)" },
+  }))
+  const tabId = (opened.data?.tab as { readonly id: string } | undefined)?.id ?? ""
+  service.navigateTab(tabId, "https://docs.example.com/guide", "x".repeat(9_000))
+  const snapshot = try promise(() => browserWorkspaceAction.handler(runtime, turn(browserTab), undefined, {
+    parameters: { action: "snapshot", tabId },
+  }))
+  const hidden = try promise(() => browserWorkspaceAction.handler(runtime, turn(browserTab), undefined, {
+    parameters: { action: "hide", tabId },
+  }))
+  const listed = try promise(() => browserWorkspaceAction.handler(runtime, turn(browserTab), undefined, {
+    parameters: { action: "list" },
+  }))
+  const hostProvider = try promise(() => browserWorkspaceProvider.get(runtime, turn(), {} as never))
+  const nativeProvider = try promise(() => browserWorkspaceProvider.get(runtime, {
+    ...turn(pageObservation),
+    content: { text: "check", metadata: { observation: pageObservation, browserPage: frontPage() } },
+  } as Memory, {} as never))
+
+  let clock = 0
+  let step = 0
+  const waited = try promise(() => waitForUrl({
+    pattern: "/\\/dashboard$/i",
+    timeoutMs: 5_000,
+    pollIntervalMs: 100,
+    now: () => clock,
+    sleep: async (ms) => {
+      clock += ms
+    },
+    readUrl: async () => {
+      step += 1
+      return step >= 3 ? "https://app.example.com/DASHBOARD" : "https://app.example.com/login"
+    },
+  }))
+  let timeoutClock = 0
+  const timedOut = try promise(() => waitForUrl({
+    pattern: "never-arrives",
+    timeoutMs: 250,
+    pollIntervalMs: 100,
+    now: () => timeoutClock,
+    sleep: async (ms) => {
+      timeoutClock += ms
+    },
+    readUrl: async () => "https://app.example.com/still-loading",
+  }))
+  const ac = new AbortController()
+  ac.abort()
+  const cancelled = try promise(() => waitForUrl({
+    pattern: "anything",
+    signal: ac.signal,
+    readUrl: async () => "https://app.example.com/",
+  }))
+
+  const unauthRoute = handleBrowserWorkspaceRoute(service, { method: "GET", pathname: "/api/browser-workspace/tabs", isOwner: false })
+  const statusRoute = handleBrowserWorkspaceRoute(service, { method: "GET", pathname: "/api/browser-workspace/status", isOwner: true })
+  const openRoute = handleBrowserWorkspaceRoute(service, { method: "POST", pathname: "/api/browser-workspace/open", isOwner: true, body: { url: "https://example.org/a", title: "A" } })
+  const cmdOk = handleBrowserWorkspaceRoute(service, { method: "POST", pathname: "/api/browser-workspace/command", isOwner: true, body: { steps: [{ op: "click" }, { op: "read" }] } })
+  const cmdTooMany = handleBrowserWorkspaceRoute(service, { method: "POST", pathname: "/api/browser-workspace/command", isOwner: true, body: { steps: Array.from({ length: 300 }, () => ({ op: "click" })) } })
+  const routeMissing = handleBrowserWorkspaceRoute(service, { method: "GET", pathname: "/api/browser-workspace/unknown", isOwner: true })
+  const pluginStatusRoute = browserPlugin.routes.find((r) => r.path === "/api/browser-workspace/status")?.handler(runtime, { pathname: "/api/browser-workspace/status", isOwner: true })
+  const closeTab = try promise(() => browserWorkspaceAction.handler(runtime, turn(browserTab), undefined, {
+    parameters: { action: "close", tabId },
+  }))
+  const shouldEnableTrue = try promise(() => Promise.resolve(browserPlugin.autoEnable?.shouldEnable?.({}, { features: { browser: true } })))
+  const shouldEnableFalse = try promise(() => Promise.resolve(browserPlugin.autoEnable?.shouldEnable?.({}, { features: { browser: { enabled: false } } })))
+  try promise(() => Promise.resolve(browserPlugin.dispose?.(runtime)))
+
+  try Effect.try(() => {
+    const paramNames = (browserWorkspaceAction.parameters ?? []).map((p) => p.name)
+    assert.deepStrictEqual(paramNames, [...paramNames].toSorted())
+    assert.isTrue(browserWorkspaceAction.toolSchemaStrict)
+    assert.isTrue(browserWorkspaceAction.cacheStable)
+    assert.isDefined(browserWorkspaceAction.descriptionCompressed)
+    assert.strictEqual(browserWorkspaceAction.summarize?.(opened, { action: "open" }), "BROWSER_WORKSPACE(open): ok")
+    assert.isTrue(validateToolArgs(browserWorkspaceAction, { action: "list" }).valid)
+    assert.isFalse(validateToolArgs(browserWorkspaceAction, { action: "bogus" }).valid)
+    assert.include(offeredWithWorkspace, "BROWSER_WORKSPACE")
+    assert.isTrue(opened.success)
+    assert.isFalse(badScheme.success)
+    assert.isTrue(snapshot.success)
+    assert.strictEqual((JSON.parse(snapshot.text ?? "{}") as { text: string }).text.length, 8_000)
+    assert.isTrue(hidden.success)
+    assert.isTrue(listed.success)
+    assert.include(hostProvider.text ?? "", "docs.example.com/guide")
+    assert.include(nativeProvider.text ?? "", "native-client")
+    assert.isFalse(buildWaitForUrlPredicate("/(a+)+$/").ok)
+    assert.strictEqual(waited.status, "matched")
+    assert.strictEqual(waited.polls, 3)
+    assert.strictEqual(timedOut.status, "timeout")
+    assert.strictEqual(cancelled.status, "cancelled")
+    assert.strictEqual(unauthRoute.status, 403)
+    assert.strictEqual(statusRoute.status, 200)
+    assert.strictEqual(openRoute.status, 201)
+    assert.strictEqual(cmdOk.status, 200)
+    assert.strictEqual(cmdTooMany.status, 400)
+    assert.strictEqual(routeMissing.status, 404)
+    assert.strictEqual(browserPlugin.routes.length, 9)
+    assert.strictEqual(pluginStatusRoute?.status, 200)
+    assert.isTrue(closeTab.success)
+    assert.deepStrictEqual([shouldEnableTrue, shouldEnableFalse], [true, false])
+    assert.strictEqual(service.listTabs().length, 0)
   })
 })

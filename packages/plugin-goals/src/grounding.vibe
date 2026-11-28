@@ -1,0 +1,163 @@
+// spec/goals/lifecycle.md, "Evaluation scores stay bounded in percent units and duplicate cadence slots are refused"
+import { clampUnitBps } from "../gen/goals__lifecycle.effect.vibe"
+import { normalizeStringList } from "./normalize.vibe"
+import { GOAL_REVIEW_STATES, type GoalReviewState } from "./types.vibe"
+
+export const GOAL_GROUNDING_STATES = ["grounded", "partial", "ungrounded"] as const
+export type GoalGroundingState = (typeof GOAL_GROUNDING_STATES)[number]
+
+export interface GoalGroundingMetadata {
+  readonly version: 1
+  readonly groundingState: GoalGroundingState
+  readonly summary: string | null
+  readonly targetDomain: string | null
+  readonly groundedAt: string | null
+  readonly confidence: number | null
+  readonly missingCriticalFields: readonly string[]
+  readonly evidenceSignals: readonly string[]
+  readonly reviewCadenceKind: string | null
+}
+
+export interface GoalSemanticSuggestionMetadata {
+  readonly kind: string | null
+  readonly title: string
+  readonly detail: string
+}
+
+export interface GoalSemanticReviewMetadata {
+  readonly reviewedAt: string
+  readonly reviewState: GoalReviewState
+  readonly progressScore: number | null
+  readonly confidence: number | null
+  readonly explanation: string
+  readonly evidenceSummary: string | null
+  readonly missingEvidence: readonly string[]
+  readonly suggestions: readonly GoalSemanticSuggestionMetadata[]
+}
+
+function asText(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function clampUnit(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null
+  return clampUnitBps(Math.round(value * 1000)) / 1000
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+export function buildGoalGroundingMetadata(args: {
+  readonly confidence?: number | null
+  readonly evidenceSignals?: readonly string[]
+  readonly groundedAt?: string | null
+  readonly groundingState: GoalGroundingState
+  readonly missingCriticalFields?: readonly string[]
+  readonly reviewCadenceKind?: string | null
+  readonly summary?: string | null
+  readonly targetDomain?: string | null
+}): GoalGroundingMetadata {
+  return {
+    version: 1,
+    groundingState: args.groundingState,
+    summary: args.summary ?? null,
+    targetDomain: args.targetDomain ?? null,
+    groundedAt: args.groundedAt ?? null,
+    confidence: clampUnit(args.confidence),
+    missingCriticalFields: [...new Set((args.missingCriticalFields ?? []).filter(Boolean))],
+    evidenceSignals: [...new Set((args.evidenceSignals ?? []).filter(Boolean))],
+    reviewCadenceKind: asText(args.reviewCadenceKind),
+  }
+}
+
+export function mergeGoalGroundingMetadata(
+  metadata: Record<string, unknown>,
+  grounding: GoalGroundingMetadata,
+): Record<string, unknown> {
+  return { ...metadata, goalGrounding: grounding }
+}
+
+export function readGoalGroundingMetadata(value: unknown): GoalGroundingMetadata | null {
+  const record = asRecord(value)
+  const candidate = asRecord(record?.goalGrounding ?? value)
+  if (!candidate) return null
+  const groundingState = asText(candidate.groundingState)
+  if (!groundingState || !(GOAL_GROUNDING_STATES as readonly string[]).includes(groundingState)) return null
+  return buildGoalGroundingMetadata({
+    confidence: typeof candidate.confidence === "number" ? candidate.confidence : null,
+    evidenceSignals: normalizeStringList(candidate.evidenceSignals),
+    groundedAt: asText(candidate.groundedAt),
+    groundingState: groundingState as GoalGroundingState,
+    missingCriticalFields: normalizeStringList(candidate.missingCriticalFields),
+    reviewCadenceKind: asText(candidate.reviewCadenceKind),
+    summary: asText(candidate.summary),
+    targetDomain: asText(candidate.targetDomain),
+  })
+}
+
+export function buildGoalSemanticReviewMetadata(args: {
+  readonly confidence?: number | null
+  readonly evidenceSummary?: string | null
+  readonly explanation: string
+  readonly missingEvidence?: readonly string[]
+  readonly progressScore?: number | null
+  readonly reviewState: GoalReviewState
+  readonly reviewedAt: string
+  readonly suggestions?: readonly GoalSemanticSuggestionMetadata[]
+}): GoalSemanticReviewMetadata {
+  return {
+    reviewedAt: args.reviewedAt,
+    reviewState: args.reviewState,
+    progressScore: clampUnit(args.progressScore),
+    confidence: clampUnit(args.confidence),
+    explanation: args.explanation.trim(),
+    evidenceSummary: args.evidenceSummary ?? null,
+    missingEvidence: [...new Set((args.missingEvidence ?? []).filter(Boolean))],
+    suggestions: (args.suggestions ?? [])
+      .map((s) => ({ kind: asText(s.kind), title: s.title.trim(), detail: s.detail.trim() }))
+      .filter((s) => s.title.length > 0 && s.detail.length > 0),
+  }
+}
+
+export function mergeGoalSemanticReviewMetadata(
+  metadata: Record<string, unknown>,
+  review: GoalSemanticReviewMetadata,
+): Record<string, unknown> {
+  return { ...metadata, goalSemanticReview: review }
+}
+
+export function readGoalSemanticReviewMetadata(value: unknown): GoalSemanticReviewMetadata | null {
+  const record = asRecord(value)
+  const candidate = asRecord(record?.goalSemanticReview ?? value)
+  if (!candidate) return null
+  const reviewState = asText(candidate.reviewState)
+  const reviewedAt = asText(candidate.reviewedAt)
+  const explanation = asText(candidate.explanation)
+  if (!reviewState || !(GOAL_REVIEW_STATES as readonly string[]).includes(reviewState) || !reviewedAt || !explanation) {
+    return null
+  }
+  const rawSuggestions = Array.isArray(candidate.suggestions) ? candidate.suggestions : []
+  const suggestions: GoalSemanticSuggestionMetadata[] = []
+  for (const item of rawSuggestions) {
+    const rec = asRecord(item)
+    const title = asText(rec?.title)
+    const detail = asText(rec?.detail)
+    if (title && detail) {
+      suggestions.push({ kind: asText(rec?.kind), title, detail })
+    }
+  }
+  return buildGoalSemanticReviewMetadata({
+    reviewedAt,
+    reviewState: reviewState as GoalReviewState,
+    progressScore: typeof candidate.progressScore === "number" ? candidate.progressScore : null,
+    confidence: typeof candidate.confidence === "number" ? candidate.confidence : null,
+    explanation,
+    evidenceSummary: asText(candidate.evidenceSummary),
+    missingEvidence: normalizeStringList(candidate.missingEvidence),
+    suggestions,
+  })
+}

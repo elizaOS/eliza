@@ -1,0 +1,476 @@
+// spec/telegram/index.md, "Story: Run one Telegram long-poller for each bot credential"; spec/telegram/index.md, "Story: Read a Telegram chat and reply under its account and topic rules"; spec/telegram/delivery.md, "Story: Keep a pinned task board or progress status as one message across edits, deletions, and restarts"; spec/telegram/delivery.md, "Story: Enforce fail-closed owner pairing, canonical world ownership, and bounded history queries"
+import { assert, it } from "@effect/vitest"
+import { validateToolArgs, type IAgentRuntime, type Memory, type UUID } from "@elizaos/core"
+import { Telegraf } from "telegraf"
+import {
+  TELEGRAM_OWNER_PAIRING_SERVICE_TYPE,
+  TELEGRAM_PERSONAL_SERVICE_TYPE,
+  TELEGRAM_SERVICE_NAME,
+  TelegramAccountAuthSession,
+  TelegramAccountService,
+  TelegramMessageAdapter,
+  TelegramOwnerPairingServiceImpl,
+  TelegramService,
+  TelegramStandaloneService,
+  buildTelegramWorldOwnership,
+  claimTelegramPollerToken,
+  clearTelegramAccountSessionFile,
+  convertMarkdownToTelegram,
+  convertToTelegramButtons,
+  createInMemoryBoardStore,
+  createTelegramCompactProgressCallback,
+  createTelegramConnectorAccountProvider,
+  createTelegramDmSensitiveRequestAdapter,
+  deliverTelegramSensitiveRequestDm,
+  escapeMarkdownV2,
+  evaluateTelegramChatPolicy,
+  evaluateTelegramDisposition,
+  formatTelegramTaskBoard,
+  getTelegramPollerClaim,
+  handleTelegramStandaloneMessage,
+  listEnabledTelegramAccounts,
+  listTelegramPollerHealth,
+  loadTelegramAccountSession,
+  markTelegramPollerConnected,
+  markTelegramPollerTerminated,
+  markTelegramPollerUpdate,
+  parseProvisioningBody,
+  parseTelegramChatList,
+  preserveTelegramCancellation,
+  readTelegramAccountHistory,
+  redactTelegramTokenInError,
+  registerTelegramAccountAuthSession,
+  registerTelegramTriageAdapter,
+  releaseTelegramPollerToken,
+  resetTelegramPairAttemptsForTest,
+  resetTelegramPollerLocksForTest,
+  resolveTelegramAccount,
+  resolveTelegramAppCredentials,
+  saveTelegramAccountSession,
+  shouldStartTelegramStandaloneBot,
+  splitTelegramMessage,
+  stopTelegramAccountAuthSession,
+  telegramAccountRoutes,
+  telegramAction,
+  telegramPlugin,
+  telegramSetupRoutes,
+  telegramStatusProvider,
+  type TelegramAccountTransport,
+} from "../src/index.vibe"
+
+module node {
+  import fs from "node:fs"
+  import http from "node:http"
+  import os from "node:os"
+  import path from "node:path"
+
+  export interface MockBotApiState {
+    readonly baseUrl: string
+    readonly calls: Array<{ readonly method: string; readonly payload: Record<string, unknown> }>
+    readonly messages: Map<number, { text: string; deleted: boolean }>
+    readonly pinned: number[]
+    readonly reactions: Array<{ readonly chatId: string; readonly messageId: number; readonly emoji: string }>
+    readonly typingChats: string[]
+    close(): Promise<void>
+  }
+
+  export async function startMockTelegramBotApi(): Promise<MockBotApiState> {
+    const calls: Array<{ readonly method: string; readonly payload: Record<string, unknown> }> = []
+    const messages = new Map<number, { text: string; deleted: boolean }>()
+    const pinned: number[] = []
+    const reactions: Array<{ readonly chatId: string; readonly messageId: number; readonly emoji: string }> = []
+    const typingChats: string[] = []
+    let nextMessageId = 100
+
+    const server = http.createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (chunk: Buffer) => chunks.push(chunk))
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8")
+        const urlPath = req.url ?? ""
+        const method = urlPath.split("/").pop() ?? ""
+        let payload: Record<string, unknown> = {}
+        try {
+          if (raw.trim().startsWith("{")) payload = JSON.parse(raw) as Record<string, unknown>
+        } catch {
+          payload = {}
+        }
+        calls.push({ method, payload })
+
+        if (method === "getMe") {
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({ ok: true, result: { id: 999, is_bot: true, first_name: "ElizaBot", username: "eliza_test_bot" } }))
+          return
+        }
+        if (method === "sendMessage") {
+          const messageId = nextMessageId++
+          messages.set(messageId, { text: String(payload.text ?? ""), deleted: false })
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({
+            ok: true,
+            result: { message_id: messageId, date: Math.floor(Date.now() / 1000), chat: { id: Number(payload.chat_id ?? 1), type: "private" }, text: String(payload.text ?? "") },
+          }))
+          return
+        }
+        if (method === "editMessageText") {
+          const messageId = Number(payload.message_id ?? 0)
+          const existing = messages.get(messageId)
+          if (existing === undefined || existing.deleted) {
+            res.writeHead(400, { "content-type": "application/json" })
+            res.end(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: message to edit not found" }))
+            return
+          }
+          const nextText = String(payload.text ?? "")
+          if (existing.text === nextText) {
+            res.writeHead(400, { "content-type": "application/json" })
+            res.end(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: message is not modified" }))
+            return
+          }
+          existing.text = nextText
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({ ok: true, result: { message_id: messageId, text: nextText } }))
+          return
+        }
+        if (method === "pinChatMessage") {
+          pinned.push(Number(payload.message_id ?? 0))
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({ ok: true, result: true }))
+          return
+        }
+        if (method === "setMessageReaction") {
+          const rx = Array.isArray(payload.reaction) ? (payload.reaction[0] as { readonly emoji?: string } | undefined) : undefined
+          reactions.push({ chatId: String(payload.chat_id ?? ""), messageId: Number(payload.message_id ?? 0), emoji: rx?.emoji ?? "" })
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({ ok: true, result: true }))
+          return
+        }
+        if (method === "sendChatAction") {
+          typingChats.push(String(payload.chat_id ?? ""))
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({ ok: true, result: true }))
+          return
+        }
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({ ok: true, result: [] }))
+      })
+    })
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", () => resolve())
+    })
+    const addr = server.address()
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0
+    return {
+      baseUrl: `http://127.0.0.1:${port}`,
+      calls,
+      messages,
+      pinned,
+      reactions,
+      typingChats,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+
+  export function makeTempSessionPath(): { readonly dir: string; readonly filePath: string; readonly cleanup: () => void } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-tg-session-"))
+    return {
+      dir,
+      filePath: path.join(dir, "session.enc"),
+      cleanup: () => fs.rmSync(dir, { recursive: true, force: true }),
+    }
+  }
+}
+import { makeTempSessionPath, startMockTelegramBotApi } from node
+
+function makeRuntime(options: {
+  readonly settings?: Readonly<Record<string, unknown>>
+  readonly services?: Readonly<Record<string, unknown>>
+  readonly characterSettings?: Readonly<Record<string, unknown>>
+  readonly replies?: string[]
+}): IAgentRuntime {
+  const memories = new Map<string, Memory>()
+  return {
+    agentId: "00000000-0000-4000-8000-000000000001" as UUID,
+    character: { name: "Eliza", settings: options.characterSettings ?? {} },
+    getSetting: (key: string) => options.settings?.[key],
+    getService: (name: string) => options.services?.[name] ?? null,
+    ensureConnection: async () => undefined,
+    createMemory: async (memory: Memory) => {
+      if (memory.id !== undefined) memories.set(memory.id, memory)
+      return (memory.id ?? "00000000-0000-4000-8000-000000000099") as UUID
+    },
+    getMemoryById: async (id: UUID) => memories.get(id) ?? null,
+    updateMemory: async (partial: { readonly id?: UUID; readonly content?: Memory["content"] }) => {
+      if (partial.id !== undefined) {
+        const existing = memories.get(partial.id)
+        if (existing !== undefined && partial.content !== undefined) {
+          memories.set(partial.id, { ...existing, content: partial.content })
+        }
+      }
+      return true
+    },
+    deleteMemory: async (id: UUID) => {
+      memories.delete(id)
+    },
+    registerMessageConnector: () => undefined,
+    messageService: options.replies === undefined ? undefined : {
+      handleMessage: async (_rt: IAgentRuntime, _msg: Memory, cb?: (content: { text: string }) => Promise<Memory[]>) => {
+        if (cb !== undefined) {
+          for (const text of options.replies!) await cb({ text })
+        }
+        return { didRespond: true, responseContent: null, responseMessages: [], state: {} as never }
+      },
+    },
+  } as unknown as IAgentRuntime
+}
+
+it.effect(`Enforce single-poller claims, cancellation token redaction, MarkdownV2/grapheme formatting, and live Bot API delivery (spec/telegram/index.md, "Story: Run one Telegram long-poller for each bot credential"; spec/telegram/index.md, "Story: Read a Telegram chat and reply under its account and topic rules"; spec/telegram/delivery.md, "Story: Keep a pinned task board or progress status as one message across edits, deletions, and restarts")`, effect () => {
+  resetTelegramPollerLocksForTest()
+  const api = try tryPromise(() => startMockTelegramBotApi())
+  const token = "123456:SECRET_TEST_TOKEN"
+  const bot1 = try Effect.try(() => new Telegraf(token, { telegram: { apiRoot: api.baseUrl } }))
+  const bot2 = try Effect.try(() => new Telegraf(token, { telegram: { apiRoot: api.baseUrl } }))
+  preserveTelegramCancellation(bot1.telegram)
+
+  const claim1 = try tryPromise(() => claimTelegramPollerToken(token, { mode: "full", accountId: "default", ownerId: "owner-1", bot: bot1 }))
+  const conflict = try Effect.result(Effect.tryPromise(() => claimTelegramPollerToken(token, { mode: "standalone", accountId: "default", ownerId: "owner-2", bot: bot2 })))
+  const connected = try tryPromise(() => markTelegramPollerConnected(token, bot1, 10))
+  const updated = try tryPromise(() => markTelegramPollerUpdate(token, bot1, 20))
+  const healthDuring = try tryPromise(() => listTelegramPollerHealth())
+  const activeClaim = try tryPromise(() => getTelegramPollerClaim(token))
+  try tryPromise(() => markTelegramPollerTerminated(token, bot1, `https://api.telegram.org/bot${token}/getUpdates failed`))
+  const reclaimed = try tryPromise(() => claimTelegramPollerToken(token, { mode: "standalone", accountId: "default", ownerId: "owner-2", bot: bot2 }))
+  const released = try tryPromise(() => releaseTelegramPollerToken(token, bot2))
+
+  const runtime = makeRuntime({
+    settings: { TELEGRAM_BOT_TOKEN: token, TELEGRAM_API_ROOT: api.baseUrl, TELEGRAM_SKIP_POLLING: "true" },
+  })
+  const service = try tryPromise(() => TelegramService.start(runtime))
+  const manager = service.getMessageManager("default")!
+  const sent = try tryPromise(() => manager.sendMessage("12345", {
+    text: "Hello **world** `x_1` [link](https://example.com/a)",
+    buttons: [{ kind: "url", text: "Open", url: "https://example.com" }],
+  }, { parseMode: "MarkdownV2" }))
+  const editedChanged = try tryPromise(() => manager.editMessage("12345", sent.messageIds[0]!, "Updated line"))
+  const editedSame = try tryPromise(() => manager.editMessage("12345", sent.messageIds[0]!, "Updated line"))
+  try tryPromise(() => manager.addReaction("12345", sent.messageIds[0]!, "👍"))
+  try tryPromise(() => manager.sendTypingAction("12345", 7))
+  manager.recordSupergroupMigration("-100", "-1009999")
+
+  const board = service.getTaskBoard("default")!
+  const b1 = try tryPromise(() => board.render("12345", [{ id: "1", title: "Ship parity", status: "running" }]))
+  const b2 = try tryPromise(() => board.render("12345", [{ id: "1", title: "Ship parity", status: "running" }]))
+  const b3 = try tryPromise(() => board.render("12345", [{ id: "1", title: "Ship parity", status: "done" }]))
+  api.messages.get(b1.messageId)!.deleted = true
+  const b4 = try tryPromise(() => board.render("12345", [{ id: "1", title: "Ship parity", status: "done" }]))
+
+  const memBoard = createInMemoryBoardStore()
+  const progress = createTelegramCompactProgressCallback("12345", {
+    post: async (chatId, text) => (await manager.sendMessage(chatId, { text })).messageIds[0]!,
+    edit: (chatId, id, text) => manager.editMessage(chatId, id, text),
+  })
+  const p1 = try tryPromise(() => progress("Working..."))
+  const p2 = try tryPromise(() => progress("Working..."))
+  const p3 = try tryPromise(() => progress("Finished!"))
+  try tryPromise(() => service.stop())
+  try tryPromise(() => api.close())
+
+  try Effect.try(() => {
+    assert.strictEqual(claim1.accountId, "default")
+    assert.strictEqual(conflict._tag, "Failure")
+    assert.deepStrictEqual([connected, updated, activeClaim?.connected, healthDuring.length, reclaimed.mode, released], [true, true, true, 1, "standalone", true])
+    assert.strictEqual(redactTelegramTokenInError(`https://api.telegram.org/bot${token}/getMe`), "https://api.telegram.org/bot123456:[REDACTED]/getMe")
+    assert.include(convertMarkdownToTelegram("```ts\nconst a = 1\n"), "```ts\nconst a = 1")
+    assert.strictEqual(escapeMarkdownV2("a_b.c!"), "a\\_b\\.c\\!")
+    assert.isDefined(convertToTelegramButtons([{ kind: "url", text: "Go", url: "https://example.com" }, { kind: "login", text: "Login", url: "https://example.com/auth" }, { kind: "web_app", text: "App", url: "https://example.com/app" }]))
+    assert.strictEqual(splitTelegramMessage("😀".repeat(10), 4).length, 5)
+    assert.strictEqual(manager.resolveChatId("-100"), "-1009999")
+    assert.strictEqual(sent.messageIds.length, 1)
+    assert.deepStrictEqual([editedChanged.status, editedSame.status], ["edited", "unchanged"])
+    assert.strictEqual(api.reactions[0]?.emoji, "👍")
+    assert.deepStrictEqual(api.typingChats, ["12345"])
+    assert.deepStrictEqual([b1.action, b2.action, b3.action, b4.action], ["posted", "unchanged", "edited", "posted"])
+    assert.strictEqual(b1.messageId, b3.messageId)
+    assert.notStrictEqual(b4.messageId, b1.messageId)
+    assert.strictEqual(api.pinned.length, 2)
+    assert.include(formatTelegramTaskBoard([{ id: "1", title: "Demo", status: "done" }]), "[done] Demo")
+    assert.isUndefined(memBoard.load("missing"))
+    assert.deepStrictEqual([p1.action, p2.action, p3.action], ["posted", "unchanged", "edited"])
+  })
+})
+
+it.effect(`Enforce allowlist/DM policies, world ownership, owner pairing rate limits, personal history bounds, routes, adapters, and strict TELEGRAM action (spec/telegram/index.md, "Story: Read a Telegram chat and reply under its account and topic rules"; spec/telegram/delivery.md, "Story: Enforce fail-closed owner pairing, canonical world ownership, and bounded history queries")`, effect () => {
+  resetTelegramPairAttemptsForTest()
+  resetTelegramPollerLocksForTest()
+  const api = try tryPromise(() => startMockTelegramBotApi())
+  const token = "777888:ROUTE_TEST_TOKEN"
+
+  const multiRuntime = makeRuntime({
+    settings: { TELEGRAM_BOT_TOKEN: token, TELEGRAM_API_ROOT: api.baseUrl },
+    characterSettings: {
+      telegram: {
+        accounts: {
+          default: { botToken: token, name: "Primary" },
+          namedNoToken: { name: "Isolated" },
+        },
+      },
+    },
+  })
+  const defaultAccount = resolveTelegramAccount(multiRuntime, "default")
+  const namedAccount = resolveTelegramAccount(multiRuntime, "namedNoToken")
+  const enabledAccounts = listEnabledTelegramAccounts(multiRuntime)
+
+  const ownWithCanonical = buildTelegramWorldOwnership("owner-uuid", "creator-uuid")
+  const ownWithoutCanonical = buildTelegramWorldOwnership(null, "creator-uuid")
+
+  const pairReplies: string[] = []
+  let verifyCalls = 0
+  const pairRuntime = makeRuntime({
+    services: {
+      OWNER_BIND_VERIFY: {
+        verifyOwnerBindFromConnector: async () => {
+          verifyCalls += 1
+          return { success: true }
+        },
+      },
+    },
+  })
+  const pairingSvc = try tryPromise(() => TelegramOwnerPairingServiceImpl.start(pairRuntime))
+  const fakeCtx = { from: { id: 555, username: "alice" }, reply: async (text: string) => { pairReplies.push(text) } }
+  const pairResults: boolean[] = []
+  for (let i = 0; i < 6; i++) {
+    const r = try tryPromise(() => pairingSvc.handlePairCommand(fakeCtx, "123456", 1_000 + i))
+    pairResults.push(r.ok)
+  }
+  const unreachablePairing = try tryPromise(() => TelegramOwnerPairingServiceImpl.start(makeRuntime({})))
+  const failClosedResult = try tryPromise(() => unreachablePairing.handlePairCommand({ from: { id: 556 }, reply: async () => undefined }, "123456", 1_000))
+
+  const temp = try Effect.try(() => makeTempSessionPath())
+  saveTelegramAccountSession(temp.filePath, "master-key", "MTPROTO_SESSION_SECRET")
+  const loadedSession = loadTelegramAccountSession(temp.filePath, "master-key")
+  clearTelegramAccountSessionFile(temp.filePath)
+  const afterClearSession = loadTelegramAccountSession(temp.filePath, "master-key")
+  try Effect.try(() => temp.cleanup())
+
+  const pages = [
+    [
+      { id: 30, peerId: "peer-1", senderId: "u1", date: 300, text: "third" },
+      { id: 20, peerId: "peer-1", senderId: "u1", date: 200, text: "second" },
+    ],
+    [
+      { id: 10, peerId: "peer-1", senderId: "u1", date: 100, text: "first" },
+    ],
+    [],
+  ]
+  let pageIdx = 0
+  const mockTransport: TelegramAccountTransport = {
+    sendCode: async () => ({ isCodeViaApp: true }),
+    signInWithCode: async () => ({ kind: "password_required" }),
+    signInWithPassword: async () => ({
+      session: "SESSION_ABC",
+      account: { id: "42", username: "me", firstName: "Me", lastName: null, phone: "+15551234" },
+    }),
+    fetchHistoryPage: async () => pages[pageIdx++] ?? [],
+    disconnect: async () => undefined,
+  }
+  const authSession = new TelegramAccountAuthSession(mockTransport)
+  const authStart = try tryPromise(() => authSession.start({ phone: "+15551234", credentials: { apiId: 1, apiHash: "h" } }))
+  const authCode = try tryPromise(() => authSession.submit({ telegramCode: "12345" }))
+  const authPass = try tryPromise(() => authSession.submit({ password: "pw" }))
+  const historyAll = try tryPromise(() => readTelegramAccountHistory(mockTransport, "peer-1", { expectedPeerId: "peer-1" }))
+  const cursorRejected = try Effect.result(Effect.tryPromise(() => readTelegramAccountHistory(mockTransport, "peer-1", { cursor: "abc" })))
+  const personalSvc = try tryPromise(() => TelegramAccountService.start(makeRuntime({})))
+  personalSvc.attachSession(mockTransport, authPass.account!)
+
+  const tgService = try tryPromise(() => TelegramService.start(makeRuntime({
+    settings: { TELEGRAM_BOT_TOKEN: token, TELEGRAM_API_ROOT: api.baseUrl, TELEGRAM_SKIP_POLLING: "true" },
+  })))
+  const fullRuntime = makeRuntime({
+    settings: { TELEGRAM_BOT_TOKEN: token, TELEGRAM_API_ROOT: api.baseUrl, TELEGRAM_DM_POLICY: "open" },
+    services: {
+      [TELEGRAM_SERVICE_NAME]: tgService,
+      [TELEGRAM_OWNER_PAIRING_SERVICE_TYPE]: pairingSvc,
+      [TELEGRAM_PERSONAL_SERVICE_TYPE]: personalSvc,
+    },
+    replies: ["Standalone pong"],
+  })
+  registerTelegramAccountAuthSession(fullRuntime, authSession)
+  const startBotRoute = telegramSetupRoutes.find((r) => r.path === "/api/setup/telegram/start")!
+  const startBotRes = try tryPromise(() => startBotRoute.handler(fullRuntime, { method: "POST", path: startBotRoute.path, body: { botToken: token, apiRoot: api.baseUrl } }))
+  const acctStatusRoute = telegramAccountRoutes.find((r) => r.path === "/api/setup/telegram-account/status")!
+  const acctStatusRes = try tryPromise(() => acctStatusRoute.handler(fullRuntime, { method: "GET", path: acctStatusRoute.path }))
+
+  const actionSend = try tryPromise(() => telegramAction.handler(fullRuntime, {} as Memory, undefined, {
+    parameters: { action: "send", chatId: "12345", text: "Hello from action" },
+  }))
+  const statusRes = try tryPromise(() => telegramStatusProvider.get(fullRuntime, {} as Memory, {} as never))
+  const dmDelivery = try tryPromise(() => deliverTelegramSensitiveRequestDm(fullRuntime, {
+    id: "req-1",
+    delivery: { reason: "API key needed" },
+    callback: { url: "https://eliza.local/secret/1" },
+  } as never, "12345"))
+  const standaloneReplies: string[] = []
+  const standaloneOut = try tryPromise(() => handleTelegramStandaloneMessage(fullRuntime, {
+    from: { id: 42, username: "bob" },
+    chat: { id: 12345, type: "private" },
+    message: { message_id: 1, date: 1000, text: "ping" },
+    reply: async (text) => { standaloneReplies.push(text) },
+  }))
+  const provider = createTelegramConnectorAccountProvider(multiRuntime)
+  const listedAccounts = try tryPromise(() => Promise.resolve(provider.listAccounts?.({} as never) ?? []))
+  const triageAdapter = registerTelegramTriageAdapter()
+  const dmAdapter = createTelegramDmSensitiveRequestAdapter()
+  const standaloneService = try tryPromise(() => TelegramStandaloneService.start(fullRuntime))
+  try tryPromise(() => stopTelegramAccountAuthSession(fullRuntime))
+  try tryPromise(() => Promise.resolve(telegramPlugin.dispose?.(fullRuntime)))
+  try tryPromise(() => standaloneService.stop())
+  try tryPromise(() => api.close())
+
+  try Effect.try(() => {
+    assert.strictEqual(defaultAccount.botToken, token)
+    assert.isUndefined(namedAccount.botToken)
+    assert.strictEqual(enabledAccounts.length, 1)
+    assert.strictEqual(evaluateTelegramChatPolicy("TelegramDirect", "123", { accountList: [], globalList: parseTelegramChatList("[]"), dmPolicy: "TelegramOpen", pairedSender: true }), "TelegramDenied")
+    assert.strictEqual(evaluateTelegramDisposition(
+      { eventAccount: "default", eventChat: "123", topicId: "9", eventMessageId: "55", senderEntity: "e1", chatScope: "TelegramTopic", command: "TelegramOrdinary" },
+      { accountList: [], globalList: { tag: "TelegramNoList" }, dmPolicy: "TelegramOpen", pairedSender: false },
+      { isOwner: false, isAdmin: false },
+      true,
+      true,
+    ).mode, "TelegramStore")
+    assert.isFalse(shouldStartTelegramStandaloneBot({ ELIZA_TELEGRAM_STANDALONE_BOT: "true", ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "true" }))
+    assert.isTrue(shouldStartTelegramStandaloneBot({ ELIZA_TELEGRAM_STANDALONE_BOT: "true" }))
+    assert.strictEqual(ownWithCanonical.ownership?.ownerId, "owner-uuid")
+    assert.isUndefined(ownWithoutCanonical.ownership)
+    assert.deepStrictEqual(pairResults, [true, true, true, true, true, false])
+    assert.strictEqual(verifyCalls, 5)
+    assert.isFalse(failClosedResult.ok)
+    assert.strictEqual(loadedSession, "MTPROTO_SESSION_SECRET")
+    assert.isUndefined(afterClearSession)
+    assert.deepStrictEqual([authStart.status, authCode.status, authPass.status], ["waiting_for_telegram_code", "waiting_for_password", "connected"])
+    assert.strictEqual(historyAll.length, 3)
+    assert.strictEqual(cursorRejected._tag, "Failure")
+    assert.deepStrictEqual(parseProvisioningBody('{"ok":true}'), { ok: true, data: { ok: true } })
+    const creds = resolveTelegramAppCredentials(fullRuntime, {})
+    assert.isTrue(creds.ok && creds.apiId > 0)
+    assert.strictEqual(startBotRes.status, 200)
+    assert.strictEqual(acctStatusRes.status, 200)
+    assert.isTrue(actionSend.success)
+    const paramNames = (telegramAction.parameters ?? []).map((p) => p.name)
+    assert.deepStrictEqual(paramNames, [...paramNames].toSorted())
+    assert.isTrue(telegramAction.toolSchemaStrict)
+    assert.isTrue(telegramAction.cacheStable)
+    assert.isDefined(telegramAction.descriptionCompressed)
+    assert.strictEqual(telegramAction.summarize?.(actionSend, { action: "send" }), "TELEGRAM(send): ok")
+    assert.isTrue(validateToolArgs(telegramAction, { action: "send", chatId: "12345", text: "hi" }).valid)
+    assert.isFalse(validateToolArgs(telegramAction, { action: "invalid", chatId: "12345" }).valid)
+    assert.include(statusRes.text ?? "", "botAccounts")
+    assert.isTrue(dmDelivery.delivered)
+    assert.deepStrictEqual([standaloneOut.handled, standaloneOut.mode, standaloneReplies], [true, "reply", ["Standalone pong"]])
+    assert.strictEqual(listedAccounts.length, 1)
+    assert.isTrue(triageAdapter instanceof TelegramMessageAdapter && triageAdapter.isAvailable(fullRuntime))
+    assert.isTrue(dmAdapter.supportsChannel?.("12345", fullRuntime) === true && dmAdapter.supportsChannel?.("not-numeric", fullRuntime) === false)
+    assert.strictEqual(telegramPlugin.routes.length, 9)
+    assert.deepStrictEqual(telegramPlugin.autoEnable?.connectorKeys, ["telegram", "telegramAccount"])
+  })
+})

@@ -93,14 +93,10 @@ public final class AutofillReplay {
             challenge = prompt(this);
         }
         public boolean finishing() { return finished; }
-        public void unlocked(long granted) { ticket = granted; prompting = false; if (!finished) show(); }
+        public void unlocked(long granted) { ticket = granted; prompting = false; if (!finished) listed = true; }
         public void failed() { prompting = false; if (!finished) cancel(); }
         boolean current() { return !finished && target != null && requests.currentFill(token) && grant.authenticated(ticket); }
-        void show() {
-            if (!current()) { if (!finished && !prompting) cancel(); return; }
-            listed = true;
-        }
-        boolean offers(Binding entry) { return listed && !finished && PasswordMatching.matches(entry.bindings, target, entry.signers); }
+        boolean offers(Binding entry) { return listed && current() && PasswordMatching.matches(entry.bindings, target, entry.signers); }
         void choose(Binding entry) {
             if (!current()) { cancel(); return; }
             boolean read = grant.authenticated(ticket) && PasswordMatching.matches(entry.bindings, target, entry.signers);
@@ -323,6 +319,8 @@ public final class AutofillReplay {
 
     void openFill(long number) {
         String token = token(number);
+        Object pending = read(requests, "fill");
+        if (pending == null || (Boolean) read(pending, "taken") || !read(pending, "token").equals(token)) return;
         if (!deliverable(token, true)) return;
         if (picker != null) picker.leave();
         picker = new Picker(token);

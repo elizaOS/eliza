@@ -1,0 +1,453 @@
+// spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows"; spec/localInference/transcriptPrivacy.md, "Capture consent is recorded once and never changes afterwards"; spec/localInference/transcriptPrivacy.md, "Redaction makes a variant and never changes the original"; spec/localInference/transcriptPrivacy.md, "A transcript is shared only when its capture consent was granted or not required"; spec/localInference/transcriptPrivacy.md, "The full transcript is shared only by an admin; the redacted one by its owner or an admin"; spec/localInference/transcriptPrivacy.md, "Only an admin shares with the whole meeting, and only the redacted transcript"
+import {
+  Machine as TranscriptPrivacyMachine,
+  Rejected as TranscriptPrivacyRejected,
+  audioRedactionAvailable,
+  canRecordConsent,
+  canRedactForAll,
+  canRedactTranscript,
+  canShareTranscript,
+  consentAllowsSharing,
+  initial as initialTranscriptPrivacy,
+  machine as transcriptPrivacyMachine,
+  mayRedact,
+  mayShareWith,
+  meetingRoster,
+  redactedVariantFor,
+  stored as storedTranscriptPrivacy,
+  type CaptureConsent,
+  type RedactedVariant,
+  type Requester,
+  type ShareMode,
+  type TranscriptGrant,
+  type TranscriptPrivacy,
+} from "../gen/localInference__transcriptPrivacy.effect.vibe"
+
+export {
+  TranscriptPrivacyMachine,
+  TranscriptPrivacyRejected,
+  audioRedactionAvailable,
+  canRecordConsent,
+  canRedactForAll,
+  canRedactTranscript,
+  canShareTranscript,
+  consentAllowsSharing,
+  initialTranscriptPrivacy,
+  mayRedact,
+  mayShareWith,
+  meetingRoster,
+  redactedVariantFor,
+}
+export type {
+  CaptureConsent,
+  RedactedVariant,
+  Requester,
+  ShareMode,
+  TranscriptGrant,
+  TranscriptPrivacy,
+}
+
+export type TranscriptVisibility = "owner_private" | "disabled" | "restricted" | "shared"
+
+export interface TranscriptArtifactSharingState {
+  readonly transcript: TranscriptVisibility
+  readonly audio: TranscriptVisibility
+}
+
+export interface TranscriptSegment {
+  readonly speakerId?: string | null
+  readonly startMs: number
+  readonly endMs: number
+  readonly text: string
+}
+
+export interface TranscriptRecord {
+  readonly id: string
+  readonly ownerId: string
+  readonly segments: readonly TranscriptSegment[]
+  readonly audioUrl: string | null
+  readonly redactedText: string | null
+  readonly redactedAudioUrl: string | null
+  readonly sourceAudioDeleted: boolean
+  readonly sharing: TranscriptArtifactSharingState
+  readonly privacy: TranscriptPrivacy
+}
+
+export interface AudioRedactionVerification {
+  readonly verified: boolean
+  readonly redactedAudioUrl: string | null
+}
+
+export interface AudioRedactionPort {
+  redactAndVerify(input: {
+    readonly transcriptId: string
+    readonly originalAudioUrl: string
+    readonly piiTerms: readonly string[]
+  }): AudioRedactionVerification!!
+}
+
+export interface TranscriptFileStoragePort {
+  delete(fileName: string): boolean!!
+  exists(fileName: string): boolean!!
+}
+
+export error TranscriptNotFound { transcriptId: string }
+export error TranscriptGrantRequired {
+  transcriptId: string
+  visibility: TranscriptVisibility
+  requiredMode: ShareMode
+}
+export error TranscriptAudioDeletionFailed {
+  transcriptId: string
+  reason: string
+}
+
+export interface TranscriptPrivacySession {
+  readonly transcriptId: string
+  state(): TranscriptPrivacy!!
+  recordConsent(consent: CaptureConsent): TranscriptPrivacy!TranscriptPrivacyRejected
+  redact(
+    requester: Requester,
+    options: { readonly detailsFound: boolean; readonly audioVerified: boolean },
+  ): TranscriptPrivacy!TranscriptPrivacyRejected
+  share(
+    requester: Requester,
+    grantee: string,
+    mode: ShareMode,
+    options: { readonly detailsFound: boolean; readonly audioVerified: boolean },
+  ): TranscriptPrivacy!TranscriptPrivacyRejected
+  redactForAll(
+    requester: Requester,
+    options: { readonly detailsFound: boolean; readonly audioVerified: boolean },
+  ): TranscriptPrivacy!TranscriptPrivacyRejected
+}
+
+export effect function openTranscriptPrivacySession(
+  transcriptId: string,
+  start: TranscriptPrivacy = initialTranscriptPrivacy,
+): TranscriptPrivacySession!! {
+  provide transcriptPrivacyMachine(start) {
+    const gate = try TranscriptPrivacyMachine
+    return {
+      transcriptId,
+      effect state() {
+        return try gate.get()
+      },
+      effect recordConsent(consent) {
+        return try gate.send({ type: "recordConsent", consent })
+      },
+      effect redact(requester, options) {
+        return try gate.send({
+          type: "redactTranscript",
+          requester,
+          detailsFound: options.detailsFound,
+          audioVerified: options.audioVerified,
+        })
+      },
+      effect share(requester, grantee, mode, options) {
+        return try gate.send({
+          type: "shareTranscript",
+          requester,
+          grantee,
+          mode,
+          detailsFound: options.detailsFound,
+          audioVerified: options.audioVerified,
+        })
+      },
+      effect redactForAll(requester, options) {
+        return try gate.send({
+          type: "redactForAll",
+          requester,
+          detailsFound: options.detailsFound,
+          audioVerified: options.audioVerified,
+        })
+      },
+    }
+  }
+}
+
+export effect function openStoredTranscriptPrivacySession(
+  transcriptId: string,
+  start: TranscriptPrivacy = initialTranscriptPrivacy,
+) {
+  provide storedTranscriptPrivacy(`transcript-privacy:${transcriptId}`, start) {
+    const gate = try TranscriptPrivacyMachine
+    return {
+      transcriptId,
+      effect state() {
+        return try gate.get()
+      },
+      effect recordConsent(consent: CaptureConsent) {
+        return try gate.send({ type: "recordConsent", consent })
+      },
+      effect redact(requester: Requester, options: { readonly detailsFound: boolean; readonly audioVerified: boolean }) {
+        return try gate.send({
+          type: "redactTranscript",
+          requester,
+          detailsFound: options.detailsFound,
+          audioVerified: options.audioVerified,
+        })
+      },
+      effect share(
+        requester: Requester,
+        grantee: string,
+        mode: ShareMode,
+        options: { readonly detailsFound: boolean; readonly audioVerified: boolean },
+      ) {
+        return try gate.send({
+          type: "shareTranscript",
+          requester,
+          grantee,
+          mode,
+          detailsFound: options.detailsFound,
+          audioVerified: options.audioVerified,
+        })
+      },
+      effect redactForAll(requester: Requester, options: { readonly detailsFound: boolean; readonly audioVerified: boolean }) {
+        return try gate.send({
+          type: "redactForAll",
+          requester,
+          detailsFound: options.detailsFound,
+          audioVerified: options.audioVerified,
+        })
+      },
+    } satisfies TranscriptPrivacySession
+  }
+}
+
+const STORED_AUDIO_URL = /^\/api\/media\/([a-f0-9]{64}\.[a-z0-9]+)$/iu
+
+export function extractStoredAudioFileName(audioUrl: string | null): string | null {
+  if (audioUrl === null) return null
+  const match = STORED_AUDIO_URL.exec(audioUrl)
+  return match?.[1] ?? null
+}
+
+export function applyTextRedactions(
+  segments: readonly TranscriptSegment[],
+  piiTerms: readonly string[],
+): string {
+  const sorted = [...new Set(piiTerms.filter((t) => t.trim().length > 0))].sort(
+    (a, b) => b.length - a.length,
+  )
+  return segments
+    .map((segment) => {
+      let text = segment.text
+      for (const term of sorted) {
+        text = text.split(term).join("[REDACTED]")
+      }
+      return text
+    })
+    .join("\n")
+}
+
+export class InMemoryTranscriptPrivacyStore {
+  readonly #records = new Map<string, TranscriptRecord>()
+  readonly #sessions = new Map<string, TranscriptPrivacySession>()
+
+  effect register(input: {
+    readonly id: string
+    readonly ownerId: string
+    readonly segments: readonly TranscriptSegment[]
+    readonly audioUrl: string | null
+    readonly consent?: CaptureConsent
+  }): TranscriptRecord!TranscriptPrivacyRejected {
+    const start: TranscriptPrivacy = {
+      ...initialTranscriptPrivacy,
+      hasAudio: input.audioUrl !== null,
+    }
+    const session = try openTranscriptPrivacySession(input.id, start)
+    const privacy =
+      input.consent !== undefined && input.consent !== "ConsentUnrecorded"
+        ? try session.recordConsent(input.consent)
+        : try session.state()
+    this.#sessions.set(input.id, session)
+    const record: TranscriptRecord = {
+      id: input.id,
+      ownerId: input.ownerId,
+      segments: [...input.segments],
+      audioUrl: input.audioUrl,
+      redactedText: null,
+      redactedAudioUrl: null,
+      sourceAudioDeleted: false,
+      sharing: { transcript: "owner_private", audio: "owner_private" },
+      privacy,
+    }
+    this.#records.set(input.id, record)
+    return record
+  }
+
+  get(transcriptId: string): TranscriptRecord | null {
+    return this.#records.get(transcriptId) ?? null
+  }
+
+  list(): readonly TranscriptRecord[] {
+    return [...this.#records.values()]
+  }
+
+  effect #requireEntry(transcriptId: string) {
+    const existing = this.#records.get(transcriptId)
+    const session = this.#sessions.get(transcriptId)
+    if (existing === undefined || session === undefined) {
+      throw new TranscriptNotFound({ transcriptId })
+    }
+    return { existing, session }
+  }
+
+  effect #prepareAudioRedaction(
+    existing: TranscriptRecord,
+    piiTerms: readonly string[],
+    needAudio: boolean,
+    audioPort?: AudioRedactionPort,
+  ) {
+    const detailsFound = piiTerms.length > 0
+    if (!needAudio || existing.audioUrl === null || !detailsFound || audioPort === undefined) {
+      return { detailsFound, audioVerified: false, redactedAudioUrl: null as string | null }
+    }
+    const result = try audioPort.redactAndVerify({
+      transcriptId: existing.id,
+      originalAudioUrl: existing.audioUrl,
+      piiTerms,
+    })
+    return {
+      detailsFound,
+      audioVerified: result.verified,
+      redactedAudioUrl: result.verified ? result.redactedAudioUrl : null,
+    }
+  }
+
+  #commitRedacted(
+    existing: TranscriptRecord,
+    privacy: TranscriptPrivacy,
+    piiTerms: readonly string[],
+    redactedAudioUrl: string | null,
+    updateRedacted: boolean,
+  ): TranscriptRecord {
+    const updated: TranscriptRecord = {
+      ...existing,
+      redactedText: updateRedacted ? applyTextRedactions(existing.segments, piiTerms) : existing.redactedText,
+      redactedAudioUrl: updateRedacted
+        ? (privacy.variant === "AudioVariant" ? redactedAudioUrl : null)
+        : existing.redactedAudioUrl,
+      privacy,
+    }
+    this.#records.set(existing.id, updated)
+    return updated
+  }
+
+  effect recordConsent(
+    transcriptId: string,
+    consent: CaptureConsent,
+  ): TranscriptRecord!(TranscriptNotFound | TranscriptPrivacyRejected) {
+    const { existing, session } = try this.#requireEntry(transcriptId)
+    const privacy = try session.recordConsent(consent)
+    return this.#commitRedacted(existing, privacy, [], null, false)
+  }
+
+  effect redact(
+    transcriptId: string,
+    requester: Requester,
+    piiTerms: readonly string[],
+    audioPort?: AudioRedactionPort,
+  ): TranscriptRecord!(TranscriptNotFound | TranscriptPrivacyRejected) {
+    const { existing, session } = try this.#requireEntry(transcriptId)
+    const prepared = try this.#prepareAudioRedaction(existing, piiTerms, true, audioPort)
+    const privacy = try session.redact(requester, {
+      detailsFound: prepared.detailsFound,
+      audioVerified: prepared.audioVerified,
+    })
+    return this.#commitRedacted(existing, privacy, piiTerms, prepared.redactedAudioUrl, true)
+  }
+
+  effect share(
+    transcriptId: string,
+    requester: Requester,
+    grantee: string,
+    mode: ShareMode,
+    piiTerms: readonly string[],
+    audioPort?: AudioRedactionPort,
+  ): TranscriptRecord!(TranscriptNotFound | TranscriptPrivacyRejected) {
+    const { existing, session } = try this.#requireEntry(transcriptId)
+    const needRedacted = mode === "RedactedShare"
+    const prepared = try this.#prepareAudioRedaction(existing, piiTerms, needRedacted, audioPort)
+    const privacy = try session.share(requester, grantee, mode, {
+      detailsFound: prepared.detailsFound,
+      audioVerified: prepared.audioVerified,
+    })
+    return this.#commitRedacted(existing, privacy, piiTerms, prepared.redactedAudioUrl, needRedacted)
+  }
+
+  effect redactForAll(
+    transcriptId: string,
+    requester: Requester,
+    piiTerms: readonly string[],
+    audioPort?: AudioRedactionPort,
+  ): TranscriptRecord!(TranscriptNotFound | TranscriptPrivacyRejected) {
+    const { existing, session } = try this.#requireEntry(transcriptId)
+    const prepared = try this.#prepareAudioRedaction(existing, piiTerms, true, audioPort)
+    const privacy = try session.redactForAll(requester, {
+      detailsFound: prepared.detailsFound,
+      audioVerified: prepared.audioVerified,
+    })
+    return this.#commitRedacted(existing, privacy, piiTerms, prepared.redactedAudioUrl, true)
+  }
+
+  effect updateArtifactSharing(
+    transcriptId: string,
+    sharing: Partial<TranscriptArtifactSharingState>,
+  ): TranscriptRecord!(TranscriptNotFound | TranscriptGrantRequired) {
+    const existing = this.#records.get(transcriptId)
+    if (existing === undefined) throw new TranscriptNotFound({ transcriptId })
+    const nextTranscriptVis = sharing.transcript ?? existing.sharing.transcript
+    if (nextTranscriptVis === "restricted" || nextTranscriptVis === "shared") {
+      const requiredMode: ShareMode = nextTranscriptVis === "restricted" ? "RedactedShare" : "FullShare"
+      const hasGrant = existing.privacy.grants.some((grant) => grant.mode === requiredMode)
+      if (!hasGrant) {
+        throw new TranscriptGrantRequired({
+          transcriptId,
+          visibility: nextTranscriptVis,
+          requiredMode,
+        })
+      }
+    }
+    const updated: TranscriptRecord = {
+      ...existing,
+      sharing: {
+        transcript: nextTranscriptVis,
+        audio: sharing.audio ?? existing.sharing.audio,
+      },
+    }
+    this.#records.set(transcriptId, updated)
+    return updated
+  }
+
+  effect deleteSourceAudio(
+    transcriptId: string,
+    storage: TranscriptFileStoragePort,
+  ): TranscriptRecord!(TranscriptNotFound | TranscriptAudioDeletionFailed) {
+    const existing = this.#records.get(transcriptId)
+    if (existing === undefined) throw new TranscriptNotFound({ transcriptId })
+    if (existing.sourceAudioDeleted) return existing
+    const fileName = extractStoredAudioFileName(existing.audioUrl)
+    if (fileName === null) {
+      throw new TranscriptAudioDeletionFailed({
+        transcriptId,
+        reason: "source audio is not a content-addressed media handle",
+      })
+    }
+    const deleted = try storage.delete(fileName)
+    if (!deleted && (try storage.exists(fileName))) {
+      throw new TranscriptAudioDeletionFailed({
+        transcriptId,
+        reason: `source audio ${fileName} could not be deleted`,
+      })
+    }
+    const updated: TranscriptRecord = {
+      ...existing,
+      audioUrl: null,
+      sourceAudioDeleted: true,
+    }
+    this.#records.set(transcriptId, updated)
+    return updated
+  }
+}

@@ -1,12 +1,26 @@
-// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"
+// spec/calendar/actions.md, "Story: Ask the agent about my calendar and get my active account's events"; spec/calendar/actions.md, "Story: Change my calendar only as I asked and know it happened"; spec/calendar/reviewedReads.md, "Story: Propose on my phone only the Calendar request I made"; spec/calendar/autoJoin.md, "Story: Detect calendar conflicts honestly and schedule meeting auto-join by policy"
 import type { IAgentRuntime, Plugin } from "@elizaos/core"
 import { registerDeviceProposalFamily } from "@elizaos/agent-host"
 import { calendarProposalFamily } from "./plugin/device-proposals.vibe"
 import { calendarAction, calendarActionName, calendarAsk, calendarContext, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk } from "./plugin/actions.vibe"
+import {
+  APPROVAL_OFFSET_MINUTES, AUTO_JOIN_METADATA_FLAG, JOIN_OFFSET_MINUTES, MeetingAutoJoinTracker,
+  eventStartAnchorKey, extractEventMeetingLink, parseMeetingUrl, planAutoJoinTasks, toAutoJoinPolicy,
+  type AutoJoinPolicyName, type MeetingProvider, type ParsedMeetingLink, type PlannedAutoJoinTask,
+} from "./plugin/auto-join.vibe"
+import {
+  conflictDetectAction, conflictDetectActionName, detectCalendarConflicts, runConflictDetectAction,
+  type CalendarConflictPair, type ConflictEventSummary, type ConflictScanReport, type ConflictSeverityName,
+} from "./plugin/conflicts.vibe"
 import type { CalendarHost } from "./plugin/host.vibe"
 import { linkedCalendarRoutes } from "./plugin/linked-routes.vibe"
 import { calendarRoutes, type CalendarRoute } from "./plugin/routes.vibe"
 import { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType } from "./plugin/service.vibe"
+import {
+  calendarSourcesAction, calendarSourcesActionName, calendarSourcesProvider, calendarSourcesProviderName,
+  renderCalendarSourcesText, runCalendarSourcesAction, sanitizeSourceLabel,
+  type CalendarSourceOverview,
+} from "./plugin/sources.vibe"
 
 export { fieldsSpanValid, providerMutationPort, recurrenceFits, reviewDigest, type CalendarProviders } from "./mutations/provider-port.vibe"
 export {
@@ -21,6 +35,20 @@ export {
 export { cacheKeyValueStore, cacheStoreLayer, type CalendarCache } from "./plugin/runtime-store.vibe"
 export { calendarRoutes, type CalendarRoute, type CalendarRouteInput, type CalendarRouteReply } from "./plugin/routes.vibe"
 export { calendarAction, calendarActionName, calendarAsk, calendarEffectReceipt, calendarProvider, runCalendarAction, type CalendarAsk }
+export {
+  APPROVAL_OFFSET_MINUTES, AUTO_JOIN_METADATA_FLAG, JOIN_OFFSET_MINUTES, MeetingAutoJoinTracker,
+  eventStartAnchorKey, extractEventMeetingLink, parseMeetingUrl, planAutoJoinTasks, toAutoJoinPolicy,
+  type AutoJoinPolicyName, type MeetingProvider, type ParsedMeetingLink, type PlannedAutoJoinTask,
+}
+export {
+  conflictDetectAction, conflictDetectActionName, detectCalendarConflicts, runConflictDetectAction,
+  type CalendarConflictPair, type ConflictEventSummary, type ConflictScanReport, type ConflictSeverityName,
+}
+export {
+  calendarSourcesAction, calendarSourcesActionName, calendarSourcesProvider, calendarSourcesProviderName,
+  renderCalendarSourcesText, runCalendarSourcesAction, sanitizeSourceLabel,
+  type CalendarSourceOverview,
+}
 export { CalendarApprovalExecutorService, CalendarService, calendarApprovalExecutorServiceType, calendarServiceType }
 export type { CalendarEventFacts } from "./plugin/service.vibe"
 export { linkedCalendarRoutes, type LinkedRouteContext } from "./plugin/linked-routes.vibe"
@@ -43,8 +71,8 @@ export function calendarPlugin(): CalendarPlugin {
     name: calendarPluginName,
     description: "The owner's calendars: reads from the active account, and reviewed changes run once through the calendar mutation ledger",
     services: [CalendarService, CalendarApprovalExecutorService],
-    actions: [calendarAction],
-    providers: [calendarProvider],
+    actions: [calendarAction, conflictDetectAction, calendarSourcesAction],
+    providers: [calendarProvider, calendarSourcesProvider],
     routes: [...calendarRoutes(host), ...linkedCalendarRoutes(async () => {
       const held = await host()
       return held === undefined || started === undefined ? undefined : { host: held, cache: started, agentId: started.agentId }

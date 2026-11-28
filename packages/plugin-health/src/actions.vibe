@@ -1,0 +1,588 @@
+// spec/health/index.md, "Story: Review recorded sleep and device activity"; spec/health/index.md, "An inactivity signal does not count as active use"; spec/health/lifecycle.md, "Story: Sync health connectors only with owner consent and gate exports and sleep alerts safely"; spec/health/lifecycle.md, "Health data exports require granted consent, owner role, and owner-only audience"; spec/health/lifecycle.md, "Sleep regularity windows and wake alerts stay within safe bounds"
+import {
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type Action,
+  type ActionResult,
+  type ContextDefinition,
+  type IAgentRuntime,
+  type Provider,
+  type ProviderDataRecord,
+} from "@elizaos/core"
+import { sleepRegularityWindowValid } from "../gen/health__lifecycle.effect.vibe"
+import { resolveScreenSignal } from "./screen-time.vibe"
+import { HealthService } from "./store.vibe"
+import {
+  HEALTH_CONNECTOR_KINDS,
+  HEALTH_METRICS,
+  HEALTH_SERVICE_TYPE,
+  type HealthConnectorKind,
+  type HealthMetric,
+  type HealthOAuthProvider,
+} from "./types.vibe"
+
+export const healthActionName = "HEALTH"
+export const screenTimeActionName = "SCREEN_TIME"
+export const healthProviderName = "lifeops-health"
+
+export const healthContext: ContextDefinition = {
+  id: "health",
+  label: "Health",
+  description: "Owner health metrics, sleep, circadian insights, and screen time.",
+  descriptionCompressed: "Health, sleep, and screen time.",
+  sensitivity: "personal",
+  cacheScope: "agent",
+}
+
+const healthSubactions = [
+  "by_metric",
+  "connect",
+  "disconnect",
+  "export",
+  "ingest",
+  "sleep_recap",
+  "status",
+  "sync",
+  "today",
+  "trend",
+] as const
+
+const screenTimeSubactions = [
+  "by_category",
+  "record",
+  "summary",
+  "top_apps",
+] as const
+
+const HealthParams = Schema.Struct({
+  days: Schema.optionalKey(Schema.Number),
+  metric: Schema.optionalKey(Schema.Literals(HEALTH_METRICS)),
+  ownerId: Schema.optionalKey(Schema.String),
+  provider: Schema.optionalKey(Schema.Literals(HEALTH_CONNECTOR_KINDS)),
+  subaction: Schema.Literals(healthSubactions),
+  unit: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.Number),
+})
+const decodeHealthParams = Schema.decodeUnknownOption(HealthParams)
+
+const ScreenTimeParams = Schema.Struct({
+  appName: Schema.optionalKey(Schema.String),
+  days: Schema.optionalKey(Schema.Number),
+  durationMinutes: Schema.optionalKey(Schema.Number),
+  identifier: Schema.optionalKey(Schema.String),
+  ownerId: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.Literals(["app", "website"])),
+  subaction: Schema.Literals(screenTimeSubactions),
+})
+const decodeScreenTimeParams = Schema.decodeUnknownOption(ScreenTimeParams)
+
+export function healthServiceOf(runtime: IAgentRuntime): HealthService | undefined {
+  if (typeof runtime.getService !== "function") return undefined
+  const found: unknown = runtime.getService(HEALTH_SERVICE_TYPE)
+  return found instanceof HealthService ? found : undefined
+}
+
+function isOAuthProvider(provider: HealthConnectorKind): provider is HealthOAuthProvider {
+  return provider === "strava" || provider === "fitbit" || provider === "withings" || provider === "oura"
+}
+
+function unavailableResult(label: string): ActionResult {
+  return {
+    success: false,
+    text: `${label} service is unavailable right now.`,
+    data: { status: "unavailable" },
+  }
+}
+
+const HEALTH_ACTION_META = {
+  tags: ["capability:health"],
+  contexts: ["health"],
+  contextGate: { anyOf: ["health"] },
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" as const },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+}
+
+export effect function runHealthAction(
+  service: HealthService | undefined,
+  input: unknown,
+  defaultOwnerId = "owner",
+): ActionResult!! {
+  const decoded = decodeHealthParams(input)
+  if (Option.isNone(decoded)) {
+    return {
+      success: false,
+      text: `${healthActionName} requires subaction: ${healthSubactions.join(", ")}.`,
+    }
+  }
+  if (service === undefined) return unavailableResult("Health")
+  const params = decoded.value
+  const ownerId = params.ownerId?.trim() || defaultOwnerId
+  const nowMs = try Clock.currentTimeMillis
+  const days = params.days ?? 7
+
+  switch (params.subaction) {
+    case "status": {
+      const providers = service.listConnectorOverviews(ownerId)
+      const connected = providers.filter((p) => p.connected).map((p) => p.provider)
+      const data: ProviderDataRecord = {
+        subaction: "status",
+        connectedCount: connected.length,
+        connectedProviders: connected,
+        providers: providers.map((p) => ({
+          provider: p.provider,
+          label: p.label,
+          connected: p.connected,
+          phase: p.phase,
+          consent: p.consent,
+          syncedSamples: p.syncedSamples,
+        })),
+      }
+      return {
+        success: true,
+        text: connected.length > 0
+          ? `Connected health connectors: ${connected.join(", ")}.`
+          : "No health connectors are currently connected.",
+        data,
+      }
+    }
+    case "today":
+    case "trend": {
+      const windowDays = params.subaction === "today" ? 1 : Math.max(2, Math.min(90, Math.round(days)))
+      const summary = service.getSummary(ownerId, windowDays, nowMs)
+      const lines = summary.summaries.slice(0, 10).map((d) =>
+        `- ${d.date} (${d.provider}): ${d.steps} steps, ${d.sleepHours}h sleep${d.heartRateAvg !== null ? `, ${d.heartRateAvg} bpm` : ""}${d.hrvAvgMs !== null ? `, ${d.hrvAvgMs} ms HRV` : ""}`,
+      )
+      const anomalyText = summary.anomalies.length > 0
+        ? `\nAnomalies: ${summary.anomalies.map((a) => `${a.metric} ${a.direction} baseline (${a.value} vs ${a.baselineAvg})`).join("; ")}.`
+        : ""
+      const data: ProviderDataRecord = {
+        subaction: params.subaction,
+        days: summary.days,
+        summaryCount: summary.summaries.length,
+        anomalyCount: summary.anomalies.length,
+        summaries: summary.summaries.map((s) => ({ ...s })),
+        anomalies: summary.anomalies.map((a) => ({ ...a })),
+      }
+      return {
+        success: true,
+        text: lines.length === 0
+          ? `No health samples recorded in the last ${windowDays} day(s).`
+          : `Health ${params.subaction} (${windowDays}d):\n${lines.join("\n")}${anomalyText}`,
+        data,
+      }
+    }
+    case "by_metric": {
+      if (params.metric === undefined) {
+        return { success: false, text: "by_metric requires a metric name." }
+      }
+      const series = service.getMetricSeries(ownerId, params.metric, days, nowMs)
+      const data: ProviderDataRecord = {
+        subaction: "by_metric",
+        metric: params.metric,
+        count: series.length,
+        samples: series.slice(0, 20).map((s) => ({
+          id: s.id,
+          provider: s.provider,
+          value: s.value,
+          unit: s.unit,
+          dateKey: s.dateKey,
+          recordedAt: s.recordedAt,
+        })),
+      }
+      return {
+        success: true,
+        text: series.length === 0
+          ? `No ${params.metric} samples found in the last ${days} day(s).`
+          : `${params.metric}: ${series.length} sample(s), latest ${series[0]?.value ?? 0} ${series[0]?.unit ?? ""} on ${series[0]?.dateKey ?? ""}.`,
+        data,
+      }
+    }
+    case "sleep_recap": {
+      const windowDays = sleepRegularityWindowValid(Math.round(days)) ? Math.round(days) : 14
+      const regularity = service.getSleepRegularity(ownerId, windowDays, nowMs)
+      const baseline = service.getPersonalBaseline(ownerId, windowDays, nowMs)
+      const recap = service.getSleepRecap(ownerId, windowDays, nowMs)
+      const data: ProviderDataRecord = {
+        subaction: "sleep_recap",
+        windowDays,
+        qualifyingNights: regularity.qualifyingNights,
+        sriScore: regularity.sriScore,
+        classification: regularity.classification,
+        medianDurationMinutes: baseline.medianDurationMinutes,
+      }
+      return { success: true, text: recap, data }
+    }
+    case "ingest": {
+      if (params.metric === undefined || params.value === undefined || !Number.isFinite(params.value)) {
+        return { success: false, text: "ingest requires metric and finite numeric value." }
+      }
+      const recordedAt = new Date(nowMs).toISOString()
+      const sample = {
+        id: `manual-${params.metric}-${nowMs}`,
+        ownerId,
+        provider: params.provider ?? "manual",
+        metric: params.metric,
+        value: params.value,
+        unit: params.unit ?? "count",
+        recordedAt,
+        dateKey: recordedAt.slice(0, 10),
+      }
+      service.ingestSample(sample)
+      return {
+        success: true,
+        text: `Recorded ${sample.value} ${sample.unit} for ${sample.metric}.`,
+        data: { subaction: "ingest", sample: { ...sample } },
+      }
+    }
+    case "connect": {
+      const provider = params.provider ?? "oura"
+      return {
+        success: true,
+        text: `To connect ${provider} securely with owner consent and encrypted token storage, complete OAuth setup in Settings (/settings/connectors/health/${provider}).`,
+        data: {
+          subaction: "connect",
+          provider,
+          requiresOwnerHandoff: true,
+          handoffPath: `/settings/connectors/health/${provider}`,
+        },
+      }
+    }
+    case "disconnect": {
+      const provider = params.provider
+      if (provider === undefined) {
+        return { success: false, text: "disconnect requires provider." }
+      }
+      const outcome = try Effect.result(service.revokeConnectorConsent(ownerId, provider))
+      if (outcome._tag === "Failure") {
+        return {
+          success: false,
+          text: `Connector ${provider} is already disconnected with revoked consent.`,
+          data: { subaction: "disconnect", provider, disconnected: false },
+        }
+      }
+      return {
+        success: true,
+        text: `Revoked consent and disconnected ${provider}.`,
+        data: { subaction: "disconnect", provider, disconnected: true, revision: outcome.success.revision },
+      }
+    }
+    case "sync": {
+      const provider = params.provider
+      if (provider === undefined || !isOAuthProvider(provider)) {
+        return { success: false, text: "sync requires an OAuth wearable provider (strava, fitbit, withings, oura)." }
+      }
+      const outcome = try Effect.result(service.syncOAuthProvider(ownerId, provider))
+      if (outcome._tag === "Failure") {
+        return {
+          success: false,
+          text: `Sync failed for ${provider}. Ensure consent is granted and the connector is authorized.`,
+          data: { subaction: "sync", provider, synced: false },
+        }
+      }
+      return {
+        success: true,
+        text: `Synced ${provider}: ${outcome.success.addedSamples} sample(s), ${outcome.success.addedSleep} sleep episode(s), ${outcome.success.addedWorkouts} workout(s).`,
+        data: {
+          subaction: "sync",
+          provider,
+          synced: true,
+          addedSamples: outcome.success.addedSamples,
+          addedSleep: outcome.success.addedSleep,
+          addedWorkouts: outcome.success.addedWorkouts,
+        },
+      }
+    }
+    case "export": {
+      const provider = params.provider ?? "oura"
+      const exported = service.exportHealthSnapshot({
+        ownerId,
+        provider,
+        isOwner: true,
+        ownerAudienceOnly: true,
+        days,
+        nowMs,
+      })
+      if (!exported.allowed) {
+        return {
+          success: false,
+          text: exported.reason,
+          data: { subaction: "export", provider, allowed: false },
+        }
+      }
+      return {
+        success: true,
+        text: `Exported ${exported.snapshot.samples.length} health sample(s) and ${exported.snapshot.sleepEpisodes.length} sleep episode(s) for ${ownerId}.`,
+        data: {
+          subaction: "export",
+          provider,
+          allowed: true,
+          sampleCount: exported.snapshot.samples.length,
+          sleepCount: exported.snapshot.sleepEpisodes.length,
+          workoutCount: exported.snapshot.workouts.length,
+        },
+      }
+    }
+  }
+}
+
+export effect function runScreenTimeAction(
+  service: HealthService | undefined,
+  input: unknown,
+  defaultOwnerId = "owner",
+): ActionResult!! {
+  const decoded = decodeScreenTimeParams(input)
+  if (Option.isNone(decoded)) {
+    return {
+      success: false,
+      text: `${screenTimeActionName} requires subaction: ${screenTimeSubactions.join(", ")}.`,
+    }
+  }
+  if (service === undefined) return unavailableResult("Screen-time")
+  const params = decoded.value
+  const ownerId = params.ownerId?.trim() || defaultOwnerId
+  const nowMs = try Clock.currentTimeMillis
+  const days = Math.max(1, Math.min(30, Math.round(params.days ?? 1)))
+  const window = { fromMs: Math.max(0, nowMs - days * 86_400_000), untilMs: nowMs }
+
+  if (params.subaction === "record") {
+    const identifier = params.identifier?.trim() || params.appName?.trim() || ""
+    const durationMinutes = params.durationMinutes ?? 0
+    if (identifier === "" || durationMinutes <= 0) {
+      return { success: false, text: "record requires identifier/appName and positive durationMinutes." }
+    }
+    const appName = params.appName?.trim() || identifier
+    const signal = resolveScreenSignal({ bundleId: identifier, appName })
+    const startMs = Math.max(0, nowMs - Math.round(durationMinutes * 60_000))
+    service.recordScreenEntry({
+      id: `st-${nowMs}-${identifier}`,
+      ownerId,
+      identifier,
+      appName,
+      source: params.source ?? "app",
+      signal,
+      startMs,
+      endMs: nowMs,
+    })
+    return {
+      success: true,
+      text: signal === "ForegroundUse"
+        ? `Recorded ${durationMinutes} min of active screen time for ${appName}.`
+        : `Ignored inactivity signal (${signal}) for ${appName}.`,
+      data: { subaction: "record", appName, signal, counted: signal === "ForegroundUse" },
+    }
+  }
+
+  const summary = service.getScreenTimeSummary(ownerId, window)
+  const data: ProviderDataRecord = {
+    subaction: params.subaction,
+    totalActiveMinutes: summary.totalActiveMinutes,
+    ignoredInactivityEntries: summary.ignoredInactivityEntries,
+    byCategoryMinutes: { ...summary.byCategoryMinutes },
+    topApps: summary.topApps.map((a) => ({ ...a })),
+  }
+  if (params.subaction === "top_apps") {
+    const lines = summary.topApps.map((a) => `- ${a.appName} (${a.category}): ${a.minutes} min`)
+    return {
+      success: true,
+      text: lines.length === 0
+        ? "No active screen time recorded in this window."
+        : `Top apps (${days}d, ${summary.totalActiveMinutes} min active):\n${lines.join("\n")}`,
+      data,
+    }
+  }
+  if (params.subaction === "by_category") {
+    const entries = Object.entries(summary.byCategoryMinutes).map(([k, v]) => `- ${k}: ${v} min`)
+    return {
+      success: true,
+      text: entries.length === 0
+        ? "No categorized screen time recorded in this window."
+        : `Screen time by category (${days}d):\n${entries.join("\n")}`,
+      data,
+    }
+  }
+  return {
+    success: true,
+    text: `Active screen time (${days}d): ${summary.totalActiveMinutes} min (${summary.ignoredInactivityEntries} inactivity entries excluded).`,
+    data,
+  }
+}
+
+export const healthAction: Action = {
+  name: healthActionName,
+  description: "Query owner health metrics, trends, sleep regularity recaps, connector status, manual ingest, wearable sync, and consent-gated health exports.",
+  descriptionCompressed: "Read health/sleep metrics, sync connectors, ingest, or export.",
+  similes: ["OWNER_HEALTH", "HEALTH_STATUS", "SLEEP_RECAP", "HEALTH_TREND"],
+  ...HEALTH_ACTION_META,
+  parameters: [
+    { name: "days", required: false, description: "Lookback window in days (1-90).", schema: { type: "integer", minimum: 1, maximum: 90 } },
+    { name: "metric", required: false, description: "Metric key for by_metric or ingest.", schema: { type: "string", enum: [...HEALTH_METRICS] } },
+    { name: "ownerId", required: false, description: "Optional owner identifier.", schema: { type: "string" } },
+    { name: "provider", required: false, description: "Health connector provider.", schema: { type: "string", enum: [...HEALTH_CONNECTOR_KINDS] } },
+    { name: "subaction", required: true, description: "Health operation.", schema: { type: "string", enum: [...healthSubactions] } },
+    { name: "unit", required: false, description: "Measurement unit for manual ingest.", schema: { type: "string" } },
+    { name: "value", required: false, description: "Numeric measurement value for manual ingest.", schema: { type: "number" } },
+  ],
+  summarize: (result) => result?.text ?? "Health action complete.",
+  validate: async (runtime) => healthServiceOf(runtime) !== undefined,
+  handler: async (runtime, _message, _state, options) => {
+    const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+    return runPromise(runHealthAction(healthServiceOf(runtime), input))
+  },
+}
+
+export const screenTimeAction: Action = {
+  name: screenTimeActionName,
+  description: "Summarize active foreground screen time by category or top apps, or record an observation while excluding OS lock/screensaver inactivity.",
+  descriptionCompressed: "Summarize or record foreground screen time.",
+  similes: ["OWNER_SCREENTIME", "APP_USAGE", "DIGITAL_WELLBEING"],
+  ...HEALTH_ACTION_META,
+  parameters: [
+    { name: "appName", required: false, description: "App or site display name for record.", schema: { type: "string" } },
+    { name: "days", required: false, description: "Lookback window in days (1-30).", schema: { type: "integer", minimum: 1, maximum: 30 } },
+    { name: "durationMinutes", required: false, description: "Duration in minutes for record.", schema: { type: "number" } },
+    { name: "identifier", required: false, description: "Bundle ID, package name, or hostname for record.", schema: { type: "string" } },
+    { name: "ownerId", required: false, description: "Optional owner identifier.", schema: { type: "string" } },
+    { name: "source", required: false, description: "Entry source (app or website).", schema: { type: "string", enum: ["app", "website"] } },
+    { name: "subaction", required: true, description: "Screen-time operation.", schema: { type: "string", enum: [...screenTimeSubactions] } },
+  ],
+  summarize: (result) => result?.text ?? "Screen-time check complete.",
+  validate: async (runtime) => healthServiceOf(runtime) !== undefined,
+  handler: async (runtime, _message, _state, options) => {
+    const input = typeof options === "object" && options !== null && "parameters" in options ? options.parameters : undefined
+    return runPromise(runScreenTimeAction(healthServiceOf(runtime), input))
+  },
+}
+
+export const healthProvider: Provider = {
+  name: healthProviderName,
+  description: "Owner only. Compact health connector state and recent wearable metrics. Route detailed health questions to HEALTH.",
+  descriptionCompressed: "Owner health connector state and recent metrics.",
+  dynamic: true,
+  cacheStable: false,
+  contexts: ["health"],
+  contextGate: { anyOf: ["health"] },
+  roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  get: async (runtime) => {
+    const service = healthServiceOf(runtime)
+    if (service === undefined) {
+      return {
+        text: "Health connector summary unavailable.",
+        values: { healthConnectedProviderCount: 0 },
+        data: { status: "unavailable", healthSummary: null },
+      }
+    }
+    const summary = service.getSummary("owner", 3)
+    const connected = summary.providers.filter((p) => p.connected).map((p) => p.provider)
+    const lines = [
+      connected.length > 0 ? `Health connectors: ${connected.join(", ")}` : "Health connectors: none connected",
+      ...summary.summaries.slice(0, 5).map((d) => `${d.provider} ${d.date} | ${d.steps} steps | ${d.sleepHours}h sleep`),
+    ]
+    return {
+      text: lines.join("\n"),
+      values: {
+        healthConnectedProviderCount: connected.length,
+        healthSampleCount: summary.samples.length,
+        healthSleepEpisodeCount: summary.sleepEpisodes.length,
+      },
+      data: {
+        status: "available",
+        connectedProviders: connected,
+        sampleCount: summary.samples.length,
+        sleepEpisodeCount: summary.sleepEpisodes.length,
+      },
+    }
+  },
+}
+
+export interface HealthRouteInput {
+  readonly query: ReadonlyMap<string, string>
+  readonly body?: unknown
+}
+
+export interface HealthRouteReply {
+  readonly status: number
+  readonly body: unknown
+}
+
+export interface HealthRoute {
+  readonly method: "GET" | "POST"
+  readonly path: string
+  readonly handler: (input: HealthRouteInput) => Promise<HealthRouteReply> | HealthRouteReply
+}
+
+function parseWindowDays(raw: string | undefined, fallback: number): number | undefined {
+  if (raw === undefined || raw.trim() === "") return fallback
+  if (!/^\d+$/u.test(raw.trim())) return undefined
+  const parsed = Number.parseInt(raw.trim(), 10)
+  return sleepRegularityWindowValid(parsed) ? parsed : undefined
+}
+
+export function healthRoutes(target: () => HealthService | undefined): readonly HealthRoute[] {
+  const route = (
+    method: "GET" | "POST",
+    path: string,
+    handle: (input: HealthRouteInput, svc: HealthService) => HealthRouteReply,
+  ): HealthRoute => ({
+    method,
+    path,
+    handler: (input) => {
+      const svc = target()
+      if (svc === undefined) return { status: 503, body: { error: "HealthService is not active." } }
+      return handle(input, svc)
+    },
+  })
+
+  return [
+    route("GET", "/api/lifeops/sleep/history", (input, svc) => {
+      const ownerId = input.query.get("ownerId") ?? "owner"
+      const includeNaps = input.query.get("includeNaps") !== "false"
+      return { status: 200, body: { episodes: svc.store.listSleepEpisodes(ownerId, includeNaps) } }
+    }),
+    route("GET", "/api/lifeops/sleep/regularity", (input, svc) => {
+      const ownerId = input.query.get("ownerId") ?? "owner"
+      const windowDays = parseWindowDays(input.query.get("windowDays"), 14)
+      if (windowDays === undefined) return { status: 400, body: { error: "windowDays must be an integer between 3 and 90" } }
+      return { status: 200, body: svc.getSleepRegularity(ownerId, windowDays) }
+    }),
+    route("GET", "/api/lifeops/sleep/baseline", (input, svc) => {
+      const ownerId = input.query.get("ownerId") ?? "owner"
+      const windowDays = parseWindowDays(input.query.get("windowDays"), 21)
+      if (windowDays === undefined) return { status: 400, body: { error: "windowDays must be an integer between 3 and 90" } }
+      return { status: 200, body: svc.getPersonalBaseline(ownerId, windowDays) }
+    }),
+    route("GET", "/api/lifeops/health/summary", (input, svc) => {
+      const ownerId = input.query.get("ownerId") ?? "owner"
+      const daysRaw = Number(input.query.get("days") ?? "7")
+      const days = Number.isFinite(daysRaw) && daysRaw >= 1 && daysRaw <= 90 ? Math.round(daysRaw) : 7
+      return { status: 200, body: svc.getSummary(ownerId, days) }
+    }),
+    route("GET", "/api/lifeops/health/connectors", (input, svc) => {
+      const ownerId = input.query.get("ownerId") ?? "owner"
+      return { status: 200, body: { providers: svc.listConnectorOverviews(ownerId) } }
+    }),
+    route("POST", "/api/lifeops/health/ingest", (input, svc) => {
+      const raw = typeof input.body === "object" && input.body !== null ? (input.body as Record<string, unknown>) : {}
+      const metric = typeof raw.metric === "string" ? raw.metric : ""
+      const value = typeof raw.value === "number" && Number.isFinite(raw.value) ? raw.value : Number.NaN
+      if (!HEALTH_METRICS.includes(metric as HealthMetric) || !Number.isFinite(value)) {
+        return { status: 400, body: { error: "metric and finite numeric value are required" } }
+      }
+      const ownerId = typeof raw.ownerId === "string" && raw.ownerId.trim() !== "" ? raw.ownerId.trim() : "owner"
+      const recordedAt = typeof raw.recordedAt === "string" && raw.recordedAt.trim() !== "" ? raw.recordedAt.trim() : new Date().toISOString()
+      const sample = {
+        id: typeof raw.id === "string" && raw.id.trim() !== "" ? raw.id.trim() : `ingest-${metric}-${Date.now()}`,
+        ownerId,
+        provider: typeof raw.provider === "string" && raw.provider.trim() !== "" ? raw.provider.trim() : "manual",
+        metric: metric as HealthMetric,
+        value,
+        unit: typeof raw.unit === "string" && raw.unit.trim() !== "" ? raw.unit.trim() : "count",
+        recordedAt,
+        dateKey: recordedAt.slice(0, 10),
+      }
+      svc.ingestSample(sample)
+      return { status: 200, body: { ok: true, sample } }
+    }),
+  ]
+}

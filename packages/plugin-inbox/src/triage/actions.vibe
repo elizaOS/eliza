@@ -1,0 +1,181 @@
+// spec/inbox/triage.md, "Story: Triage my unified cross-channel inbox and safely manage subscriptions"
+import {
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type Action,
+  type ActionResult,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core"
+import { triageWindowAllowed } from "../../gen/inbox__triage.effect.vibe"
+import type { InboxPlatform } from "./helpers.vibe"
+import { INBOX_TRIAGE_SERVICE_TYPE, InboxTriageService } from "./service.vibe"
+
+export const inboxActionName = "INBOX"
+
+const SUBACTIONS = [
+  "approve",
+  "archive",
+  "dismiss",
+  "list",
+  "reply",
+  "scan_subscriptions",
+  "search",
+  "snooze",
+  "summarize",
+  "triage",
+  "unsubscribe",
+] as const
+
+const PLATFORMS: readonly InboxPlatform[] = [
+  "discord",
+  "gmail",
+  "imessage",
+  "signal",
+  "slack",
+  "sms",
+  "telegram",
+  "whatsapp",
+  "x_dm",
+]
+
+function resolveTriageService(runtime: IAgentRuntime): InboxTriageService {
+  const existing = runtime.getService<InboxTriageService>(INBOX_TRIAGE_SERVICE_TYPE)
+  return existing ?? new InboxTriageService(runtime)
+}
+
+function asParams(options: HandlerOptions | undefined): Record<string, unknown> {
+  const raw = options && typeof options === "object" && "parameters" in options ? options.parameters : undefined
+  return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {}
+}
+
+function formatSnapshotLines(items: readonly { readonly message: { readonly id: string; readonly platform: string; readonly sender: string; readonly subject?: string; readonly snippet: string }; readonly score: { readonly priority: string; readonly score: number } }[]): string {
+  if (items.length === 0) return "No matching inbox messages."
+  return items
+    .map((entry) => `[${entry.score.priority}:${entry.score.score}] (${entry.message.platform}) ${entry.message.sender} — ${entry.message.subject || entry.message.snippet.slice(0, 80)} [id ${entry.message.id}]`)
+    .join("\n")
+}
+
+export const inboxAction: Action = {
+  name: inboxActionName,
+  similes: ["TRIAGE_INBOX", "UNIFIED_INBOX", "INBOX_DIGEST", "UNSUBSCRIBE_EMAIL"],
+  description: "Cross-channel owner inbox: list, search, summarize, triage, reply, snooze, archive, dismiss, approve, scan_subscriptions, or unsubscribe across connected platforms.",
+  descriptionCompressed: "Cross-channel inbox triage, digest, state transitions, and safe email unsubscribe.",
+  contexts: ["inbox", "email", "messaging", "tasks"],
+  contextGate: { anyOf: ["inbox", "email", "messaging", "tasks"] },
+  roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  toolSchemaStrict: true,
+  cacheStable: true,
+  parameters: [
+    { name: "draftReply", description: "Draft or reply body for reply/approve.", descriptionCompressed: "Reply text.", required: false, schema: { type: "string" } },
+    { name: "itemId", description: "Target triage item ID for reply/snooze/archive/dismiss/approve.", descriptionCompressed: "Item ID.", required: false, schema: { type: "string" } },
+    { name: "limit", description: "Maximum messages (1-100, default 25).", descriptionCompressed: "Max items (1-100).", required: false, schema: { type: "number", minimum: 1, maximum: 100 } },
+    { name: "oneClick", description: "Use RFC 8058 one-click POST for unsubscribe.", descriptionCompressed: "One-click POST.", required: false, schema: { type: "boolean" } },
+    { name: "platforms", description: "Optional platform filter.", descriptionCompressed: "Platforms.", required: false, schema: { type: "array", items: { type: "string", enum: [...PLATFORMS] } } },
+    { name: "query", description: "Search filter string.", descriptionCompressed: "Search query.", required: false, schema: { type: "string" } },
+    { name: "senderAddress", description: "Sender email address for unsubscribe.", descriptionCompressed: "Sender email.", required: false, schema: { type: "string" } },
+    { name: "snoozeUntilMs", description: "Epoch ms to wake snoozed item.", descriptionCompressed: "Snooze wake ms.", required: false, schema: { type: "number" } },
+    { name: "subaction", description: "Inbox operation.", descriptionCompressed: "Operation.", required: true, schema: { type: "string", enum: [...SUBACTIONS] } },
+    { name: "targetUrl", description: "HTTPS List-Unsubscribe target URL.", descriptionCompressed: "HTTPS unsubscribe URL.", required: false, schema: { type: "string" } },
+    { name: "userAuthorized", description: "Explicit owner confirmation for unsubscribe.", descriptionCompressed: "Owner authorized.", required: false, schema: { type: "boolean" } },
+  ],
+  summarize: (result) => (result?.success ? (result.text?.split("\n")[0] ?? "Inbox updated.") : undefined),
+  validate: async () => true,
+  handler: async (runtime: IAgentRuntime, _message: Memory, _state?: State, options?: HandlerOptions): Promise<ActionResult> => {
+    const svc = resolveTriageService(runtime)
+    const params = asParams(options)
+    const subaction = typeof params.subaction === "string" ? params.subaction : "triage"
+    const limit = typeof params.limit === "number" ? params.limit : 25
+    const query = typeof params.query === "string" ? params.query : undefined
+    const itemId = typeof params.itemId === "string" ? params.itemId.trim() : ""
+    const platforms = Array.isArray(params.platforms)
+      ? params.platforms.filter((p): p is InboxPlatform => typeof p === "string" && PLATFORMS.includes(p as InboxPlatform))
+      : undefined
+
+    if (subaction === "list" || subaction === "search" || subaction === "triage" || subaction === "summarize") {
+      if (!triageWindowAllowed(limit)) {
+        return { success: false, text: "Limit must be between 1 and 100." }
+      }
+      const snapshot = await svc.fetchUnified({
+        ...(platforms ? { platforms } : {}),
+        ...(query ? { query } : {}),
+        limit,
+      })
+      const degradedSuffix = snapshot.degraded.length > 0
+        ? `\nDegraded sources: ${snapshot.degraded.map((d) => `${d.platform} (${d.reason})`).join(", ")}`
+        : ""
+      const text = subaction === "summarize"
+        ? `Inbox summary: ${snapshot.items.length} items across ${snapshot.totalSources} sources (${JSON.stringify(snapshot.countsByPriority)}).${degradedSuffix}`
+        : `${formatSnapshotLines(snapshot.items)}${degradedSuffix}`
+      return {
+        success: true,
+        promptDataMode: "replace-data",
+        text,
+        data: {
+          totalSources: snapshot.totalSources,
+          complete: snapshot.complete,
+          itemCount: snapshot.items.length,
+          degraded: snapshot.degraded.map((d) => ({ platform: d.platform, reason: d.reason })),
+        },
+      }
+    }
+
+    if (subaction === "snooze") {
+      const untilMs = typeof params.snoozeUntilMs === "number" ? params.snoozeUntilMs : 0
+      const step = svc.stepItemMachine(itemId, { type: "snoozeItem", untilMs, nowMs: Date.now() })
+      return step.accepted
+        ? { success: true, text: `Snoozed ${itemId} until ${untilMs}.`, data: { itemId, state: step.state } }
+        : { success: false, text: `Could not snooze ${itemId}.`, data: { itemId, state: step.state } }
+    }
+
+    if (subaction === "archive" || subaction === "dismiss") {
+      const step = svc.stepItemMachine(itemId, { type: subaction === "archive" ? "archiveItem" : "dismissItem" })
+      return step.accepted
+        ? { success: true, text: `${subaction === "archive" ? "Archived" : "Dismissed"} ${itemId}.`, data: { itemId, state: step.state } }
+        : { success: false, text: `Could not ${subaction} ${itemId}.`, data: { itemId, state: step.state } }
+    }
+
+    if (subaction === "reply" || subaction === "approve") {
+      if (typeof params.draftReply === "string" && params.draftReply.trim()) {
+        svc.setDraftReply(itemId, params.draftReply.trim())
+      }
+      const step = svc.stepItemMachine(itemId, { type: "replyItem" })
+      return step.accepted
+        ? { success: true, text: `Marked ${itemId} as replied.`, data: { itemId, state: step.state } }
+        : { success: false, text: `Could not reply to ${itemId}.`, data: { itemId, state: step.state } }
+    }
+
+    if (subaction === "scan_subscriptions") {
+      const subscriptions = svc.scanSubscriptions()
+      const text = subscriptions.length === 0
+        ? "No recurring email subscriptions found."
+        : subscriptions.map((s) => `${s.senderAddress} (${s.messageCount} msgs, method=${s.unsubscribe.method})`).join("\n")
+      return { success: true, promptDataMode: "replace-data", text, data: { subscriptions } }
+    }
+
+    if (subaction === "unsubscribe") {
+      const senderAddress = typeof params.senderAddress === "string" ? params.senderAddress : ""
+      const targetUrl = typeof params.targetUrl === "string" ? params.targetUrl : undefined
+      const outcome = await svc.unsubscribeSender({
+        senderAddress,
+        ...(targetUrl ? { targetUrl } : {}),
+        oneClick: params.oneClick === true,
+        userAuthorized: params.userAuthorized === true,
+      })
+      return {
+        success: outcome.executed,
+        text: outcome.executed ? `Unsubscribed from ${outcome.senderAddress}.` : `Refused or failed unsubscribe for ${outcome.senderAddress}: ${outcome.reason ?? outcome.status}.`,
+        data: {
+          senderAddress: outcome.senderAddress,
+          executed: outcome.executed,
+          status: outcome.status,
+          ...(outcome.reason ? { reason: outcome.reason } : {}),
+        },
+      }
+    }
+
+    return { success: false, text: `Unsupported INBOX subaction: ${subaction}` }
+  },
+}

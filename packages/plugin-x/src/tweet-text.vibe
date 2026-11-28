@@ -1,0 +1,307 @@
+// spec/x/index.md, "The X direct-message journal retries only a confirmed transient refusal before any part was accepted"
+import {
+  TWEET_MAX_LENGTH,
+  TwitterError,
+  TwitterErrorType,
+  X_MAX_DM_LENGTH,
+  failTwitter,
+  type ActionResponse,
+  type SentTweet,
+  type Tweet,
+  type TweetThreadReceipt,
+} from "./types.vibe"
+
+const TWITTER_URL_WEIGHT = 23
+const TWITTER_URL_RE = /\bhttps?:\/\/[^\s<>()]+/gi
+
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (locale: string, options: { granularity: "grapheme" }) => {
+      segment(text: string): Iterable<{ segment: string }>
+    }
+  }
+).Segmenter
+const xGraphemeSegmenter = new GraphemeSegmenter("en", { granularity: "grapheme" })
+
+function isSingleWeightCodePoint(cp: number): boolean {
+  if (cp >= 0x0000 && cp <= 0x10ff) return true
+  if (cp >= 0x2000 && cp <= 0x200d) return true
+  if (cp >= 0x2010 && cp <= 0x201f) return true
+  if (cp >= 0x2032 && cp <= 0x2037) return true
+  return false
+}
+
+export interface TwitterUrlEntity {
+  url: string
+  indices: [number, number]
+}
+
+export function extractTwitterUrlsWithIndices(text: string): TwitterUrlEntity[] {
+  const results: TwitterUrlEntity[] = []
+  TWITTER_URL_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = TWITTER_URL_RE.exec(text)) !== null) {
+    let url = match[0]
+    while (url.length > 0 && /[.,;:!?)]$/.test(url)) {
+      url = url.slice(0, -1)
+    }
+    if (url.length > 0) {
+      results.push({ url, indices: [match.index, match.index + url.length] })
+    }
+  }
+  return results
+}
+
+function weightPlainText(text: string): number {
+  const normalized = text.normalize("NFC")
+  let weight = 0
+  for (const ch of normalized) {
+    const cp = ch.codePointAt(0) ?? 0
+    weight += isSingleWeightCodePoint(cp) ? 1 : 2
+  }
+  return weight
+}
+
+export function countTwitterWeightedLength(text: string): number {
+  if (!text) return 0
+  const urls = extractTwitterUrlsWithIndices(text)
+  if (urls.length === 0) return weightPlainText(text)
+  let total = 0
+  let cursor = 0
+  for (const entity of urls) {
+    const [start, end] = entity.indices
+    total += weightPlainText(text.slice(cursor, start)) + TWITTER_URL_WEIGHT
+    cursor = end
+  }
+  total += weightPlainText(text.slice(cursor))
+  return total
+}
+
+export function quoteTweetText(text: string, quotedTweetId: string): string {
+  const trimmed = text.trim()
+  const link = `https://twitter.com/i/status/${quotedTweetId}`
+  return trimmed ? `${trimmed} ${link}` : link
+}
+
+export function quoteThreadFirstChunkMaxLength(
+  quotedTweetId: string,
+  maxLength: number = TWEET_MAX_LENGTH,
+): number {
+  return maxLength - countTwitterWeightedLength(` ${quoteTweetText("", quotedTweetId)}`)
+}
+
+export function splitXDirectMessageContent(text: string): string[] {
+  const chunks: string[] = []
+  let chunk = ""
+  let chunkLength = 0
+  const flush = () => {
+    if (chunk) {
+      chunks.push(chunk)
+      chunk = ""
+      chunkLength = 0
+    }
+  }
+  for (const { segment } of xGraphemeSegmenter.segment(text)) {
+    const segmentLength = Array.from(segment).length
+    if (segmentLength > X_MAX_DM_LENGTH) {
+      flush()
+      const scalars = Array.from(segment)
+      for (let index = 0; index < scalars.length; index += X_MAX_DM_LENGTH) {
+        chunks.push(scalars.slice(index, index + X_MAX_DM_LENGTH).join(""))
+      }
+      continue
+    }
+    if (chunkLength + segmentLength > X_MAX_DM_LENGTH) flush()
+    chunk += segment
+    chunkLength += segmentLength
+  }
+  flush()
+  return chunks
+}
+
+export function splitTweetContent(
+  content: string,
+  maxLength: number = TWEET_MAX_LENGTH,
+  firstMaxLength: number = maxLength,
+): string[] {
+  for (const limit of [maxLength, firstMaxLength]) {
+    if (!Number.isSafeInteger(limit) || limit <= 0) {
+      failTwitter(
+        TwitterErrorType.VALIDATION,
+        "X post chunk limit must be a positive safe integer",
+        "X_POST_CHUNK_LIMIT_INVALID",
+        { maxLength: limit },
+      )
+    }
+  }
+  if (!content) return []
+  const units: string[] = []
+  let cursor = 0
+  const appendTextUnits = (text: string) => {
+    for (const { segment } of xGraphemeSegmenter.segment(text)) {
+      units.push(segment)
+    }
+  }
+  for (const entity of extractTwitterUrlsWithIndices(content)) {
+    const [start, end] = entity.indices
+    appendTextUnits(content.slice(cursor, start))
+    units.push(content.slice(start, end))
+    cursor = end
+  }
+  appendTextUnits(content.slice(cursor))
+  const isWhitespace = (unit: string | undefined) => unit !== undefined && /^\s+$/u.test(unit)
+  const chunks: string[] = []
+  let start = 0
+  while (start < units.length) {
+    const limit = chunks.length === 0 ? firstMaxLength : maxLength
+    let end = start
+    let chunk = ""
+    for (; end < units.length; end += 1) {
+      const unit = units[end]!
+      if (countTwitterWeightedLength(unit) > limit) {
+        failTwitter(
+          TwitterErrorType.VALIDATION,
+          "An indivisible X post token exceeds the provider limit",
+          "X_POST_TOKEN_TOO_LONG",
+          { maxLength: limit },
+        )
+      }
+      const candidate = `${chunk}${unit}`
+      if (chunk && countTwitterWeightedLength(candidate) > limit) break
+      chunk = candidate
+    }
+    if (end < units.length && !isWhitespace(units[end])) {
+      let cut = end - 1
+      while (cut > start && !isWhitespace(units[cut])) cut -= 1
+      if (cut > start) {
+        const kept = units.slice(start, cut + 1).join("")
+        if (/\S/u.test(kept) && countTwitterWeightedLength(kept) > limit / 2) {
+          chunk = kept
+          end = cut + 1
+        }
+      }
+    }
+    chunks.push(chunk)
+    start = end
+  }
+  return chunks
+}
+
+function isXAuthAbortError(error: unknown): boolean {
+  return (
+    error instanceof TwitterError &&
+    (error.code === "X_AUTH_NOT_INITIALIZED" || error.code === "X_AUTH_SESSION_ROTATED")
+  )
+}
+
+export async function sendTextAsTweetThread(
+  text: string,
+  sendChunk: (chunk: string, previousTweetId: string | undefined, index: number) => Promise<SentTweet>,
+  maxLength: number = TWEET_MAX_LENGTH,
+  firstChunkMaxLength: number = maxLength,
+): Promise<TweetThreadReceipt[]> {
+  const receipts: TweetThreadReceipt[] = []
+  const chunks = splitTweetContent(text, maxLength, firstChunkMaxLength)
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index]!
+    let receipt: SentTweet
+    try {
+      receipt = await sendChunk(chunk, receipts[index - 1]?.id, index)
+    } catch (error) {
+      if (receipts.length === 0 || isXAuthAbortError(error)) {
+        return Promise.reject(error)
+      }
+      failTwitter(
+        TwitterErrorType.API,
+        "X thread was only partly posted",
+        "X_THREAD_PARTIALLY_POSTED",
+        { acceptedTweetIds: receipts.map((r) => r.id) },
+        error,
+      )
+    }
+    receipts.push({ id: receipt.id, text: chunk })
+  }
+  return receipts
+}
+
+export function isValidTweet(tweet: Pick<Tweet, "text">): boolean {
+  const hashtagCount = (tweet.text?.match(/#/g) || []).length
+  const atCount = (tweet.text?.match(/@/g) || []).length
+  const dollarSignCount = (tweet.text?.match(/\$/g) || []).length
+  return hashtagCount <= 1 && atCount <= 2 && dollarSignCount <= 1 && hashtagCount + atCount + dollarSignCount <= 3
+}
+
+export function parseActionResponseFromText(text: string): { actions: ActionResponse } {
+  const actions: ActionResponse = {
+    like: /\[LIKE\]/i.test(text),
+    retweet: /\[RETWEET\]/i.test(text),
+    quote: /\[QUOTE\]/i.test(text),
+    reply: /\[REPLY\]/i.test(text),
+  }
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim()
+    if (trimmed === "[LIKE]") actions.like = true
+    if (trimmed === "[RETWEET]") actions.retweet = true
+    if (trimmed === "[QUOTE]") actions.quote = true
+    if (trimmed === "[REPLY]") actions.reply = true
+  }
+  return { actions }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
+}
+
+function readPath(value: unknown, path: readonly string[]): unknown {
+  let current = value
+  for (const key of path) {
+    const record = asRecord(current)
+    if (!record) return undefined
+    current = record[key]
+  }
+  return current
+}
+
+export function normalizeXReceiptId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const id = value.trim()
+  return id.length > 0 ? id : undefined
+}
+
+function extractSynchronousId(result: unknown): string | undefined {
+  const paths = [
+    ["id"],
+    ["data", "id"],
+    ["data", "data", "id"],
+    ["rest_id"],
+    ["data", "create_tweet", "tweet_results", "result", "rest_id"],
+    ["data", "create_tweet", "tweet_results", "result", "id"],
+    ["data", "data", "create_tweet", "tweet_results", "result", "rest_id"],
+    ["data", "data", "create_tweet", "tweet_results", "result", "id"],
+  ] as const
+  for (const path of paths) {
+    const id = normalizeXReceiptId(readPath(result, path))
+    if (id) return id
+  }
+  return undefined
+}
+
+export async function extractXWriteReceiptId(result: unknown): Promise<string | undefined> {
+  const direct = extractSynchronousId(result)
+  if (direct) return direct
+  const record = asRecord(result)
+  if (!record) return undefined
+  let bodySource: unknown = result
+  if (typeof record.clone === "function") {
+    if (record.bodyUsed === true) return undefined
+    bodySource = (record.clone as () => unknown)()
+  }
+  const bodyRecord = asRecord(bodySource)
+  if (!bodyRecord || typeof bodyRecord.json !== "function") return undefined
+  try {
+    const body = await (bodyRecord.json as () => Promise<unknown>)()
+    return extractSynchronousId(body)
+  } catch {
+    return undefined
+  }
+}

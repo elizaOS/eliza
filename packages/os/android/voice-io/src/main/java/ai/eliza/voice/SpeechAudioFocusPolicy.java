@@ -40,6 +40,10 @@ public final class SpeechAudioFocusPolicy {
     return state == State.DUCKED;
   }
 
+  synchronized void setDucked(boolean ducked) {
+    if (state == State.HELD || state == State.DUCKED) state = ducked ? State.DUCKED : State.HELD;
+  }
+
   public synchronized boolean paused() {
     return state == State.PAUSED;
   }

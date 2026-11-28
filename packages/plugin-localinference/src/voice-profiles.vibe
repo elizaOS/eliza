@@ -1,0 +1,274 @@
+// spec/localInference/transcriptPrivacy.md, "Story: Share a transcript only as its consent allows"
+import { sha256 } from "./digest.ts"
+
+export const VOICE_PROFILE_RECORD_SCHEMA_VERSION = "eliza.voice_profile_record.v1" as const
+export const DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD = 0.72
+const DEFAULT_HOT_CACHE = 30
+const DEFAULT_COLD_DISK = 200
+
+export interface VoiceProfileConsentState {
+  readonly attributionAuthorized: boolean
+  readonly synthesisAuthorized: boolean
+  readonly grantedAt?: string
+  readonly grantedBy?: string
+}
+
+export interface VoiceProfileAudioRef {
+  readonly sampleId: string
+  readonly wavSha256: string
+  readonly durationMs: number
+  readonly recordedAt: string
+  readonly referenceText?: string
+}
+
+export interface VoiceProfileRecord {
+  readonly schemaVersion: typeof VOICE_PROFILE_RECORD_SCHEMA_VERSION
+  readonly profileId: string
+  readonly embeddingModel: string
+  readonly embeddingDim: number
+  readonly centroid: readonly number[]
+  readonly variance: readonly number[]
+  readonly welfordM2: readonly number[]
+  readonly sampleCount: number
+  readonly totalDurationMs: number
+  readonly firstObservedAt: string
+  readonly lastObservedAt: string
+  readonly lastRefinedAt: string
+  readonly entityId: string | null
+  readonly imprintClusterId: string
+  readonly confidence: number
+  readonly consent: VoiceProfileConsentState
+  readonly audioRefs?: readonly VoiceProfileAudioRef[]
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface VoiceImprintMatch {
+  readonly profileId: string
+  readonly entityId: string | null
+  readonly similarity: number
+  readonly record: VoiceProfileRecord
+}
+
+export interface VoiceProfileStoreOptions {
+  readonly hotCacheSize?: number
+  readonly coldDiskMax?: number
+  readonly matchThreshold?: number
+}
+
+export function l2NormalizeVector(vector: readonly number[]): number[] {
+  let sumSq = 0
+  for (const v of vector) sumSq += v * v
+  const norm = Math.sqrt(sumSq)
+  if (!Number.isFinite(norm) || norm <= 0) return vector.map(() => 0)
+  return vector.map((v) => v / norm)
+}
+
+export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+  if (a.length === 0 || a.length !== b.length) return 0
+  let dot = 0
+  let normA = 0
+  let normB = 0
+  for (let i = 0; i < a.length; i += 1) {
+    const va = a[i] ?? 0
+    const vb = b[i] ?? 0
+    dot += va * vb
+    normA += va * va
+    normB += vb * vb
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  return denom > 0 ? dot / denom : 0
+}
+
+export function computeVoiceProfileId(centroid: readonly number[]): string {
+  const normalized = l2NormalizeVector(centroid)
+  const floatView = Float32Array.from(normalized)
+  const bytes = new Uint8Array(floatView.buffer, floatView.byteOffset, floatView.byteLength)
+  const digest = sha256()
+  digest.update(bytes)
+  return `vp_${digest.hex().slice(0, 24)}`
+}
+
+const NAME_SEGMENT = "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}"
+const SPEAKER_NAME_PATTERNS: readonly RegExp[] = [
+  new RegExp(`\\b[Tt]hat\\s+(?:was|is)\\s+(${NAME_SEGMENT})\\b`, "u"),
+  new RegExp(`\\b[Tt]his\\s+is\\s+(?:[Mm]y\\s+\\w+\\s+)?(${NAME_SEGMENT})\\b`, "u"),
+  new RegExp(`\\b[Cc]all\\s+(?:him|her|them)\\s+(${NAME_SEGMENT})\\b`, "u"),
+  new RegExp(`\\b(?:[Hh]is|[Hh]er|[Tt]heir)\\s+name\\s+is\\s+(${NAME_SEGMENT})\\b`, "u"),
+  new RegExp(`\\b[Nn]amed?\\s+(${NAME_SEGMENT})\\b`, "u"),
+  new RegExp(`\\b[Ss]peaker\\s+(?:was|is)\\s+(${NAME_SEGMENT})\\b`, "u"),
+]
+
+export function extractSpeakerName(text: string): string | null {
+  for (const pattern of SPEAKER_NAME_PATTERNS) {
+    const m = pattern.exec(text)
+    if (m?.[1]) {
+      let end = m[1].length
+      while (end > 0 && ".,;:!?".includes(m[1][end - 1] ?? "")) end -= 1
+      const cleaned = m[1].slice(0, end).trim()
+      if (cleaned.length > 0) return cleaned
+    }
+  }
+  return null
+}
+
+export class VoiceProfileStore {
+  readonly #records = new Map<string, VoiceProfileRecord>()
+  readonly #lruOrder: string[] = []
+  readonly #hotCacheSize: number
+  readonly #coldDiskMax: number
+  readonly #matchThreshold: number
+
+  constructor(options: VoiceProfileStoreOptions = {}) {
+    this.#hotCacheSize = options.hotCacheSize ?? DEFAULT_HOT_CACHE
+    this.#coldDiskMax = options.coldDiskMax ?? DEFAULT_COLD_DISK
+    this.#matchThreshold = options.matchThreshold ?? DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD
+  }
+
+  #touch(profileId: string): void {
+    const idx = this.#lruOrder.indexOf(profileId)
+    if (idx >= 0) this.#lruOrder.splice(idx, 1)
+    this.#lruOrder.push(profileId)
+  }
+
+  #evictIfNeeded(): void {
+    const cap = Math.max(this.#hotCacheSize, this.#coldDiskMax)
+    while (this.#records.size > cap) {
+      const candidate = this.#lruOrder.find((id) => {
+        const record = this.#records.get(id)
+        return record !== undefined && record.entityId === null
+      })
+      if (candidate === undefined) break
+      this.#records.delete(candidate)
+      const idx = this.#lruOrder.indexOf(candidate)
+      if (idx >= 0) this.#lruOrder.splice(idx, 1)
+    }
+  }
+
+  upsert(input: {
+    readonly embedding: readonly number[]
+    readonly embeddingModel: string
+    readonly durationMs: number
+    readonly entityId?: string | null
+    readonly consent?: Partial<VoiceProfileConsentState>
+    readonly metadata?: Readonly<Record<string, unknown>>
+  }): VoiceProfileRecord {
+    const centroid = l2NormalizeVector(input.embedding)
+    const profileId = computeVoiceProfileId(centroid)
+    const existing = this.#records.get(profileId)
+    if (existing !== undefined) {
+      return this.refine(profileId, input.embedding, input.durationMs) ?? existing
+    }
+    const now = new Date().toISOString()
+    const zeros = centroid.map(() => 0)
+    const record: VoiceProfileRecord = {
+      schemaVersion: VOICE_PROFILE_RECORD_SCHEMA_VERSION,
+      profileId,
+      embeddingModel: input.embeddingModel,
+      embeddingDim: centroid.length,
+      centroid,
+      variance: zeros,
+      welfordM2: zeros,
+      sampleCount: 1,
+      totalDurationMs: Math.max(0, input.durationMs),
+      firstObservedAt: now,
+      lastObservedAt: now,
+      lastRefinedAt: now,
+      entityId: input.entityId ?? null,
+      imprintClusterId: profileId,
+      confidence: 1,
+      consent: {
+        attributionAuthorized: input.consent?.attributionAuthorized ?? true,
+        synthesisAuthorized: input.consent?.synthesisAuthorized ?? false,
+        ...(input.consent?.grantedAt !== undefined ? { grantedAt: input.consent.grantedAt } : {}),
+        ...(input.consent?.grantedBy !== undefined ? { grantedBy: input.consent.grantedBy } : {}),
+      },
+      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+    }
+    this.#records.set(profileId, record)
+    this.#touch(profileId)
+    this.#evictIfNeeded()
+    return record
+  }
+
+  refine(profileId: string, sampleEmbedding: readonly number[], durationMs: number): VoiceProfileRecord | null {
+    const existing = this.#records.get(profileId)
+    if (existing === undefined || sampleEmbedding.length !== existing.embeddingDim) return null
+    const sample = l2NormalizeVector(sampleEmbedding)
+    const nextCount = existing.sampleCount + 1
+    const nextMean: number[] = []
+    const nextM2: number[] = []
+    const nextVar: number[] = []
+    for (let i = 0; i < existing.embeddingDim; i += 1) {
+      const oldMean = existing.centroid[i] ?? 0
+      const x = sample[i] ?? 0
+      const delta = x - oldMean
+      const updatedMean = oldMean + delta / nextCount
+      const delta2 = x - updatedMean
+      const m2 = (existing.welfordM2[i] ?? 0) + delta * delta2
+      nextMean.push(updatedMean)
+      nextM2.push(m2)
+      nextVar.push(m2 / Math.max(1, nextCount - 1))
+    }
+    const now = new Date().toISOString()
+    const updated: VoiceProfileRecord = {
+      ...existing,
+      centroid: l2NormalizeVector(nextMean),
+      welfordM2: nextM2,
+      variance: nextVar,
+      sampleCount: nextCount,
+      totalDurationMs: existing.totalDurationMs + Math.max(0, durationMs),
+      lastObservedAt: now,
+      lastRefinedAt: now,
+    }
+    this.#records.set(profileId, updated)
+    this.#touch(profileId)
+    return updated
+  }
+
+  bindEntity(profileId: string, entityId: string, label?: string): VoiceProfileRecord | null {
+    const existing = this.#records.get(profileId)
+    if (existing === undefined) return null
+    const updated: VoiceProfileRecord = {
+      ...existing,
+      entityId,
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(label !== undefined ? { label } : {}),
+      },
+    }
+    this.#records.set(profileId, updated)
+    this.#touch(profileId)
+    return updated
+  }
+
+  match(embedding: readonly number[], threshold: number = this.#matchThreshold): VoiceImprintMatch | null {
+    const probe = l2NormalizeVector(embedding)
+    let best: VoiceImprintMatch | null = null
+    for (const record of this.#records.values()) {
+      if (!record.consent.attributionAuthorized) continue
+      const similarity = cosineSimilarity(probe, record.centroid)
+      if (similarity >= threshold && (best === null || similarity > best.similarity)) {
+        best = { profileId: record.profileId, entityId: record.entityId, similarity, record }
+      }
+    }
+    if (best !== null) this.#touch(best.profileId)
+    return best
+  }
+
+  get(profileId: string): VoiceProfileRecord | null {
+    const found = this.#records.get(profileId)
+    if (found !== undefined) this.#touch(profileId)
+    return found ?? null
+  }
+
+  list(): readonly VoiceProfileRecord[] {
+    return [...this.#records.values()]
+  }
+
+  mostRecentUnbound(): VoiceProfileRecord | null {
+    const unbound = [...this.#records.values()]
+      .filter((record) => record.entityId === null)
+      .sort((a, b) => b.lastObservedAt.localeCompare(a.lastObservedAt))
+    return unbound[0] ?? null
+  }
+}

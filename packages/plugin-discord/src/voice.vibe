@@ -1,0 +1,231 @@
+// spec/discord/coordination.md, "Owner pairing enforces per-user and map-capacity rate limits, and voice audio lanes honor interruptibility and priority"
+import type { IAgentRuntime } from "@elizaos/core"
+import { discordAudioLanePreempts } from "../gen/discord__coordination.effect.vibe"
+
+export const DISCORD_AUDIO_LANE_TTS = "tts"
+export const DISCORD_AUDIO_LANE_MUSIC = "music"
+export const DISCORD_AUDIO_LANE_SFX = "sfx"
+export const DISCORD_AUDIO_LANE_AMBIENT = "ambient"
+
+export type DiscordAudioLane =
+  | typeof DISCORD_AUDIO_LANE_TTS
+  | typeof DISCORD_AUDIO_LANE_MUSIC
+  | typeof DISCORD_AUDIO_LANE_SFX
+  | typeof DISCORD_AUDIO_LANE_AMBIENT
+
+export interface DiscordAudioLaneConfig {
+  readonly lane: DiscordAudioLane
+  readonly priority: number
+  readonly interruptible: boolean
+  readonly defaultVolume: number
+}
+
+export type DiscordAudioLaneConfigMap = Readonly<Record<DiscordAudioLane, DiscordAudioLaneConfig>>
+
+export const DEFAULT_DISCORD_AUDIO_LANES: DiscordAudioLaneConfigMap = {
+  tts: { lane: "tts", priority: 100, interruptible: false, defaultVolume: 1.0 },
+  sfx: { lane: "sfx", priority: 75, interruptible: true, defaultVolume: 0.8 },
+  music: { lane: "music", priority: 50, interruptible: true, defaultVolume: 0.5 },
+  ambient: { lane: "ambient", priority: 10, interruptible: true, defaultVolume: 0.3 },
+}
+
+export function normalizeDiscordAudioLane(raw: string | undefined): DiscordAudioLane {
+  const lower = raw?.trim().toLowerCase()
+  if (lower === "music" || lower === "sfx" || lower === "ambient") return lower
+  return DISCORD_AUDIO_LANE_TTS
+}
+
+export function getDiscordAudioLaneConfig(lane: string | undefined): DiscordAudioLaneConfig {
+  return DEFAULT_DISCORD_AUDIO_LANES[normalizeDiscordAudioLane(lane)]
+}
+
+export function canPreemptDiscordAudioLane(incoming: DiscordAudioLane, current: DiscordAudioLane): boolean {
+  const incomingCfg = getDiscordAudioLaneConfig(incoming)
+  const currentCfg = getDiscordAudioLaneConfig(current)
+  return discordAudioLanePreempts(incomingCfg.priority, currentCfg.priority, currentCfg.interruptible)
+}
+
+export interface DiscordAudioSinkStatus {
+  readonly active: boolean
+  readonly lane?: DiscordAudioLane
+  readonly guildId?: string
+  readonly channelId?: string
+}
+
+export interface DiscordAudioPlaybackHandle {
+  readonly id: string
+  readonly lane: DiscordAudioLane
+  readonly stop: () => Promise<void>
+}
+
+export interface DiscordAudioSinkPlayOptions {
+  readonly lane?: DiscordAudioLane
+  readonly volume?: number
+  readonly interrupt?: boolean
+}
+
+export interface IDiscordAudioSink {
+  readonly status: () => DiscordAudioSinkStatus
+  readonly play: (pcm: Uint8Array, options?: DiscordAudioSinkPlayOptions) => Promise<DiscordAudioPlaybackHandle | null>
+  readonly stop: () => Promise<void>
+}
+
+export interface DiscordVoicePlaybackOptions {
+  readonly lane?: DiscordAudioLane
+  readonly volume?: number
+  readonly sampleRate?: number
+}
+
+export interface DiscordVoiceTarget {
+  readonly guildId: string
+  readonly channelId: string
+  readonly play: (pcm: Uint8Array, options?: DiscordVoicePlaybackOptions) => Promise<void>
+  readonly stop: () => Promise<void>
+}
+
+export interface DiscordVoiceTargetRegistration {
+  readonly id: string
+  readonly guildId: string
+  readonly channelId: string
+  readonly target: DiscordVoiceTarget
+  readonly registeredAt: number
+}
+
+export class DiscordVoiceTargetRegistry {
+  private readonly targets = new Map<string, DiscordVoiceTargetRegistration>()
+
+  register(target: DiscordVoiceTarget): DiscordVoiceTargetRegistration {
+    const id = `${target.guildId}:${target.channelId}`
+    const reg: DiscordVoiceTargetRegistration = {
+      id,
+      guildId: target.guildId,
+      channelId: target.channelId,
+      target,
+      registeredAt: Date.now(),
+    }
+    this.targets.set(id, reg)
+    return reg
+  }
+
+  unregister(guildId: string, channelId: string): boolean {
+    return this.targets.delete(`${guildId}:${channelId}`)
+  }
+
+  get(guildId: string, channelId?: string): DiscordVoiceTargetRegistration | undefined {
+    if (channelId) return this.targets.get(`${guildId}:${channelId}`)
+    for (const reg of this.targets.values()) {
+      if (reg.guildId === guildId) return reg
+    }
+    return undefined
+  }
+
+  list(): DiscordVoiceTargetRegistration[] {
+    return Array.from(this.targets.values())
+  }
+
+  clear(): void {
+    this.targets.clear()
+  }
+}
+
+export class DiscordVoiceTargetAudioSink implements IDiscordAudioSink {
+  private activeLane: DiscordAudioLane | undefined
+  private seq = 0
+
+  constructor(
+    private readonly registry: DiscordVoiceTargetRegistry,
+    private readonly guildId: string,
+    private readonly channelId?: string,
+  ) {}
+
+  status(): DiscordAudioSinkStatus {
+    const reg = this.registry.get(this.guildId, this.channelId)
+    return {
+      active: Boolean(reg && this.activeLane),
+      lane: this.activeLane,
+      guildId: reg?.guildId ?? this.guildId,
+      channelId: reg?.channelId ?? this.channelId,
+    }
+  }
+
+  async play(pcm: Uint8Array, options: DiscordAudioSinkPlayOptions = {}): Promise<DiscordAudioPlaybackHandle | null> {
+    const reg = this.registry.get(this.guildId, this.channelId)
+    if (!reg) return null
+    const lane = normalizeDiscordAudioLane(options.lane)
+    if (this.activeLane && !canPreemptDiscordAudioLane(lane, this.activeLane)) {
+      return null
+    }
+    this.activeLane = lane
+    this.seq += 1
+    const handleId = `${reg.id}:${this.seq}`
+    await reg.target.play(pcm, {
+      lane,
+      volume: options.volume ?? getDiscordAudioLaneConfig(lane).defaultVolume,
+    })
+    return {
+      id: handleId,
+      lane,
+      stop: async () => {
+        if (this.activeLane === lane) this.activeLane = undefined
+        await reg.target.stop()
+      },
+    }
+  }
+
+  async stop(): Promise<void> {
+    this.activeLane = undefined
+    const reg = this.registry.get(this.guildId, this.channelId)
+    if (reg) await reg.target.stop()
+  }
+}
+
+export const MEETING_PIPELINE_SAMPLE_RATE = 16_000
+export const DISCORD_VOICE_TRANSCRIPTS_SETTING = "DISCORD_VOICE_TRANSCRIPTS"
+
+export function isVoiceTranscriptsSettingEnabled(runtime: Pick<IAgentRuntime, "getSetting">): boolean {
+  const raw = String(runtime.getSetting(DISCORD_VOICE_TRANSCRIPTS_SETTING) ?? "").trim().toLowerCase()
+  return raw === "on" || raw === "true" || raw === "1"
+}
+
+export function pcm16ToFloat32(pcm: Int16Array | Uint8Array): Float32Array {
+  const samples = pcm instanceof Int16Array
+    ? pcm
+    : new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2))
+  const out = new Float32Array(samples.length)
+  for (let i = 0; i < samples.length; i += 1) {
+    out[i] = samples[i] / 32768
+  }
+  return out
+}
+
+export function resampleLinear(samples: Float32Array, fromRate: number, toRate: number): Float32Array {
+  if (samples.length === 0 || fromRate <= 0 || toRate <= 0 || fromRate === toRate) return samples
+  const ratio = fromRate / toRate
+  const length = Math.max(1, Math.floor(samples.length / ratio))
+  const out = new Float32Array(length)
+  for (let i = 0; i < length; i += 1) {
+    const pos = i * ratio
+    const left = Math.floor(pos)
+    const right = Math.min(samples.length - 1, left + 1)
+    const frac = pos - left
+    out[i] = samples[left] * (1 - frac) + samples[right] * frac
+  }
+  return out
+}
+
+export function discordPcmToPipelineFrame(
+  pcm: Int16Array | Uint8Array,
+  channels = 2,
+  fromRate = 48_000,
+): Float32Array {
+  const floatSamples = pcm16ToFloat32(pcm)
+  if (channels <= 1) return resampleLinear(floatSamples, fromRate, MEETING_PIPELINE_SAMPLE_RATE)
+  const monoLen = Math.floor(floatSamples.length / channels)
+  const mono = new Float32Array(monoLen)
+  for (let i = 0; i < monoLen; i += 1) {
+    let sum = 0
+    for (let c = 0; c < channels; c += 1) sum += floatSamples[i * channels + c]
+    mono[i] = sum / channels
+  }
+  return resampleLinear(mono, fromRate, MEETING_PIPELINE_SAMPLE_RATE)
+}

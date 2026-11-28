@@ -1,0 +1,48 @@
+// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core"
+import { getKnowledgeGraphService } from "./store.vibe"
+import { ENTITY_GRAPH_PROVIDER_NAME, RELATIONSHIPS_CONTEXTS } from "./types.vibe"
+
+const MAX_PROVIDER_ENTITIES = 30
+const MAX_PROVIDER_RELATIONSHIPS = 40
+
+export const entityGraphProvider: Provider = {
+  name: ENTITY_GRAPH_PROVIDER_NAME,
+  description: "Bounded summary of known entities and active relationships in the owner's knowledge graph",
+  dynamic: true,
+  contexts: [...RELATIONSHIPS_CONTEXTS],
+  get: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> => {
+    const service = getKnowledgeGraphService(runtime)
+    if (!service) {
+      return { text: "", values: { entityCount: 0, relationshipCount: 0 }, data: {} }
+    }
+    const tenant =
+      typeof message.entityId === "string" && message.entityId.trim().length > 0
+        ? message.entityId.trim()
+        : runtime.agentId
+    const entities = service.entities.list(tenant, { limit: MAX_PROVIDER_ENTITIES })
+    const relationships = service.relationships.list(tenant).slice(0, MAX_PROVIDER_RELATIONSHIPS)
+    if (entities.length === 0 && relationships.length === 0) {
+      return { text: "", values: { entityCount: 0, relationshipCount: 0 }, data: {} }
+    }
+    const entityNames = new Map(entities.map((entity) => [entity.id, entity.name]))
+    const lines: string[] = ["Known entities:"]
+    for (const entity of entities) {
+      const handles = entity.identities.map((ident) => `${ident.platform}:${ident.handle}`).join(", ")
+      lines.push(`- ${entity.name} (${entity.kind})${handles ? ` [${handles}]` : ""}`)
+    }
+    if (relationships.length > 0) {
+      lines.push("Active relationships:")
+      for (const rel of relationships) {
+        const fromLabel = entityNames.get(rel.fromId) ?? rel.fromId
+        const toLabel = entityNames.get(rel.toId) ?? rel.toId
+        lines.push(`- ${fromLabel} -[${rel.relation} ${rel.strength.toFixed(2)}]-> ${toLabel}`)
+      }
+    }
+    return {
+      text: lines.join("\n"),
+      values: { entityCount: entities.length, relationshipCount: relationships.length },
+      data: { entities, relationships },
+    }
+  },
+}

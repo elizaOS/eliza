@@ -1,6 +1,6 @@
 // spec/os/android/secureStore.md, "The app view names only slots its consumer policy opens to it, and never a delegation slot"; spec/os/android/secureStore.md, "A compare-and-exchange changes a slot only when it holds exactly the expected value"; spec/os/android/secureStore.md, "A write is acknowledged only after it reads back exactly, and a removal only after every file of the slot is gone"
 import { nativeReply, settled } from "./bridge.vibe"
-import type { ElizaSecureStorePlugin } from "./definitions/secure-store.ts"
+import type { ElizaSecureStorePlugin, ElizaSecureStoreRead, ElizaSecureStoreResult, ElizaSecureStoreStatus } from "./definitions/secure-store.ts"
 
 export type * from "./definitions/secure-store.ts"
 
@@ -59,5 +59,35 @@ export function secureStoreClient(plugin: ElizaSecureStorePlugin = secureStorePl
     remove: (options) => settled(nativeReply(name, "remove", Result, () => plugin.remove(options))),
     compareAndExchange: (options) => settled(nativeReply(name, "compareAndExchange", Result, () => plugin.compareAndExchange(options))),
     status: () => settled(nativeReply(name, "status", Status, () => plugin.status())),
+  }
+}
+
+export class ElizaSecureStoreWeb implements ElizaSecureStorePlugin {
+  async get(): Promise<ElizaSecureStoreRead> {
+    return { ok: false, error: "unavailable" }
+  }
+
+  async set(): Promise<ElizaSecureStoreResult> {
+    return { ok: false, error: "unavailable" }
+  }
+
+  async remove(): Promise<ElizaSecureStoreResult> {
+    return { ok: false, error: "unavailable" }
+  }
+
+  async compareAndExchange(): Promise<ElizaSecureStoreResult> {
+    return { ok: false, error: "unavailable" }
+  }
+
+  async status(): Promise<ElizaSecureStoreStatus> {
+    return {
+      ok: false,
+      available: false,
+      error: "unavailable",
+      backend: "unavailable",
+      accessibility: "unavailable",
+      synchronized: false,
+      accessGroup: "app_only",
+    }
   }
 }

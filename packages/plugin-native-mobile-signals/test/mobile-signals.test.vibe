@@ -1,0 +1,45 @@
+// spec/nativeMobileSignals/index.md, "Story: Observe only the mobile signals I have authorized"
+import { assert, describe, expect, it } from "@effect/vitest"
+import {
+  MobileSignalsWeb,
+  __internal,
+  createMobileSignalsMonitorSession,
+  readMobileObservation,
+} from "../src/index.vibe"
+
+describe('plugin-native-mobile-signals (spec/nativeMobileSignals/index.md, "Story: Observe only the mobile signals I have authorized")', () => {
+  it('runs MobileSignalsWeb monitoring lifecycle and validates settings target (spec/nativeMobileSignals/index.md, "A signal is published only by the current monitor and for a permitted source")', async () => {
+    const web = new MobileSignalsWeb()
+    const perms = await web.checkPermissions()
+    assert.strictEqual(perms.engine, "web-fallback")
+    assert.strictEqual(__internal.buildScreenTimeStatus("none").rawUsageExportAvailable, false)
+
+    const emitted: string[] = []
+    const handle = await web.addListener("signal", (signal) => emitted.push(signal.source))
+    const started = await web.startMonitoring({ emitInitial: true })
+    assert.strictEqual(started.enabled, true)
+    assert.deepStrictEqual(emitted, ["mobile_device", "mobile_health"])
+    await handle.remove()
+    assert.deepStrictEqual(await web.stopMonitoring(), { stopped: true })
+
+    const opened = await web.openSettings({ target: "health" })
+    assert.strictEqual(opened.opened, false)
+    assert.strictEqual(opened.target, "health")
+    await expect(web.openSettings({ target: "bogus" as never })).rejects.toThrow()
+    assert.strictEqual((await web.presentScreenTimeReport()).presented, false)
+    assert.strictEqual((await web.scheduleBackgroundRefresh()).scheduled, false)
+    assert.strictEqual((await web.cancelBackgroundRefresh()).cancelled, false)
+  })
+
+  it.effect('gates readMobileObservation by active monitor generation and grants (spec/nativeMobileSignals/index.md, "A signal is published only by the current monitor and for a permitted source")', effect () => {
+    const web = new MobileSignalsWeb()
+    const session = createMobileSignalsMonitorSession()
+    session.start(true)
+    const grants = () => ({ deviceAllowed: true, screenTimeAllowed: false, healthAllowed: false, protectedDataAvailable: false })
+    const obs = try readMobileObservation(() => session.state(), session.state().generation, grants, web)
+    try Effect.try(() => assert.strictEqual(obs.source, "mobile_device"))
+
+    const stale = try Effect.exit(readMobileObservation(() => session.state(), 0, grants, web))
+    try Effect.try(() => assert.strictEqual(stale._tag, "Failure"))
+  })
+})

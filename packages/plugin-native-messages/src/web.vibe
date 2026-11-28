@@ -1,0 +1,72 @@
+// spec/nativeMessages/index.md, "Story: Read my inbox and see the evidence for the message I reviewed"
+export interface SendSmsOptions {
+  readonly address: string
+  readonly body: string
+}
+
+export interface SendSmsResult {
+  readonly sent: boolean
+}
+
+export interface ListMessagesOptions {
+  readonly limit?: number
+}
+
+export interface SmsMessageSummary {
+  readonly id: string
+  readonly address: string
+  readonly body: string
+  readonly date: number
+  readonly type: "inbox" | "sent"
+}
+
+export interface MessagesPermissionStatus {
+  readonly sms: "granted" | "denied" | "prompt"
+}
+
+export interface MessagesWebPlugin {
+  sendSms(options: SendSmsOptions): Promise<SendSmsResult>
+  listMessages(options?: ListMessagesOptions): Promise<{ readonly messages: SmsMessageSummary[] }>
+  checkPermissions(): Promise<MessagesPermissionStatus>
+  requestPermissions(): Promise<MessagesPermissionStatus>
+}
+
+const MAX_LIST_LIMIT = 2_147_483_647
+
+function validateSendSmsOptions(options: SendSmsOptions): string | undefined {
+  const address = typeof options?.address === "string" ? options.address.trim() : ""
+  const body = typeof options?.body === "string" ? options.body.trim() : ""
+  if (address === "") return "address is required"
+  if (body === "") return "body is required"
+  return undefined
+}
+
+function validateListLimit(limit: unknown): string | undefined {
+  if (limit === undefined) return undefined
+  if (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0 || limit > MAX_LIST_LIMIT) {
+    return "limit must be a positive 32-bit integer"
+  }
+  return undefined
+}
+
+export class MessagesWeb implements MessagesWebPlugin {
+  async sendSms(options: SendSmsOptions): Promise<SendSmsResult> {
+    const err = validateSendSmsOptions(options)
+    if (err !== undefined) throw new Error(err)
+    throw new Error("SMS is only available on Android.")
+  }
+
+  async listMessages(options?: ListMessagesOptions): Promise<{ readonly messages: SmsMessageSummary[] }> {
+    const err = validateListLimit(options?.limit)
+    if (err !== undefined) throw new Error(err)
+    return { messages: [] }
+  }
+
+  async checkPermissions(): Promise<MessagesPermissionStatus> {
+    return { sms: "granted" }
+  }
+
+  async requestPermissions(): Promise<MessagesPermissionStatus> {
+    return { sms: "granted" }
+  }
+}

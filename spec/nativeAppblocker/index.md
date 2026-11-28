@@ -1,6 +1,6 @@
 # Native app blocking
 
-Android uses Usage Access and overlay permission. iOS uses Family Controls and the person's picker. The browser fallback exposes an unavailable engine.
+Android uses Usage Access and overlay permission. iOS uses Family Controls and the person's picker. The browser fallback exposes an unavailable engine. See also [Session](./session.md).
 
 ## Story: Block only the apps I selected for a chosen interval
 

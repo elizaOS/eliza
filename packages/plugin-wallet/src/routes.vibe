@@ -1,6 +1,7 @@
 // spec/wallet/custody.md, "Only the owner makes the wallet, once, with an account for each family"; spec/wallet/requests.md, "Only the owner's decision takes a request off the desk"; spec/wallet/index.md, "A review binds the complete immutable wallet operation"
 import type { AgentPlugin } from "@elizaos/agent-host"
 import { WalletAsk, WalletDecision, WalletSwitch, walletPaths, type WalletRefusal } from "@elizaos/plugin-wallet-client"
+import { BirdeyeService, NewsDataService } from "./analytics.vibe"
 import { familyOf } from "./networks.vibe"
 import { WalletRefused, WalletUnreachable, type Wallet } from "./wallet.vibe"
 
@@ -31,7 +32,79 @@ function requestId(parameters: ReadonlyMap<string, string>): number | undefined 
   return /^[1-9][0-9]{0,14}$/.test(id) ? Number(id) : undefined
 }
 
-export function walletRoutes(wallet: Wallet): WalletRoute[] {
+export interface WalletMarketOverviewOptions {
+  readonly birdeye?: BirdeyeService
+  readonly news?: NewsDataService
+}
+
+export async function handleWalletMarketOverviewRoute(options: WalletMarketOverviewOptions = {}): Promise<Answer> {
+  const birdeye = options.birdeye ?? new BirdeyeService()
+  const news = options.news ?? new NewsDataService()
+  const [trending, market] = await Promise.all([
+    birdeye.getTrendingTokens("solana", 10),
+    news.getMarketSnapshot(),
+  ])
+  return {
+    status: 200,
+    body: {
+      trending,
+      market,
+      observedAt: Date.now(),
+    },
+  }
+}
+
+function signReviewRequired(family: "evm" | "solana", operation: string): Answer {
+  return {
+    status: 403,
+    body: {
+      error: `Direct ${family.toUpperCase()} ${operation} requires owner approval through the reviewed wallet request flow.`,
+      code: "review_required",
+    },
+  }
+}
+
+export function evmSignRoutes(wallet: Wallet): WalletRoute[] {
+  return [
+    {
+      method: "GET",
+      path: "/wallet/evm/address",
+      handler: ({ signal }) => replied(
+        Effect.map(wallet.status(), (status) => {
+          const evm = status.accounts.find((a) => a.family === "evm")
+          return { address: evm?.address ?? "", connected: evm?.connected ?? false, custody: status.custody }
+        }),
+        signal,
+      ),
+    },
+    { method: "POST", path: "/wallet/evm/personal-sign", maxBodyBytes: 4096, handler: () => signReviewRequired("evm", "personal-sign") },
+    { method: "POST", path: "/wallet/evm/sign-typed-data", maxBodyBytes: 8192, handler: () => signReviewRequired("evm", "sign-typed-data") },
+    { method: "POST", path: "/wallet/evm/sign-transaction", maxBodyBytes: 8192, handler: () => signReviewRequired("evm", "sign-transaction") },
+    { method: "POST", path: "/wallet/evm/send-transaction", maxBodyBytes: 8192, handler: () => signReviewRequired("evm", "send-transaction") },
+  ]
+}
+
+export function solanaSignRoutes(wallet: Wallet): WalletRoute[] {
+  return [
+    {
+      method: "GET",
+      path: "/wallet/solana/pubkey",
+      handler: ({ signal }) => replied(
+        Effect.map(wallet.status(), (status) => {
+          const sol = status.accounts.find((a) => a.family === "solana")
+          return { pubkey: sol?.address ?? "", connected: sol?.connected ?? false, custody: status.custody }
+        }),
+        signal,
+      ),
+    },
+    { method: "POST", path: "/wallet/solana/sign-message", maxBodyBytes: 4096, handler: () => signReviewRequired("solana", "sign-message") },
+    { method: "POST", path: "/wallet/solana/sign-transaction", maxBodyBytes: 8192, handler: () => signReviewRequired("solana", "sign-transaction") },
+    { method: "POST", path: "/wallet/solana/sign-all-transactions", maxBodyBytes: 16384, handler: () => signReviewRequired("solana", "sign-all-transactions") },
+    { method: "POST", path: "/wallet/solana/sign-and-send-transaction", maxBodyBytes: 8192, handler: () => signReviewRequired("solana", "sign-and-send-transaction") },
+  ]
+}
+
+export function walletRoutes(wallet: Wallet, overviewOptions: WalletMarketOverviewOptions = {}): WalletRoute[] {
   return [
     { method: "GET", path: walletPaths.wallet, handler: ({ signal }) => replied(wallet.status(), signal) },
     { method: "POST", path: walletPaths.wallet, maxBodyBytes: 64, handler: ({ signal }) => replied(wallet.create(), signal) },
@@ -69,5 +142,8 @@ export function walletRoutes(wallet: Wallet): WalletRoute[] {
         return id === undefined || sent === undefined ? malformed : replied(wallet.decide(id, sent), signal)
       },
     },
+    { method: "GET", path: "/api/wallet/market-overview", handler: () => handleWalletMarketOverviewRoute(overviewOptions) },
+    ...evmSignRoutes(wallet),
+    ...solanaSignRoutes(wallet),
   ]
 }

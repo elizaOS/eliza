@@ -1,0 +1,115 @@
+// spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"; spec/nativePhone/index.md, "Opening the dialer and placing a call require different authority"
+export interface PhoneWebStatus {
+  readonly hasTelecom: boolean
+  readonly canPlaceCalls: boolean
+  readonly isDefaultDialer: boolean
+  readonly defaultDialerPackage: string | null
+}
+
+export interface PlaceCallWebOptions {
+  readonly number: string
+}
+
+export interface ListRecentCallsWebOptions {
+  readonly limit?: number
+  readonly number?: string
+}
+
+export interface SaveCallTranscriptWebOptions {
+  readonly callId: string
+  readonly transcript: string
+}
+
+export interface PhoneWebPermissionStatus {
+  readonly phone: "granted" | "denied" | "prompt"
+  readonly callLog: "granted" | "denied" | "prompt"
+}
+
+export interface PhoneWebPlugin {
+  getStatus(): Promise<PhoneWebStatus>
+  placeCall(options: PlaceCallWebOptions): Promise<void>
+  openDialer(options?: Partial<PlaceCallWebOptions>): Promise<void>
+  listRecentCalls(options?: ListRecentCallsWebOptions): Promise<{ readonly calls: readonly unknown[] }>
+  saveCallTranscript(options: SaveCallTranscriptWebOptions): Promise<{ readonly updatedAt: number }>
+  checkPermissions(): Promise<PhoneWebPermissionStatus>
+  requestPermissions(): Promise<PhoneWebPermissionStatus>
+}
+
+function nonEmptyString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function validateCallTarget(options: unknown, requireNumber: boolean): string | undefined {
+  if (!isObjectRecord(options)) {
+    return requireNumber ? "number is required" : undefined
+  }
+  if ((requireNumber && options.number === undefined) || (options.number !== undefined && nonEmptyString(options.number) === "")) {
+    return "number is required"
+  }
+  return undefined
+}
+
+function validateRecentCallsOptions(options?: ListRecentCallsWebOptions): string | undefined {
+  if (options === undefined) return undefined
+  if (!isObjectRecord(options)) return "options must be an object"
+  if (options.limit !== undefined && (typeof options.limit !== "number" || !Number.isSafeInteger(options.limit) || options.limit < 1)) {
+    return "limit must be a positive safe integer"
+  }
+  if (options.number !== undefined && nonEmptyString(options.number) === "") {
+    return "number must be a non-empty string"
+  }
+  return undefined
+}
+
+function validateTranscriptOptions(options: SaveCallTranscriptWebOptions): string | undefined {
+  if (!isObjectRecord(options) || nonEmptyString(options.callId) === "") return "callId is required"
+  if (nonEmptyString(options.transcript) === "") return "transcript is required"
+  return undefined
+}
+
+export class PhoneWeb implements PhoneWebPlugin {
+  async getStatus(): Promise<PhoneWebStatus> {
+    return {
+      hasTelecom: false,
+      canPlaceCalls: false,
+      isDefaultDialer: false,
+      defaultDialerPackage: null,
+    }
+  }
+
+  async placeCall(options: PlaceCallWebOptions): Promise<void> {
+    const err = validateCallTarget(options, true)
+    if (err !== undefined) throw new Error(err)
+    throw new Error("Phone calls are only available on Android.")
+  }
+
+  async openDialer(options?: Partial<PlaceCallWebOptions>): Promise<void> {
+    const err = validateCallTarget(options, false)
+    if (err !== undefined) throw new Error(err)
+    throw new Error("Phone dialer is only available on Android.")
+  }
+
+  async listRecentCalls(options?: ListRecentCallsWebOptions): Promise<{ readonly calls: readonly unknown[] }> {
+    const err = validateRecentCallsOptions(options)
+    if (err !== undefined) throw new Error(err)
+    throw new Error("Call history is only available on Android.")
+  }
+
+  async saveCallTranscript(options: SaveCallTranscriptWebOptions): Promise<{ readonly updatedAt: number }> {
+    const err = validateTranscriptOptions(options)
+    if (err !== undefined) throw new Error(err)
+    throw new Error("Call transcripts are only available on Android.")
+  }
+
+  async checkPermissions(): Promise<PhoneWebPermissionStatus> {
+    throw new Error("Phone permissions are only available on Android.")
+  }
+
+  async requestPermissions(): Promise<PhoneWebPermissionStatus> {
+    throw new Error("Phone permissions are only available on Android.")
+  }
+}

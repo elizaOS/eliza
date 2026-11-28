@@ -1,0 +1,234 @@
+// spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"; spec/todos/store.md, "Story: Reject invalid batch writes and keep list queries bounded"
+import { assert, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core"
+import {
+  TODOS_EDGE_COMPATIBILITY,
+  TODOS_SERVICE_TYPE,
+  TodoStore,
+  TodosService,
+  createTodosEdgePlugin,
+  createTodosSqliteStore,
+  currentTodosProvider,
+  findTodo,
+  listTodos,
+  matchTodosByContent,
+  normalizeTodoContent,
+  sameTodoContent,
+  swapsWords,
+  todoAction,
+  todoRef,
+  todosPlugin,
+} from "../src/index.vibe"
+
+const AGENT_ID = "00000000-0000-4000-8000-000000000010" as UUID
+const USER_ID = "00000000-0000-4000-8000-000000000020" as UUID
+const OTHER_USER_ID = "00000000-0000-4000-8000-000000000021" as UUID
+const ROOM_ID = "00000000-0000-4000-8000-000000000030" as UUID
+
+function makeRuntime(service: TodosService): IAgentRuntime {
+  return {
+    agentId: AGENT_ID,
+    getSetting: () => undefined,
+    getService: (name: string) => (name === TODOS_SERVICE_TYPE ? service : null),
+  } as unknown as IAgentRuntime
+}
+
+function makeMessage(id: string, text: string, entityId: UUID = USER_ID, roomId: UUID = ROOM_ID): Memory {
+  return {
+    id: id as UUID,
+    entityId,
+    roomId,
+    content: { text },
+  } as unknown as Memory
+}
+
+it.effect(
+  `Full TODO umbrella journey: create, duplicate confirmation, idempotent replay, update/complete/cancel/delete, near-miss ref clarification, batch write, preview+confirm clear, and CURRENT_TODOS provider (spec/todos/index.md, "Story: Read my to-do list from the dashboard or the agent"; spec/todos/store.md, "Batch writes reject duplicate identifiers and missing room scope"; spec/todos/store.md, "List limits must be positive integers and exact matches outrank paraphrases")`,
+  effect () => {
+    const store = try Effect.try(() => createTodosSqliteStore(":memory:"))
+    const service = new TodosService(undefined, store)
+    const runtime = makeRuntime(service)
+    const created = try Effect.promise(() =>
+      todoAction.handler(runtime, makeMessage("m-1", "Add buy milk"), undefined, {
+        parameters: { action: "create", content: "Buy milk" },
+      }),
+    )
+      assert.strictEqual(created.success, true)
+      assert.strictEqual(created.effectReceipts?.[0]?.outcome, "applied")
+
+      const replayed = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-1", "Add buy milk"), undefined, {
+          parameters: { action: "create", content: "Buy milk" },
+        }),
+      )
+      assert.strictEqual(replayed.success, true)
+      assert.strictEqual(replayed.effectReceipts?.[0]?.idempotency?.replayed, true)
+
+      const duplicateBlocked = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-2", "Add buy milk."), undefined, {
+          parameters: { action: "create", content: "buy milk." },
+        }),
+      )
+      assert.strictEqual(duplicateBlocked.success, true)
+      assert.strictEqual((duplicateBlocked.data as { duplicate?: boolean })?.duplicate, true)
+
+      const duplicateConfirmed = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-3", "yes"), undefined, {
+          parameters: { action: "create", content: "Buy milk" },
+        }),
+      )
+      assert.strictEqual(duplicateConfirmed.success, true)
+      assert.strictEqual((duplicateConfirmed.data as { duplicate?: boolean })?.duplicate, undefined)
+
+      const ambiguousComplete = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-4", "complete buy milk"), undefined, {
+          parameters: { action: "complete", target: "buy milk" },
+        }),
+      )
+      assert.strictEqual((ambiguousComplete.data as { clarificationRequired?: boolean })?.clarificationRequired, true)
+      const candidates = (ambiguousComplete.data as { candidates: Array<{ ref: string }> }).candidates
+      assert.strictEqual(candidates.length, 2)
+
+      const completedByRef = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-5", "the first one"), undefined, {
+          parameters: { action: "complete", ref: candidates[0]!.ref },
+        }),
+      )
+      assert.strictEqual(completedByRef.success, true)
+      assert.strictEqual((completedByRef.data as { todo: { status: string } }).todo.status, "completed")
+
+      const providerRes = try Effect.promise(() => currentTodosProvider.get(runtime, makeMessage("m-6", "hi"), {} as never))
+      assert.ok((providerRes.text ?? "").includes("Buy milk"))
+      assert.strictEqual(((providerRes.data as { todos: unknown[] }).todos).length, 1)
+
+      const badLimit = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-7", "list"), undefined, {
+          parameters: { action: "list", limit: 0 },
+        }),
+      )
+      assert.strictEqual(badLimit.success, false)
+
+      const dupBatch = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-8", "replace"), undefined, {
+          parameters: {
+            action: "write",
+            todos: [
+              { id: "dup", content: "Pay water bill", status: "pending" },
+              { id: "dup", content: "Pay electric bill", status: "pending" },
+            ],
+          },
+        }),
+      )
+      assert.strictEqual(dupBatch.success, false)
+
+      const goodBatch = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-9", "replace"), undefined, {
+          parameters: {
+            action: "write",
+            todos: [
+              { id: "t-water", content: "Pay water bill", status: "pending" },
+              { id: "t-news", content: "Read the news", status: "pending" },
+            ],
+          },
+        }),
+      )
+      assert.strictEqual(goodBatch.success, true)
+
+      const swapNearMiss = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-10", "complete pay electricity bill"), undefined, {
+          parameters: { action: "complete", target: "Pay electricity bill" },
+        }),
+      )
+      assert.strictEqual((swapNearMiss.data as { clarificationRequired?: boolean })?.clarificationRequired, true)
+
+      const previewClear = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-11", "clear list"), undefined, {
+          parameters: { action: "clear" },
+        }),
+      )
+      assert.strictEqual((previewClear.data as { previewed?: boolean })?.previewed, true)
+
+      try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-12", "add after preview"), undefined, {
+          parameters: { action: "create", content: "Post-preview survivor" },
+        }),
+      )
+
+      const confirmedClear = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-13", "yes"), undefined, {
+          parameters: { action: "clear" },
+        }),
+      )
+      assert.strictEqual((confirmedClear.data as { clearedCount: number }).clearedCount, 2)
+
+      const afterClear = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-14", "list"), undefined, {
+          parameters: { action: "list" },
+        }),
+      )
+      const remaining = (afterClear.data as { todos: Array<{ content: string }> }).todos
+      assert.deepStrictEqual(
+        remaining.map((t) => t.content),
+        ["Post-preview survivor"],
+      )
+
+      const otherUserList = try Effect.promise(() =>
+        todoAction.handler(runtime, makeMessage("m-15", "list", OTHER_USER_ID), undefined, {
+          parameters: { action: "list" },
+        }),
+      )
+      assert.strictEqual(((otherUserList.data as { todos: unknown[] }).todos).length, 0)
+
+      const edgePlugin = createTodosEdgePlugin({ store })
+      assert.strictEqual(edgePlugin.name, "todos-edge")
+      assert.strictEqual(TODOS_EDGE_COMPATIBILITY.target, "edge")
+      assert.strictEqual(todosPlugin.name, "@elizaos/plugin-todos")
+      store.close()
+  },
+)
+
+it.effect(
+  `Content matching preserves negative numbers, news singularization, word-swap separation, stable todoRef, and owner-scoped TodoStore Effect service (spec/todos/index.md, "A list includes only items belonging to the requesting owner and the selected status"; spec/todos/index.md, "A lookup uses the owner and the item identifier together"; spec/todos/store.md, "List limits must be positive integers and exact matches outrank paraphrases")`,
+  effect () => {
+    assert.strictEqual(normalizeTodoContent("Check -5 degrees"), "check negative 5 degrees")
+    assert.strictEqual(sameTodoContent("Read the news", "Read the new"), false)
+    assert.strictEqual(sameTodoContent("Schedule meetings", "Schedule meeting"), true)
+    assert.strictEqual(swapsWords("Pay water bill", "Pay electricity bill"), true)
+    const matched = matchTodosByContent("Pay water bill", [
+      { content: "Pay water bill", status: "completed" as const },
+      { content: "Pay electricity bill", status: "pending" as const },
+    ])
+    assert.deepStrictEqual(
+      matched.map((m) => m.content),
+      ["Pay water bill"],
+    )
+    const refA = try Effect.promise(() => todoRef("abc-123"))
+    const refB = try Effect.promise(() => todoRef("abc-123"))
+    assert.strictEqual(refA, refB)
+    assert.ok(refA.startsWith("t-"))
+
+    const rows = [
+      {
+        listOwner: "owner",
+        value: { todoId: 1, content: "Meet Pat", todoStatus: "TodoPending" as const, completedAt: 0 },
+      },
+      {
+        listOwner: "other",
+        value: { todoId: 1, content: "Other", todoStatus: "TodoCompleted" as const, completedAt: 10 },
+      },
+    ]
+    const layer = Layer.succeed(
+      TodoStore,
+      TodoStore.of({
+        list: effect () => rows,
+        find: effect () => rows,
+      }),
+    )
+    provide layer {
+      const listed = try listTodos("owner", { tag: "EveryTodo" })
+      const found = try findTodo("owner", 1)
+      assert.strictEqual(listed.length, 1)
+      assert.strictEqual(found?.value.content, "Meet Pat")
+    }
+  },
+)

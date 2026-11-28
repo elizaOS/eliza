@@ -1,0 +1,339 @@
+// spec/discord/coordination.md, "Story: Coordinate Discord group replies and durable turn lifecycles"; spec/discord/coordination.md, "A durable turn claims a bounded speaker lease, budgets human and bot lanes independently, and reconciles already-stored replies"
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core"
+import {
+  Machine as CoordMachine,
+  machine as coordMachine,
+  type DiscordCoordState,
+  type DiscordReplyLane,
+  type Event as CoordEvent,
+} from "../gen/discord__coordination.effect.vibe"
+import { wrapDiscordMachineHandle, type DiscordMachineHandle } from "./types.vibe"
+
+export const DISCORD_TURN_TABLE = "discord_turns"
+export const DISCORD_TURN_MAX_ATTEMPTS = 3
+export const DISCORD_SPEAKER_LEASE_TABLE = "discord_coordination_reply_slots"
+export const DISCORD_COORDINATION_RECEIPT_TABLE = "discord_coordination_receipts"
+export const MAX_LEASE_GENERATIONS = 32
+export const DEFAULT_SPEAKER_LEASE_MS = 30_000
+export const DEFAULT_BOT_REPLY_BUDGET = 2
+export const DISCORD_COORDINATION_AUDIT_SCOPE = "discord:group-coordination"
+export const DEFAULT_COORDINATION_SWEEP_MS = 15_000
+
+export type DiscordTurnState = "RECEIVED" | "DISPATCHED" | "REPLIED" | "FAILED"
+
+export function isTerminalTurnState(state: DiscordTurnState): boolean {
+  return state === "REPLIED" || state === "FAILED"
+}
+
+export interface DiscordTurnRecord {
+  readonly id: UUID
+  readonly entityId: UUID
+  readonly roomId: UUID
+  readonly worldId: UUID
+  readonly platformMessageId: string
+  readonly state: DiscordTurnState
+  readonly attempts: number
+  readonly replyMessageId?: string
+  readonly failureReason?: string
+  readonly createdAt: number
+  readonly updatedAt: number
+}
+
+export type DiscordTurnRuntime = Pick<
+  IAgentRuntime,
+  "agentId" | "createMemory" | "updateMemory" | "getMemoryById" | "getMemories"
+>
+
+export type DiscordCoordinationMachineHandle = DiscordMachineHandle<DiscordCoordState, CoordEvent>
+
+export function createDiscordCoordinationHandle(): DiscordCoordinationMachineHandle {
+  const created = runSync(effect {
+    provide coordMachine() {
+      const m = try CoordMachine
+      return m
+    }
+  })
+  return wrapDiscordMachineHandle(created)
+}
+
+export function discordTurnId(runtime: Pick<IAgentRuntime, "agentId">, platformMessageId: string): UUID {
+  return createUniqueUuid(runtime as IAgentRuntime, `discord:turn:${platformMessageId}`)
+}
+
+function recordToMemory(runtime: DiscordTurnRuntime, record: DiscordTurnRecord): Memory {
+  return {
+    id: record.id,
+    entityId: record.entityId,
+    roomId: record.roomId,
+    worldId: record.worldId,
+    agentId: runtime.agentId,
+    createdAt: record.createdAt,
+    content: {
+      text: `discord-turn:${record.platformMessageId}:${record.state}`,
+      source: "discord",
+    },
+    metadata: {
+      type: "custom",
+      discordTurn: {
+        id: record.id,
+        entityId: record.entityId,
+        roomId: record.roomId,
+        worldId: record.worldId,
+        platformMessageId: record.platformMessageId,
+        state: record.state,
+        attempts: record.attempts,
+        ...(record.replyMessageId ? { replyMessageId: record.replyMessageId } : {}),
+        ...(record.failureReason ? { failureReason: record.failureReason } : {}),
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      },
+    },
+  }
+}
+
+function memoryToRecord(memory: Memory | null | undefined): DiscordTurnRecord | null {
+  if (!memory) return null
+  const raw = (memory.metadata as Record<string, unknown> | undefined)?.discordTurn
+  if (!raw || typeof raw !== "object") return null
+  const rec = raw as Partial<DiscordTurnRecord>
+  if (!rec.id || !rec.platformMessageId || !rec.state) return null
+  return rec as DiscordTurnRecord
+}
+
+export async function loadDiscordTurn(
+  runtime: DiscordTurnRuntime,
+  platformMessageId: string,
+): Promise<DiscordTurnRecord | null> {
+  const id = discordTurnId(runtime, platformMessageId)
+  const existing = await runtime.getMemoryById(id)
+  return memoryToRecord(existing)
+}
+
+export async function claimDiscordTurn(
+  runtime: DiscordTurnRuntime,
+  params: {
+    readonly entityId: UUID
+    readonly roomId: UUID
+    readonly worldId: UUID
+    readonly platformMessageId: string
+    readonly maxAttempts?: number
+  },
+): Promise<{ readonly record: DiscordTurnRecord; readonly shouldDispatch: boolean; readonly reconciled: boolean }> {
+  const maxAttempts = Math.max(1, params.maxAttempts ?? DISCORD_TURN_MAX_ATTEMPTS)
+  const existing = await loadDiscordTurn(runtime, params.platformMessageId)
+  if (existing && isTerminalTurnState(existing.state)) {
+    return { record: existing, shouldDispatch: false, reconciled: false }
+  }
+  const existingReplies = await runtime.getMemories({
+    roomId: params.roomId,
+    tableName: "messages",
+    count: 50,
+  })
+  const matchingReply = existingReplies.find(
+    (m) => m.content?.inReplyTo === params.platformMessageId || (m.metadata as Record<string, unknown> | undefined)?.inReplyTo === params.platformMessageId,
+  )
+  const now = Date.now()
+  if (matchingReply) {
+    const replyMessageId = String((matchingReply.metadata as Record<string, unknown> | undefined)?.platformMessageId ?? matchingReply.id ?? "")
+    const reconciledRecord: DiscordTurnRecord = {
+      id: existing?.id ?? discordTurnId(runtime, params.platformMessageId),
+      entityId: params.entityId,
+      roomId: params.roomId,
+      worldId: params.worldId,
+      platformMessageId: params.platformMessageId,
+      state: "REPLIED",
+      attempts: existing?.attempts ?? 0,
+      replyMessageId: replyMessageId || undefined,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+    const mem = recordToMemory(runtime, reconciledRecord)
+    if (existing) await runtime.updateMemory({ id: mem.id as UUID, content: mem.content, metadata: mem.metadata })
+    else await runtime.createMemory(mem, DISCORD_TURN_TABLE)
+    return { record: reconciledRecord, shouldDispatch: false, reconciled: true }
+  }
+  if (existing && existing.attempts >= maxAttempts) {
+    const failed = await markDiscordTurnFailed(runtime, existing, "max_attempts_exceeded")
+    return { record: failed, shouldDispatch: false, reconciled: false }
+  }
+  const nextRecord: DiscordTurnRecord = {
+    id: existing?.id ?? discordTurnId(runtime, params.platformMessageId),
+    entityId: params.entityId,
+    roomId: params.roomId,
+    worldId: params.worldId,
+    platformMessageId: params.platformMessageId,
+    state: "RECEIVED",
+    attempts: existing?.attempts ?? 0,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  if (!existing) await runtime.createMemory(recordToMemory(runtime, nextRecord), DISCORD_TURN_TABLE)
+  return { record: nextRecord, shouldDispatch: true, reconciled: false }
+}
+
+async function persistTurnUpdate(runtime: DiscordTurnRuntime, record: DiscordTurnRecord): Promise<DiscordTurnRecord> {
+  const mem = recordToMemory(runtime, record)
+  await runtime.updateMemory({ id: mem.id as UUID, content: mem.content, metadata: mem.metadata })
+  return record
+}
+
+export async function markDiscordTurnDispatched(
+  runtime: DiscordTurnRuntime,
+  record: DiscordTurnRecord,
+): Promise<DiscordTurnRecord> {
+  return persistTurnUpdate(runtime, {
+    ...record,
+    state: "DISPATCHED",
+    attempts: record.attempts + 1,
+    updatedAt: Date.now(),
+  })
+}
+
+export async function markDiscordTurnReplied(
+  runtime: DiscordTurnRuntime,
+  record: DiscordTurnRecord,
+  replyMessageId?: string,
+): Promise<DiscordTurnRecord> {
+  return persistTurnUpdate(runtime, {
+    ...record,
+    state: "REPLIED",
+    replyMessageId,
+    updatedAt: Date.now(),
+  })
+}
+
+export async function markDiscordTurnFailed(
+  runtime: DiscordTurnRuntime,
+  record: DiscordTurnRecord,
+  failureReason: string,
+): Promise<DiscordTurnRecord> {
+  return persistTurnUpdate(runtime, {
+    ...record,
+    state: "FAILED",
+    failureReason,
+    updatedAt: Date.now(),
+  })
+}
+
+export interface GroupCoordinationConfig {
+  readonly enabled: boolean
+  readonly trustGroupId: string
+  readonly leaseMs: number
+  readonly botReplyBudget: number
+  readonly sweepIntervalMs: number
+}
+
+export function getGroupCoordinationConfig(runtime: Pick<IAgentRuntime, "getSetting">): GroupCoordinationConfig {
+  const enabled = String(runtime.getSetting("DISCORD_GROUP_COORDINATION_ENABLED") ?? "false").toLowerCase() === "true"
+  const trustGroupId = String(runtime.getSetting("DISCORD_TRUST_GROUP_ID") ?? "default").trim() || "default"
+  const leaseMs = Math.max(1000, Number(runtime.getSetting("DISCORD_SPEAKER_LEASE_MS") ?? DEFAULT_SPEAKER_LEASE_MS) || DEFAULT_SPEAKER_LEASE_MS)
+  const botReplyBudget = Math.max(0, Number(runtime.getSetting("DISCORD_BOT_REPLY_BUDGET") ?? DEFAULT_BOT_REPLY_BUDGET) || DEFAULT_BOT_REPLY_BUDGET)
+  const sweepIntervalMs = Math.max(1000, Number(runtime.getSetting("DISCORD_COORDINATION_SWEEP_MS") ?? DEFAULT_COORDINATION_SWEEP_MS) || DEFAULT_COORDINATION_SWEEP_MS)
+  return { enabled, trustGroupId, leaseMs, botReplyBudget, sweepIntervalMs }
+}
+
+export interface SpeakerLease {
+  readonly channelId: string
+  readonly edgeEpoch: string
+  readonly lane: "human" | "bot"
+  readonly slotIndex: number
+  readonly holderToken: string
+  readonly inboundMessageId: string
+  readonly expiresAt: number
+  readonly deliveredMessageId?: string
+}
+
+export type SpeakerLeaseClaimOutcome =
+  | { readonly kind: "claimed"; readonly lease: SpeakerLease }
+  | { readonly kind: "contended"; readonly holderToken: string }
+  | { readonly kind: "budget_exhausted"; readonly lane: "human" | "bot" }
+
+export interface SpeakerLeaseStore {
+  readonly claim: (params: {
+    readonly channelId: string
+    readonly edgeEpoch: string
+    readonly lane: "human" | "bot"
+    readonly holderToken: string
+    readonly inboundMessageId: string
+    readonly botBudget: number
+    readonly leaseMs: number
+    readonly now?: number
+  }) => SpeakerLeaseClaimOutcome
+  readonly complete: (channelId: string, edgeEpoch: string, holderToken: string, deliveredMessageId: string) => boolean
+  readonly release: (channelId: string, edgeEpoch: string, holderToken: string) => boolean
+  readonly sweepExpired: (now?: number) => number
+  readonly listActive: () => readonly SpeakerLease[]
+}
+
+export function createInMemorySpeakerLeaseStore(): SpeakerLeaseStore {
+  const leases = new Map<string, SpeakerLease>()
+  const botCounts = new Map<string, number>()
+  const humanCounts = new Map<string, number>()
+  const keyOf = (channelId: string, edgeEpoch: string, lane: "human" | "bot") => `${channelId}:${edgeEpoch}:${lane}`
+
+  return {
+    claim(params) {
+      const now = params.now ?? Date.now()
+      const key = keyOf(params.channelId, params.edgeEpoch, params.lane)
+      const existing = leases.get(key)
+      if (existing && existing.expiresAt > now && !existing.deliveredMessageId) {
+        return { kind: "contended", holderToken: existing.holderToken }
+      }
+      const laneCounts = params.lane === "bot" ? botCounts : humanCounts
+      const used = laneCounts.get(key) ?? 0
+      if (params.lane === "bot" && used >= params.botBudget) {
+        return { kind: "budget_exhausted", lane: "bot" }
+      }
+      const coord = createDiscordCoordinationHandle()
+      const specLane: DiscordReplyLane = params.lane === "bot" ? "BotLane" : "HumanLane"
+      void coord.dispatch({ type: "receiveTurn" })
+      void coord.dispatch({ type: "claimLease", holder: params.holderToken, lane: specLane })
+      const lease: SpeakerLease = {
+        channelId: params.channelId,
+        edgeEpoch: params.edgeEpoch,
+        lane: params.lane,
+        slotIndex: used,
+        holderToken: params.holderToken,
+        inboundMessageId: params.inboundMessageId,
+        expiresAt: now + params.leaseMs,
+      }
+      leases.set(key, lease)
+      laneCounts.set(key, used + 1)
+      return { kind: "claimed", lease }
+    },
+    complete(channelId, edgeEpoch, holderToken, deliveredMessageId) {
+      for (const [key, lease] of leases.entries()) {
+        if (lease.channelId === channelId && lease.edgeEpoch === edgeEpoch && lease.holderToken === holderToken) {
+          leases.set(key, { ...lease, deliveredMessageId })
+          return true
+        }
+      }
+      return false
+    },
+    release(channelId, edgeEpoch, holderToken) {
+      for (const [key, lease] of leases.entries()) {
+        if (lease.channelId === channelId && lease.edgeEpoch === edgeEpoch && lease.holderToken === holderToken) {
+          leases.delete(key)
+          return true
+        }
+      }
+      return false
+    },
+    sweepExpired(now = Date.now()) {
+      let swept = 0
+      for (const [key, lease] of leases.entries()) {
+        if (!lease.deliveredMessageId && lease.expiresAt <= now) {
+          leases.delete(key)
+          swept += 1
+        }
+      }
+      return swept
+    },
+    listActive: () => Array.from(leases.values()),
+  }
+}

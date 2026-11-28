@@ -1,0 +1,91 @@
+// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"
+
+export type SlackDmPolicy = "open" | "pairing" | "allowlist" | "disabled"
+export type SlackGroupPolicy = "open" | "allowlist" | "disabled"
+export type SlackReplyToMode = "off" | "first" | "all"
+export type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist"
+
+export interface SlackDmConfig {
+  enabled?: boolean
+  policy?: SlackDmPolicy
+  allowFrom?: Array<string | number>
+  groupEnabled?: boolean
+  groupChannels?: Array<string | number>
+  replyToMode?: SlackReplyToMode
+}
+
+export interface SlackChannelConfig {
+  enabled?: boolean
+  allow?: boolean
+  requireMention?: boolean
+  tools?: Record<string, unknown>
+  toolsBySender?: Record<string, unknown>
+  allowBots?: boolean
+  users?: Array<string | number>
+  skills?: string[]
+  systemPrompt?: string
+}
+
+export interface SlackActionConfig {
+  reactions?: boolean
+  messages?: boolean
+  pins?: boolean
+  search?: boolean
+  permissions?: boolean
+  memberInfo?: boolean
+  channelInfo?: boolean
+  emojiList?: boolean
+}
+
+export interface SlackSlashCommandConfig {
+  enabled?: boolean
+  name?: string
+  sessionPrefix?: string
+  ephemeral?: boolean
+}
+
+export interface SlackThreadConfig {
+  historyScope?: "thread" | "channel"
+  inheritParent?: boolean
+}
+
+export interface SlackAccountConfigBase {
+  name?: string
+  mode?: "socket" | "http"
+  signingSecret?: string
+  webhookPath?: string
+  capabilities?: string[]
+  markdown?: Record<string, unknown>
+  commands?: boolean | "auto" | Record<string, unknown>
+  configWrites?: boolean
+  enabled?: boolean
+  botToken?: string
+  appToken?: string
+  userToken?: string
+  userTokenReadOnly?: boolean
+  allowBots?: boolean
+  requireMention?: boolean
+  groupPolicy?: SlackGroupPolicy
+  historyLimit?: number
+  dmHistoryLimit?: number
+  dms?: Record<string, Record<string, unknown>>
+  textChunkLimit?: number
+  chunkMode?: "length" | "newline"
+  blockStreaming?: boolean
+  blockStreamingCoalesce?: Record<string, unknown>
+  mediaMaxMb?: number
+  reactionNotifications?: SlackReactionNotificationMode
+  reactionAllowlist?: Array<string | number>
+  replyToMode?: SlackReplyToMode
+  replyToModeByChatType?: Partial<Record<"direct" | "group" | "channel", SlackReplyToMode>>
+  thread?: SlackThreadConfig
+  actions?: SlackActionConfig
+  slashCommand?: SlackSlashCommandConfig
+  dm?: SlackDmConfig
+  channels?: Record<string, SlackChannelConfig>
+  heartbeat?: Record<string, unknown>
+}
+
+export type SlackConfig = {
+  accounts?: Record<string, SlackAccountConfigBase>
+} & SlackAccountConfigBase

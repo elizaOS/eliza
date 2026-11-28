@@ -1,0 +1,380 @@
+// spec/telegram/index.md, "Only the current poller can mark its claim healthy, terminated or released"; spec/telegram/index.md, "The effective Telegram allowlist can deny all chats, and DMs default to pairing when no list is set"; spec/telegram/index.md, "An admitted command keeps its sender and a reply stays in its account, chat and topic"
+import { Input, Telegraf, type Context } from "telegraf"
+import {
+  ChannelType,
+  Service,
+  checkPairingAllowed,
+  chunkText,
+  createUniqueUuid,
+  requireConfirmedSendHandlerDelivery,
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  type SendHandlerOutcome,
+  type TargetInfo,
+} from "@elizaos/core"
+import { fetchRemoteMedia } from "@elizaos/core-node"
+import {
+  initial,
+  machineOver,
+  telegramChatAdmission,
+  telegramMessageDisposition,
+  telegramReplyAddress,
+  type TelegramCommand,
+  type TelegramInbound,
+} from "../gen/telegram.effect.vibe"
+import { MessageManager } from "./message-manager.vibe"
+import { listEnabledTelegramAccounts, normalizeTelegramAccountId, parseTelegramChatList, parseTelegramDmPolicy } from "./policy.vibe"
+import {
+  claimTelegramPollerToken,
+  markTelegramPollerConnected,
+  markTelegramPollerTerminated,
+  pollerIdentity,
+  preserveTelegramCancellation,
+  releaseTelegramPollerToken,
+} from "./poller-lock.vibe"
+import { createRuntimeMemoryBoardStore, TelegramTaskBoardManager } from "./task-board.vibe"
+import { TELEGRAM_OWNER_PAIRING_SERVICE_TYPE, TELEGRAM_SERVICE_NAME, TelegramRequestFailed, type TelegramConnection } from "./types.vibe"
+import type { TelegramOwnerPairingService } from "./owner-pairing.vibe"
+
+const activePollers = new Map<string, string>()
+const plainMessage = Schema.Struct({
+  message_id: Schema.Int,
+  date: Schema.Int,
+  text: Schema.optionalKey(Schema.String),
+  caption: Schema.optionalKey(Schema.String),
+  message_thread_id: Schema.optionalKey(Schema.Int),
+  is_topic_message: Schema.optionalKey(Schema.Boolean),
+})
+
+export interface ConnectedTelegramAccount {
+  readonly bot: Telegraf<Context>
+  readonly send: (target: TargetInfo, content: Content, inReplyTo?: number) => SendHandlerOutcome!TelegramRequestFailed!never
+  readonly stop: () => void!TelegramRequestFailed!never
+}
+
+export effect function connectTelegramAccount(runtime: IAgentRuntime, config: TelegramConnection): ConnectedTelegramAccount!(TelegramRequestFailed | unknown)!never {
+  const token = Redacted.value(config.token)
+  const key = try Effect.try({ try: () => pollerIdentity(token), catch: () => new TelegramRequestFailed({ stage: "identity" }) })
+  if (activePollers.has(key.fingerprint)) throw new TelegramRequestFailed({ stage: "token-in-use" })
+  activePollers.set(key.fingerprint, key.instanceId)
+  const release = () => {
+    if (activePollers.get(key.fingerprint) === key.instanceId) activePollers.delete(key.fingerprint)
+  }
+  const bot = try Effect.try({
+    try: () => new Telegraf(token, config.apiRoot === undefined ? {} : { telegram: { apiRoot: config.apiRoot } }),
+    catch: () => {
+      release()
+      return new TelegramRequestFailed({ stage: "client" })
+    },
+  })
+  try Effect.try({ try: () => preserveTelegramCancellation(bot.telegram), catch: () => new TelegramRequestFailed({ stage: "client" }) })
+  const current = try Ref.make(initial)
+  const poller = try machineOver(() => Ref.get(current), (next) => Ref.set(current, next))
+  const claim = { instanceId: key.instanceId, ownerId: config.ownerId, accountId: config.accountId, mode: config.mode, generation: 1 }
+  poller.send({ type: "claimTelegramPoller", claim }, "TelegramHost") catch effect (error) => {
+    release()
+    throw error
+  }
+  const identity = try tryPromise({
+    try: () => bot.telegram.getMe(),
+    catch: () => {
+      release()
+      return new TelegramRequestFailed({ stage: "identity" })
+    },
+  })
+  bot.botInfo = identity
+  const accountList = config.mode === "TelegramFull" ? [...config.accountChats] : []
+
+  effect function send(target: TargetInfo, content: Content, inReplyTo?: number): SendHandlerOutcome!TelegramRequestFailed {
+    const chat = target.channelId
+    const text = content.text?.trim() ?? ""
+    const attachments = content.attachments ?? []
+    if (
+      activePollers.get(key.fingerprint) !== key.instanceId
+      || (target.accountId !== undefined && target.accountId !== config.accountId)
+      || chat === undefined
+      || !/^-?\d+$/.test(chat)
+      || (text === "" && attachments.length === 0)
+      || attachments.length > 10
+    ) {
+      return { kind: "not_delivered", code: "TELEGRAM_INVALID_SEND", message: "The selected Telegram account, chat, or message is unavailable." }
+    }
+    const topic = target.threadId === undefined ? undefined : Number(target.threadId)
+    if (topic !== undefined && (!Number.isSafeInteger(topic) || topic <= 0)) {
+      return { kind: "not_delivered", code: "TELEGRAM_BAD_TOPIC", message: "The selected Telegram topic is invalid." }
+    }
+    const reply = {
+      ...(topic === undefined ? {} : { message_thread_id: topic }),
+      ...(inReplyTo === undefined ? {} : { reply_parameters: { message_id: inReplyTo, allow_sending_without_reply: false } }),
+    }
+    const parts = text === "" ? [] : try Effect.try({ try: () => chunkText(text, 4096), catch: () => new TelegramRequestFailed({ stage: "text" }) })
+    const files = []
+    for (const attachment of attachments) {
+      const media = try tryPromise({
+        try: (signal) => fetchRemoteMedia({ url: attachment.url, maxBytes: 20 * 1024 * 1024, signal }),
+        catch: () => new TelegramRequestFailed({ stage: "media" }),
+      })
+      files.push(try Effect.try({
+        try: () => Input.fromBuffer(media.buffer, media.fileName ?? attachment.filename ?? "attachment"),
+        catch: () => new TelegramRequestFailed({ stage: "media" }),
+      }))
+    }
+    const writes: Array<() => Promise<{ message_id: number }>> = [
+      ...parts.map((part) => () => bot.telegram.sendMessage(chat, part, { ...reply, link_preview_options: { is_disabled: true } })),
+      ...files.map((file) => () => bot.telegram.sendDocument(chat, file, reply)),
+    ]
+    const ids: string[] = []
+    for (const write of writes) {
+      if (activePollers.get(key.fingerprint) !== key.instanceId) break
+      const response = tryPromise(write) catch () => undefined
+      if (response === undefined || !Number.isSafeInteger(response.message_id) || response.message_id <= 0) break
+      ids.push(String(response.message_id))
+    }
+    const [first, ...rest] = ids
+    if (first === undefined) throw new TelegramRequestFailed({ stage: "delivery-unknown" })
+    const providerMessageIds: [string, ...string[]] = [first, ...rest]
+    const receipt = {
+      providerMessageIds,
+      acceptedAt: try Clock.currentTimeMillis,
+      persistence: { status: "not_attempted" as const, reason: "Telegram returned provider message IDs." },
+    }
+    return ids.length === writes.length
+      ? { kind: "delivered", receipt, memories: [] }
+      : { kind: "partially_delivered", receipt, memories: [], code: "TELEGRAM_PARTIAL_SEND", message: "Telegram confirmed only part of the send. Repeating it may duplicate messages." }
+  }
+
+  effect function inbound(ctx: Context) {
+    if (ctx.chat === undefined || ctx.from === undefined || ctx.from.is_bot || ctx.from.id === identity.id || activePollers.get(key.fingerprint) !== key.instanceId) return
+    const row = Schema.decodeUnknownEffect(plainMessage)(ctx.message ?? ctx.channelPost) catch () => undefined
+    if (row === undefined) return
+    const text = (row.text ?? row.caption ?? "").trim()
+    if (text === "") return
+    const acceptedAt = try Clock.currentTimeMillis
+    poller.send({ type: "observeTelegramUpdate", claim, updatedAt: acceptedAt }, "TelegramHost") catch () => undefined
+    const chat = String(ctx.chat.id)
+    const scope = ctx.chat.type === "private" ? "TelegramDirect" : ctx.chat.type === "channel" ? "TelegramChannel" : row.is_topic_message === true ? "TelegramTopic" : "TelegramGroup"
+    const policy = { accountList, globalList: config.globalChats, dmPolicy: config.dmPolicy, pairedSender: false }
+    const pending = telegramChatAdmission(scope, chat, policy)
+    if (pending === "TelegramDenied") return
+    const sender = String(ctx.from.id)
+    const pairing = pending === "TelegramNeedsPairing" ? tryPromise(() => checkPairingAllowed(runtime, { channel: "telegram", senderId: sender })) catch () => undefined : undefined
+    const command: TelegramCommand = /^\/[a-z0-9_]+(?:@[a-z0-9_]+)?(?:\s|$)/i.test(text) ? "TelegramPublicCommand" : "TelegramOrdinary"
+    if (pending === "TelegramNeedsPairing" && pairing?.allowed !== true) {
+      if (pairing?.replyMessage && config.autoReply && !config.passive) try send({ source: "telegram", accountId: config.accountId, channelId: chat }, { text: pairing.replyMessage })
+      return
+    }
+    const namespace = `telegram:${config.accountId}`
+    const topic = row.message_thread_id === undefined ? "" : String(row.message_thread_id)
+    const { entityId, roomId, worldId, id } = try Effect.try(() => ({
+      entityId: createUniqueUuid(runtime, `${namespace}:sender:${sender}`),
+      roomId: createUniqueUuid(runtime, `${namespace}:chat:${chat}:${topic}`),
+      worldId: createUniqueUuid(runtime, `${namespace}:world:${chat}`),
+      id: createUniqueUuid(runtime, `${namespace}:message:${chat}:${row.message_id}`),
+    }))
+    const frame: TelegramInbound = { eventAccount: config.accountId, eventChat: chat, topicId: topic, eventMessageId: String(row.message_id), senderEntity: entityId, chatScope: scope, command }
+    const disposition = telegramMessageDisposition(frame, { ...policy, pairedSender: pairing?.allowed === true }, { isOwner: false, isAdmin: false }, config.autoReply, config.passive)
+    if (disposition === "TelegramIgnore") return
+    const type = scope === "TelegramDirect" ? ChannelType.DM : ChannelType.GROUP
+    try tryPromise(() => runtime.ensureConnection({ entityId, roomId, worldId, source: "telegram", channelId: chat, serverId: chat, type, metadata: { accountId: config.accountId, ...(topic ? { threadId: topic } : {}) } }))
+    const incoming: Memory = { id, entityId, roomId, worldId, agentId: runtime.agentId, createdAt: row.date * 1000, content: { text, source: "telegram", channelType: type } }
+    const messageService = runtime.messageService
+    if (disposition !== "TelegramReply" || !messageService) {
+      try tryPromise(() => runtime.createMemory(incoming, "messages"))
+      return
+    }
+    const destination = telegramReplyAddress(frame)
+    try tryPromise(() => messageService.handleMessage(runtime, incoming, async (reply) => {
+      requireConfirmedSendHandlerDelivery(await runPromise(send({ source: "telegram", accountId: destination.accountId, channelId: destination.chatId, ...(destination.threadId ? { threadId: destination.threadId } : {}) }, reply, row.message_id)))
+      return []
+    }))
+  }
+
+  bot.on("message", (ctx) => runPromise(inbound(ctx)))
+  bot.on("channel_post", (ctx) => runPromise(inbound(ctx)))
+  bot.catch(() => {})
+  const connectedAt = try Clock.currentTimeMillis
+  try poller.send({ type: "connectTelegramPoller", claim, updatedAt: connectedAt }, "TelegramHost")
+  const worker = fork.detached ensuring(Effect.tryPromise(() => bot.launch({ dropPendingUpdates: false })), effect {
+    poller.send({ type: "terminateTelegramPoller", claim }, "TelegramHost") catch () => undefined
+    release()
+  })
+  try Effect.try(() => runtime.registerMessageConnector({
+    source: "telegram",
+    accountId: config.accountId,
+    accountRouting: "connector",
+    label: "Telegram",
+    sendHandler: (_runtime, target, body) => runPromise(send(target, body)),
+  }))
+  return {
+    bot,
+    send,
+    effect stop() {
+      if (activePollers.get(key.fingerprint) !== key.instanceId) return
+      const stop = try exit(Effect.try(() => bot.stop("agent shutdown")))
+      if (!Exit.isSuccess(stop)) throw new TelegramRequestFailed({ stage: "stop-before-ready" })
+      try Fiber.await(worker)
+      poller.send({ type: "releaseTelegramPoller", claim }, "TelegramHost") catch () => undefined
+    },
+  }
+}
+
+interface ManagedAccountBot {
+  readonly accountId: string
+  readonly token: string
+  readonly bot: Telegraf<Context>
+  readonly messageManager: MessageManager
+  readonly taskBoard: TelegramTaskBoardManager
+  readonly stopFn: () => Promise<void>
+}
+
+export class TelegramService extends Service {
+  static override serviceType = TELEGRAM_SERVICE_NAME
+  override capabilityDescription = "Connects authorized multi-account Telegram bot conversations, commands, task boards, and media delivery."
+
+  private readonly accounts = new Map<string, ManagedAccountBot>()
+  bot: Telegraf<Context> | null = null
+  messageManager: MessageManager | null = null
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<TelegramService> {
+    const service = new TelegramService(runtime)
+    const enabled = listEnabledTelegramAccounts(runtime)
+    for (const account of enabled) {
+      if (account.botToken === undefined) continue
+      await service.attachAccount({
+        accountId: account.accountId,
+        token: account.botToken,
+        apiRoot: account.apiRoot,
+        allowedChats: account.config.allowedChats,
+        autoReply: account.config.autoReply ?? runtime.getSetting("TELEGRAM_AUTO_REPLY") === "true",
+        passive: runtime.getSetting("ELIZA_LIFEOPS_PASSIVE_CONNECTORS") === "true",
+        launchPolling: runtime.getSetting("TELEGRAM_SKIP_POLLING") !== "true",
+      })
+    }
+    return service
+  }
+
+  static async stop(runtime: IAgentRuntime): Promise<void> {
+    const existing = runtime.getService<TelegramService>(TELEGRAM_SERVICE_NAME)
+    await existing?.stop()
+  }
+
+  async attachAccount(input: {
+    readonly accountId: string
+    readonly token: string
+    readonly apiRoot?: string
+    readonly allowedChats?: readonly string[]
+    readonly autoReply?: boolean
+    readonly passive?: boolean
+    readonly launchPolling?: boolean
+  }): Promise<MessageManager> {
+    const accountId = normalizeTelegramAccountId(input.accountId)
+    const runtime = this.runtime
+    if (input.launchPolling !== false && runtime !== undefined) {
+      const connection = await runPromise(connectTelegramAccount(runtime, {
+        accountId,
+        token: Redacted.make(input.token),
+        ownerId: String(runtime.agentId),
+        ...(input.apiRoot !== undefined && /^https?:\/\//.test(input.apiRoot) ? { apiRoot: input.apiRoot } : {}),
+        dmPolicy: parseTelegramDmPolicy(runtime.getSetting("TELEGRAM_DM_POLICY")),
+        accountChats: new Set(input.allowedChats ?? []),
+        globalChats: parseTelegramChatList(runtime.getSetting("TELEGRAM_ALLOWED_CHATS")),
+        mode: "TelegramFull",
+        autoReply: input.autoReply === true,
+        passive: input.passive === true,
+      }))
+      return this.registerManagedBot(accountId, input.token, connection.bot, () => runPromise(connection.stop()))
+    }
+    const bot = new Telegraf(input.token, input.apiRoot === undefined ? {} : { telegram: { apiRoot: input.apiRoot } })
+    preserveTelegramCancellation(bot.telegram)
+    await claimTelegramPollerToken(input.token, {
+      mode: "full",
+      accountId,
+      ownerId: String(runtime?.agentId ?? "telegram"),
+      bot,
+    })
+    const me = await bot.telegram.getMe()
+    bot.botInfo = me
+    await markTelegramPollerConnected(input.token, bot)
+    return this.registerManagedBot(accountId, input.token, bot, async () => {
+      await markTelegramPollerTerminated(input.token, bot)
+      await releaseTelegramPollerToken(input.token, bot)
+    })
+  }
+
+  private registerManagedBot(
+    accountId: string,
+    token: string,
+    bot: Telegraf<Context>,
+    stopFn: () => Promise<void>,
+  ): MessageManager {
+    const messageManager = new MessageManager(bot)
+    const store = this.runtime === undefined
+      ? { load: () => undefined, save: () => undefined, forget: () => undefined }
+      : createRuntimeMemoryBoardStore(this.runtime, accountId)
+    const taskBoard = new TelegramTaskBoardManager(store, {
+      post: async (chatId, text, threadId) => {
+        const res = await messageManager.sendMessage(chatId, { text }, { threadId })
+        return res.messageIds[0] ?? 0
+      },
+      edit: (chatId, messageId, text) => messageManager.editMessage(chatId, messageId, text),
+      pin: async (chatId, messageId) => {
+        await messageManager.pinMessage(chatId, messageId)
+      },
+    })
+    bot.command("eliza_pair", async (ctx) => {
+      const pairing = this.runtime?.getService(TELEGRAM_OWNER_PAIRING_SERVICE_TYPE) as TelegramOwnerPairingService | null | undefined
+      if (pairing === null || pairing === undefined) {
+        await ctx.reply("Owner pairing service is unavailable.")
+        return
+      }
+      const rawText = (ctx.message as { readonly text?: string } | undefined)?.text ?? ""
+      const code = rawText.replace(/^\/eliza_pair(?:@\S+)?\s*/i, "").trim()
+      await pairing.handlePairCommand(ctx, code)
+    })
+    const managed: ManagedAccountBot = { accountId, token, bot, messageManager, taskBoard, stopFn }
+    this.accounts.set(accountId, managed)
+    if (this.bot === null || accountId === "default") {
+      this.bot = bot
+      this.messageManager = messageManager
+    }
+    return messageManager
+  }
+
+  getMessageManager(accountId?: string): MessageManager | undefined {
+    if (accountId !== undefined) return this.accounts.get(normalizeTelegramAccountId(accountId))?.messageManager
+    return this.messageManager ?? this.accounts.values().next().value?.messageManager
+  }
+
+  getTaskBoard(accountId?: string): TelegramTaskBoardManager | undefined {
+    if (accountId !== undefined) return this.accounts.get(normalizeTelegramAccountId(accountId))?.taskBoard
+    return this.accounts.values().next().value?.taskBoard
+  }
+
+  listAccountIds(): readonly string[] {
+    return [...this.accounts.keys()].toSorted((a, b) => a.localeCompare(b))
+  }
+
+  async sendDmLink(chatId: string, text: string, linkUrl?: string): Promise<void> {
+    const manager = this.getMessageManager()
+    if (manager === undefined) throw new TelegramRequestFailed({ stage: "no-bot" })
+    await manager.sendMessage(chatId, {
+      text,
+      ...(linkUrl !== undefined ? { buttons: [{ kind: "url", text: "Open secure link", url: linkUrl }] } : {}),
+    })
+  }
+
+  override async stop(): Promise<void> {
+    const entries = [...this.accounts.values()]
+    this.accounts.clear()
+    this.bot = null
+    this.messageManager = null
+    for (const entry of entries) {
+      await entry.stopFn()
+    }
+  }
+}

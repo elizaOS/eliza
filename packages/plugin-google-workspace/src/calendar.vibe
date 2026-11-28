@@ -1,0 +1,451 @@
+// spec/googleWorkspace/index.md, "A user-account request must match the owner, the explicit account, the current credential generation and all required scopes"
+import { ElizaError } from "@elizaos/core"
+import type { GoogleApiClientFactory } from "./auth.vibe"
+import { raise } from "./boundary.vibe"
+import type {
+  GoogleAccountRef,
+  GoogleCalendarAttendee,
+  GoogleCalendarEvent,
+  GoogleCalendarEventDeleteInput,
+  GoogleCalendarEventInput,
+  GoogleCalendarEventListPage,
+  GoogleCalendarEventListPageInput,
+  GoogleCalendarEventPatchInput,
+  GoogleCalendarEventResponseInput,
+  GoogleCalendarFreeBusyCalendar,
+  GoogleCalendarFreeBusyInput,
+  GoogleCalendarFreeBusyResult,
+  GoogleCalendarListEntry,
+  GoogleCalendarListPage,
+  GoogleCalendarListPageInput,
+  GoogleCalendarStopChannelInput,
+  GoogleCalendarWatchInput,
+  GoogleCalendarWatchResponse,
+} from "./types.vibe"
+
+export type GoogleCalendarMutationOutcome = "applied" | "conflict" | "not_found" | "forbidden"
+export type GoogleCalendarSyncResource = "calendars" | "events"
+
+export class GoogleCalendarMutationError extends ElizaError {
+  readonly outcome: GoogleCalendarMutationOutcome
+
+  constructor(outcome: GoogleCalendarMutationOutcome, message: string, context?: Record<string, unknown>) {
+    super(message, { code: `GOOGLE_CALENDAR_${outcome.toUpperCase()}`, context })
+    this.outcome = outcome
+  }
+}
+
+export class GoogleCalendarSyncTokenExpiredError extends ElizaError {
+  readonly resource: GoogleCalendarSyncResource
+
+  constructor(resource: GoogleCalendarSyncResource, accountId: string) {
+    super(`Google Calendar ${resource} syncToken expired for account "${accountId}".`, {
+      code: "GOOGLE_CALENDAR_SYNC_TOKEN_EXPIRED",
+      context: { resource, accountId },
+    })
+    this.resource = resource
+  }
+}
+
+interface RawCalendarEvent {
+  readonly id?: string
+  readonly etag?: string
+  readonly status?: string
+  readonly htmlLink?: string
+  readonly summary?: string
+  readonly description?: string
+  readonly location?: string
+  readonly start?: { readonly date?: string; readonly dateTime?: string; readonly timeZone?: string }
+  readonly end?: { readonly date?: string; readonly dateTime?: string; readonly timeZone?: string }
+  readonly organizer?: { readonly email?: string }
+  readonly attendees?: readonly {
+    readonly email?: string
+    readonly displayName?: string
+    readonly optional?: boolean
+    readonly organizer?: boolean
+    readonly self?: boolean
+    readonly responseStatus?: GoogleCalendarAttendee["responseStatus"]
+  }[]
+  readonly recurrence?: readonly string[]
+  readonly hangoutLink?: string
+  readonly conferenceData?: {
+    readonly entryPoints?: readonly { readonly entryPointType?: string; readonly uri?: string }[]
+  }
+  readonly extendedProperties?: {
+    readonly private?: Readonly<Record<string, string>>
+  }
+  readonly updated?: string
+}
+
+export function readConferenceLink(raw: Pick<RawCalendarEvent, "hangoutLink" | "conferenceData">): string | undefined {
+  const video = raw.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video" && typeof entry.uri === "string")?.uri
+  if (video) return video
+  if (typeof raw.hangoutLink === "string" && raw.hangoutLink.length > 0) return raw.hangoutLink
+  return undefined
+}
+
+function mapEvent(calendarId: string, raw: RawCalendarEvent): GoogleCalendarEvent {
+  const allDay = Boolean(raw.start?.date && !raw.start?.dateTime)
+  const start = raw.start?.dateTime ?? raw.start?.date ?? ""
+  const end = raw.end?.dateTime ?? raw.end?.date ?? ""
+  const timeZone = raw.start?.timeZone ?? raw.end?.timeZone
+  const conferenceLink = readConferenceLink(raw)
+  const idempotencyKey = raw.extendedProperties?.private?.elizaIdempotencyKey
+  const attendees: GoogleCalendarAttendee[] = (raw.attendees ?? [])
+    .filter((att): att is typeof att & { readonly email: string } => typeof att.email === "string" && att.email.length > 0)
+    .map((att) => ({
+      email: att.email,
+      ...(att.displayName === undefined ? {} : { displayName: att.displayName }),
+      ...(att.optional === undefined ? {} : { optional: att.optional }),
+      ...(att.organizer === undefined ? {} : { organizer: att.organizer }),
+      ...(att.self === undefined ? {} : { self: att.self }),
+      ...(att.responseStatus === undefined ? {} : { responseStatus: att.responseStatus }),
+    }))
+  return {
+    id: raw.id ?? "",
+    calendarId,
+    ...(raw.etag === undefined ? {} : { etag: raw.etag }),
+    ...(raw.status === undefined ? {} : { status: raw.status }),
+    ...(raw.htmlLink === undefined ? {} : { htmlLink: raw.htmlLink }),
+    summary: raw.summary ?? "",
+    ...(raw.description === undefined ? {} : { description: raw.description }),
+    ...(raw.location === undefined ? {} : { location: raw.location }),
+    start,
+    end,
+    allDay,
+    ...(timeZone === undefined ? {} : { timeZone }),
+    ...(raw.organizer?.email === undefined ? {} : { organizerEmail: raw.organizer.email }),
+    attendees,
+    ...(raw.recurrence === undefined ? {} : { recurrence: [...raw.recurrence] }),
+    ...(conferenceLink === undefined ? {} : { conferenceLink }),
+    ...(raw.updated === undefined ? {} : { updated: raw.updated }),
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+  }
+}
+
+function rethrowMutationError(error: unknown, verb: "update" | "delete", eventId: string): never {
+  if (error instanceof ElizaError && (error.code === "GOOGLE_CALENDAR_HTTP_412" || error.code === "GOOGLE_CALENDAR_HTTP_409")) {
+    return raise(new GoogleCalendarMutationError("conflict", `Calendar event changed before ${verb}.`, { eventId }))
+  }
+  if (error instanceof ElizaError && error.code === "GOOGLE_CALENDAR_HTTP_404") {
+    return raise(new GoogleCalendarMutationError("not_found", "Calendar event not found.", { eventId }))
+  }
+  return raise(error instanceof Error ? error : new Error(String(error)))
+}
+
+function buildTimeBound(value: string, allDay: boolean | undefined, timeZone: string | undefined) {
+  return allDay ? { date: value } : { dateTime: value, ...(timeZone === undefined ? {} : { timeZone }) }
+}
+
+export class GoogleCalendarClient {
+  private readonly factory: GoogleApiClientFactory
+
+  constructor(factory: GoogleApiClientFactory) {
+    this.factory = factory
+  }
+
+  private api(path: string): string {
+    return `${this.factory.baseUrls.calendar}/calendar/v3${path}`
+  }
+
+  async listCalendars(params: GoogleAccountRef): Promise<GoogleCalendarListEntry[]> {
+    const all: GoogleCalendarListEntry[] = []
+    let pageToken: string | undefined
+    for (let guard = 0; guard < 20; guard += 1) {
+      const page = await this.listCalendarPage({ ...params, pageToken })
+      all.push(...page.calendars)
+      if (!page.nextPageToken) break
+      pageToken = page.nextPageToken
+    }
+    return all
+  }
+
+  async listCalendarPage(params: GoogleCalendarListPageInput): Promise<GoogleCalendarListPage> {
+    try {
+      const data = await this.factory.requestJson<{
+        readonly items?: readonly {
+          readonly id?: string
+          readonly summary?: string
+          readonly description?: string
+          readonly timeZone?: string
+          readonly primary?: boolean
+          readonly accessRole?: string
+          readonly selected?: boolean
+        }[]
+        readonly nextPageToken?: string
+        readonly nextSyncToken?: string
+      }>(params, ["calendar.read"], {
+        url: this.api("/users/me/calendarList"),
+        query: {
+          pageToken: params.pageToken,
+          maxResults: params.maxResults,
+          syncToken: params.syncToken,
+        },
+        source: "calendar",
+      })
+      const calendars: GoogleCalendarListEntry[] = (data.items ?? []).map((item) => ({
+        id: item.id ?? "",
+        summary: item.summary ?? "",
+        ...(item.description === undefined ? {} : { description: item.description }),
+        ...(item.timeZone === undefined ? {} : { timeZone: item.timeZone }),
+        primary: Boolean(item.primary),
+        ...(item.accessRole === undefined ? {} : { accessRole: item.accessRole }),
+        ...(item.selected === undefined ? {} : { selected: item.selected }),
+      }))
+      return {
+        calendars,
+        ...(data.nextPageToken === undefined ? {} : { nextPageToken: data.nextPageToken }),
+        ...(data.nextSyncToken === undefined ? {} : { nextSyncToken: data.nextSyncToken }),
+      }
+    } catch (error) {
+      if (error instanceof ElizaError && error.code === "GOOGLE_CALENDAR_HTTP_410") {
+        throw new GoogleCalendarSyncTokenExpiredError("calendars", params.accountId)
+      }
+      throw error
+    }
+  }
+
+  async listEvents(params: GoogleAccountRef & {
+    readonly calendarId?: string
+    readonly timeMin?: string
+    readonly timeMax?: string
+    readonly limit?: number
+    readonly timeZone?: string
+  }): Promise<GoogleCalendarEvent[]> {
+    const all: GoogleCalendarEvent[] = []
+    let pageToken: string | undefined
+    for (let guard = 0; guard < 20; guard += 1) {
+      const page = await this.listEventPage({
+        ...params,
+        maxResults: params.limit,
+        pageToken,
+        singleEvents: true,
+      })
+      all.push(...page.events)
+      if (!page.nextPageToken) break
+      pageToken = page.nextPageToken
+    }
+    return all
+  }
+
+  async listEventPage(params: GoogleCalendarEventListPageInput): Promise<GoogleCalendarEventListPage> {
+    const calendarId = params.calendarId ?? "primary"
+    try {
+      const data = await this.factory.requestJson<{
+        readonly items?: readonly RawCalendarEvent[]
+        readonly nextPageToken?: string
+        readonly nextSyncToken?: string
+      }>(params, ["calendar.read"], {
+        url: this.api(`/calendars/${encodeURIComponent(calendarId)}/events`),
+        query: {
+          timeMin: params.timeMin,
+          timeMax: params.timeMax,
+          maxResults: params.maxResults,
+          pageToken: params.pageToken,
+          syncToken: params.syncToken,
+          singleEvents: params.singleEvents === false ? undefined : "true",
+          timeZone: params.timeZone,
+        },
+        source: "calendar",
+      })
+      return {
+        events: (data.items ?? []).map((item) => mapEvent(calendarId, item)),
+        ...(data.nextPageToken === undefined ? {} : { nextPageToken: data.nextPageToken }),
+        ...(data.nextSyncToken === undefined ? {} : { nextSyncToken: data.nextSyncToken }),
+      }
+    } catch (error) {
+      if (error instanceof ElizaError && error.code === "GOOGLE_CALENDAR_HTTP_410") {
+        throw new GoogleCalendarSyncTokenExpiredError("events", params.accountId)
+      }
+      throw error
+    }
+  }
+
+  async watchEvents(params: GoogleCalendarWatchInput): Promise<GoogleCalendarWatchResponse> {
+    const calendarId = params.calendarId ?? "primary"
+    const data = await this.factory.requestJson<{
+      readonly id?: string
+      readonly resourceId?: string
+      readonly resourceUri?: string
+      readonly expiration?: string
+    }>(params, ["calendar.read"], {
+      method: "POST",
+      url: this.api(`/calendars/${encodeURIComponent(calendarId)}/events/watch`),
+      body: {
+        id: params.channelId,
+        type: "web_hook",
+        address: params.address,
+        ...(params.token === undefined ? {} : { token: params.token }),
+        ...(params.ttlSeconds === undefined ? {} : { params: { ttl: String(params.ttlSeconds) } }),
+      },
+      source: "calendar",
+    })
+    return {
+      id: data.id ?? params.channelId,
+      resourceId: data.resourceId ?? "",
+      ...(data.resourceUri === undefined ? {} : { resourceUri: data.resourceUri }),
+      ...(data.expiration === undefined ? {} : { expiration: data.expiration }),
+    }
+  }
+
+  async stopCalendarChannel(params: GoogleCalendarStopChannelInput): Promise<void> {
+    await this.factory.requestJson(params, ["calendar.read"], {
+      method: "POST",
+      url: this.api("/channels/stop"),
+      body: { id: params.channelId, resourceId: params.resourceId },
+      source: "calendar",
+    })
+  }
+
+  async queryFreeBusy(params: GoogleCalendarFreeBusyInput): Promise<GoogleCalendarFreeBusyResult> {
+    const data = await this.factory.requestJson<{
+      readonly timeMin?: string
+      readonly timeMax?: string
+      readonly calendars?: Readonly<Record<string, {
+        readonly busy?: readonly { readonly start: string; readonly end: string }[]
+        readonly errors?: readonly { readonly domain?: string; readonly reason: string }[]
+      }>>
+    }>(params, ["calendar.read"], {
+      method: "POST",
+      url: this.api("/freeBusy"),
+      body: {
+        timeMin: params.timeMin,
+        timeMax: params.timeMax,
+        ...(params.timeZone === undefined ? {} : { timeZone: params.timeZone }),
+        items: params.calendarIds.map((id) => ({ id })),
+      },
+      source: "calendar",
+    })
+    const calendars: GoogleCalendarFreeBusyCalendar[] = params.calendarIds.map((calendarId) => {
+      const entry = data.calendars?.[calendarId]
+      return {
+        calendarId,
+        busy: [...(entry?.busy ?? [])],
+        errors: [...(entry?.errors ?? [])],
+      }
+    })
+    return {
+      timeMin: data.timeMin ?? params.timeMin,
+      timeMax: data.timeMax ?? params.timeMax,
+      calendars,
+    }
+  }
+
+  async getEvent(params: GoogleAccountRef & { readonly calendarId?: string; readonly eventId: string; readonly timeZone?: string }): Promise<GoogleCalendarEvent> {
+    const calendarId = params.calendarId ?? "primary"
+    const raw = await this.factory.requestJson<RawCalendarEvent>(params, ["calendar.read"], {
+      url: this.api(`/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}`),
+      query: { timeZone: params.timeZone },
+      source: "calendar",
+    })
+    return mapEvent(calendarId, raw)
+  }
+
+  async findEventByIdempotencyKey(params: GoogleAccountRef & { readonly calendarId: string; readonly idempotencyKey: string; readonly timeZone?: string }): Promise<GoogleCalendarEvent | null> {
+    const data = await this.factory.requestJson<{ readonly items?: readonly RawCalendarEvent[] }>(params, ["calendar.read"], {
+      url: this.api(`/calendars/${encodeURIComponent(params.calendarId)}/events`),
+      query: {
+        privateExtendedProperty: `elizaIdempotencyKey=${params.idempotencyKey}`,
+        timeZone: params.timeZone,
+      },
+      source: "calendar",
+    })
+    const first = data.items?.[0]
+    return first === undefined ? null : mapEvent(params.calendarId, first)
+  }
+
+  async createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {
+    const calendarId = params.calendarId ?? "primary"
+    if (params.idempotencyKey !== undefined) {
+      const existing = await this.findEventByIdempotencyKey({
+        ...params,
+        calendarId,
+        idempotencyKey: params.idempotencyKey,
+        timeZone: params.timeZone,
+      })
+      if (existing !== null) return existing
+    }
+    const raw = await this.factory.requestJson<RawCalendarEvent>(params, ["calendar.write"], {
+      method: "POST",
+      url: this.api(`/calendars/${encodeURIComponent(calendarId)}/events`),
+      query: {
+        sendUpdates: params.sendUpdates,
+        conferenceDataVersion: params.createMeetLink ? 1 : undefined,
+      },
+      body: {
+        summary: params.summary,
+        ...(params.description === undefined ? {} : { description: params.description }),
+        ...(params.location === undefined ? {} : { location: params.location }),
+        start: buildTimeBound(params.start, params.allDay, params.timeZone),
+        end: buildTimeBound(params.end, params.allDay, params.timeZone),
+        ...(params.attendees === undefined ? {} : { attendees: params.attendees }),
+        ...(params.recurrence === undefined ? {} : { recurrence: [...params.recurrence] }),
+        ...(params.transparency === undefined ? {} : { transparency: params.transparency }),
+        ...(params.visibility === undefined ? {} : { visibility: params.visibility }),
+        ...(params.idempotencyKey === undefined ? {} : { extendedProperties: { private: { elizaIdempotencyKey: params.idempotencyKey } } }),
+      },
+      source: "calendar",
+    })
+    return mapEvent(calendarId, raw)
+  }
+
+  async updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent> {
+    const calendarId = params.calendarId ?? "primary"
+    try {
+      const raw = await this.factory.requestJson<RawCalendarEvent>(params, ["calendar.write"], {
+        method: "PATCH",
+        url: this.api(`/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}`),
+        query: { sendUpdates: params.sendUpdates },
+        headers: params.expectedEtag === undefined ? undefined : { "If-Match": params.expectedEtag },
+        body: {
+          ...(params.summary === undefined ? {} : { summary: params.summary }),
+          ...(params.description === undefined ? {} : { description: params.description }),
+          ...(params.location === undefined ? {} : { location: params.location }),
+          ...(params.start === undefined ? {} : { start: buildTimeBound(params.start, params.allDay, params.timeZone) }),
+          ...(params.end === undefined ? {} : { end: buildTimeBound(params.end, params.allDay, params.timeZone) }),
+          ...(params.attendees === undefined ? {} : { attendees: params.attendees }),
+          ...(params.recurrence === undefined ? {} : { recurrence: [...params.recurrence] }),
+          ...(params.transparency === undefined ? {} : { transparency: params.transparency }),
+          ...(params.visibility === undefined ? {} : { visibility: params.visibility }),
+        },
+        source: "calendar",
+      })
+      return mapEvent(calendarId, raw)
+    } catch (error) {
+      rethrowMutationError(error, "update", params.eventId)
+    }
+  }
+
+  async deleteEvent(params: GoogleCalendarEventDeleteInput): Promise<void> {
+    const calendarId = params.calendarId ?? "primary"
+    try {
+      await this.factory.requestJson(params, ["calendar.write"], {
+        method: "DELETE",
+        url: this.api(`/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(params.eventId)}`),
+        query: { sendUpdates: params.sendUpdates },
+        headers: params.expectedEtag === undefined ? undefined : { "If-Match": params.expectedEtag },
+        source: "calendar",
+      })
+    } catch (error) {
+      rethrowMutationError(error, "delete", params.eventId)
+    }
+  }
+
+  async respondToEvent(params: GoogleCalendarEventResponseInput): Promise<GoogleCalendarEvent> {
+    const calendarId = params.calendarId ?? "primary"
+    const current = await this.getEvent({ ...params, calendarId, eventId: params.eventId })
+    const targetEmail = params.attendeeEmail?.toLowerCase()
+    const updatedAttendees = current.attendees.map((att) => {
+      const match = targetEmail !== undefined ? att.email.toLowerCase() === targetEmail : att.self === true
+      return match ? { ...att, responseStatus: params.responseStatus } : att
+    })
+    return this.updateEvent({
+      ...params,
+      calendarId,
+      eventId: params.eventId,
+      expectedEtag: current.etag,
+      attendees: updatedAttendees,
+      sendUpdates: params.sendUpdates,
+    })
+  }
+}

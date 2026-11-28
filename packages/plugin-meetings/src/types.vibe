@@ -1,0 +1,183 @@
+// spec/meetings/index.md, "Story: Join a meeting as a disclosed transcription guest"; spec/meetings/urlAndDisclosure.md, "Story: Enforce HTTPS provider matching, fail-closed transcript disclosure, and clean segment admission"
+import type { MeetingProvider, TranscriptSegment } from "../gen/meetings.effect.vibe"
+
+export const MEETINGS_SERVICE_TYPE = "meetings" as const
+export const MEETING_AUDIO_SAMPLE_RATE = 16000
+export const MEETINGS_CONTEXTS = ["meetings", "transcripts", "owner"] as const
+export type MeetingsContext = (typeof MEETINGS_CONTEXTS)[number]
+
+export const MEETING_PLATFORMS = ["google_meet", "teams", "zoom"] as const
+export type MeetingPlatform = (typeof MEETING_PLATFORMS)[number]
+
+export const MEETING_PLATFORM_LABELS: Readonly<Record<MeetingPlatform, string>> = {
+  google_meet: "Google Meet",
+  teams: "Microsoft Teams",
+  zoom: "Zoom",
+}
+
+export const MEETING_SESSION_STATUSES = [
+  "joining",
+  "waiting_room",
+  "admitted",
+  "recording",
+  "leaving",
+  "completed",
+  "failed",
+] as const
+export type MeetingSessionStatus = (typeof MEETING_SESSION_STATUSES)[number]
+
+export type MeetingEndReason =
+  | "owner_left"
+  | "meeting_ended"
+  | "removed_by_host"
+  | "duration_cap"
+  | "alone_timeout"
+  | "error"
+
+export type TranscriptConsentState = "disclosed_guest" | "cloud_import" | "owner_authorized"
+export type TranscriptScope = "owner-private" | "shared"
+
+export interface MeetingParticipant {
+  readonly id: string
+  readonly displayName: string
+  readonly joinedAtMs: number
+  readonly leftAtMs?: number
+}
+
+export interface MeetingJoinRequest {
+  readonly platform?: MeetingPlatform
+  readonly meetingUrl: string
+  readonly botName?: string
+  readonly language?: string
+  readonly retainAudio?: boolean
+  readonly maxDurationMs?: number
+  readonly calendarEventId?: string
+  readonly ownerId?: string
+}
+
+export interface ParsedMeetingUrl {
+  readonly platform: MeetingPlatform
+  readonly provider: MeetingProvider
+  readonly meetingUrl: string
+  readonly nativeMeetingId: string
+  readonly https: boolean
+}
+
+export interface MeetingSession {
+  readonly id: string
+  readonly ownerId: string
+  readonly platform: MeetingPlatform
+  readonly provider: MeetingProvider
+  readonly meetingUrl: string
+  readonly nativeMeetingId: string
+  readonly botName: string
+  readonly language?: string
+  readonly status: MeetingSessionStatus
+  readonly disclosed: boolean
+  readonly transcriptId?: string
+  readonly transcriptRedacted?: boolean
+  readonly participants: readonly MeetingParticipant[]
+  readonly endReason?: MeetingEndReason
+  readonly error?: string
+  readonly startedAt: string
+  readonly updatedAt: string
+  readonly endedAt?: string
+}
+
+export interface MeetingAudioSink {
+  pushSpeakerAudio(speakerKey: string, samples: Float32Array): void
+  setSpeakerName(speakerKey: string, displayName: string): void
+  flushSpeaker(speakerKey: string): Promise<void>
+  participantJoined(participant: MeetingParticipant): void
+  participantLeft(participantId: string, atMs: number): void
+}
+
+export interface MeetingBotSession {
+  readonly nativeMeetingId: string
+  waitForAdmission(): Promise<boolean>
+  announceDisclosure(message: string): Promise<boolean>
+  leave(): Promise<void>
+}
+
+export interface MeetingPlatformAdapter {
+  readonly platform: MeetingPlatform
+  join(args: {
+    readonly meetingUrl: string
+    readonly nativeMeetingId: string
+    readonly botName: string
+    readonly sink: MeetingAudioSink
+  }): Promise<MeetingBotSession>
+}
+
+export interface MeetingRuntimeSupport {
+  readonly supported: boolean
+  readonly reason?: string
+  readonly headless: boolean
+  readonly chromiumPath?: string
+}
+
+export interface ViewerAccessContext {
+  readonly viewerId: string
+  readonly isOwner: boolean
+  readonly fullGrantIds?: readonly string[]
+  readonly redactedGrantIds?: readonly string[]
+}
+
+export interface TranscriptRecord {
+  readonly id: string
+  readonly sessionId: string
+  readonly ownerId: string
+  readonly title: string
+  readonly platform: MeetingPlatform
+  readonly meetingUrl: string
+  readonly nativeMeetingId: string
+  readonly consentState: TranscriptConsentState
+  readonly scope: TranscriptScope
+  readonly segments: readonly TranscriptSegment[]
+  readonly participants: readonly MeetingParticipant[]
+  readonly endReason?: MeetingEndReason
+  readonly createdAt: string
+  readonly finalizedAt?: string
+}
+
+export interface ZoomCloudImportInput {
+  readonly meetingId: string
+  readonly accessToken: string
+  readonly ownerId: string
+  readonly baseUrl?: string
+  readonly maxBytes?: number
+}
+
+export interface ZoomCloudImportResult {
+  readonly transcript: TranscriptRecord
+  readonly warnings: readonly string[]
+}
+
+export type MeetingJoinErrorCode =
+  | "invalid_url"
+  | "unsupported_platform"
+  | "unsupported_host"
+  | "policy_blocked"
+  | "already_joined"
+  | "invalid_duration_cap"
+  | "insufficient_credits"
+
+export error MeetingJoinError {
+  code: MeetingJoinErrorCode
+  message: string
+}
+
+export type ZoomCloudImportErrorCode =
+  | "invalid_request"
+  | "revoked_access"
+  | "permission_denied"
+  | "meeting_not_found"
+  | "max_bytes"
+  | "invalid_response"
+  | "request_failed"
+
+export error ZoomCloudImportError {
+  code: ZoomCloudImportErrorCode
+  message: string
+  status?: number
+}

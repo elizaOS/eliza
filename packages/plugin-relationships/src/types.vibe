@@ -1,0 +1,124 @@
+// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"; spec/relationships/identity.md, "Story: Resolve identity observations and confirmed recipients without guessing"
+export const RELATIONSHIPS_ACTION_NAME = "KNOWLEDGE_GRAPH" as const
+export const ENTITY_GRAPH_PROVIDER_NAME = "ENTITY_GRAPH" as const
+export const SELF_ENTITY_ID = "self" as const
+
+export const BUILT_IN_ENTITY_KINDS = ["person", "org", "place", "project", "thing"] as const
+export type EntityKind = (typeof BUILT_IN_ENTITY_KINDS)[number]
+
+export const ENTITY_OPS = ["create", "read", "list", "log_interaction", "set_relationship"] as const
+export type EntityOp = (typeof ENTITY_OPS)[number]
+
+export const RELATIONSHIPS_CONTEXTS = ["people", "contacts", "relationships"] as const
+export type RelationshipsContext = (typeof RELATIONSHIPS_CONTEXTS)[number]
+
+export const KNOWLEDGE_GRAPH_SERVICE_TYPE = "knowledge_graph" as const
+export const LEGACY_RELATIONSHIPS_AUDIT_SERVICE_TYPE = "legacy_relationships_audit" as const
+export const RELATIONSHIPS_LEGACY_SCHEMA_DATA_REQUIRES_IMPORT =
+  "RELATIONSHIPS_LEGACY_SCHEMA_DATA_REQUIRES_IMPORT" as const
+
+export interface EntityIdentity {
+  readonly platform: string
+  readonly handle: string
+  readonly connectorAccountId: string
+  readonly verified: boolean
+  readonly confidence: number
+  readonly evidence: readonly string[]
+  readonly observedAt: string
+}
+
+export interface EntityAttribute {
+  readonly key: string
+  readonly value: string
+  readonly confidence: number
+  readonly updatedAt: string
+}
+
+export interface Entity {
+  readonly id: string
+  readonly tenant: string
+  readonly kind: EntityKind
+  readonly name: string
+  readonly aliases: readonly string[]
+  readonly identities: readonly EntityIdentity[]
+  readonly attributes: readonly EntityAttribute[]
+  readonly tags: readonly string[]
+  readonly notes: string
+  readonly lastInteractionAt: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface Relationship {
+  readonly id: string
+  readonly tenant: string
+  readonly fromId: string
+  readonly toId: string
+  readonly relation: string
+  readonly strength: number
+  readonly active: boolean
+  readonly notes: string
+  readonly evidence: readonly string[]
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface EntityIdentityObservation {
+  readonly tenant: string
+  readonly platform: string
+  readonly handle: string
+  readonly connectorAccountId?: string
+  readonly displayName?: string
+  readonly kind?: EntityKind
+  readonly verified?: boolean
+  readonly confidence: number
+  readonly evidence?: readonly string[]
+  readonly observedAt?: string
+}
+
+export type IdentityObservationOutcome =
+  | { readonly status: "created"; readonly entity: Entity }
+  | { readonly status: "auto_merged"; readonly entity: Entity }
+  | {
+      readonly status: "conflict_low_confidence"
+      readonly candidate: Entity
+      readonly confidence: number
+    }
+  | {
+      readonly status: "conflict_multiple"
+      readonly candidates: readonly Entity[]
+    }
+
+export interface RecipientConfirmationRequest {
+  readonly tenant: string
+  readonly email: string
+  readonly connectorAccountId?: string
+  readonly requestedEntityId?: string
+  readonly reviewedName: string
+  readonly reviewedKind: EntityKind
+}
+
+export interface RecipientConfirmationResult {
+  readonly verdict:
+    | "RecipientConfirmed"
+    | "RecipientInvalid"
+    | "RecipientAmbiguous"
+    | "RecipientConflict"
+    | "RecipientNotFound"
+    | "RecipientReviewStale"
+  readonly confirmed: boolean
+  readonly entity?: Entity
+  readonly reason?: string
+}
+
+export interface LegacyRelationshipsInventory {
+  readonly entityRows: number
+  readonly relationshipRows: number
+  readonly schemaPresent: boolean
+}
+
+export error RelationshipsServiceError {
+  status: number
+  message: string
+  code?: string
+}

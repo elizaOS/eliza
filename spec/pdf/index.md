@@ -16,7 +16,10 @@ Pages are numbered from one. A range is inclusive and begins on an existing
 page. A requested end beyond the document means through the last page.
 Local native extraction emits each run as supplied by the PDF decoder
 and emits breaks only where the decoder indicates them. Text-only reads do
-not claim visual extraction.
+not claim visual extraction. When normalizing PDF `D:` date timestamps to
+UTC, a positive UTC offset (`+HH'mm'`) subtracts from the wall time and a
+negative UTC offset (`-HH'mm'`) adds to the wall time, while `Z` and local
+dates apply a zero offset.
 
 ```quint
 type PdfReadMode = NativeText | CompleteDocument
@@ -30,6 +33,37 @@ pure val windowValues: Set[PageWindow] = Set({ first: 1, lastPage: 3 }, { first:
 pure def lawOutsideWindowIsExcluded(window: PageWindow, pageNumber: int): bool =
   (pageNumber < window.first or pageNumber > window.lastPage) implies not(pageInWindow(window, pageNumber))
 type TextRun = { letters: str, hardBreak: bool }
+type PdfUtcRelation = UtcZulu | UtcPlus | UtcMinus | UtcLocal
+pure def pdfUtcOffsetMs(relation: PdfUtcRelation, offsetMinutes: int): int =
+  if (relation == UtcPlus) -(offsetMinutes * 60000)
+  else if (relation == UtcMinus) offsetMinutes * 60000
+  else 0
+pure def lawPositiveOffsetSubtractsFromWall(offsetMinutes: int): bool =
+  offsetMinutes > 0 implies pdfUtcOffsetMs(UtcPlus, offsetMinutes) < 0
+pure def lawNegativeOffsetAddsToWall(offsetMinutes: int): bool =
+  offsetMinutes > 0 implies pdfUtcOffsetMs(UtcMinus, offsetMinutes) > 0
+pure val offsetMinutesValues = Set(0, 30, 300)
+```
+
+### A blank visual claim is accepted only when no contradicting text or unchecked drawing exists
+
+In complete extraction, a `[BLANK PAGE]` claim from the vision model is
+accepted as a blank page only when native text is absent, OCR text is absent,
+and either the page contains no drawing operators or OCR ran and confirmed no
+text. Otherwise the claim conflicts with evidence and the page fails.
+
+```quint
+type CompletePageMethod = MethodNative | MethodNativeVision | MethodVision | MethodBlank | MethodConflict
+pure def classifyCompletePage(hasNativeText: bool, visionBlank: bool, visionHasText: bool, hasOcrText: bool, ocrRan: bool, hasOperators: bool): CompletePageMethod =
+  if (not(visionBlank) and not(visionHasText)) MethodConflict
+  else if (visionBlank)
+    if (hasNativeText or hasOcrText or (hasOperators and not(ocrRan))) MethodConflict else MethodBlank
+  else if (hasNativeText) MethodNativeVision
+  else MethodVision
+pure def lawBlankClaimWithNativeOrOcrConflicts(hasNativeText: bool, hasOcrText: bool, ocrRan: bool, hasOperators: bool): bool =
+  (hasNativeText or hasOcrText) implies classifyCompletePage(hasNativeText, true, false, hasOcrText, ocrRan, hasOperators) == MethodConflict
+pure def lawBlankClaimOnDrawnPageWithoutOcrConflicts(hasNativeText: bool, hasOcrText: bool): bool =
+  classifyCompletePage(hasNativeText, true, false, hasOcrText, false, true) == MethodConflict
 ```
 
 ## Story: Extract a complete document while my request is active

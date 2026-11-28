@@ -1,0 +1,776 @@
+// spec/discord/index.md, "A coalesced Discord batch keeps the ordered message and attachment identifiers"; spec/discord/index.md, "A stale response is tagged, suppressed, or left alone by its policy"
+import type { IAgentRuntime } from "@elizaos/core"
+import * as EffectFiber from "effect/Fiber"
+import type { Message } from "discord.js"
+import {
+  discordBatchAttachments,
+  discordBatchIds,
+  validDiscordBatch,
+  type DiscordBatchItem,
+} from "../gen/discord.effect.vibe"
+import { isDiscordUserAddressed } from "./policy.vibe"
+
+export const MAX_DISCORD_STRUCTURED_TEXT_DEPTH = 16
+export const MAX_DISCORD_STRUCTURED_TEXT_NODES = 256
+export const DISCORD_STRUCTURED_TEXT_UNBOUNDED = "DISCORD_STRUCTURED_TEXT_UNBOUNDED"
+export const INTERACTION_ONLY_FALLBACK_TEXT = "Select an option below."
+export const DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS = 10_000
+export const DISCORD_REACTION_RECONCILE_TIMEOUT_MS = 5_000
+export const IN_PROGRESS_STATUS_EMOJIS = ["👀", "⏳", "🤔", "⚙️"] as const
+
+export interface ChunkDiscordTextOpts {
+  readonly maxChars?: number
+  readonly maxLines?: number
+}
+
+export function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (maxLength <= 0) return ""
+  if (text.length <= maxLength) return text
+  let end = maxLength
+  const code = text.charCodeAt(end - 1)
+  if (code >= 0xd800 && code <= 0xdbff) end -= 1
+  return text.slice(0, end)
+}
+
+export function truncateText(text: string, maxLength: number, suffix = "…"): string {
+  if (maxLength <= 0) return ""
+  if (text.length <= maxLength) return text
+  if (maxLength <= suffix.length) return truncateUtf16Safe(suffix, maxLength)
+  return `${truncateUtf16Safe(text, maxLength - suffix.length)}${suffix}`
+}
+
+export function escapeDiscordMarkdown(text: string): string {
+  return text.replace(/([\\*_~`|<>])/g, "\\$1")
+}
+
+export function stripDiscordFormatting(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/^```[^\n]*\n?/, "").replace(/```$/, ""))
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/(\*\*|__|\*|_|~~|\|\|)/g, "")
+    .trim()
+}
+
+export function sanitizeThreadName(name: string, maxLength = 100): string {
+  const cleaned = name.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim()
+  return truncateUtf16Safe(cleaned || "thread", Math.max(1, Math.min(100, maxLength)))
+}
+
+export function formatDiscordUserMention(userId: string): string {
+  return `<@${userId}>`
+}
+
+export function formatDiscordChannelMention(channelId: string): string {
+  return `<#${channelId}>`
+}
+
+export function formatDiscordRoleMention(roleId: string): string {
+  return `<@&${roleId}>`
+}
+
+export function formatDiscordTimestamp(timestampMs: number, style: "t" | "T" | "d" | "D" | "f" | "F" | "R" = "f"): string {
+  return `<t:${Math.floor(timestampMs / 1000)}:${style}>`
+}
+
+export function resolveTimestampMs(value: number | string | Date | undefined): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value > 1e12 ? value : value * 1000
+  if (value instanceof Date) return value.getTime()
+  if (typeof value === "string") {
+    const parsed = Date.parse(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return Date.now()
+}
+
+export function formatDiscordReactionEmoji(emoji: { readonly id?: string | null; readonly name?: string | null; readonly animated?: boolean | null }): string {
+  if (emoji.id && emoji.name) {
+    return `${emoji.animated ? "a:" : ""}${emoji.name}:${emoji.id}`
+  }
+  return emoji.name ?? ""
+}
+
+export function formatMessageReactionEmoji(emoji: string): string {
+  const trimmed = emoji.trim()
+  const custom = trimmed.match(/^<(a?):(\w+):(\d+)>$/)
+  if (custom) return `${custom[1] ? "a:" : ""}${custom[2]}:${custom[3]}`
+  return trimmed
+}
+
+export function extractUserIdFromMention(text: string): string | null {
+  const match = text.match(/<@!?(\d{15,20})>/)
+  return match ? match[1] : null
+}
+
+export function extractChannelIdFromMention(text: string): string | null {
+  const match = text.match(/<#(\d{15,20})>/)
+  return match ? match[1] : null
+}
+
+export function extractRoleIdFromMention(text: string): string | null {
+  const match = text.match(/<@&(\d{15,20})>/)
+  return match ? match[1] : null
+}
+
+function extractAllIds(text: string, pattern: RegExp): string[] {
+  const results: string[] = []
+  const seen = new Set<string>()
+  for (const match of text.matchAll(pattern)) {
+    const id = match[1]
+    if (id && !seen.has(id)) {
+      seen.add(id)
+      results.push(id)
+    }
+  }
+  return results
+}
+
+export function extractAllUserMentions(text: string): string[] {
+  return extractAllIds(text, /<@!?(\d{15,20})>/g)
+}
+
+export function extractAllChannelMentions(text: string): string[] {
+  return extractAllIds(text, /<#(\d{15,20})>/g)
+}
+
+export function extractAllRoleMentions(text: string): string[] {
+  return extractAllIds(text, /<@&(\d{15,20})>/g)
+}
+
+export function messageContainsMention(text: string, userId: string): boolean {
+  return new RegExp(`<@!?${userId}>`).test(text)
+}
+
+export function buildChannelLink(guildId: string, channelId: string): string {
+  return `https://discord.com/channels/${guildId}/${channelId}`
+}
+
+export function buildMessageLink(guildId: string, channelId: string, messageId: string): string {
+  return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`
+}
+
+export function parseMessageLink(url: string): { readonly guildId: string; readonly channelId: string; readonly messageId: string } | null {
+  const match = url.trim().match(/^https?:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/channels\/(@me|\d{15,20})\/(\d{15,20})\/(\d{15,20})(?:[/?#].*)?$/i)
+  if (!match) return null
+  return { guildId: match[1], channelId: match[2], messageId: match[3] }
+}
+
+export function resolveDiscordSystemLocation(params: {
+  readonly isDirectMessage: boolean
+  readonly guildName?: string
+  readonly channelName?: string
+  readonly channelId: string
+}): string {
+  if (params.isDirectMessage) return `Discord DM (${params.channelId})`
+  const guild = params.guildName?.trim() || "Discord"
+  const channel = params.channelName?.trim() ? `#${params.channelName.trim()}` : params.channelId
+  return `${guild} ${channel}`
+}
+
+function splitLongLine(line: string, limit: number): string[] {
+  const parts: string[] = []
+  let rest = line
+  while (rest.length > limit) {
+    let slice = truncateUtf16Safe(rest, limit)
+    if (slice.length === 0) break
+    const space = slice.lastIndexOf(" ")
+    if (space > Math.floor(limit / 2)) slice = slice.slice(0, space)
+    parts.push(slice)
+    rest = rest.slice(slice.length).replace(/^\s+/, "")
+  }
+  if (rest.length > 0 || parts.length === 0) parts.push(rest)
+  return parts
+}
+
+export function chunkDiscordText(text: string, opts: ChunkDiscordTextOpts = {}): string[] {
+  const maxChars = Math.max(1, opts.maxChars ?? 2000)
+  const maxLines = Math.max(1, opts.maxLines ?? 17)
+  if (!text) return []
+  const chunks: string[] = []
+  const lines = text.split("\n")
+  let currentLines: string[] = []
+  let currentLen = 0
+  let openFence: string | null = null
+
+  const flush = () => {
+    if (currentLines.length === 0) return
+    const body = openFence ? [...currentLines, "```"].join("\n") : currentLines.join("\n")
+    chunks.push(body)
+    currentLines = openFence ? [openFence] : []
+    currentLen = openFence ? openFence.length : 0
+  }
+
+  for (const rawLine of lines) {
+    const fenceMatch = rawLine.match(/^```([^\s`]*)?/)
+    const reserveClose = openFence ? 4 : 0
+    const segments = rawLine.length + reserveClose > maxChars ? splitLongLine(rawLine, Math.max(1, maxChars - reserveClose)) : [rawLine]
+    for (const seg of segments) {
+      const addedLen = currentLines.length === 0 ? seg.length : seg.length + 1
+      if (
+        currentLines.length > 0 &&
+        (currentLen + addedLen + (openFence ? 4 : 0) > maxChars || currentLines.length >= maxLines)
+      ) {
+        flush()
+      }
+      currentLines.push(seg)
+      currentLen = currentLines.length === 1 ? seg.length : currentLen + seg.length + 1
+    }
+    if (fenceMatch) {
+      openFence = openFence ? null : rawLine.trimEnd()
+    }
+  }
+  if (currentLines.length > 0) {
+    const joined = currentLines.join("\n")
+    if (joined.trim().length > 0 || chunks.length === 0) chunks.push(joined)
+  }
+  return chunks
+}
+
+export function chunkDiscordTextWithMode(
+  text: string,
+  opts: ChunkDiscordTextOpts & { readonly mode?: "length" | "newline" } = {},
+): string[] {
+  if (opts.mode === "newline") {
+    const maxChars = Math.max(1, opts.maxChars ?? 2000)
+    const out: string[] = []
+    for (const para of text.split(/\n{2,}/)) {
+      if (para.length <= maxChars) out.push(para)
+      else out.push(...chunkDiscordText(para, opts))
+    }
+    return out.filter((part) => part.length > 0)
+  }
+  return chunkDiscordText(text, opts)
+}
+
+export function normalizeDiscordMessageText(
+  value: unknown,
+  maxDepth = MAX_DISCORD_STRUCTURED_TEXT_DEPTH,
+  maxNodes = MAX_DISCORD_STRUCTURED_TEXT_NODES,
+): string {
+  if (typeof value === "string") return value
+  if (value === null || value === undefined) return ""
+  let visited = 0
+  const walk = (node: unknown, depth: number): string => {
+    visited += 1
+    if (depth > maxDepth || visited > maxNodes) return ""
+    if (typeof node === "string") return node
+    if (typeof node === "number" || typeof node === "boolean") return String(node)
+    if (Array.isArray(node)) {
+      return node.map((item) => walk(item, depth + 1)).filter(Boolean).join("\n")
+    }
+    if (typeof node === "object" && node !== null) {
+      const rec = node as Record<string, unknown>
+      if (typeof rec.text === "string") return rec.text
+      if (typeof rec.content === "string") return rec.content
+      return Object.values(rec).map((v) => walk(v, depth + 1)).filter(Boolean).join(" ")
+    }
+    return ""
+  }
+  return walk(value, 0).trim()
+}
+
+export type ChatType = "direct" | "group" | "channel" | "thread"
+
+export interface DiscordReplyContext {
+  readonly replyToId: string
+  readonly replyToAuthor?: string
+  readonly replyToBody?: string
+}
+
+export interface EnvelopeResult {
+  readonly text: string
+  readonly chatType: ChatType
+  readonly senderLabel: string
+  readonly replyContext?: DiscordReplyContext
+}
+
+export function getDiscordReplyContext(message: {
+  readonly reference?: { readonly messageId?: string | null } | null
+  readonly referencedMessage?: { readonly id: string; readonly content?: string; readonly author?: { readonly username?: string } } | null
+}): DiscordReplyContext | undefined {
+  const refId = message.referencedMessage?.id ?? message.reference?.messageId
+  if (!refId) return undefined
+  return {
+    replyToId: refId,
+    replyToAuthor: message.referencedMessage?.author?.username,
+    replyToBody: message.referencedMessage?.content ? truncateText(message.referencedMessage.content, 240) : undefined,
+  }
+}
+
+export function formatInboundEnvelope(params: {
+  readonly text: string
+  readonly chatType: ChatType
+  readonly senderLabel: string
+  readonly channelLabel?: string
+  readonly timestampMs?: number
+  readonly replyContext?: DiscordReplyContext
+}): EnvelopeResult {
+  const headerParts = [params.senderLabel]
+  if (params.channelLabel) headerParts.push(`in ${params.channelLabel}`)
+  const prefix = `[${headerParts.join(" ")}]`
+  const replyLine = params.replyContext?.replyToBody
+    ? `> ${params.replyContext.replyToAuthor ?? "reply"}: ${params.replyContext.replyToBody}\n`
+    : ""
+  return {
+    text: `${prefix}\n${replyLine}${params.text}`.trim(),
+    chatType: params.chatType,
+    senderLabel: params.senderLabel,
+    ...(params.replyContext ? { replyContext: params.replyContext } : {}),
+  }
+}
+
+export interface DiscordMessageCoalesceConfig {
+  readonly enabled: boolean
+  readonly windowMs: number
+  readonly maxBatch: number
+  readonly bufferUnaddressed: boolean
+}
+
+export interface CoalescedDiscordMessageMeta {
+  readonly originalMessageIds: readonly string[]
+  readonly originalAttachmentIds: readonly string[]
+  readonly anchorMessageId: string
+  readonly channelId: string
+  readonly count: number
+}
+
+export interface DiscordMessageMetadata {
+  readonly coalesced?: CoalescedDiscordMessageMeta
+  readonly [key: string]: unknown
+}
+
+export interface DiscordMessageWithCoalescedMetadata {
+  readonly id: string
+  readonly channelId: string
+  readonly content: string
+  readonly authorName: string
+  readonly attachmentIds: readonly string[]
+  readonly metadata?: DiscordMessageMetadata
+}
+
+export function getDiscordMessageCoalesceConfig(runtime: Pick<IAgentRuntime, "getSetting">): DiscordMessageCoalesceConfig {
+  const enabled = String(runtime.getSetting("DISCORD_MESSAGE_COALESCE_ENABLED") ?? "true").toLowerCase() !== "false"
+  const windowMs = Math.max(0, Number(runtime.getSetting("DISCORD_MESSAGE_COALESCE_WINDOW_MS") ?? 1200) || 1200)
+  const maxBatch = Math.max(1, Math.min(20, Number(runtime.getSetting("DISCORD_MESSAGE_COALESCE_MAX_BATCH") ?? 5) || 5))
+  const bufferUnaddressed = String(runtime.getSetting("DISCORD_BUFFER_UNADDRESSED") ?? "true").toLowerCase() !== "false"
+  return { enabled, windowMs, maxBatch, bufferUnaddressed }
+}
+
+export function getDiscordMessageMeta(msg: { readonly metadata?: DiscordMessageMetadata }): CoalescedDiscordMessageMeta | undefined {
+  return msg.metadata?.coalesced
+}
+
+export function formatCoalescedDiscordMessages(items: readonly DiscordMessageWithCoalescedMetadata[]): string {
+  if (items.length === 0) return ""
+  if (items.length === 1) return items[0].content
+  return items.map((item) => `${item.authorName}: ${item.content}`).join("\n")
+}
+
+export function batchMediaProperties(items: readonly DiscordMessageWithCoalescedMetadata[]): readonly string[] {
+  const specItems: DiscordBatchItem[] = items.map((item) => ({
+    originalId: item.id,
+    originalChannel: item.channelId,
+    attachments: [...item.attachmentIds],
+  }))
+  return discordBatchAttachments(specItems)
+}
+
+export function makeCoalescedDiscordMessage(
+  items: readonly DiscordMessageWithCoalescedMetadata[],
+  maxBatch = 10,
+): DiscordMessageWithCoalescedMetadata | null {
+  if (items.length === 0) return null
+  const channelId = items[0].channelId
+  const specItems: DiscordBatchItem[] = items.map((item) => ({
+    originalId: item.id,
+    originalChannel: item.channelId,
+    attachments: [...item.attachmentIds],
+  }))
+  if (!validDiscordBatch(specItems, channelId, maxBatch)) return null
+  const anchor = items[items.length - 1]
+  const originalMessageIds = discordBatchIds(specItems)
+  const originalAttachmentIds = discordBatchAttachments(specItems)
+  return {
+    id: anchor.id,
+    channelId,
+    content: formatCoalescedDiscordMessages(items),
+    authorName: anchor.authorName,
+    attachmentIds: originalAttachmentIds,
+    metadata: {
+      ...anchor.metadata,
+      coalesced: {
+        originalMessageIds,
+        originalAttachmentIds,
+        anchorMessageId: anchor.id,
+        channelId,
+        count: originalMessageIds.length,
+      },
+    },
+  }
+}
+
+export function appendCoalescedDiscordMetadata(
+  base: Record<string, unknown>,
+  meta: CoalescedDiscordMessageMeta | undefined,
+): Record<string, unknown> {
+  if (!meta) return base
+  return {
+    ...base,
+    coalesced: meta,
+    coalescedMessageIds: [...meta.originalMessageIds],
+    coalescedAttachmentIds: [...meta.originalAttachmentIds],
+  }
+}
+
+export type DebouncerFlushCallback = (messages: readonly Message[]) => void | Promise<void>
+
+export interface ChannelDebouncerOptions {
+  readonly debounceMs?: number
+  readonly coalesceEnabled?: boolean
+  readonly maxBatch?: number
+  readonly bufferUnaddressed?: boolean
+  readonly recentBufferMax?: number
+  readonly botUserId?: string
+  readonly getBotUserId?: () => string | undefined
+}
+
+export interface ChannelDebouncer {
+  readonly enqueue: (message: Message) => void
+  readonly markResponded: (channelId: string) => void
+  readonly flushAll: () => void
+  readonly pendingCount: () => number
+  readonly destroy: () => void
+}
+
+function isPointerMessage(content: string): boolean {
+  const withoutMarkup = content.replace(
+    /<(?:@[!&]?\d+|#\d+|a?:\w+:\d+|\/[\w -]+:\d+|t:\d+(?::[tTdDfFR])?)>/g,
+    "",
+  )
+  return !/[\p{L}\p{N}]/u.test(withoutMarkup)
+}
+
+function dedupeMessagesById(messages: readonly Message[]): Message[] {
+  const seen = new Set<string>()
+  const unique: Message[] = []
+  for (const m of messages) {
+    if (seen.has(m.id)) continue
+    seen.add(m.id)
+    unique.push(m)
+  }
+  return unique
+}
+
+export function createChannelDebouncer(
+  onFlush: DebouncerFlushCallback,
+  options: ChannelDebouncerOptions = {},
+): ChannelDebouncer {
+  const debounceMs = Math.max(0, options.debounceMs ?? 0)
+  const coalesceEnabled = options.coalesceEnabled ?? false
+  const maxBatch = Math.max(1, options.maxBatch ?? 5)
+  const bufferUnaddressed = options.bufferUnaddressed ?? true
+  const recentBufferMax = Math.max(1, options.recentBufferMax ?? 8)
+  const pending = new Map<string, { messages: Message[]; fiber?: EffectFiber.Fiber<void, never> }>()
+  const recentUnaddressed = new Map<string, Message[]>()
+
+  const invokeFlush = (messages: readonly Message[]) => {
+    if (messages.length === 0) return
+    void Promise.resolve(onFlush(messages)).catch(() => undefined)
+  }
+
+  const cancelFiber = (fiber?: EffectFiber.Fiber<void, never>) => {
+    if (fiber) void runPromise(EffectFiber.interrupt(fiber)).catch(() => undefined)
+  }
+
+  const flush = (channelId: string) => {
+    const entry = pending.get(channelId)
+    if (!entry) return
+    cancelFiber(entry.fiber)
+    pending.delete(channelId)
+    invokeFlush(entry.messages)
+  }
+
+  const scheduleFlush = (channelId: string, entry: { messages: Message[]; fiber?: EffectFiber.Fiber<void, never> }) => {
+    cancelFiber(entry.fiber)
+    entry.fiber = runFork(effect {
+      try Effect.sleep(`${debounceMs} millis`)
+      try Effect.sync(() => flush(channelId))
+    })
+  }
+
+  const isBotTargeted = (message: Message): boolean => {
+    const botId = options.getBotUserId?.() ?? options.botUserId
+    return isDiscordUserAddressed({
+      text: message.content,
+      userId: botId,
+      hasMessageReference: Boolean(message.reference?.messageId),
+      repliedUserId: message.mentions?.repliedUser?.id,
+    })
+  }
+
+  return {
+    enqueue(message: Message) {
+      const channelId = message.channel.id
+      const targeted = isBotTargeted(message)
+      if (targeted && !coalesceEnabled) {
+        const buffered = bufferUnaddressed && isPointerMessage(message.content ?? "") ? (recentUnaddressed.get(channelId) ?? []) : []
+        recentUnaddressed.delete(channelId)
+        const existing = pending.get(channelId)
+        if (existing) {
+          cancelFiber(existing.fiber)
+          pending.delete(channelId)
+          invokeFlush(dedupeMessagesById([...buffered, ...existing.messages, message]))
+        } else {
+          invokeFlush(dedupeMessagesById([...buffered, message]))
+        }
+        return
+      }
+      if (bufferUnaddressed && !targeted) {
+        const list = recentUnaddressed.get(channelId) ?? []
+        list.push(message)
+        if (list.length > recentBufferMax) list.splice(0, list.length - recentBufferMax)
+        recentUnaddressed.set(channelId, list)
+      }
+      if (debounceMs <= 0 || (coalesceEnabled && maxBatch === 1)) {
+        invokeFlush([message])
+        return
+      }
+      const existing = pending.get(channelId)
+      if (existing) {
+        existing.messages.push(message)
+        if (coalesceEnabled && existing.messages.length >= maxBatch) {
+          flush(channelId)
+          return
+        }
+        scheduleFlush(channelId, existing)
+        return
+      }
+      const created: { messages: Message[]; fiber?: EffectFiber.Fiber<void, never> } = { messages: [message] }
+      pending.set(channelId, created)
+      scheduleFlush(channelId, created)
+    },
+    markResponded(channelId: string) {
+      recentUnaddressed.delete(channelId)
+    },
+    flushAll() {
+      for (const channelId of [...pending.keys()]) flush(channelId)
+    },
+    pendingCount() {
+      return pending.size
+    },
+    destroy() {
+      for (const entry of pending.values()) cancelFiber(entry.fiber)
+      pending.clear()
+      recentUnaddressed.clear()
+    },
+  }
+}
+
+export interface DraftStreamOptions {
+  readonly minEditIntervalMs?: number
+  readonly maxChars?: number
+  readonly onUpdate: (text: string) => Promise<void>
+}
+
+export interface DraftStreamController {
+  readonly push: (text: string) => Promise<void>
+  readonly finalize: (text: string) => Promise<void>
+  readonly stop: () => void
+  readonly lastText: () => string
+}
+
+export function createDraftStreamController(options: DraftStreamOptions): DraftStreamController {
+  const minInterval = Math.max(0, options.minEditIntervalMs ?? 500)
+  const maxChars = Math.max(1, options.maxChars ?? 2000)
+  let latest = ""
+  let lastFlushed = ""
+  let lastFlushAt = 0
+  let closed = false
+
+  const emit = async (text: string, force: boolean) => {
+    if (closed) return
+    const bounded = truncateUtf16Safe(text, maxChars)
+    latest = bounded
+    if (!force && (bounded === lastFlushed || Date.now() - lastFlushAt < minInterval)) return
+    lastFlushed = bounded
+    lastFlushAt = Date.now()
+    await options.onUpdate(bounded)
+  }
+
+  return {
+    push: (text) => emit(text, false),
+    finalize: async (text) => {
+      await emit(text, true)
+      closed = true
+    },
+    stop: () => {
+      closed = true
+    },
+    lastText: () => latest,
+  }
+}
+
+export interface TypingController {
+  readonly start: () => void
+  readonly stop: () => void
+  readonly isActive: () => boolean
+}
+
+export function createTypingController(
+  sendTyping: () => Promise<void>,
+  intervalMs = 8000,
+): TypingController {
+  let fiber: EffectFiber.Fiber<void, never> | undefined
+  let active = false
+
+  return {
+    start() {
+      if (active) return
+      active = true
+      void sendTyping().catch(() => undefined)
+      fiber = runFork(effect {
+        while (active) {
+          try Effect.sleep(`${Math.max(100, intervalMs)} millis`)
+          if (!active) break
+          try Effect.promise(() => sendTyping().catch(() => undefined))
+        }
+      })
+    },
+    stop() {
+      active = false
+      if (fiber) {
+        const current = fiber
+        fiber = undefined
+        void runPromise(EffectFiber.interrupt(current)).catch(() => undefined)
+      }
+    },
+    isActive: () => active,
+  }
+}
+
+export type StatusReactionScope = "off" | "dm" | "guild" | "all"
+
+export interface StatusReactionController {
+  readonly setPhase: (emoji: string) => Promise<void>
+  readonly clear: () => Promise<void>
+  readonly currentEmoji: () => string | null
+}
+
+export function shouldShowStatusReaction(scope: StatusReactionScope, isDirectMessage: boolean): boolean {
+  if (scope === "off") return false
+  if (scope === "all") return true
+  if (scope === "dm") return isDirectMessage
+  return !isDirectMessage
+}
+
+export function createStatusReactionController(hooks: {
+  readonly addReaction: (emoji: string) => Promise<void>
+  readonly removeReaction: (emoji: string) => Promise<void>
+}): StatusReactionController {
+  let current: string | null = null
+  return {
+    async setPhase(emoji: string) {
+      if (current === emoji) return
+      const previous = current
+      current = emoji
+      if (previous) await hooks.removeReaction(previous).catch(() => undefined)
+      await hooks.addReaction(emoji).catch(() => undefined)
+    },
+    async clear() {
+      const previous = current
+      current = null
+      if (previous) await hooks.removeReaction(previous).catch(() => undefined)
+    },
+    currentEmoji: () => current,
+  }
+}
+
+export interface DiscordDrainResult {
+  readonly drained: boolean
+  readonly abandonedMessageIds: readonly string[]
+}
+
+export interface DiscordTurnDrainRegistry {
+  readonly trackTurn: (messageId: string, promise: Promise<unknown>, status?: StatusReactionController) => void
+  readonly pendingCount: () => number
+  readonly isPending: (messageId: string) => boolean
+  readonly drain: (timeoutMs?: number) => Promise<DiscordDrainResult>
+}
+
+export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
+  const active = new Map<string, { readonly promise: Promise<unknown>; readonly status?: StatusReactionController }>()
+  return {
+    trackTurn(messageId: string, promise: Promise<unknown>, status?: StatusReactionController) {
+      active.set(messageId, { promise, status })
+      void promise.finally(() => {
+        active.delete(messageId)
+      })
+    },
+    pendingCount: () => active.size,
+    isPending: (messageId: string) => active.has(messageId),
+    async drain(timeoutMs = DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<DiscordDrainResult> {
+      if (active.size === 0) return { drained: true, abandonedMessageIds: [] }
+      const entries = Array.from(active.entries())
+      const allDone = Promise.allSettled(entries.map(([, entry]) => entry.promise))
+      const outcome = await runPromise(Effect.raceFirst(
+        Effect.promise(() => allDone.then(() => "done" as const)),
+        Effect.sleep(`${Math.max(1, timeoutMs)} millis`).pipe(Effect.as("timeout" as const)),
+      ))
+      if (outcome === "done") return { drained: true, abandonedMessageIds: [] }
+      const abandonedMessageIds = Array.from(active.keys())
+      for (const [, entry] of active) {
+        if (entry.status) await entry.status.clear().catch(() => undefined)
+      }
+      active.clear()
+      return { drained: false, abandonedMessageIds }
+    },
+  }
+}
+
+export interface DiscordInteractionOptionItem {
+  readonly label: string
+  readonly customId: string
+  readonly style?: "primary" | "secondary" | "success" | "danger"
+}
+
+export interface DiscordInteractionRender {
+  readonly content: string
+  readonly rows: ReadonlyArray<ReadonlyArray<DiscordInteractionOptionItem>>
+}
+
+export function renderDiscordInteractions(
+  text: string | undefined,
+  options: readonly DiscordInteractionOptionItem[],
+): DiscordInteractionRender {
+  const rows: DiscordInteractionOptionItem[][] = []
+  for (let i = 0; i < options.length; i += 5) {
+    rows.push(options.slice(i, i + 5))
+  }
+  const content = text?.trim() || (rows.length > 0 ? INTERACTION_ONLY_FALLBACK_TEXT : "")
+  return { content, rows }
+}
+
+export function buildDiscordReplyPayload(
+  text: string | undefined,
+  options: readonly DiscordInteractionOptionItem[] = [],
+): { readonly content: string; readonly components: readonly unknown[] } {
+  const rendered = renderDiscordInteractions(text, options)
+  const components = rendered.rows.map((row) => ({
+    type: 1,
+    components: row.map((item) => ({
+      type: 2,
+      label: truncateUtf16Safe(item.label, 80),
+      custom_id: truncateUtf16Safe(item.customId, 100),
+      style: item.style === "danger" ? 4 : item.style === "success" ? 3 : item.style === "secondary" ? 2 : 1,
+    })),
+  }))
+  return { content: rendered.content, components }
+}
+
+export function numericFactSignatureTokens(text: string): string[] {
+  const matches = text.match(/\b\d+(?:[.,]\d+)?%?\b/g) ?? []
+  return Array.from(new Set(matches))
+}
+
+export function buildDuplicateTextPreview(text: string, maxLength = 120): string {
+  return truncateText(text.replace(/\s+/g, " ").trim(), maxLength)
+}

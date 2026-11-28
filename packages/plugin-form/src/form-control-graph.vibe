@@ -1,0 +1,90 @@
+// spec/form/index.md, "Each captured answer belongs to one field in the participant's current form"
+
+export const MAX_FORM_CONTROL_DEPTH = 32
+export const MAX_FORM_CONTROL_NODES = 2_048
+
+module guard {
+  export class FormControlGraphError extends Error {
+    override readonly name = "FormControlGraphError"
+    readonly code: "FORM_CONTROL_UNBOUNDED"
+    readonly severity = "fatal" as const
+    readonly context?: Record<string, unknown>
+
+    constructor(message: string, code: "FORM_CONTROL_UNBOUNDED", context?: Record<string, unknown>) {
+      super(message)
+      this.code = code
+      this.context = context
+    }
+  }
+
+  export function failGraph(message: string, context?: Record<string, unknown>): never {
+    throw new FormControlGraphError(message, "FORM_CONTROL_UNBOUNDED", context)
+  }
+}
+import { failGraph, FormControlGraphError } from guard
+export { FormControlGraphError }
+
+type NestedControl = {
+  fields?: readonly NestedControl[]
+  options?: readonly unknown[]
+  extractHints?: readonly unknown[]
+}
+
+type WalkContext = {
+  visits: number
+  visiting: WeakSet<object>
+}
+
+function reserveVisits(context: WalkContext, count: number): void {
+  if (count > MAX_FORM_CONTROL_NODES - context.visits) {
+    failGraph(`form control graph exceeds ${MAX_FORM_CONTROL_NODES} nodes`, {
+      visits: context.visits + count,
+      maxNodes: MAX_FORM_CONTROL_NODES,
+    })
+  }
+  context.visits += count
+}
+
+function walk(control: NestedControl, depth: number, context: WalkContext, visitAlreadyReserved = false): void {
+  if (!visitAlreadyReserved) reserveVisits(context, 1)
+  if (depth > MAX_FORM_CONTROL_DEPTH) {
+    failGraph(`form control nesting exceeds ${MAX_FORM_CONTROL_DEPTH}`, {
+      depth,
+      maxDepth: MAX_FORM_CONTROL_DEPTH,
+    })
+  }
+  if (typeof control === "object" && control !== null) {
+    if (context.visiting.has(control)) {
+      failGraph("form control graph contains a cycle", { depth })
+    }
+    context.visiting.add(control)
+  }
+  try {
+    reserveVisits(context, control.options?.length ?? 0)
+    reserveVisits(context, control.extractHints?.length ?? 0)
+    const fields = control.fields
+    if (!fields) return
+    reserveVisits(context, fields.length)
+    for (let index = 0; index < fields.length; index += 1) {
+      if (!(index in fields)) continue
+      walk(fields[index], depth + 1, context, true)
+    }
+  } finally {
+    if (typeof control === "object" && control !== null) {
+      context.visiting.delete(control)
+    }
+  }
+}
+
+export function assertFormControlGraph(control: NestedControl): void {
+  walk(control, 0, { visits: 0, visiting: new WeakSet<object>() })
+}
+
+export function assertFormControlGraphs(controls: readonly NestedControl[]): void {
+  const context: WalkContext = { visits: 0, visiting: new WeakSet<object>() }
+  reserveVisits(context, controls.length)
+  for (let index = 0; index < controls.length; index += 1) {
+    if (!(index in controls)) continue
+    walk(controls[index], 0, context, true)
+  }
+}

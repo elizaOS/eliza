@@ -2,19 +2,33 @@
 import type { ElizaTasksPlugin } from "./native-contract.vibe"
 
 export type * from "./native-contract.vibe"
+export { ElizaTasksWeb } from "./web.vibe"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
   import type { ElizaTasksPlugin } from "./native-contract.vibe"
+  import { ElizaTasksWeb } from "./web.vibe"
 
-  export const native = registerPlugin<ElizaTasksPlugin>("ElizaTasks")
+  export const native = registerPlugin<ElizaTasksPlugin>("ElizaTasks", {
+    web: () => Promise.resolve(new ElizaTasksWeb()),
+  })
 }
 import { native } from capacitor
 
 export const ElizaTasks = native
 
 import { nativeReply } from "@elizaos/os-bridges"
-import { canScheduleNext, initial } from "../gen/nativeElizaTasks.effect.vibe"
+import {
+  canCancelWakes,
+  canRecordWake,
+  canScheduleNext,
+  cancelWakes,
+  initial,
+  recordWake,
+  scheduleNext,
+  type TaskSchedule,
+  type WakeKind,
+} from "../gen/nativeElizaTasks.effect.vibe"
 
 const ScheduleResult = Schema.Struct({
   scheduled: Schema.Boolean,
@@ -24,6 +38,35 @@ const ScheduleResult = Schema.Struct({
 })
 
 export error InvalidWakeDelay { delaySeconds: number }
+
+export interface ElizaTaskScheduleSession {
+  readonly state: () => TaskSchedule
+  readonly scheduleNext: (nowMs: number, delayMs: number, platformAccepted: boolean, alsoProcessing: boolean) => boolean
+  readonly cancelWakes: () => boolean
+  readonly recordWake: (kind: WakeKind, nowMs: number, remotePushEnabled: boolean) => boolean
+}
+
+export function createElizaTaskScheduleSession(): ElizaTaskScheduleSession {
+  let current: TaskSchedule = initial
+  return {
+    state: () => current,
+    scheduleNext(nowMs, delayMs, platformAccepted, alsoProcessing) {
+      if (!canScheduleNext(current, nowMs, delayMs, platformAccepted)) return false
+      current = scheduleNext(current, nowMs, delayMs, platformAccepted, alsoProcessing)
+      return true
+    },
+    cancelWakes() {
+      if (!canCancelWakes(current)) return false
+      current = cancelWakes(current)
+      return true
+    },
+    recordWake(kind, nowMs, remotePushEnabled) {
+      if (!canRecordWake(current, kind, nowMs, remotePushEnabled)) return false
+      current = recordWake(current, kind, nowMs, remotePushEnabled)
+      return true
+    },
+  }
+}
 
 export effect function scheduleNativeWake(options: Parameters<ElizaTasksPlugin["scheduleNext"]>[0], port: ElizaTasksPlugin = ElizaTasks) {
   const nowMs = try Clock.currentTimeMillis

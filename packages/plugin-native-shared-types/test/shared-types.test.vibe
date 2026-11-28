@@ -1,0 +1,59 @@
+// spec/nativeSharedTypes/index.md, "Story: Read the speech updates the platform actually delivered"
+import { assert, describe, it } from "@effect/vitest"
+import {
+  browserRecognitionConstructor,
+  changedSpeechResults,
+  type SpeechRecognitionResultEvent,
+  type SpeechRecognitionWindow,
+} from "../src/index.vibe"
+
+module testSpeech {
+  import type { SpeechRecognitionCtor } from "../src/index.vibe"
+
+  export function fakeCtor(): SpeechRecognitionCtor {
+    return class extends EventTarget {
+      continuous = false
+      interimResults = false
+      lang = "en-US"
+      onstart = null
+      onend = null
+      onerror = null
+      onresult = null
+      start() {}
+      stop() {}
+      abort() {}
+    } as unknown as SpeechRecognitionCtor
+  }
+}
+import { fakeCtor } from testSpeech
+
+describe('plugin-native-shared-types (spec/nativeSharedTypes/index.md, "Story: Read the speech updates the platform actually delivered")', () => {
+  it('prefers StandardRecognition over WebkitRecognition and returns undefined when absent (spec/nativeSharedTypes/index.md, "Only changed in-range results with a valid confidence reach the listener")', () => {
+    const standard = fakeCtor()
+    const webkit = fakeCtor()
+    assert.strictEqual(browserRecognitionConstructor({ SpeechRecognition: standard, webkitSpeechRecognition: webkit }), standard)
+    assert.strictEqual(browserRecognitionConstructor({ webkitSpeechRecognition: webkit }), webkit)
+    assert.strictEqual(browserRecognitionConstructor({} satisfies SpeechRecognitionWindow), undefined)
+  })
+
+  it('returns only changed valid speech segments starting at resultIndex (spec/nativeSharedTypes/index.md, "Only changed in-range results with a valid confidence reach the listener")', () => {
+    const event: SpeechRecognitionResultEvent = {
+      resultIndex: 1,
+      results: {
+        length: 6,
+        0: { isFinal: true, 0: { transcript: "previous utterance", confidence: 0.99 } },
+        1: { isFinal: false, 0: { transcript: "  hello world  ", confidence: 0.5 } },
+        2: { isFinal: true, 0: { transcript: "   ", confidence: 0.9 } },
+        3: { isFinal: true, 0: { transcript: "bad confidence", confidence: 1.5 } },
+        4: { isFinal: true, 0: { transcript: "neg confidence", confidence: -0.1 } },
+        5: { isFinal: true, 0: { transcript: "confirmed", confidence: 0.875 } },
+      },
+    }
+    assert.deepStrictEqual(changedSpeechResults(event), [
+      { transcript: "hello world", stability: "InterimSpeech", confidenceMillionths: 500000 },
+      { transcript: "confirmed", stability: "FinalSpeech", confidenceMillionths: 875000 },
+    ])
+    assert.deepStrictEqual(changedSpeechResults({ resultIndex: -1, results: { length: 1, 0: { isFinal: true, 0: { transcript: "x", confidence: 1 } } } }), [])
+    assert.deepStrictEqual(changedSpeechResults({ resultIndex: Number.NaN, results: { length: 1, 0: { isFinal: true, 0: { transcript: "x", confidence: 1 } } } }), [])
+  })
+})

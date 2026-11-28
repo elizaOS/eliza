@@ -1,0 +1,69 @@
+// spec/nativeWifi/index.md, "Story: See whether I joined the network I chose"
+import { assert, describe, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory, State } from "@elizaos/core"
+import type { WiFiClient } from "@elizaos/os-bridges"
+import {
+  WIFI_APP_NAME,
+  WiFiWeb,
+  appWifiPlugin,
+  createWifiNetworksProvider,
+  joinNativeWifi,
+  wifiNetworksProvider,
+} from "../src/index.vibe"
+
+module node {
+  export async function captureRejection(fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await fn()
+      return undefined
+    } catch (error) {
+      return error
+    }
+  }
+}
+import { captureRejection } from node
+
+describe("Native Wi-Fi (spec/nativeWifi/index.md, \"Story: See whether I joined the network I chose\")", () => {
+  it("Distinguishes verified joins, captive portals, mismatched SSIDs, WiFiWeb validation, and wifiNetworksProvider (spec/nativeWifi/index.md, \"A confirmed join names the same network and Android's observed link\")", async () => {
+    assert.strictEqual(appWifiPlugin.name, WIFI_APP_NAME)
+    assert.strictEqual(wifiNetworksProvider.dynamic, true)
+    assert.strictEqual(wifiNetworksProvider.cacheStable, false)
+    assert.strictEqual(wifiNetworksProvider.cacheScope, "turn")
+    assert.isString(wifiNetworksProvider.descriptionCompressed)
+
+    const web = new WiFiWeb()
+    assert.deepStrictEqual(await web.getCapabilities(), { sdk: 0, approvedJoin: false, internetPanel: false })
+    assert.deepStrictEqual(await web.listAvailableNetworks({ limit: 5 }), { networks: [] })
+    assert.strictEqual((await web.connectToNetwork({ ssid: "HomeNet", security: "wpa2" })).success, false)
+    assert.isDefined(await captureRejection(() => web.listAvailableNetworks({ timeout: 999_999 })))
+    assert.isDefined(await captureRejection(() => web.connectToNetwork({ ssid: "" })))
+    assert.isDefined(await captureRejection(() => web.getConnectivity()))
+
+    const joinedClient = {
+      addNetworkWithApproval: async () => ({ status: "connected" as const }),
+      getConnectivity: async () => ({ ssid: "Studio5G", validated: true, captivePortal: false }),
+    } as unknown as WiFiClient
+    assert.strictEqual((await runPromise(joinNativeWifi({ ssid: "Studio5G" }, joinedClient))).report, "WifiJoined")
+
+    const portalClient = {
+      addNetworkWithApproval: async () => ({ status: "captivePortal" as const }),
+      getConnectivity: async () => ({ ssid: "HotelWifi", validated: false, captivePortal: true }),
+    } as unknown as WiFiClient
+    assert.strictEqual((await runPromise(joinNativeWifi({ ssid: "HotelWifi" }, portalClient))).report, "WifiNeedsPortal")
+
+    const wrongSsidClient = {
+      addNetworkWithApproval: async () => ({ status: "connected" as const }),
+      getConnectivity: async () => ({ ssid: "OtherNet", validated: true, captivePortal: false }),
+    } as unknown as WiFiClient
+    assert.strictEqual((await runPromise(joinNativeWifi({ ssid: "Studio5G" }, wrongSsidClient))).report, "WifiJoinUnverified")
+
+    const provider = createWifiNetworksProvider(() => ({
+      listAvailableNetworks: async () => ({
+        networks: [{ ssid: "Studio5G", bssid: "00:11:22:33:44:55", rssi: -48, frequency: 5180, capabilities: "[WPA3]", secured: true, security: "wpa3" }],
+      }),
+    }))
+    const res = await provider.get({} as IAgentRuntime, {} as Memory, {} as State)
+    assert.strictEqual(res.values?.wifiNetworksAvailable, true)
+    assert.strictEqual(res.values?.wifiNetworkCount, 1)
+  })
+})

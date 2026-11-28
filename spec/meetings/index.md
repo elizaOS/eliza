@@ -1,5 +1,8 @@
 # Meeting transcription
 
+URL authorization, viewer-scoped transcript disclosure, and ASR segment filtering
+are specified in [join URL validation, viewer disclosure, and segment admission](urlAndDisclosure.md).
+
 ## Story: Join a meeting as a disclosed transcription guest
 
 > As an authorized meeting participant, I can admit a notetaker, follow its transcription progress, stop it, and read the resulting transcript.

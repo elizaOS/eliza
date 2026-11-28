@@ -1,8 +1,54 @@
 // spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptionCommands.md, "Story: See my commands"
-import { attachmentReceipt, commandStatus, elapse, parseState, type Command } from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import {
+  apply, attachmentReceipt, commandStatus, decodeState, elapse, initial, parseState,
+  type Command, type CommandEffect, type CommandStep, type Event, type NotAState, type Rejected
+} from "../../gen/cloud__billing__subscriptionCommands.effect.vibe"
+import type { SessionOwner } from "../../gen/core__sessions.ts"
 import { StripePlanBinding, StripeScheduleBinding, StripeScheduleOrigin, type StripeUpgradeOrigin, type StripeUpgradeTerms } from "../providers/stripe.vibe"
 import { toText, type Tx } from "../store/connection.vibe"
-import { RowCorrupt } from "../store/rows.vibe"
+import { loadRow, outputRows, RowCorrupt, stepRow } from "../store/rows.vibe"
+
+export interface PlanCommandSent {
+  readonly event: Event
+  readonly by: SessionOwner
+  readonly now: number
+}
+
+effect function applyPlanCommandAt(state: Command, sent: PlanCommandSent): CommandStep!Rejected {
+  const current = sent.now > state.receipt.session.now ? (try apply(state, { type: "elapse", elapsed: sent.now - state.receipt.session.now }, sent.by)).state : state
+  return try apply(current, sent.event, sent.by)
+}
+
+const planCommandRows = outputRows<Command, PlanCommandSent, CommandEffect[], Rejected, NotAState>("subscription_commands", {
+  initial,
+  decodeState,
+  apply: applyPlanCommandAt
+})
+
+function storedCommandKind(kind: Command["kind"]): "cancel" | "undo" | "upgrade" | "downgrade" {
+  switch (kind) {
+    case "UndoCommand": return "undo"
+    case "UpgradeCommand": return "upgrade"
+    case "DowngradeCommand": return "downgrade"
+    default: return "cancel"
+  }
+}
+
+export effect function readPlanCommandState(tx: Tx, key: string) {
+  return (try loadRow(tx, planCommandRows, key, false)).state
+}
+
+export effect function stepPlanCommandRow(tx: Tx, key: string, organizationId: string, sent: PlanCommandSent) {
+  return (try stepRow(tx, planCommandRows, key, sent, (state) => ({
+    organization_id: organizationId,
+    kind: storedCommandKind(state.kind),
+    status: planCommandStatusAt(state, sent.now),
+    expected_revision: Math.max(1, state.expectedRevision),
+    result_revision: state.resultRevision === 0 ? null : state.resultRevision,
+    created_at: state.createdAt,
+    updated_at: sent.now
+  }))).out
+}
 
 export interface PlanCommandRecord {
   readonly organizationId: string

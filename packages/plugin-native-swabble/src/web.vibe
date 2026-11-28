@@ -1,0 +1,245 @@
+// spec/nativeSwabble/index.md, "Story: Listen for a wake phrase only during the current authorized session"; spec/nativeSwabble/session.md, "Each wake start or device switch advances the lease generation and stop clears the active lease"
+import type { PluginListenerHandle } from "@capacitor/core"
+import {
+  Machine as SessionMachine,
+  machine as sessionMachine,
+  type Event as WakeSessionEvent,
+  type WakeSessionState,
+} from "../gen/nativeSwabble__session.effect.vibe"
+import type {
+  SwabbleAudioLevelEvent,
+  SwabbleConfig,
+  SwabbleErrorEvent,
+  SwabblePermissionStatus,
+  SwabblePlugin,
+  SwabbleStartOptions,
+  SwabbleStartResult,
+  SwabbleStateEvent,
+  SwabbleTranscriptEvent,
+  SwabbleWakeWordEvent,
+} from "./native-contract.vibe"
+
+export interface SwabbleSessionMachineHandle {
+  readonly state: () => WakeSessionState
+  readonly dispatch: (event: WakeSessionEvent) => Promise<"accepted" | "refused">
+  readonly receive: (raw: unknown) => Promise<"accepted" | "refused">
+}
+
+export function createSwabbleSessionHandle(): SwabbleSessionMachineHandle {
+  const created = runSync(effect {
+    provide sessionMachine() {
+      const m = try SessionMachine
+      return m
+    }
+  })
+  return {
+    state: () => runSync(created.get()),
+    dispatch: (event) => runPromise(created.send(event).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+    receive: (raw) => runPromise(created.receive(raw).pipe(
+      Effect.as("accepted" as const),
+      Effect.catchTag("NotAnEvent", () => Effect.succeed("refused" as const)),
+      Effect.catchTag("Rejected", () => Effect.succeed("refused" as const)),
+    )),
+  }
+}
+
+const CONTINUOUS_SCRIPT_RE = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Thai}\p{sc=Lao}\p{sc=Khmer}\p{sc=Myanmar}]/u
+const WORD_CHAR_RE = /[\p{L}\p{N}]/u
+
+function foldForMatch(value: string): { readonly folded: string; readonly map: readonly number[] } {
+  let folded = ""
+  const map: number[] = []
+  for (let i = 0; i < value.length; ) {
+    const cp = value.codePointAt(i) ?? 0
+    const step = cp > 0xffff ? 2 : 1
+    const ch = value.slice(i, i + step)
+    const lower = ch.toLowerCase().replaceAll("\u03c2", "\u03c3")
+    for (let j = 0; j < lower.length; j += 1) {
+      folded += lower[j]
+      map.push(i)
+    }
+    i += step
+  }
+  map.push(value.length)
+  return { folded, map }
+}
+
+export function matchWakeTrigger(
+  transcript: string,
+  triggers: readonly string[],
+  minCommandLength = 0,
+): { readonly wakeWord: string; readonly command: string } | null {
+  const { folded, map } = foldForMatch(transcript)
+  for (const trigger of triggers) {
+    const cleanTrigger = trigger.trim()
+    if (!cleanTrigger) continue
+    const target = foldForMatch(cleanTrigger).folded
+    if (!target) continue
+    const continuous = CONTINUOUS_SCRIPT_RE.test(target)
+    let from = 0
+    while (from <= folded.length - target.length) {
+      const idx = folded.indexOf(target, from)
+      if (idx === -1) break
+      const end = idx + target.length
+      const before = idx > 0 ? folded[idx - 1] ?? "" : ""
+      const after = end < folded.length ? folded[end] ?? "" : ""
+      const leftOk = continuous || !before || !WORD_CHAR_RE.test(before)
+      const rightOk = continuous || !after || !WORD_CHAR_RE.test(after)
+      if (leftOk && rightOk) {
+        const origEnd = map[end] ?? transcript.length
+        const command = transcript.slice(origEnd).replace(/^[\s,.:;!?-]+/, "").trim()
+        if (command.length >= minCommandLength) {
+          return { wakeWord: cleanTrigger, command }
+        }
+      }
+      from = idx + 1
+    }
+  }
+  return null
+}
+
+type SwabbleListenerMap = {
+  wakeWord: Set<(event: SwabbleWakeWordEvent) => void>
+  transcript: Set<(event: SwabbleTranscriptEvent) => void>
+  stateChange: Set<(event: SwabbleStateEvent) => void>
+  audioLevel: Set<(event: SwabbleAudioLevelEvent) => void>
+  error: Set<(event: SwabbleErrorEvent) => void>
+}
+
+export class SwabbleWeb implements SwabblePlugin {
+  private config: SwabbleConfig | null = null
+  private deviceId = "default"
+  private leaseSeq = 0
+  private readonly session = createSwabbleSessionHandle()
+  private readonly listeners: SwabbleListenerMap = {
+    wakeWord: new Set(),
+    transcript: new Set(),
+    stateChange: new Set(),
+    audioLevel: new Set(),
+    error: new Set(),
+  }
+
+  async start(options: SwabbleStartOptions): Promise<SwabbleStartResult> {
+    if (!options?.config || !Array.isArray(options.config.triggers) || options.config.triggers.length === 0) {
+      return { started: false, error: "At least one wake trigger is required." }
+    }
+    this.config = { ...options.config, triggers: [...options.config.triggers] }
+    if (this.session.state().phase !== "WakeIdle") {
+      await this.session.dispatch({ type: "stopWake" })
+    }
+    this.leaseSeq += 1
+    const outcome = await this.session.dispatch({
+      type: "startWake",
+      leaseId: `web-lease-${this.leaseSeq}`,
+      deviceId: this.deviceId,
+      microphoneGranted: true,
+      ownerEnabled: true,
+    })
+    if (outcome !== "accepted") {
+      return { started: false, error: "Unable to start wake session." }
+    }
+    for (const fn of this.listeners.stateChange) fn({ state: "listening" })
+    return { started: true }
+  }
+
+  async stop(): Promise<void> {
+    if (this.session.state().phase !== "WakeIdle") {
+      await this.session.dispatch({ type: "stopWake" })
+    }
+    for (const fn of this.listeners.stateChange) fn({ state: "idle", reason: "stopped" })
+  }
+
+  async isListening(): Promise<{ listening: boolean }> {
+    return { listening: this.session.state().phase === "WakeListening" }
+  }
+
+  async getConfig(): Promise<{ config: SwabbleConfig | null }> {
+    return { config: this.config ? { ...this.config, triggers: [...this.config.triggers] } : null }
+  }
+
+  async updateConfig(options: { config: Partial<SwabbleConfig> }): Promise<void> {
+    if (!this.config) {
+      this.config = { triggers: options.config.triggers ? [...options.config.triggers] : [] }
+      return
+    }
+    this.config = {
+      ...this.config,
+      ...options.config,
+      triggers: options.config.triggers ? [...options.config.triggers] : this.config.triggers,
+    }
+  }
+
+  async checkPermissions(): Promise<SwabblePermissionStatus> {
+    return { microphone: "prompt", speechRecognition: "not_supported" }
+  }
+
+  async requestPermissions(): Promise<SwabblePermissionStatus> {
+    return { microphone: "prompt", speechRecognition: "not_supported" }
+  }
+
+  async getAudioDevices(): Promise<{ devices: Array<{ id: string; name: string; isDefault: boolean }> }> {
+    return { devices: [{ id: this.deviceId, name: "Default Microphone", isDefault: true }] }
+  }
+
+  async setAudioDevice(options: { deviceId: string }): Promise<void> {
+    const nextId = options.deviceId.trim()
+    if (!nextId) return
+    this.deviceId = nextId
+    if (this.session.state().phase !== "WakeIdle") {
+      this.leaseSeq += 1
+      await this.session.dispatch({
+        type: "switchDevice",
+        nextLeaseId: `web-lease-${this.leaseSeq}`,
+        nextDeviceId: nextId,
+      })
+    }
+  }
+
+  getSessionState(): WakeSessionState {
+    return this.session.state()
+  }
+
+  emitTranscript(event: SwabbleTranscriptEvent): void {
+    if (this.session.state().phase !== "WakeListening") return
+    for (const fn of this.listeners.transcript) fn(event)
+    if (this.config && event.transcript) {
+      const matched = matchWakeTrigger(event.transcript, this.config.triggers, this.config.minCommandLength ?? 0)
+      if (matched) {
+        const wake: SwabbleWakeWordEvent = {
+          wakeWord: matched.wakeWord,
+          command: matched.command,
+          transcript: event.transcript,
+          postGap: this.config.minPostTriggerGap ?? 0,
+          ...(event.confidence !== undefined ? { confidence: event.confidence } : {}),
+        }
+        for (const fn of this.listeners.wakeWord) fn(wake)
+      }
+    }
+  }
+
+  addListener(eventName: "wakeWord", listenerFunc: (event: SwabbleWakeWordEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "transcript", listenerFunc: (event: SwabbleTranscriptEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "stateChange", listenerFunc: (event: SwabbleStateEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "audioLevel", listenerFunc: (event: SwabbleAudioLevelEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "error", listenerFunc: (event: SwabbleErrorEvent) => void): Promise<PluginListenerHandle>
+  async addListener(eventName: keyof SwabbleListenerMap, listenerFunc: (event: never) => void): Promise<PluginListenerHandle> {
+    const bucket = this.listeners[eventName] as Set<(event: never) => void>
+    bucket.add(listenerFunc)
+    return {
+      remove: async () => {
+        bucket.delete(listenerFunc)
+      },
+    }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    this.listeners.wakeWord.clear()
+    this.listeners.transcript.clear()
+    this.listeners.stateChange.clear()
+    this.listeners.audioLevel.clear()
+    this.listeners.error.clear()
+  }
+}

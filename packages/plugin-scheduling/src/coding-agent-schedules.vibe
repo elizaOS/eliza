@@ -1,0 +1,174 @@
+// spec/scheduling/dispatch.md, "Story: Dispatch scheduled tasks safely through escalation ladders without duplicating uncertain deliveries"
+import type { IAgentRuntime } from "@elizaos/core"
+import type { ScheduledTaskDispatcher, ScheduledTaskRunner } from "./store.vibe"
+import type { DispatchResult, ScheduledTaskInput, ScheduledTaskTrigger } from "./types.vibe"
+
+export const CODING_AGENT_SCHEDULE_METADATA_KEY = "codingAgentSchedule" as const
+export const PR_SHEPHERD_RECIPE = "pr-shepherd" as const
+export const PR_SHEPHERD_DISPATCH_CHANNEL = "coding_agent_pr_shepherd" as const
+export const GITHUB_PR_SHEPHERD_SERVICE_TYPE = "GITHUB_PR_SHEPHERD_SERVICE" as const
+export const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE" as const
+
+const MAX_TASKS_PER_RUN_DEFAULT = 5
+const MAX_TASKS_PER_RUN_CEILING = 20
+
+export interface PrShepherdSchedulePolicy {
+  readonly allowProposeFixes?: boolean
+  readonly maxTasksPerRun?: number
+}
+
+export interface PrShepherdScheduleMetadata {
+  readonly recipe: typeof PR_SHEPHERD_RECIPE
+  readonly ownerAgentId: string
+  readonly ownerUserId?: string
+  readonly projectId?: string
+  readonly workdir?: string
+  readonly repo?: string
+  readonly policy?: PrShepherdSchedulePolicy
+  readonly paused?: boolean
+}
+
+export interface PrShepherdPullRequest {
+  readonly owner: string
+  readonly repo: string
+  readonly number: number
+  readonly title: string
+  readonly url: string
+  readonly reviewDecision?: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED"
+  readonly behindBase?: boolean
+  readonly checksConclusion?: "success" | "failure" | "failed" | "cancelled" | "timed_out" | "pending" | "unknown"
+}
+
+export interface GitHubPrShepherdService {
+  listAssignedOpenPullRequests(args: {
+    readonly agentId: string
+    readonly ownerUserId?: string
+    readonly projectId?: string
+    readonly repo?: string
+  }): Promise<readonly PrShepherdPullRequest[]>
+}
+
+export interface OrchestratorTaskSubmitter {
+  submitTask(args: { readonly title: string; readonly prompt: string; readonly metadata: Record<string, unknown> }): Promise<{ readonly id: string }>
+}
+
+export interface PrShepherdRunReceipt {
+  readonly prNumber: number
+  readonly repo: string
+  readonly taskId: string
+  readonly signals: readonly string[]
+}
+
+export interface PrShepherdRunSummary {
+  readonly inspected: number
+  readonly created: readonly PrShepherdRunReceipt[]
+}
+
+export function buildPrShepherdScheduleInput(args: {
+  readonly ownerId: string
+  readonly ownerAgentId: string
+  readonly repo?: string
+  readonly workdir?: string
+  readonly trigger?: ScheduledTaskTrigger
+  readonly policy?: PrShepherdSchedulePolicy
+}): ScheduledTaskInput {
+  const metadata: PrShepherdScheduleMetadata = {
+    recipe: PR_SHEPHERD_RECIPE,
+    ownerAgentId: args.ownerAgentId,
+    repo: args.repo,
+    workdir: args.workdir,
+    policy: args.policy,
+    paused: false,
+  }
+  return {
+    ownerId: args.ownerId,
+    title: args.repo ? `PR shepherd (${args.repo})` : "PR shepherd",
+    kind: "watcher",
+    priority: "medium",
+    source: "plugin",
+    channelKey: PR_SHEPHERD_DISPATCH_CHANNEL,
+    promptInstructions: "Inspect assigned open pull requests for failed checks, requested changes, or stale branches.",
+    trigger: args.trigger ?? { kind: "interval", everyMinutes: 30 },
+    metadata: { [CODING_AGENT_SCHEDULE_METADATA_KEY]: metadata },
+  }
+}
+
+function prSignals(pr: PrShepherdPullRequest): string[] {
+  const signals: string[] = []
+  if (pr.reviewDecision === "CHANGES_REQUESTED") signals.push("changes_requested")
+  if (pr.behindBase) signals.push("behind_base")
+  if (pr.checksConclusion === "failure" || pr.checksConclusion === "failed" || pr.checksConclusion === "timed_out") {
+    signals.push("failed_checks")
+  }
+  return signals
+}
+
+export function createCodingAgentScheduleDispatcher(runtime: IAgentRuntime): ScheduledTaskDispatcher {
+  return async (task): Promise<DispatchResult> => {
+    const rawMeta = task.metadata[CODING_AGENT_SCHEDULE_METADATA_KEY] as PrShepherdScheduleMetadata | undefined
+    if (!rawMeta || rawMeta.recipe !== PR_SHEPHERD_RECIPE) {
+      return { ok: false, reason: "transport_error", message: "missing coding-agent schedule metadata" }
+    }
+    if (rawMeta.paused) {
+      return { ok: true, messageId: `paused:${task.id}` }
+    }
+    const gh = runtime.getService(GITHUB_PR_SHEPHERD_SERVICE_TYPE) as unknown as GitHubPrShepherdService | null
+    if (!gh || typeof gh.listAssignedOpenPullRequests !== "function") {
+      return { ok: false, reason: "disconnected", message: "GitHub PR shepherd service unavailable", userActionable: true }
+    }
+    const orchestrator = runtime.getService(ORCHESTRATOR_TASK_SERVICE_TYPE) as unknown as OrchestratorTaskSubmitter | null
+    if (!orchestrator || typeof orchestrator.submitTask !== "function") {
+      return { ok: false, reason: "disconnected", message: "Orchestrator task service unavailable" }
+    }
+    const maxTasks = Math.min(
+      MAX_TASKS_PER_RUN_CEILING,
+      Math.max(1, rawMeta.policy?.maxTasksPerRun ?? MAX_TASKS_PER_RUN_DEFAULT),
+    )
+    const prs = await gh.listAssignedOpenPullRequests({
+      agentId: rawMeta.ownerAgentId,
+      ownerUserId: rawMeta.ownerUserId,
+      projectId: rawMeta.projectId,
+      repo: rawMeta.repo,
+    })
+    const created: PrShepherdRunReceipt[] = []
+    for (const pr of prs) {
+      if (created.length >= maxTasks) break
+      const signals = prSignals(pr)
+      if (signals.length === 0) continue
+      const submitted = await orchestrator.submitTask({
+        title: `Shepherd ${pr.owner}/${pr.repo}#${pr.number}: ${pr.title}`,
+        prompt: `Address PR signals (${signals.join(", ")}) for ${pr.url}`,
+        metadata: { recipe: PR_SHEPHERD_RECIPE, repo: `${pr.owner}/${pr.repo}`, prNumber: pr.number, signals },
+      })
+      created.push({ prNumber: pr.number, repo: `${pr.owner}/${pr.repo}`, taskId: submitted.id, signals })
+    }
+    return { ok: true, messageId: `pr-shepherd:${created.length}` }
+  }
+}
+
+async function setCodingAgentSchedulePaused(
+  runner: ScheduledTaskRunner,
+  taskId: string,
+  paused: boolean,
+): Promise<boolean> {
+  const existing = await runner.get(taskId)
+  if (!existing) return false
+  const meta = existing.metadata[CODING_AGENT_SCHEDULE_METADATA_KEY] as PrShepherdScheduleMetadata | undefined
+  if (!meta) return false
+  await runner.update(taskId, {
+    metadata: { [CODING_AGENT_SCHEDULE_METADATA_KEY]: { ...meta, paused } },
+  })
+  return true
+}
+
+export async function pauseCodingAgentSchedule(runner: ScheduledTaskRunner, taskId: string): Promise<boolean> {
+  return setCodingAgentSchedulePaused(runner, taskId, true)
+}
+
+export async function resumeCodingAgentSchedule(runner: ScheduledTaskRunner, taskId: string): Promise<boolean> {
+  return setCodingAgentSchedulePaused(runner, taskId, false)
+}
+
+export async function deleteCodingAgentSchedule(runner: ScheduledTaskRunner, taskId: string): Promise<boolean> {
+  return runner.delete(taskId)
+}

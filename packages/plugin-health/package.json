@@ -3,20 +3,25 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS \u2014 extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
+  "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS — connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and wake/bedtime/nap anchors.",
   "license": "MIT",
   "scripts": {
     "build": "vibelang -p tsconfig.build.json",
+    "test": "vitest run",
     "typecheck": "vibelang --noEmit -p ."
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
+    "@effect/vitest": "4.1.1",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vibelang": "0.0.13"
+    "vibelang": "0.0.13",
+    "vibestack": "workspace:*",
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

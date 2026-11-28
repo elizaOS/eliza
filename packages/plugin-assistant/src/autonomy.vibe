@@ -1,0 +1,417 @@
+// spec/assistant/autonomy.md, "Autonomy respects enablement, global pause, interval bounds, and error ceilings"
+import {
+  Service,
+  type Action,
+  type ActionResult,
+  type IAgentRuntime,
+  type Provider,
+  type UUID,
+} from "@elizaos/core"
+import type { AgentPlugin } from "@elizaos/agent-host"
+import {
+  canDisableAutonomy,
+  canEnableAutonomy,
+  canFinishThinkFailure,
+  canFinishThinkSuccess,
+  canSetGlobalPause,
+  canSetIntervalMs,
+  canStartThink,
+  disableAutonomy,
+  enableAutonomy,
+  finishThinkFailure,
+  finishThinkSuccess,
+  initial,
+  setGlobalPause,
+  setIntervalMs,
+  startThink,
+  type AutonomyState,
+} from "../gen/assistant__autonomy.effect.vibe"
+
+type LocalRoute = NonNullable<AgentPlugin["routes"]>[number]
+
+export const AUTONOMY_SERVICE_TYPE = "autonomy"
+export const GLOBAL_PAUSE_SERVICE_TYPE = "global-pause"
+
+export interface AutonomyStatus {
+  enabled: boolean
+  running: boolean
+  thinking: boolean
+  globalPaused: boolean
+  interval: number
+  consecutiveErrors: number
+  maxErrors: number
+  totalCycles: number
+  autonomousRoomId: UUID
+}
+
+export interface AutonomyConfig {
+  intervalMs?: number
+  autoStart?: boolean
+  autonomousRoomId?: UUID
+}
+
+export interface GlobalPauseStatus {
+  paused: boolean
+  reason?: string
+  updatedAt: number
+}
+
+const DEFAULT_AUTONOMOUS_ROOM_ID = "00000000-0000-4000-8000-00000000a001" as UUID
+
+export function summarizeAssistantResult(result: ActionResult | undefined, fallback: string): string | undefined {
+  if (!result) return undefined
+  const text = typeof result.text === "string" ? result.text.trim() : ""
+  if (!text) return result.success ? fallback : "Assistant operation failed."
+  return text.length <= 160 ? text : `${text.slice(0, 157)}...`
+}
+
+export function readActionParameters(options: unknown): Readonly<Record<string, unknown>> {
+  if (typeof options !== "object" || options === null) return {}
+  const direct = options as Record<string, unknown>
+  const nested =
+    typeof direct.parameters === "object" && direct.parameters !== null
+      ? (direct.parameters as Record<string, unknown>)
+      : {}
+  return { ...direct, ...nested }
+}
+
+export class AutonomyController {
+  private state: AutonomyState = initial
+
+  getState(): AutonomyState {
+    return this.state
+  }
+
+  enable(): boolean {
+    if (!canEnableAutonomy(this.state)) return false
+    this.state = enableAutonomy(this.state)
+    return true
+  }
+
+  disable(): boolean {
+    if (!canDisableAutonomy(this.state)) return false
+    this.state = disableAutonomy(this.state)
+    return true
+  }
+
+  setGlobalPause(paused: boolean): boolean {
+    if (!canSetGlobalPause(this.state, paused)) return false
+    this.state = setGlobalPause(this.state, paused)
+    return true
+  }
+
+  setIntervalMs(nextMs: number): boolean {
+    if (!Number.isSafeInteger(nextMs) || !canSetIntervalMs(this.state, nextMs)) return false
+    this.state = setIntervalMs(this.state, nextMs)
+    return true
+  }
+
+  startThink(): boolean {
+    if (!canStartThink(this.state)) return false
+    this.state = startThink(this.state)
+    return true
+  }
+
+  finishThinkSuccess(): boolean {
+    if (!canFinishThinkSuccess(this.state)) return false
+    this.state = finishThinkSuccess(this.state)
+    return true
+  }
+
+  finishThinkFailure(): boolean {
+    if (!canFinishThinkFailure(this.state)) return false
+    this.state = finishThinkFailure(this.state)
+    return true
+  }
+}
+
+export class GlobalPauseService extends Service {
+  static override serviceType: string = GLOBAL_PAUSE_SERVICE_TYPE
+  override capabilityDescription =
+    "Engages or clears global pause across autonomous thinking and proactive assistant tasks."
+
+  private paused = false
+  private reason: string | undefined
+  private updatedAt = Date.now()
+
+  static override start(runtime: IAgentRuntime): Promise<GlobalPauseService> {
+    return Promise.resolve(new GlobalPauseService(runtime))
+  }
+
+  isPaused(): boolean {
+    return this.paused
+  }
+
+  getStatus(): GlobalPauseStatus {
+    return { paused: this.paused, reason: this.reason, updatedAt: this.updatedAt }
+  }
+
+  pause(reason?: string): GlobalPauseStatus {
+    this.paused = true
+    this.reason = reason?.trim() || "owner_requested"
+    this.updatedAt = Date.now()
+    const autonomy = this.runtime?.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE)
+    autonomy?.setGlobalPause(true)
+    return this.getStatus()
+  }
+
+  resume(): GlobalPauseStatus {
+    this.paused = false
+    this.reason = undefined
+    this.updatedAt = Date.now()
+    const autonomy = this.runtime?.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE)
+    autonomy?.setGlobalPause(false)
+    return this.getStatus()
+  }
+
+  override stop(): Promise<void> {
+    this.paused = false
+    return Promise.resolve()
+  }
+}
+
+export class AutonomyService extends Service {
+  static override serviceType: string = AUTONOMY_SERVICE_TYPE
+  override capabilityDescription =
+    "Manages bounded autonomous thinking cycles, global pause fencing, and escalation."
+
+  private readonly controller = new AutonomyController()
+  private readonly autonomousRoomId: UUID
+  private readonly escalations: Array<{ target: string; message: string; timestamp: number }> = []
+
+  constructor(runtime?: IAgentRuntime, config: AutonomyConfig = {}) {
+    super(runtime)
+    this.autonomousRoomId = config.autonomousRoomId ?? DEFAULT_AUTONOMOUS_ROOM_ID
+    if (typeof config.intervalMs === "number") {
+      this.controller.setIntervalMs(config.intervalMs)
+    }
+    if (config.autoStart) {
+      this.controller.enable()
+    }
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<AutonomyService> {
+    return Promise.resolve(new AutonomyService(runtime))
+  }
+
+  getController(): AutonomyController {
+    return this.controller
+  }
+
+  getStatus(): AutonomyStatus {
+    const s = this.controller.getState()
+    return {
+      enabled: s.enabled,
+      running: s.running,
+      thinking: s.thinking,
+      globalPaused: s.globalPaused,
+      interval: s.intervalMs,
+      consecutiveErrors: s.consecutiveErrors,
+      maxErrors: s.maxErrors,
+      totalCycles: s.totalCycles,
+      autonomousRoomId: this.autonomousRoomId,
+    }
+  }
+
+  enableAutonomy(): AutonomyStatus {
+    this.controller.enable()
+    return this.getStatus()
+  }
+
+  disableAutonomy(): AutonomyStatus {
+    this.controller.disable()
+    return this.getStatus()
+  }
+
+  setGlobalPause(paused: boolean): AutonomyStatus {
+    this.controller.setGlobalPause(paused)
+    return this.getStatus()
+  }
+
+  setIntervalMs(intervalMs: number): boolean {
+    return this.controller.setIntervalMs(intervalMs)
+  }
+
+  async runThinkCycle(think: () => Promise<void>): Promise<{ ran: boolean; succeeded: boolean }> {
+    if (!this.controller.startThink()) return { ran: false, succeeded: false }
+    try {
+      await think()
+      this.controller.finishThinkSuccess()
+      return { ran: true, succeeded: true }
+    } catch {
+      this.controller.finishThinkFailure()
+      return { ran: true, succeeded: false }
+    }
+  }
+
+  recordEscalation(target: string, message: string): { target: string; message: string; timestamp: number } {
+    const entry = { target, message, timestamp: Date.now() }
+    this.escalations.push(entry)
+    if (this.escalations.length > 50) this.escalations.splice(0, this.escalations.length - 50)
+    return entry
+  }
+
+  listEscalations(): ReadonlyArray<{ target: string; message: string; timestamp: number }> {
+    return [...this.escalations]
+  }
+
+  override stop(): Promise<void> {
+    this.controller.disable()
+    return Promise.resolve()
+  }
+}
+
+export const autonomyAction: Action = {
+  name: "AUTONOMY",
+  similes: ["ENABLE_AUTONOMOUS_MODE", "DISABLE_AUTONOMOUS_MODE", "ESCALATE", "GLOBAL_PAUSE"],
+  description:
+    "Enable or disable autonomous background thinking, adjust cycle interval, toggle global pause, or escalate a message to the owner/admin.",
+  descriptionCompressed: "Control autonomous mode, cycle interval, global pause, or admin escalation.",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  parameters: [
+    { name: "intervalMs", description: "Cycle interval in ms (5000..3600000).", schema: { type: "integer" } },
+    { name: "message", description: "Escalation message text.", schema: { type: "string" } },
+    { name: "op", description: "Autonomy operation.", required: true, schema: { type: "string", enum: ["status", "enable", "disable", "set_interval", "pause", "resume", "escalate"] } },
+    { name: "reason", description: "Reason for global pause.", schema: { type: "string" } },
+    { name: "target", description: "Escalation target (admin).", schema: { type: "string", enum: ["admin", "owner"] } },
+  ],
+  summarize: (result) => summarizeAssistantResult(result, "Autonomy updated."),
+  validate: () => Promise.resolve(true),
+  handler: (runtime, _message, _state, options) => {
+    const params = readActionParameters(options)
+    const op = typeof params.op === "string" ? params.op : "status"
+    const service = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE)
+    const pauseSvc = runtime.getService<GlobalPauseService>(GLOBAL_PAUSE_SERVICE_TYPE)
+    if (!service) {
+      return Promise.resolve({ success: false, text: "Autonomy service is unavailable." })
+    }
+    if (op === "enable") {
+      const status = service.enableAutonomy()
+      return Promise.resolve({ success: true, text: `Autonomy enabled (interval ${status.interval}ms).`, data: { status } })
+    }
+    if (op === "disable") {
+      const status = service.disableAutonomy()
+      return Promise.resolve({ success: true, text: "Autonomy disabled.", data: { status } })
+    }
+    if (op === "set_interval") {
+      const intervalMs = typeof params.intervalMs === "number" ? params.intervalMs : -1
+      const ok = service.setIntervalMs(intervalMs)
+      return Promise.resolve({
+        success: ok,
+        text: ok ? `Autonomy interval set to ${intervalMs}ms.` : "Interval must be between 5000ms and 3600000ms.",
+        data: { status: service.getStatus() },
+      })
+    }
+    if (op === "pause") {
+      const reason = typeof params.reason === "string" ? params.reason : undefined
+      const pauseStatus = pauseSvc ? pauseSvc.pause(reason) : { paused: true, reason, updatedAt: Date.now() }
+      service.setGlobalPause(true)
+      return Promise.resolve({ success: true, text: "Global pause engaged.", data: { pauseStatus, status: service.getStatus() } })
+    }
+    if (op === "resume") {
+      const pauseStatus = pauseSvc ? pauseSvc.resume() : { paused: false, updatedAt: Date.now() }
+      service.setGlobalPause(false)
+      return Promise.resolve({ success: true, text: "Global pause cleared.", data: { pauseStatus, status: service.getStatus() } })
+    }
+    if (op === "escalate") {
+      const msg = typeof params.message === "string" ? params.message.trim() : ""
+      if (!msg) return Promise.resolve({ success: false, text: "Provide an escalation message." })
+      const target = params.target === "owner" ? "owner" : "admin"
+      const entry = service.recordEscalation(target, msg)
+      return Promise.resolve({ success: true, text: `Escalated to ${target}: ${msg}`, data: { escalation: entry } })
+    }
+    const status = service.getStatus()
+    return Promise.resolve({
+      success: true,
+      text: `Autonomy ${status.enabled ? "enabled" : "disabled"}${status.globalPaused ? " (globally paused)" : ""}, cycles: ${status.totalCycles}.`,
+      data: { status },
+    })
+  },
+}
+
+export const autonomyProvider: Provider = {
+  name: "AUTONOMY_STATUS",
+  description: "Current autonomous thinking state, global pause flag, interval, and completed cycles.",
+  descriptionCompressed: "Autonomy enabled/paused status, interval, and cycle count.",
+  dynamic: true,
+  cacheStable: false,
+  get: (runtime) => {
+    const service = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE)
+    if (!service) return Promise.resolve({ text: "", data: { available: false } })
+    const status = service.getStatus()
+    return Promise.resolve({
+      text: `Autonomy: ${status.enabled ? "enabled" : "disabled"}, running=${status.running}, globalPaused=${status.globalPaused}, interval=${status.interval}ms, cycles=${status.totalCycles}`,
+      values: { autonomyEnabled: status.enabled, globalPaused: status.globalPaused },
+      data: { status },
+    })
+  },
+}
+
+const decodeInterval = Schema.decodeUnknownOption(
+  Schema.Struct({ intervalMs: Schema.Int.check(Schema.isBetween({ minimum: 5000, maximum: 3600000 })) }),
+)
+const decodePause = Schema.decodeUnknownOption(
+  Schema.Struct({ paused: Schema.Boolean, reason: Schema.optionalKey(Schema.String) }),
+)
+
+export function autonomyRoutes(agent: () => IAgentRuntime | undefined): LocalRoute[] {
+  const unavailable = { status: 503, body: { error: "autonomy_unavailable" } }
+  const serviceOf = () => agent()?.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE) ?? null
+  return [
+    {
+      method: "GET",
+      path: "/api/personal-assistant/autonomy/status",
+      handler: () => {
+        const svc = serviceOf()
+        return Promise.resolve(svc ? { status: 200, body: { success: true, data: svc.getStatus() } } : unavailable)
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/personal-assistant/autonomy/enable",
+      handler: () => {
+        const svc = serviceOf()
+        return Promise.resolve(svc ? { status: 200, body: { success: true, data: svc.enableAutonomy() } } : unavailable)
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/personal-assistant/autonomy/disable",
+      handler: () => {
+        const svc = serviceOf()
+        return Promise.resolve(svc ? { status: 200, body: { success: true, data: svc.disableAutonomy() } } : unavailable)
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/personal-assistant/autonomy/interval",
+      handler: ({ body }) => {
+        const svc = serviceOf()
+        if (!svc) return Promise.resolve(unavailable)
+        const parsed = decodeInterval(body)
+        if (Option.isNone(parsed)) return Promise.resolve({ status: 400, body: { error: "invalid_interval" } })
+        svc.setIntervalMs(parsed.value.intervalMs)
+        return Promise.resolve({ status: 200, body: { success: true, data: svc.getStatus() } })
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/personal-assistant/global-pause",
+      handler: ({ body }) => {
+        const runtime = agent()
+        const svc = serviceOf()
+        if (!runtime || !svc) return Promise.resolve(unavailable)
+        const parsed = decodePause(body)
+        if (Option.isNone(parsed)) return Promise.resolve({ status: 400, body: { error: "malformed" } })
+        const pauseSvc = runtime.getService<GlobalPauseService>(GLOBAL_PAUSE_SERVICE_TYPE)
+        const pauseStatus = parsed.value.paused
+          ? (pauseSvc?.pause(parsed.value.reason) ?? { paused: true, reason: parsed.value.reason, updatedAt: Date.now() })
+          : (pauseSvc?.resume() ?? { paused: false, updatedAt: Date.now() })
+        svc.setGlobalPause(parsed.value.paused)
+        return Promise.resolve({ status: 200, body: { success: true, pauseStatus, autonomy: svc.getStatus() } })
+      },
+    },
+  ]
+}

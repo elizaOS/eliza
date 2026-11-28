@@ -1,0 +1,291 @@
+// spec/health/index.md, "Story: Review recorded sleep and device activity"; spec/health/index.md, "Interval summaries include only valid observations for the owner and requested time range"; spec/health/index.md, "An inactivity signal does not count as active use"; spec/health/lifecycle.md, "Story: Sync health connectors only with owner consent and gate exports and sleep alerts safely"; spec/health/lifecycle.md, "Health data exports require granted consent, owner role, and owner-only audience"; spec/health/lifecycle.md, "Sleep regularity windows and wake alerts stay within safe bounds"; spec/health/lifecycle.md, "Connector authorization and sync transitions enforce owner consent and monotonic revisions"
+import { assert, it } from "@effect/vitest"
+import type { IAgentRuntime, Memory } from "@elizaos/core"
+import {
+  HEALTH_ANCHORS,
+  HEALTH_BUS_FAMILIES,
+  HEALTH_CONNECTOR_KINDS,
+  HEALTH_DEFAULT_PACKS,
+  HEALTH_SERVICE_TYPE,
+  HealthConnector,
+  HealthService,
+  classifyScreenTimeTarget,
+  computeAwakeProbability,
+  createHealthPlugin,
+  decryptTokenEnvelope,
+  encryptTokenPayload,
+  getHealthProviderSpec,
+  healthAction,
+  healthPlugin,
+  healthProvider,
+  healthRoutes,
+  isEncryptedTokenEnvelope,
+  isSystemInactivityApp,
+  listHealthProviderSpecs,
+  resetHealthProviderRegistry,
+  resolveTokenEncryptionKey,
+  runHealthAction,
+  runScreenTimeAction,
+  screenSignalIsActive,
+  screenTimeAction,
+  setHealthProviderSpec,
+  summarizeIntervals,
+} from "../src/index.vibe"
+
+module node {
+  import * as http from "node:http"
+
+  export interface MockProviderServer {
+    readonly baseUrl: string
+    readonly tokenCalls: () => number
+    readonly close: () => Promise<void>
+  }
+
+  export async function startProviderServer(): Promise<MockProviderServer> {
+    let tokenCount = 0
+    const server = http.createServer((req, res) => {
+      const url = req.url ?? "/"
+      if (req.method === "POST" && url === "/oauth/token") {
+        tokenCount += 1
+        req.on("data", () => undefined)
+        req.on("end", () => {
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(JSON.stringify({
+            access_token: `access-${tokenCount}`,
+            refresh_token: `refresh-${tokenCount}`,
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "daily sleep heartrate",
+          }))
+        })
+        return
+      }
+      if (req.method === "GET" && url === "/summary") {
+        if (req.headers.authorization !== `Bearer access-${tokenCount}`) {
+          res.writeHead(401, { "content-type": "application/json" })
+          res.end(JSON.stringify({ error: "unauthorized" }))
+          return
+        }
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(JSON.stringify({
+          samples: [
+            { id: "s1", metric: "steps", value: 9400, unit: "steps", recordedAt: "2030-03-04T18:00:00.000Z" },
+            { id: "s2", metric: "heart_rate", value: 62, unit: "bpm", recordedAt: "2030-03-04T18:00:00.000Z" },
+            { id: "s3", metric: "hrv_ms", value: 78, unit: "ms", recordedAt: "2030-03-04T07:00:00.000Z" },
+            { id: "s4", metric: "readiness_score", value: 88, unit: "score", recordedAt: "2030-03-04T07:00:00.000Z" },
+          ],
+          sleepEpisodes: [
+            { id: "ep-live", startAt: "2030-03-03T23:00:00.000Z", endAt: "2030-03-04T07:00:00.000Z", cycleType: "main", efficiencyPct: 92 },
+          ],
+          workouts: [
+            { id: "w1", sport: "run", startAt: "2030-03-04T12:00:00.000Z", endAt: "2030-03-04T12:40:00.000Z", distanceMeters: 7500, calories: 520 },
+          ],
+        }))
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    const address = server.address()
+    const port = typeof address === "object" && address !== null ? address.port : 0
+    return {
+      baseUrl: `http://127.0.0.1:${port}`,
+      tokenCalls: () => tokenCount,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    }
+  }
+}
+
+import { startProviderServer } from node
+
+it.effect(`Review recorded sleep and device activity without double-counting overlap or inactivity (spec/health/index.md, "Story: Review recorded sleep and device activity"; spec/health/index.md, "Interval summaries include only valid observations for the owner and requested time range"; spec/health/index.md, "An inactivity signal does not count as active use")`, effect () => {
+  const layer = Layer.succeed(HealthConnector, {
+    observations: effect (_ownerId, _window, _kind) => [
+      { subjectId: "owner", sourceId: "oura", kind: "SleepInterval", span: { fromMs: 1000, untilMs: 4000 } },
+      { subjectId: "owner", sourceId: "watch", kind: "SleepInterval", span: { fromMs: 3000, untilMs: 6000 } },
+      { subjectId: "stranger", sourceId: "oura", kind: "SleepInterval", span: { fromMs: 1000, untilMs: 9000 } },
+    ],
+  })
+  provide layer {
+    const summary = try summarizeIntervals("owner", { fromMs: 0, untilMs: 10_000 }, "SleepInterval")
+    assert.deepStrictEqual([
+      summary.observations.length,
+      summary.coveredMs,
+      screenSignalIsActive("ForegroundUse"),
+      screenSignalIsActive("DeviceLocked"),
+      screenSignalIsActive("InactivityPlaceholder"),
+      isSystemInactivityApp({ bundleId: "com.apple.loginwindow" }),
+      isSystemInactivityApp({ appName: "LockApp.exe" }),
+      isSystemInactivityApp({ appName: "Visual Studio Code" }),
+      classifyScreenTimeTarget({ identifier: "https://youtube.com/watch?v=1", source: "website" }).category,
+      classifyScreenTimeTarget({ identifier: "com.microsoft.VSCode", appName: "Code", source: "app" }).category,
+    ], [2, 5000, true, false, false, true, true, false, "video", "work"])
+  }
+})
+
+it.effect(`Sync wearable connector via real OAuth HTTP boundary, encrypt tokens at rest, gate exports on consent, compute sleep regularity and screen time, and serve HTTP routes (spec/health/lifecycle.md, "Story: Sync health connectors only with owner consent and gate exports and sleep alerts safely"; spec/health/lifecycle.md, "Health data exports require granted consent, owner role, and owner-only audience"; spec/health/lifecycle.md, "Sleep regularity windows and wake alerts stay within safe bounds"; spec/health/lifecycle.md, "Connector authorization and sync transitions enforce owner consent and monotonic revisions")`, effect () => {
+  try TestClock.setTime(Date.parse("2030-03-04T20:00:00.000Z"))
+  const key = resolveTokenEncryptionKey(undefined, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")!
+  const envelope = encryptTokenPayload({ token: "secret-access" }, key)!
+  assert.deepStrictEqual([isEncryptedTokenEnvelope(envelope), decryptTokenEnvelope(envelope, key)], [true, { token: "secret-access" }])
+
+  const server = try promise(() => startProviderServer())
+  const service = new HealthService(undefined, {
+    dbPath: ":memory:",
+    encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  })
+  const body = effect {
+    const baseSpec = getHealthProviderSpec("oura")!
+    setHealthProviderSpec({
+      ...baseSpec,
+      apiBaseUrl: server.baseUrl,
+      oauth: {
+        ...baseSpec.oauth,
+        authorizeUrl: `${server.baseUrl}/oauth/authorize`,
+        tokenUrl: `${server.baseUrl}/oauth/token`,
+      },
+    })
+
+    const blockedBeforeConsent = service.exportHealthSnapshot({
+      ownerId: "owner",
+      provider: "oura",
+      isOwner: true,
+      ownerAudienceOnly: true,
+    })
+    assert.strictEqual(blockedBeforeConsent.allowed, false)
+
+    const started = try service.beginOAuthConnection({
+      ownerId: "owner",
+      provider: "oura",
+      clientId: "cid",
+      clientSecret: "csecret",
+      redirectUri: "http://127.0.0.1/cb",
+    })
+    assert.strictEqual(started.state.phase, "ConnectorAuthorizing")
+
+    const completed = try service.completeOAuthConnection(started.session.state, "auth-code-1")
+    assert.deepStrictEqual([completed.state.phase, completed.state.hasRefreshToken, completed.token.accessToken], ["ConnectorConnected", true, "access-1"])
+    assert.strictEqual(isEncryptedTokenEnvelope(service.oauth.getEncryptedEnvelope("owner", "oura")), true)
+
+    const refreshed = try service.oauth.refreshToken("owner", "oura")
+    const calls = try Effect.try(() => server.tokenCalls())
+    assert.deepStrictEqual([refreshed.accessToken, calls], ["access-2", 2])
+
+    const synced = try service.syncOAuthProvider("owner", "oura")
+    assert.deepStrictEqual([synced.addedSamples, synced.addedSleep, synced.addedWorkouts, synced.state.syncedSamples], [5, 1, 1, 5])
+
+    const nonOwnerExport = service.exportHealthSnapshot({
+      ownerId: "owner",
+      provider: "oura",
+      isOwner: false,
+      ownerAudienceOnly: true,
+    })
+    const groupAudienceExport = service.exportHealthSnapshot({
+      ownerId: "owner",
+      provider: "oura",
+      isOwner: true,
+      ownerAudienceOnly: false,
+    })
+    const ownerExport = service.exportHealthSnapshot({
+      ownerId: "owner",
+      provider: "oura",
+      isOwner: true,
+      ownerAudienceOnly: true,
+    })
+    assert.deepStrictEqual([nonOwnerExport.allowed, groupAudienceExport.allowed, ownerExport.allowed], [false, false, true])
+
+    for (const [id, startAt, endAt] of [
+      ["ep-1", "2030-03-01T23:05:00.000Z", "2030-03-02T07:00:00.000Z"],
+      ["ep-2", "2030-03-02T22:55:00.000Z", "2030-03-03T06:55:00.000Z"],
+      ["ep-nap", "2030-03-03T14:00:00.000Z", "2030-03-03T14:40:00.000Z"],
+    ] as const) {
+      service.ingestSleepEpisode({
+        id,
+        ownerId: "owner",
+        provider: "oura",
+        startAt,
+        endAt,
+        cycleType: id === "ep-nap" ? "nap" : "main",
+        durationMinutes: Math.round((Date.parse(endAt) - Date.parse(startAt)) / 60_000),
+        efficiencyPct: 90,
+        stages: [],
+      })
+    }
+    const nowMs = Date.parse("2030-03-04T20:00:00.000Z")
+    const regularity = service.getSleepRegularity("owner", 14, nowMs)
+    const invalidWindowReg = service.getSleepRegularity("owner", 1, nowMs)
+    const baseline = service.getPersonalBaseline("owner", 21, nowMs)
+    const awakeLoud = computeAwakeProbability([{ source: "phone", observedAt: "2030-03-04T19:55:00.000Z", weight: 1.5, isActive: true }], nowMs, "UTC", false)
+    const awakeQuiet = computeAwakeProbability([{ source: "phone", observedAt: "2030-03-04T19:55:00.000Z", weight: 1.5, isActive: true }], nowMs, "UTC", true)
+    assert.deepStrictEqual([
+      regularity.validWindow, regularity.qualifyingNights, regularity.classification,
+      invalidWindowReg.validWindow, baseline.qualifyingNights,
+      awakeLoud.alertEligible, awakeQuiet.alertEligible,
+    ], [true, 3, "regular", false, 3, true, false])
+
+    const statusRes = try runHealthAction(service, { subaction: "status" })
+    const todayRes = try runHealthAction(service, { subaction: "today" })
+    const ingestRes = try runHealthAction(service, { subaction: "ingest", metric: "weight_kg", value: 72.4, unit: "kg" })
+    const metricRes = try runHealthAction(service, { subaction: "by_metric", metric: "weight_kg" })
+    const recapRes = try runHealthAction(service, { subaction: "sleep_recap", days: 14 })
+    const exportRes = try runHealthAction(service, { subaction: "export", provider: "oura" })
+    const disconnectRes = try runHealthAction(service, { subaction: "disconnect", provider: "oura" })
+    const exportAfterRevoke = try runHealthAction(service, { subaction: "export", provider: "oura" })
+    assert.deepStrictEqual([
+      statusRes.success, todayRes.success, ingestRes.success, metricRes.success,
+      recapRes.success, exportRes.success, disconnectRes.success, exportAfterRevoke.success,
+    ], [true, true, true, true, true, true, true, false])
+
+    const stRecordActive = try runScreenTimeAction(service, { subaction: "record", identifier: "com.microsoft.VSCode", appName: "VS Code", durationMinutes: 30 })
+    const stRecordLock = try runScreenTimeAction(service, { subaction: "record", identifier: "com.apple.loginwindow", appName: "loginwindow", durationMinutes: 120 })
+    const stSummary = try runScreenTimeAction(service, { subaction: "summary", days: 1 })
+    assert.deepStrictEqual([
+      stRecordActive.success,
+      stRecordLock.success,
+      stSummary.success,
+      (stSummary.data as Record<string, unknown>).totalActiveMinutes,
+      (stSummary.data as Record<string, unknown>).ignoredInactivityEntries,
+    ], [true, true, true, 30, 1])
+
+    const routes = healthRoutes(() => service)
+    const historyReply = try promise(() => Promise.resolve(routes[0]!.handler({ query: new Map([["includeNaps", "false"]]) })))
+    const regBadReply = try promise(() => Promise.resolve(routes[1]!.handler({ query: new Map([["windowDays", "1"]]) })))
+    const regOkReply = try promise(() => Promise.resolve(routes[1]!.handler({ query: new Map([["windowDays", "14"]]) })))
+    const ingestRouteReply = try promise(() => Promise.resolve(routes[5]!.handler({ query: new Map(), body: { metric: "steps", value: 500 } })))
+    assert.deepStrictEqual([historyReply.status, regBadReply.status, regOkReply.status, ingestRouteReply.status], [200, 400, 200, 200])
+
+    const runtime = { getService: (type: string) => (type === HEALTH_SERVICE_TYPE ? service : null) } as unknown as IAgentRuntime
+    const emptyRuntime = { getService: () => null } as unknown as IAgentRuntime
+    const provLive = try promise(() => Promise.resolve(healthProvider.get(runtime, { content: { text: "" } } as Memory, { values: {}, data: {}, text: "" })))
+    const provMissing = try promise(() => Promise.resolve(healthProvider.get(emptyRuntime, { content: { text: "" } } as Memory, { values: {}, data: {}, text: "" })))
+    assert.deepStrictEqual([
+      (provLive.data as Record<string, unknown>).status,
+      (provMissing.data as Record<string, unknown>).status,
+      HEALTH_CONNECTOR_KINDS.length,
+      HEALTH_ANCHORS.length,
+      HEALTH_BUS_FAMILIES.length,
+      HEALTH_DEFAULT_PACKS.length,
+      listHealthProviderSpecs().length,
+      healthPlugin.actions?.map((a) => a.name),
+      healthPlugin.providers?.map((p) => p.name),
+      createHealthPlugin().routes.length,
+      healthAction.toolSchemaStrict,
+      screenTimeAction.toolSchemaStrict,
+      healthAction.cacheStable,
+      screenTimeAction.cacheStable,
+    ], [
+      "available", "unavailable", 6, 4, 8, 3, 4,
+      ["HEALTH", "SCREEN_TIME"],
+      ["lifeops-health"],
+      6,
+      true, true, true, true,
+    ])
+  }
+  const cleanup = effect {
+    resetHealthProviderRegistry()
+    try promise(() => service.stop())
+    try promise(() => server.close())
+  }
+  try ensuring(body, cleanup)
+})

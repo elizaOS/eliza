@@ -1,0 +1,100 @@
+// spec/telegram/index.md, "Story: Read a Telegram chat and reply under its account and topic rules"
+import { truncateWellFormed } from "@elizaos/core"
+import { Markup } from "telegraf"
+import type { Button } from "./types.vibe"
+
+export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+
+const MARKDOWN_V2_SPECIAL = /([_*[\]()~`>#+\-=|{}.!\\])/g
+
+export function escapeMarkdownV2(text: string): string {
+  return text.replace(MARKDOWN_V2_SPECIAL, "\\$1")
+}
+
+function escapeCodeContent(code: string): string {
+  return code.replace(/([\\`])/g, "\\$1")
+}
+
+function escapeLinkUrl(url: string): string {
+  return url.replace(/([\\)])/g, "\\$1")
+}
+
+export function convertMarkdownToTelegram(markdown: string): string {
+  const placeholders: string[] = []
+  const stash = (value: string): string => {
+    const token = `§TGPH${placeholders.length}§`
+    placeholders.push(value)
+    return token
+  }
+  let text = markdown.replace(/```([^\s`]+)?\r?\n([\s\S]*?)```/g, (_match, lang: string | undefined, code: string) =>
+    stash(`\`\`\`${lang ?? ""}\n${escapeCodeContent(code)}\`\`\``),
+  )
+  text = text.replace(/```([^\s`]+)?\r?\n([\s\S]*)$/g, (_match, lang: string | undefined, code: string) =>
+    stash(`\`\`\`${lang ?? ""}\n${escapeCodeContent(code)}\`\`\``),
+  )
+  text = text.replace(/`([^`\n]+)`/g, (_match, code: string) =>
+    stash(`\`${escapeCodeContent(code)}\``),
+  )
+  text = text.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_match, label: string, url: string) =>
+    stash(`[${escapeMarkdownV2(label)}](${escapeLinkUrl(url)})`),
+  )
+  text = text.replace(/\*\*([^*\n]+)\*\*/g, (_match, body: string) =>
+    stash(`*${escapeMarkdownV2(body)}*`),
+  )
+  text = text.replace(/~~([^~\n]+)~~/g, (_match, body: string) =>
+    stash(`~${escapeMarkdownV2(body)}~`),
+  )
+  text = text.replace(/(^|[^\w\\])\*([^*\n]+)\*(?!\*)/g, (_match, prefix: string, body: string) =>
+    `${prefix}${stash(`_${escapeMarkdownV2(body)}_`)}`,
+  )
+  text = escapeMarkdownV2(text)
+  return text.replace(/§TGPH(\d+)§/g, (_match, index: string) => placeholders[Number(index)] ?? "")
+}
+
+export function convertToTelegramButtons(buttons?: readonly Button[]): ReturnType<typeof Markup.inlineKeyboard> | undefined {
+  if (buttons === undefined || buttons.length === 0) return undefined
+  const rows = buttons
+    .filter((button) => button.text.trim() !== "" && button.url.trim() !== "")
+    .map((button) => {
+      if (button.kind === "login") return [Markup.button.login(button.text, button.url)]
+      if (button.kind === "web_app") return [Markup.button.webApp(button.text, button.url)]
+      return [Markup.button.url(button.text, button.url)]
+    })
+  return rows.length > 0 ? Markup.inlineKeyboard(rows) : undefined
+}
+
+export function splitTelegramMessage(text: string, maxLength = TELEGRAM_MAX_MESSAGE_LENGTH): string[] {
+  const limit = Math.max(1, Math.floor(maxLength))
+  if (text.length <= limit) return text === "" ? [] : [text]
+  const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" })
+  const chunks: string[] = []
+  let current = ""
+  for (const { segment } of segmenter.segment(text)) {
+    if (segment.length > limit) {
+      if (current !== "") {
+        chunks.push(current)
+        current = ""
+      }
+      chunks.push(truncateWellFormed(segment, limit))
+      continue
+    }
+    if (current.length + segment.length > limit) {
+      const newlineBreak = current.lastIndexOf("\n")
+      if (newlineBreak > Math.floor(limit / 2)) {
+        chunks.push(current.slice(0, newlineBreak))
+        current = `${current.slice(newlineBreak + 1)}${segment}`
+      } else {
+        chunks.push(current)
+        current = segment
+      }
+    } else {
+      current += segment
+    }
+  }
+  if (current !== "") chunks.push(current)
+  return chunks
+}
+
+export function redactTelegramTokenInError(message: string): string {
+  return message.replace(/\/(bot|user)(\d+):[^/\s]+\//g, "/$1$2:[REDACTED]/")
+}

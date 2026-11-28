@@ -1,0 +1,165 @@
+// spec/form/index.md, "Story: Complete a form across several turns"
+import {
+  logger,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+  type UUID,
+} from "@elizaos/core"
+import type { FormService } from "./service.vibe"
+import { buildTemplateValues, renderTemplate, resolveControlTemplates } from "./template.vibe"
+import type { FormContextState, FormControl, FormDefinition, FormSession, JsonValue } from "./types.vibe"
+
+function compactJson(value: unknown): string {
+  return JSON.stringify(value, null, 2)
+}
+
+function chooseInstruction(contextState: FormContextState, optionalMissingCount: number): string {
+  if (contextState.pendingExternalFields.length > 0) {
+    return `Waiting for external action. Remind user: "${contextState.pendingExternalFields[0].instructions}"`
+  }
+  if (contextState.pendingCancelConfirmation) {
+    return "User is trying to cancel. Confirm they really want to lose progress."
+  }
+  if (contextState.uncertainFields.length > 0) {
+    const first = contextState.uncertainFields[0]
+    return `Ask user to confirm "${first.label}" = "${first.value}".`
+  }
+  if (contextState.missingRequired.length > 0) {
+    return "Nudge the user into helping complete required fields. The user can provide one or several answers in a single message."
+  }
+  if (contextState.status === "ready") {
+    return "All required fields collected. Nudge user to submit."
+  }
+  if (optionalMissingCount > 0) {
+    return "Required fields are done. Optionally nudge for remaining optional fields, or nudge to submit."
+  }
+  return ""
+}
+
+function buildActiveContextPayload(
+  formService: FormService,
+  session: FormSession,
+  form: FormDefinition | undefined,
+): { contextState: FormContextState; contextText: string } {
+  const baseState = formService.getSessionContext(session)
+  const controls: FormControl[] = form?.controls ?? []
+  const templateValues = buildTemplateValues(session, controls)
+  const resolve = (value?: string): string | undefined => renderTemplate(value, templateValues)
+  const contextState: FormContextState = {
+    ...baseState,
+    filledFields: baseState.filledFields.map((field) => ({ ...field, label: resolve(field.label) ?? field.label })),
+    missingRequired: baseState.missingRequired.map((field) => ({
+      ...field,
+      label: resolve(field.label) ?? field.label,
+      description: resolve(field.description),
+      askPrompt: resolve(field.askPrompt),
+    })),
+    uncertainFields: baseState.uncertainFields.map((field) => ({ ...field, label: resolve(field.label) ?? field.label })),
+    nextField: baseState.nextField ? resolveControlTemplates(baseState.nextField, templateValues) : null,
+  }
+  const filledKeys = new Set(contextState.filledFields.map((field) => field.key))
+  const controlByKey = new Map(controls.map((control) => [control.key, control]))
+  const requiredFilled = contextState.filledFields.filter((field) => controlByKey.get(field.key)?.required)
+  const optionalFilled = contextState.filledFields.filter((field) => !controlByKey.get(field.key)?.required)
+  const optionalMissing = controls
+    .filter((control) => !control.hidden && !control.required && !filledKeys.has(control.key))
+    .map((control) => resolveControlTemplates(control, templateValues))
+  const instruction = chooseInstruction(contextState, optionalMissing.length)
+  const contextText = `form_context_json:\n${compactJson({
+    active: true,
+    form_id: session.formId,
+    form_name: form?.name || session.formId,
+    progress: contextState.progress,
+    status: contextState.status,
+    required_missing: contextState.missingRequired,
+    required_filled: requiredFilled.map((field) => ({ ...field, value: field.displayValue })),
+    optional_missing: optionalMissing,
+    optional_filled: optionalFilled.map((field) => ({ ...field, value: field.displayValue })),
+    uncertain_fields: contextState.uncertainFields.map((field) => ({
+      ...field,
+      confidence: Math.round(field.confidence * 100) / 100,
+    })),
+    pending_external_fields: contextState.pendingExternalFields.map((field) => ({
+      ...field,
+      age_minutes: Math.max(0, Math.floor((Date.now() - field.activatedAt) / 60000)),
+    })),
+    instruction,
+  })}`
+  return { contextState, contextText }
+}
+
+export const formContextProvider: Provider = {
+  name: "FORM_CONTEXT",
+  description: "Provides context about active form sessions",
+  descriptionCompressed: "Active form session context.",
+  contexts: ["automation", "knowledge"],
+  contextGate: { anyOf: ["automation", "knowledge"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+    try {
+      const formService = runtime.getService("FORM") as FormService | null
+      if (!formService) {
+        return { data: { hasActiveForm: false }, values: { formContext: "" }, text: "" }
+      }
+      const entityId = message.entityId as UUID
+      const roomId = message.roomId as UUID
+      if (!entityId || !roomId) {
+        return { data: { hasActiveForm: false }, values: { formContext: "" }, text: "" }
+      }
+      const session = await formService.getActiveSession(entityId, roomId)
+      const stashed = await formService.getStashedSessions(entityId)
+      if (!session && stashed.length === 0) {
+        return { data: { hasActiveForm: false, stashedCount: 0 }, values: { formContext: "" }, text: "" }
+      }
+      let contextState: FormContextState
+      let contextText: string
+      if (session) {
+        const built = buildActiveContextPayload(formService, session, formService.getForm(session.formId))
+        contextState = built.contextState
+        contextText = built.contextText
+      } else {
+        contextState = {
+          hasActiveForm: false,
+          progress: 0,
+          filledFields: [],
+          missingRequired: [],
+          uncertainFields: [],
+          nextField: null,
+          stashedCount: stashed.length,
+          pendingExternalFields: [],
+        }
+        contextText = `form_context_json:\n${compactJson({ active: false, progress: 0, stashed_count: stashed.length })}`
+      }
+      if (stashed.length > 0) {
+        const stashedRows = stashed.map((item) => {
+          const form = formService.getForm(item.formId)
+          const ctx = formService.getSessionContext(item)
+          return { form_id: item.formId, form_name: form?.name || item.formId, progress: ctx.progress }
+        })
+        contextText += `\nstashed_forms_json:\n${compactJson(stashedRows)}\nstashed_instruction: User can say resume to restore one.`
+      }
+      return {
+        data: JSON.parse(JSON.stringify(contextState)) as Record<string, JsonValue>,
+        values: {
+          formContext: contextText,
+          hasActiveForm: String(contextState.hasActiveForm),
+          formProgress: String(contextState.progress),
+          formStatus: contextState.status || "",
+          stashedCount: String(stashed.length),
+        },
+        text: contextText,
+      }
+    } catch (error) {
+      logger.error("[FormContextProvider] Error:", String(error))
+      return {
+        data: { hasActiveForm: false, error: true },
+        values: { formContext: 'form_context_json:\n{"error":true}' },
+        text: 'form_context_json:\n{"error":true}',
+      }
+    }
+  },
+}

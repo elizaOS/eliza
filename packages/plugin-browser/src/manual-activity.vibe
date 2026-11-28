@@ -1,0 +1,81 @@
+// spec/browser/manualActivity.md, "Story: Ask about manual activity when the browser's record leaves it uncertain"; spec/browser/manualActivity.md, "Story: Let a known harmless form step explain only its own readback"
+import {
+  activityQuestion,
+  activityValid,
+  attributeSubmit,
+  explainsNamedGap,
+  hostCoversLanding,
+  noAttribution,
+  pointedOnly,
+  recordShown,
+  withdrawHostAnswer,
+  type Activity,
+  type BrowserSubmit,
+  type ShownFormStep,
+  type SubmitWindow,
+  type UpstreamPoint,
+  type WaitingPage,
+  type WindowAttribution,
+} from "../gen/browser__manualActivity.effect.vibe"
+
+export class ManualActivityTracker {
+  private windows: SubmitWindow[] = []
+
+  shownFormStep(step: ShownFormStep): readonly SubmitWindow[] {
+    this.windows = recordShown(this.windows, step)
+    return this.windows
+  }
+
+  getWindows(): readonly SubmitWindow[] {
+    return this.windows
+  }
+
+  attributeSubmits(submits: readonly BrowserSubmit[], origin: string, epoch: number): WindowAttribution {
+    let walk: WindowAttribution = noAttribution
+    for (const submit of submits) {
+      walk = attributeSubmit(walk, submit, this.windows, origin, epoch)
+    }
+    return walk
+  }
+
+  isPointedOnly(activity: Activity, origin: string, epoch: number, sameTaskOrigin: boolean): boolean {
+    return pointedOnly(activity, this.windows, origin, epoch, sameTaskOrigin)
+  }
+
+  reset(): void {
+    this.windows = []
+  }
+}
+
+export function validateManualActivity(activity: Activity): boolean {
+  return activityValid(activity)
+}
+
+export function resolveManualActivityQuestion(
+  activity: Activity,
+  origin: string,
+  epoch: number,
+  remainingGaps: number,
+  answered: boolean,
+): string {
+  return activityQuestion(activity, origin, epoch, remainingGaps, answered)
+}
+
+export function canUpstreamPointExplainGap(point: UpstreamPoint, remainingGaps: number, namedGap: boolean): boolean {
+  return explainsNamedGap(point, remainingGaps, namedGap)
+}
+
+export function canHostCoverLanding(
+  waiting: WaitingPage,
+  activity: Activity,
+  origin: string,
+  epoch: number,
+  sameTaskOrigin: boolean,
+  manualQuestion: boolean,
+): boolean {
+  return hostCoversLanding(waiting, activity, origin, epoch, sameTaskOrigin, manualQuestion)
+}
+
+export function shouldWithdrawHostAnswer(waiting: WaitingPage): boolean {
+  return withdrawHostAnswer(waiting)
+}

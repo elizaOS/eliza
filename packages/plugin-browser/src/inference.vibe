@@ -1,0 +1,128 @@
+// spec/browser/inference.md, "Story: Send each model call through my account's route with private text removed, and drop stale results"; spec/browser/inference.md, "Only a quota refusal retries, at most twice, with the same prepared request"; spec/browser/inference.md, "A result outside the current look is discarded, and an accepted one is only advice"
+import {
+  Machine,
+  machine,
+  maxAttempts,
+  redactContent,
+  retriesQuota,
+  type ContentKind,
+  type Event,
+  type Inference,
+  type InferenceResult,
+  type Redaction,
+  type ReplyKind,
+} from "../gen/browser__inference.effect.vibe"
+
+import { openMachineSession } from "./machine-session.vibe"
+
+export error BrowserInferenceFailure { reason: string }
+
+export interface PreparedInferenceRequest {
+  readonly bodyId: number
+  readonly accountRoute: number
+  readonly content: ContentKind
+  readonly redaction: Redaction
+  readonly payload: string
+}
+
+export interface InferenceChannelReply {
+  readonly reply: ReplyKind
+  readonly waitAcceptable: boolean
+  readonly advice?: string
+}
+
+export service BrowserInferenceChannel {
+  send(request: PreparedInferenceRequest): InferenceChannelReply!BrowserInferenceFailure
+}
+
+export interface BrowserInferenceSession {
+  dispatch(event: Event): Promise<boolean>
+  prepareInference(bodyId: number, accountRoute: number, content: ContentKind): Promise<boolean>
+  sendInference(): Promise<boolean>
+  finishQuotaWait(): Promise<boolean>
+  stopInference(): Promise<boolean>
+  reportInference(reply: ReplyKind, waitAcceptable: boolean, lookCurrent: boolean): Promise<boolean>
+  snapshot(): Promise<Inference>
+}
+
+export function createBrowserInferenceSession(): BrowserInferenceSession {
+  const session = openMachineSession(Effect.runSync(Effect.provide(Machine, machine())))
+  return {
+    ...session,
+    prepareInference: (bodyId, accountRoute, content) => session.dispatch({ type: "prepareInference", bodyId, accountRoute, content }),
+    sendInference: () => session.dispatch({ type: "sendInference" }),
+    finishQuotaWait: () => session.dispatch({ type: "finishQuotaWait" }),
+    stopInference: () => session.dispatch({ type: "stopInference" }),
+    reportInference: (reply, waitAcceptable, lookCurrent) => session.dispatch({ type: "reportInference", reply, waitAcceptable, lookCurrent }),
+  }
+}
+
+export function redactNonSystemText(content: ContentKind, rawText: string): { readonly redaction: Redaction; readonly text: string } {
+  const redaction = redactContent(content)
+  if (redaction === "Preserved") return { redaction, text: rawText }
+  const scrubbed = rawText
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[REDACTED_EMAIL]")
+    .replace(/\b(?:\d[ -]*?){13,19}\b/g, "[REDACTED_CARD]")
+    .replace(/\b(?:sk|ghp|gho|Bearer)[_\-\s][A-Za-z0-9._-]{8,}\b/g, "[REDACTED_SECRET]")
+  return { redaction, text: scrubbed }
+}
+
+export interface BoundedInferenceOutcome {
+  readonly status: InferenceResult
+  readonly attempts: number
+  readonly advice?: string
+}
+
+export effect function runBoundedBrowserInference(input: {
+  readonly bodyId: number
+  readonly accountRoute: number
+  readonly content: ContentKind
+  readonly rawText: string
+  readonly isLookCurrent: () => boolean
+}): BoundedInferenceOutcome!BrowserInferenceFailure!BrowserInferenceChannel {
+  const channel = try BrowserInferenceChannel
+  const cleaned = redactNonSystemText(input.content, input.rawText)
+  const prepared: PreparedInferenceRequest = {
+    bodyId: input.bodyId,
+    accountRoute: input.accountRoute,
+    content: input.content,
+    redaction: cleaned.redaction,
+    payload: cleaned.text,
+  }
+  provide machine() {
+    const run = try Machine
+    const began = try Effect.result(run.send({
+      type: "prepareInference",
+      bodyId: prepared.bodyId,
+      accountRoute: prepared.accountRoute,
+      content: prepared.content,
+    }))
+    if (began._tag !== "Success") throw new BrowserInferenceFailure({ reason: "Browser inference request could not be bound." })
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const sent = try Effect.result(run.send({ type: "sendInference" }))
+      if (sent._tag !== "Success") break
+      const response = try channel.send(prepared)
+      const lookCurrent = input.isLookCurrent()
+      const reported = try Effect.result(run.send({
+        type: "reportInference",
+        reply: response.reply,
+        waitAcceptable: response.waitAcceptable,
+        lookCurrent,
+      }))
+      if (reported._tag !== "Success") throw new BrowserInferenceFailure({ reason: "Browser inference report was rejected." })
+      const state = reported.success
+      if (state.phase === "WaitingQuota" && retriesQuota(response.reply, state.attempts, response.waitAcceptable)) {
+        const waited = try Effect.result(run.send({ type: "finishQuotaWait" }))
+        if (waited._tag !== "Success") break
+        continue
+      }
+      return {
+        status: state.result,
+        attempts: state.attempts,
+        ...(state.result === "AcceptedObject" && response.advice !== undefined ? { advice: response.advice } : {}),
+      }
+    }
+    const finalState = try run.get()
+    return { status: finalState.result, attempts: finalState.attempts }
+  }
+}

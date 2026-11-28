@@ -1,0 +1,314 @@
+// spec/imessage/index.md, "Blooio needs the signed raw body, exact configured channel and a dispatchable receipt state"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+
+const SIGNATURE_TOLERANCE_SECONDS = 300
+const DEFAULT_BLOOIO_API_BASE_URL = "https://api.blooio.com"
+const BLOOIO_MEDIA_DOMAINS = [
+  "blooio.com",
+  "backend.blooio.com",
+  "api.blooio.com",
+  "media.blooio.com",
+] as const
+
+module node {
+  import { createHmac, timingSafeEqual } from "node:crypto"
+  import { Buffer } from "node:buffer"
+
+  export class BlooioTransportError extends Error {
+    readonly code: string
+    readonly context?: Record<string, unknown>
+    constructor(message: string, code: string, options?: { cause?: unknown; context?: Record<string, unknown> }) {
+      super(message, options?.cause !== undefined ? { cause: options.cause } : undefined)
+      this.name = "BlooioTransportError"
+      this.code = code
+      this.context = options?.context
+    }
+  }
+
+  export function failBlooio(
+    message: string,
+    code: string,
+    options?: { cause?: unknown; context?: Record<string, unknown> },
+  ): never {
+    throw new BlooioTransportError(message, code, options)
+  }
+
+  export function verifyHmacSha256Hex(secret: string, payload: string, providedHex: string): boolean {
+    if (!/^[0-9a-f]{64}$/i.test(providedHex)) return false
+    const expected = createHmac("sha256", secret).update(payload).digest()
+    const provided = Buffer.from(providedHex, "hex")
+    return provided.byteLength === expected.byteLength && timingSafeEqual(provided, expected)
+  }
+}
+import { BlooioTransportError, failBlooio, verifyHmacSha256Hex } from node
+export { BlooioTransportError }
+
+export interface BlooioInboundMessage {
+  messageId: string
+  sender: string
+  chatId: string
+  channelId: string
+  text: string
+  timestamp: number
+  isGroup: boolean
+  replyToMessageId?: string
+  attachments: Array<{ url: string; name?: string }>
+}
+
+export interface BlooioChannelVerifyInput {
+  apiKey: string
+  fromNumber: string
+  channelId: string
+  apiBaseUrl?: string
+}
+
+export interface BlooioSendInput {
+  apiKey: string
+  fromNumber: string
+  to: string
+  text: string
+  idempotencyKey?: string
+  apiBaseUrl?: string
+}
+
+export interface BlooioSendReceiptResult {
+  messageId: string
+}
+
+const nullableText = Schema.optionalKey(Schema.NullOr(Schema.String))
+
+const BlooioAttachmentSchema = Schema.Union([
+  Schema.String,
+  Schema.Struct({ url: Schema.String, name: nullableText }),
+])
+
+const BlooioMessageSchema = Schema.Struct({
+  id: nullableText,
+  message_id: nullableText,
+  chat_id: nullableText,
+  channel_id: Schema.String,
+  channel_type: nullableText,
+  sender: Schema.String,
+  recipient: nullableText,
+  channel_address: nullableText,
+  text: nullableText,
+  reply_to_message_id: nullableText,
+  attachments: Schema.optionalKey(Schema.NullOr(Schema.Array(BlooioAttachmentSchema))),
+  protocol: nullableText,
+  is_group: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
+  group: Schema.optionalKey(Schema.Unknown),
+})
+
+const BlooioEnvelopeSchema = Schema.fromJsonString(
+  Schema.Struct({
+    id: Schema.String,
+    type: Schema.String,
+    created_at: Schema.Number,
+    data: BlooioMessageSchema,
+  }),
+)
+
+schema BlooioChannelSettingsSchema {
+  data: {
+    channel_id: string
+    type: "blooio"
+  }
+}
+
+const BlooioSendResponseSchema = Schema.Struct({
+  id: nullableText,
+  message_id: nullableText,
+  error: Schema.optionalKey(Schema.Unknown),
+  success: Schema.optionalKey(Schema.Boolean),
+})
+
+export function isAllowedBlooioMediaUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" || url.username || url.password) return false
+    return BLOOIO_MEDIA_DOMAINS.some(
+      (domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`),
+    )
+  } catch {
+    return false
+  }
+}
+
+export function hasControlCharacters(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code <= 0x1f || code === 0x7f) return true
+  }
+  return false
+}
+
+export function verifyBlooioSignature(
+  secret: string,
+  signatureHeader: string | undefined,
+  rawBody: string,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
+  if (!secret || !signatureHeader) return false
+  const parts = signatureHeader.split(",").map((part) => part.trim())
+  const timestampPart = parts.find((part) => part.startsWith("t="))
+  const signaturePart = parts.find((part) => part.startsWith("v1="))
+  if (!timestampPart || !signaturePart) return false
+  const rawTimestamp = timestampPart.slice(2)
+  if (!/^\d+$/.test(rawTimestamp)) return false
+  const timestamp = Number(rawTimestamp)
+  if (!Number.isSafeInteger(timestamp)) return false
+  if (Math.abs(nowSeconds - timestamp) > SIGNATURE_TOLERANCE_SECONDS) return false
+  return verifyHmacSha256Hex(secret, `${timestamp}.${rawBody}`, signaturePart.slice(3))
+}
+
+export function parseBlooioInbound(
+  rawBody: string,
+  expectedChannelId: string,
+): BlooioInboundMessage | null {
+  let envelope: typeof BlooioEnvelopeSchema.Type
+  try {
+    envelope = Schema.decodeUnknownSync(BlooioEnvelopeSchema)(rawBody)
+  } catch {
+    return null
+  }
+  if (!envelope.id.trim() || envelope.type.trim() !== "message.received") return null
+  const message = envelope.data
+  if (message.channel_id.trim() !== expectedChannelId) return null
+  const sender = message.sender.trim()
+  const messageId = (message.message_id ?? message.id ?? "").trim()
+  if (!sender || !messageId) return null
+  const attachments = (message.attachments ?? [])
+    .map((attachment) =>
+      typeof attachment === "string"
+        ? { url: attachment }
+        : { url: attachment.url, ...(attachment.name ? { name: attachment.name } : {}) },
+    )
+    .filter((attachment) => isAllowedBlooioMediaUrl(attachment.url))
+  if (!(message.text ?? "").trim() && attachments.length === 0) return null
+  const rawTimestamp = envelope.created_at
+  const timestamp = rawTimestamp < 100_000_000_000 ? rawTimestamp * 1000 : rawTimestamp
+  const replyTo = message.reply_to_message_id?.trim()
+  const chatId = message.chat_id?.trim() || sender
+  return {
+    messageId,
+    sender,
+    chatId,
+    channelId: message.channel_id.trim(),
+    text: message.text ?? "",
+    timestamp,
+    isGroup: message.is_group ?? message.group != null,
+    ...(replyTo ? { replyToMessageId: replyTo } : {}),
+    attachments,
+  }
+}
+
+function resolveBlooioBaseUrl(override?: string): string {
+  const candidate = override?.trim() || DEFAULT_BLOOIO_API_BASE_URL
+  return candidate.replace(/\/+$/, "")
+}
+
+effect function executeBlooioRequest(request: HttpClientRequest.HttpClientRequest) {
+  return try timeout(
+    Effect.provide(
+      Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, {
+        redirect: "error",
+      }),
+      FetchHttpClient.layer,
+    ),
+    "30 seconds",
+  )
+}
+
+type BlooioJsonOutcome =
+  | { kind: "ok"; json: unknown }
+  | { kind: "transport"; cause: unknown }
+  | { kind: "status"; status: number }
+  | { kind: "invalid-json"; cause: unknown }
+
+async function fetchBlooioJson(request: HttpClientRequest.HttpClientRequest): Promise<BlooioJsonOutcome> {
+  return runPromise(
+    effect {
+      const response = executeBlooioRequest(request) catch effect (cause) => ({
+        kind: "transport" as const,
+        cause,
+      })
+      if ("kind" in response) return response
+      if (response.status < 200 || response.status >= 300) {
+        return { kind: "status" as const, status: response.status }
+      }
+      const json = response.json catch effect (cause) => ({
+        kind: "invalid-json" as const,
+        cause,
+      })
+      if (
+        json !== null &&
+        typeof json === "object" &&
+        "kind" in json &&
+        (json as { kind?: unknown }).kind === "invalid-json"
+      ) {
+        return json as { kind: "invalid-json"; cause: unknown }
+      }
+      return { kind: "ok" as const, json }
+    },
+  )
+}
+
+export async function verifyBlooioChannel(input: BlooioChannelVerifyInput): Promise<void> {
+  const url = `${resolveBlooioBaseUrl(input.apiBaseUrl)}/v4/channels/${encodeURIComponent(input.fromNumber)}/settings`
+  const request = HttpClientRequest.get(url).pipe(
+    HttpClientRequest.setHeaders({ Authorization: `Bearer ${input.apiKey}` }),
+  )
+  const outcome = await fetchBlooioJson(request)
+  if (outcome.kind === "transport") {
+    failBlooio("Blooio channel verification failed; check connectivity and retry", "BLOOIO_CHANNEL_UNAVAILABLE", { cause: outcome.cause })
+  }
+  if (outcome.kind === "status") {
+    failBlooio("Blooio rejected channel verification; check the API key and sender access", "BLOOIO_CHANNEL_ACCESS_DENIED", { context: { status: outcome.status } })
+  }
+  if (outcome.kind === "invalid-json") {
+    failBlooio("Blooio returned invalid channel settings", "BLOOIO_CHANNEL_RESPONSE_INVALID", { cause: outcome.cause })
+  }
+  const parsed = await runPromise(
+    effect {
+      return Schema.decodeUnknownEffect(BlooioChannelSettingsSchema)(outcome.json) catch () => undefined
+    },
+  )
+  if (!parsed || parsed.data.channel_id !== input.channelId) {
+    failBlooio("Blooio sender does not match the configured channel; review sender settings", "BLOOIO_CHANNEL_IDENTITY_MISMATCH")
+  }
+}
+
+export async function sendBlooioMessage(input: BlooioSendInput): Promise<BlooioSendReceiptResult> {
+  const baseUrl = resolveBlooioBaseUrl(input.apiBaseUrl)
+  const chat = input.to.startsWith("chat_id:") ? input.to.slice(8) : ""
+  const url = chat === "" ? `${baseUrl}/v4/messages` : `${baseUrl}/v4/chats/${encodeURIComponent(chat)}/messages`
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${input.apiKey}`,
+    ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
+  }
+  const payload = chat === "" ? { to: input.to, from: input.fromNumber, text: input.text } : { text: input.text }
+  const request = HttpClientRequest.post(url).pipe(
+    HttpClientRequest.setHeaders(headers),
+    HttpClientRequest.bodyText(JSON.stringify(payload), "application/json"),
+  )
+  const outcome = await fetchBlooioJson(request)
+  if (outcome.kind === "transport") {
+    failBlooio("Blooio message delivery failed", "BLOOIO_SEND_UNAVAILABLE", { cause: outcome.cause })
+  }
+  if (outcome.kind === "status") {
+    failBlooio(`Blooio rejected message send with status ${outcome.status}`, "BLOOIO_SEND_REJECTED", { context: { status: outcome.status } })
+  }
+  if (outcome.kind === "invalid-json") {
+    failBlooio("Blooio returned an invalid send receipt", "BLOOIO_SEND_RECEIPT_INVALID", { cause: outcome.cause })
+  }
+  const receipt = await runPromise(
+    effect {
+      return Schema.decodeUnknownEffect(BlooioSendResponseSchema)(outcome.json) catch () => undefined
+    },
+  )
+  const messageId = (receipt?.id ?? receipt?.message_id ?? "").trim()
+  if (!receipt || receipt.success === false || receipt.error != null || !messageId || messageId.length > 256 || hasControlCharacters(messageId)) {
+    failBlooio("Blooio returned an invalid send receipt", "BLOOIO_SEND_RECEIPT_INVALID")
+  }
+  return { messageId }
+}

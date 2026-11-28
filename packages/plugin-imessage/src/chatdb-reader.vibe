@@ -1,0 +1,496 @@
+// spec/imessage/index.md, "The native cursor commits rows in order, with bounded persistence and attachment retries"
+import { logger } from "@elizaos/core"
+import type { IMessagePermissionAction } from "./types.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { homedir } from "node:os"
+  import { join } from "node:path"
+  import { DatabaseSync } from "node:sqlite"
+
+  export const defaultChatDbPath = join(homedir(), "Library", "Messages", "chat.db")
+
+  export class ChatDbError extends Error {
+    readonly code: string
+    readonly context?: Record<string, unknown>
+    readonly severity = "ephemeral" as const
+    constructor(message: string, code: string, context?: Record<string, unknown>, cause?: unknown) {
+      super(message, cause !== undefined ? { cause } : undefined)
+      this.name = "ChatDbError"
+      this.code = code
+      this.context = context
+    }
+  }
+
+  export function throwChatDbError(message: string, code: string, context?: Record<string, unknown>, cause?: unknown): never {
+    throw new ChatDbError(message, code, context, cause)
+  }
+
+  export function openReadOnlySqlite(dbPath: string): DatabaseSync {
+    return new DatabaseSync(dbPath, { readOnly: true })
+  }
+
+  export function decodeTypedstreamBody(blob: Uint8Array | Buffer | null | undefined): string | null {
+    if (!blob) return null
+    const buf = Buffer.isBuffer(blob) ? blob : Buffer.from(blob)
+    if (buf.length < 20) return null
+    const markers = [Buffer.from("NSString", "latin1"), Buffer.from("NSMutableString", "latin1")]
+    let start = -1
+    for (const marker of markers) {
+      const idx = buf.indexOf(marker)
+      if (idx !== -1) {
+        start = idx + marker.length
+        break
+      }
+    }
+    if (start === -1) return null
+    let plusAt = -1
+    for (let i = start; i < Math.min(start + 16, buf.length); i += 1) {
+      if (buf[i] === 0x2b) {
+        plusAt = i
+        break
+      }
+    }
+    if (plusAt === -1) return null
+    let cursor = plusAt + 1
+    if (cursor >= buf.length) return null
+    let length: number
+    const first = buf[cursor]
+    if (first < 0x80 || first === 0xff) {
+      length = first
+      cursor += 1
+    } else if (first === 0x81 && cursor + 2 < buf.length) {
+      length = buf.readUInt16LE(cursor + 1)
+      cursor += 3
+    } else if (first === 0x82 && cursor + 4 < buf.length) {
+      length = buf.readUInt32LE(cursor + 1)
+      cursor += 5
+    } else {
+      return null
+    }
+    if (length === 0) return ""
+    if (cursor + length > buf.length) {
+      length = buf.length - cursor
+      if (length <= 0) return null
+    }
+    return buf.subarray(cursor, cursor + length).toString("utf8")
+  }
+}
+import { ChatDbError, decodeTypedstreamBody, defaultChatDbPath, openReadOnlySqlite, throwChatDbError } from node
+export { ChatDbError }
+
+export const DEFAULT_CHAT_DB_PATH = defaultChatDbPath
+export const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+export const IMESSAGE_ATTACHMENT_READ_FAILED = "IMESSAGE_ATTACHMENT_READ_FAILED"
+export const IMESSAGE_CHATDB_TIP_READ_FAILED = "IMESSAGE_CHATDB_TIP_READ_FAILED"
+export const IMESSAGE_CHATDB_READ_FAILED = "IMESSAGE_CHATDB_READ_FAILED"
+
+const APPLE_EPOCH_MS = Date.UTC(2001, 0, 1)
+
+export interface ChatDbAccessIssue {
+  code: "sqlite_unavailable" | "open_failed"
+  path: string
+  reason: string
+  permissionAction: IMessagePermissionAction | null
+}
+
+export interface ChatDbAttachment {
+  guid: string
+  filename: string | null
+  path: string | null
+  uti: string | null
+  mimeType: string | null
+  totalBytes: number | null
+  isSticker: boolean
+}
+
+export interface ChatDbReaction {
+  kind: "love" | "like" | "dislike" | "laugh" | "emphasis" | "question" | "sticker" | "unknown"
+  add: boolean
+  rawType: number
+  targetGuid: string
+  emoji: string | null
+}
+
+export interface ChatDbMessage {
+  rowId: number
+  guid: string
+  text: string
+  kind: "text" | "reaction" | "system" | "other"
+  handle: string
+  chatId: string
+  chatType: "direct" | "group"
+  displayName: string | null
+  timestamp: number
+  isFromMe: boolean
+  service: string | null
+  isSent: boolean
+  isDelivered: boolean
+  isRead: boolean
+  dateRead: number
+  dateEdited: number
+  dateRetracted: number
+  replyToGuid: string | null
+  reaction: ChatDbReaction | null
+  attachments: ChatDbAttachment[]
+  attachmentReadFailed?: boolean
+}
+
+export interface ChatDbFetchOptions {
+  tolerateAttachmentReadFailure?: ReadonlySet<number>
+}
+
+export interface ChatDbChatSummary {
+  chatId: string
+  chatType: "direct" | "group"
+  displayName: string | null
+  serviceName: string | null
+  participants: string[]
+  lastReadMessageTimestamp: number
+}
+
+export interface ChatDbReader {
+  fetchNewMessages(sinceRowId: number, limit: number, options?: ChatDbFetchOptions): ChatDbMessage[]
+  getLatestRowId(): number
+  getLatestOwnMessageTimestamp(): number | null
+  listMessages(options?: { chatId?: string; limit?: number }): ChatDbMessage[]
+  listChats(): ChatDbChatSummary[]
+  close(): void
+}
+
+export interface OpenChatDbOptions {
+  diagnosticsLogger?: { warn(message: string): void; debug(message: string): void }
+}
+
+export function createFullDiskAccessAction(): IMessagePermissionAction {
+  return {
+    type: "full_disk_access",
+    label: "Open Full Disk Access",
+    url: MACOS_FULL_DISK_ACCESS_SETTINGS_URL,
+    instructions: [
+      "Open System Settings > Privacy & Security > Full Disk Access.",
+      "Enable Eliza. If you run Eliza from a terminal, enable that terminal app too.",
+      "Quit and relaunch Eliza after changing Full Disk Access.",
+    ],
+  }
+}
+
+export function appleDateToJsMs(appleDate: number | string | bigint): number {
+  if (typeof appleDate === "string") {
+    const trimmed = appleDate.trim()
+    if (!trimmed) return 0
+    try {
+      return appleDateToJsMs(BigInt(trimmed))
+    } catch {
+      const parsed = Number(trimmed)
+      return Number.isFinite(parsed) ? appleDateToJsMs(parsed) : 0
+    }
+  }
+  if (typeof appleDate === "bigint") {
+    if (appleDate <= 0n) return 0
+    return appleDate > 1_000_000_000_000n
+      ? APPLE_EPOCH_MS + Number(appleDate / 1_000_000n)
+      : APPLE_EPOCH_MS + Number(appleDate) * 1000
+  }
+  if (!appleDate || appleDate < 0) return 0
+  return APPLE_EPOCH_MS + (appleDate > 1e12 ? appleDate / 1e6 : appleDate * 1000)
+}
+
+export function decodeAttributedBody(blob: Uint8Array | null | undefined): string | null {
+  return decodeTypedstreamBody(blob)
+}
+
+function parseReaction(row: {
+  associated_message_type: number | null
+  associated_message_guid: string | null
+  associated_message_emoji: string | null
+}): ChatDbReaction | null {
+  const type = row.associated_message_type ?? 0
+  if (type < 2000 || type >= 4000) return null
+  const isRemove = type >= 3000
+  const baseType = isRemove ? type - 1000 : type
+  const kindMap: Record<number, ChatDbReaction["kind"]> = {
+    2000: "love",
+    2001: "like",
+    2002: "dislike",
+    2003: "laugh",
+    2004: "emphasis",
+    2005: "question",
+    2006: "sticker",
+  }
+  let targetGuid = row.associated_message_guid ?? ""
+  const slashIdx = targetGuid.lastIndexOf("/")
+  if (slashIdx !== -1) targetGuid = targetGuid.slice(slashIdx + 1)
+  return {
+    kind: kindMap[baseType] ?? "unknown",
+    add: !isRemove,
+    rawType: type,
+    targetGuid,
+    emoji: row.associated_message_emoji,
+  }
+}
+
+const lastChatDbAccessIssues = new Map<string, ChatDbAccessIssue>()
+
+export function getLastChatDbAccessIssue(dbPath: string = DEFAULT_CHAT_DB_PATH): ChatDbAccessIssue | null {
+  return lastChatDbAccessIssues.get(dbPath) ?? null
+}
+
+const MESSAGE_SELECT_COLUMNS = `
+  SELECT
+    m.ROWID AS row_id,
+    m.guid AS guid,
+    m.text AS text,
+    m.attributedBody AS attributed_body,
+    CAST(m.date AS TEXT) AS apple_date,
+    CAST(m.date_read AS TEXT) AS apple_date_read,
+    CAST(m.date_edited AS TEXT) AS apple_date_edited,
+    CAST(m.date_retracted AS TEXT) AS apple_date_retracted,
+    m.is_from_me AS is_from_me,
+    m.is_read AS is_read,
+    m.is_sent AS is_sent,
+    m.is_delivered AS is_delivered,
+    m.item_type AS item_type,
+    m.reply_to_guid AS reply_to_guid,
+    m.associated_message_guid AS associated_message_guid,
+    m.associated_message_type AS associated_message_type,
+    m.associated_message_emoji AS associated_message_emoji,
+    m.cache_has_attachments AS cache_has_attachments,
+    m.service AS message_service,
+    h.id AS handle,
+    h.service AS handle_service,
+    c.chat_identifier AS chat_identifier,
+    c.display_name AS display_name,
+    c.style AS chat_style
+  FROM message m
+  LEFT JOIN handle h ON m.handle_id = h.ROWID
+  LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+  LEFT JOIN chat c ON cmj.chat_id = c.ROWID
+`
+
+type RawMessageRow = {
+  row_id: number
+  guid: string
+  text: string | null
+  attributed_body: Uint8Array | null
+  apple_date: string | null
+  apple_date_read: string | null
+  apple_date_edited: string | null
+  apple_date_retracted: string | null
+  is_from_me: number
+  is_read: number | null
+  is_sent: number | null
+  is_delivered: number | null
+  item_type: number | null
+  reply_to_guid: string | null
+  associated_message_guid: string | null
+  associated_message_type: number | null
+  associated_message_emoji: string | null
+  cache_has_attachments: number | null
+  message_service: string | null
+  handle: string | null
+  handle_service: string | null
+  chat_identifier: string | null
+  display_name: string | null
+  chat_style: number | null
+}
+
+function readRowAttachments(
+  attachmentsStmt: { all: (id: number) => unknown[] },
+  rowId: number,
+  options: ChatDbFetchOptions,
+): { attachments: ChatDbAttachment[]; attachmentReadFailed: boolean } {
+  try {
+    const attRows = attachmentsStmt.all(rowId) as Array<{
+      guid: string
+      transfer_name: string | null
+      filename: string | null
+      mime_type: string | null
+      uti: string | null
+      total_bytes: number | null
+      is_sticker: number | null
+    }>
+    return {
+      attachments: attRows.map((a) => ({
+        guid: a.guid,
+        filename: a.transfer_name ?? a.filename?.split("/").pop() ?? null,
+        path: a.filename,
+        uti: a.uti,
+        mimeType: a.mime_type,
+        totalBytes: a.total_bytes,
+        isSticker: a.is_sticker === 1,
+      })),
+      attachmentReadFailed: false,
+    }
+  } catch (error) {
+    if (options.tolerateAttachmentReadFailure?.has(rowId)) {
+      return { attachments: [], attachmentReadFailed: true }
+    }
+    throwChatDbError("iMessage attachment metadata could not be read", IMESSAGE_ATTACHMENT_READ_FAILED, { rowId }, error)
+  }
+}
+
+function materializeMessageRow(
+  row: RawMessageRow,
+  attachmentsStmt: { all: (id: number) => unknown[] },
+  options: ChatDbFetchOptions,
+): ChatDbMessage {
+  const text = row.text && row.text.length > 0 ? row.text : (decodeTypedstreamBody(row.attributed_body) ?? "")
+  const assocType = row.associated_message_type ?? 0
+  let kind: ChatDbMessage["kind"] = "text"
+  let reaction: ChatDbReaction | null = null
+  if (assocType >= 2000 && assocType < 4000) {
+    kind = "reaction"
+    reaction = parseReaction(row)
+  } else if (row.item_type != null && row.item_type !== 0) {
+    kind = "system"
+  }
+  const attResult =
+    row.cache_has_attachments === 1
+      ? readRowAttachments(attachmentsStmt, row.row_id, options)
+      : { attachments: [], attachmentReadFailed: false }
+  return {
+    rowId: row.row_id,
+    guid: row.guid,
+    text,
+    kind,
+    handle: row.handle ?? "",
+    chatId: row.chat_identifier ?? "",
+    chatType: row.chat_style === 43 ? "group" : "direct",
+    displayName: row.display_name,
+    timestamp: appleDateToJsMs(row.apple_date ?? 0),
+    isFromMe: row.is_from_me === 1,
+    service: row.message_service ?? row.handle_service ?? null,
+    isSent: row.is_sent === 1,
+    isDelivered: row.is_delivered === 1,
+    isRead: row.is_read === 1,
+    dateRead: appleDateToJsMs(row.apple_date_read ?? 0),
+    dateEdited: appleDateToJsMs(row.apple_date_edited ?? 0),
+    dateRetracted: appleDateToJsMs(row.apple_date_retracted ?? 0),
+    replyToGuid: row.reply_to_guid,
+    reaction,
+    attachments: attResult.attachments,
+    ...(attResult.attachmentReadFailed ? { attachmentReadFailed: true } : {}),
+  }
+}
+
+export async function openChatDb(dbPath: string = DEFAULT_CHAT_DB_PATH, options: OpenChatDbOptions = {}): Promise<ChatDbReader | null> {
+  const diagnosticsLogger = options.diagnosticsLogger ?? logger
+  let db: ReturnType<typeof openReadOnlySqlite>
+  try {
+    db = openReadOnlySqlite(dbPath)
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    lastChatDbAccessIssues.set(dbPath, {
+      code: "open_failed",
+      path: dbPath,
+      reason,
+      permissionAction: createFullDiskAccessAction(),
+    })
+    diagnosticsLogger.warn(`[imessage] Failed to open chat.db at ${dbPath}: ${reason}`)
+    return null
+  }
+  lastChatDbAccessIssues.delete(dbPath)
+  const pollStmt = db.prepare(`${MESSAGE_SELECT_COLUMNS} WHERE m.ROWID > ? ORDER BY m.ROWID ASC LIMIT ?`)
+  const attachmentsStmt = db.prepare(`
+    SELECT a.guid AS guid, a.transfer_name AS transfer_name, a.filename AS filename, a.mime_type AS mime_type,
+      a.uti AS uti, a.total_bytes AS total_bytes, a.is_sticker AS is_sticker
+    FROM attachment a JOIN message_attachment_join maj ON a.ROWID = maj.attachment_id WHERE maj.message_id = ?
+  `)
+  const tipStmt = db.prepare("SELECT MAX(ROWID) AS max_row_id FROM message")
+  const latestOwnStmt = db.prepare("SELECT CAST(MAX(date) AS TEXT) AS max_apple_date FROM message WHERE is_from_me = 1")
+  const recentStmt = db.prepare(`${MESSAGE_SELECT_COLUMNS} ORDER BY m.ROWID DESC LIMIT ?`)
+  const recentByChatStmt = db.prepare(`${MESSAGE_SELECT_COLUMNS} WHERE c.chat_identifier = ? ORDER BY m.ROWID DESC LIMIT ?`)
+  const chatsStmt = db.prepare(`
+    SELECT c.ROWID AS row_id, c.chat_identifier AS chat_identifier, c.display_name AS display_name,
+      c.service_name AS service_name, c.style AS chat_style,
+      CAST(c.last_read_message_timestamp AS TEXT) AS last_read_apple_date,
+      GROUP_CONCAT(h.id, ',') AS participant_handles
+    FROM chat c LEFT JOIN chat_handle_join chj ON c.ROWID = chj.chat_id LEFT JOIN handle h ON chj.handle_id = h.ROWID
+    GROUP BY c.ROWID ORDER BY c.last_read_message_timestamp DESC
+  `)
+  let closed = false
+
+  return {
+    fetchNewMessages(sinceRowId: number, limit: number, fetchOptions: ChatDbFetchOptions = {}): ChatDbMessage[] {
+      if (closed) return []
+      let rows: RawMessageRow[]
+      try {
+        rows = pollStmt.all(sinceRowId, limit) as RawMessageRow[]
+      } catch (error) {
+        throwChatDbError("iMessage chat.db new messages could not be read", IMESSAGE_CHATDB_READ_FAILED, undefined, error)
+      }
+      return rows.map((row) => materializeMessageRow(row, attachmentsStmt, fetchOptions))
+    },
+    getLatestRowId(): number {
+      if (closed) return 0
+      try {
+        const rows = tipStmt.all() as Array<{ max_row_id: number | null }>
+        return rows[0]?.max_row_id ?? 0
+      } catch (error) {
+        throwChatDbError("iMessage chat.db tip could not be read", IMESSAGE_CHATDB_TIP_READ_FAILED, undefined, error)
+      }
+    },
+    getLatestOwnMessageTimestamp(): number | null {
+      if (closed) return null
+      try {
+        const rows = latestOwnStmt.all() as Array<{ max_apple_date: string | null }>
+        const appleDate = rows[0]?.max_apple_date ?? null
+        return appleDate === null ? null : appleDateToJsMs(appleDate)
+      } catch {
+        return null
+      }
+    },
+    listMessages(listOptions = {}): ChatDbMessage[] {
+      if (closed) return []
+      const chatId = listOptions.chatId?.trim()
+      const limit =
+        typeof listOptions.limit === "number" && Number.isFinite(listOptions.limit)
+          ? Math.max(1, Math.trunc(listOptions.limit))
+          : -1
+      let rows: RawMessageRow[]
+      try {
+        rows = chatId
+          ? (recentByChatStmt.all(chatId, limit) as RawMessageRow[])
+          : (recentStmt.all(limit) as RawMessageRow[])
+      } catch (error) {
+        throwChatDbError("iMessage chat.db messages could not be read", IMESSAGE_CHATDB_READ_FAILED, undefined, error)
+      }
+      return rows.map((row) => materializeMessageRow(row, attachmentsStmt, {})).reverse()
+    },
+    listChats(): ChatDbChatSummary[] {
+      if (closed) return []
+      try {
+        const rows = chatsStmt.all() as Array<{
+          row_id: number
+          chat_identifier: string | null
+          display_name: string | null
+          service_name: string | null
+          chat_style: number | null
+          last_read_apple_date: string | null
+          participant_handles: string | null
+        }>
+        return rows.map((row) => ({
+          chatId: row.chat_identifier ?? `chat-${row.row_id}`,
+          chatType: row.chat_style === 43 ? "group" : "direct",
+          displayName: row.display_name,
+          serviceName: row.service_name,
+          participants: row.participant_handles ? row.participant_handles.split(",").filter(Boolean) : [],
+          lastReadMessageTimestamp: appleDateToJsMs(row.last_read_apple_date ?? 0),
+        }))
+      } catch (error) {
+        throwChatDbError("iMessage chat.db chats could not be read", IMESSAGE_CHATDB_READ_FAILED, undefined, error)
+      }
+    },
+    close(): void {
+      if (closed) return
+      closed = true
+      try {
+        db.close()
+      } catch {
+        return
+      }
+    },
+  }
+}

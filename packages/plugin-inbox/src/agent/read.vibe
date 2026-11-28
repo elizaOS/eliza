@@ -154,11 +154,15 @@ async function handle(runtime: IAgentRuntime, _message: Memory, options: unknown
 export const inboxReadAction: Action = {
   name: inboxReadActionName,
   description: "Fresh bounded read/search of owner's connected Gmail (sender, subject, time, unread); connected account only. Read-only.",
+  descriptionCompressed: "Bounded read/search of owner's connected Gmail.",
   similes: ["READ_EMAIL", "CHECK_EMAIL", "SEARCH_EMAIL", "LIST_INBOX"],
+  toolSchemaStrict: true,
+  cacheStable: true,
   parameters: [
     { name: "limit", required: true, schema: { type: "number" }, description: "Max messages (1-50)." },
     { name: "query", required: false, schema: { type: "string" }, description: "Gmail search (e.g. in:sent, is:unread, from:a@b.com); default in:inbox." },
   ],
+  summarize: (result) => (result?.success ? "Read Gmail inbox messages." : undefined),
   roleGate: { minRole: "OWNER" },
   disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   validate: async (runtime) => (await runPromise(agentGmailClient(runtime))) !== undefined,

@@ -28,11 +28,33 @@ pure def lawRetrievedDocumentsAreReady(rows: List[KnowledgeDocument], viewer: st
 
 ### Ownership is required for changes to a document or its audience
 
+Only the owner of a non-removed document may manage its pins, audience, text,
+or deletion. Bundled and character-sourced documents cannot be edited or
+deleted, and non-text-backed documents cannot be edited as text. Uploads must
+carry a supported content type and stay within the 32 MB body limit.
+
 ```quint
+type DocumentProvenance = UploadedDocument | UrlDocument | BundledDocument | CharacterDocument | TranscriptDocument | NoteDocument
+pure val maxDocumentUploadBytes: int = 33554432
 pure def documentManageable(row: KnowledgeDocument, viewer: str): bool =
   viewer != "" and viewer == row.documentOwner and row.documentState != RemovedDocument
+pure def documentEditable(provenance: DocumentProvenance, textBacked: bool): bool =
+  provenance != BundledDocument and provenance != CharacterDocument and textBacked
+pure def documentDeletable(provenance: DocumentProvenance): bool =
+  provenance != BundledDocument and provenance != CharacterDocument
+pure def uploadAdmitted(bodyBytes: int, contentTypeSupported: bool): bool =
+  bodyBytes > 0 and bodyBytes <= maxDocumentUploadBytes and contentTypeSupported
 pure def lawDocumentManagementRequiresOwnership(row: KnowledgeDocument, viewer: str): bool =
   documentManageable(row, viewer) implies viewer == row.documentOwner
+pure def lawBundledAndCharacterNeverEditable(textBacked: bool): bool =
+  not(documentEditable(BundledDocument, textBacked)) and not(documentEditable(CharacterDocument, textBacked))
+pure def lawBinaryNeverEditable(provenance: DocumentProvenance): bool =
+  not(documentEditable(provenance, false))
+pure def lawBundledAndCharacterNeverDeletable(provenance: DocumentProvenance): bool =
+  (provenance == BundledDocument or provenance == CharacterDocument) implies not(documentDeletable(provenance))
+pure def lawOversizedUploadRefused(bodyBytes: int, contentTypeSupported: bool): bool =
+  bodyBytes > maxDocumentUploadBytes implies not(uploadAdmitted(bodyBytes, contentTypeSupported))
+pure val bodyBytesValues = Set(0, 1024, 33554432, 33554433)
 pure val rowValues = Set({ docId: "d1", documentOwner: "owner", documentScope: OwnerDocument, audience: Set(), documentState: ReadyDocument, title: "Notes" }, { docId: "d2", documentOwner: "other", documentScope: SharedDocument, audience: Set("owner"), documentState: IndexingDocument, title: "Shared" })
 pure val rowsValues = Set(List(), List({ docId: "d1", documentOwner: "owner", documentScope: OwnerDocument, audience: Set(), documentState: ReadyDocument, title: "Notes" }, { docId: "d2", documentOwner: "other", documentScope: SharedDocument, audience: Set("owner"), documentState: IndexingDocument, title: "Shared" }))
 ```

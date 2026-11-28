@@ -1,0 +1,200 @@
+// spec/telegram/index.md, "Only the current poller can mark its claim healthy, terminated or released"
+import { ElizaError } from "@elizaos/core"
+import type { Context, Telegraf, Telegram } from "telegraf"
+import {
+  Machine,
+  machine,
+  type Event,
+  type TelegramCaller,
+  type TelegramClaim,
+  type TelegramPoller,
+} from "../gen/telegram.effect.vibe"
+import { redactTelegramTokenInError } from "./formatting.vibe"
+import type { TelegramPollerClaim, TelegramPollerHealth, TelegramPollerMode } from "./types.vibe"
+
+module node {
+  import { createHash, randomUUID } from "node:crypto"
+
+  /** @throws {never} */
+  export function pollerIdentity(token: string): { readonly fingerprint: string; readonly instanceId: string } {
+    return { fingerprint: createHash("sha256").update(token).digest("hex"), instanceId: randomUUID() }
+  }
+
+  /** @throws {never} */
+  export function tokenFingerprint(token: string): string {
+    return createHash("sha256").update(token).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function normalizeAbortReason(reason: unknown, redact: (text: string) => string): unknown {
+    if (reason === undefined || reason instanceof DOMException) {
+      const rawMessage = reason instanceof DOMException ? reason.message : "The operation was aborted."
+      const error = new Error(redact(rawMessage))
+      error.name = reason instanceof DOMException ? reason.name : "AbortError"
+      return error
+    }
+    return reason
+  }
+}
+import { normalizeAbortReason, pollerIdentity, tokenFingerprint } from node
+
+export { pollerIdentity }
+
+export interface TelegramPollerSession {
+  dispatch(event: Event, by: TelegramCaller): Promise<boolean>
+  claim(claim: TelegramClaim, by?: TelegramCaller): Promise<boolean>
+  connect(claim: TelegramClaim, updatedAt: number, by?: TelegramCaller): Promise<boolean>
+  observeUpdate(claim: TelegramClaim, updatedAt: number, by?: TelegramCaller): Promise<boolean>
+  terminate(claim: TelegramClaim, by?: TelegramCaller): Promise<boolean>
+  release(claim: TelegramClaim, by?: TelegramCaller): Promise<boolean>
+  snapshot(): Promise<TelegramPoller>
+}
+
+export function createTelegramPollerSession(): TelegramPollerSession {
+  const runtime = Effect.runSync(Effect.provide(Machine, machine()))
+  const dispatch = async (event: Event, by: TelegramCaller): Promise<boolean> => {
+    const outcome = await Effect.runPromise(Effect.result(runtime.send(event, by)))
+    return outcome._tag === "Success"
+  }
+  return {
+    dispatch,
+    claim: (claim, by = "TelegramHost") => dispatch({ type: "claimTelegramPoller", claim }, by),
+    connect: (claim, updatedAt, by = "TelegramHost") => dispatch({ type: "connectTelegramPoller", claim, updatedAt }, by),
+    observeUpdate: (claim, updatedAt, by = "TelegramHost") => dispatch({ type: "observeTelegramUpdate", claim, updatedAt }, by),
+    terminate: (claim, by = "TelegramHost") => dispatch({ type: "terminateTelegramPoller", claim }, by),
+    release: (claim, by = "TelegramHost") => dispatch({ type: "releaseTelegramPoller", claim }, by),
+    snapshot: () => Effect.runPromise(runtime.get()),
+  }
+}
+
+interface StoredLock {
+  readonly session: TelegramPollerSession
+  claim: TelegramClaim
+  mode: TelegramPollerMode
+  bot: Telegraf<Context>
+  lastError?: string
+}
+
+const pollerLocks = new Map<string, StoredLock>()
+
+function toHealth(entry: StoredLock, state: TelegramPoller): TelegramPollerHealth {
+  const connected = state.phase === "TelegramConnected"
+  return {
+    ok: connected,
+    mode: entry.mode,
+    accountId: entry.claim.accountId,
+    ownerId: entry.claim.ownerId,
+    connected,
+    ...(state.lastUpdate > 0 ? { lastUpdateAt: state.lastUpdate } : {}),
+    ...(entry.lastError !== undefined ? { lastError: entry.lastError } : {}),
+  }
+}
+
+export async function claimTelegramPollerToken(
+  token: string,
+  input: {
+    readonly mode: TelegramPollerMode
+    readonly accountId: string
+    readonly ownerId: string
+    readonly bot: Telegraf<Context>
+  },
+): Promise<TelegramPollerClaim> {
+  const key = `bot:${tokenFingerprint(token)}`
+  const existing = pollerLocks.get(key)
+  const session = existing?.session ?? createTelegramPollerSession()
+  const state = await session.snapshot()
+  const nextGen = state.claim.generation + 1
+  const claim: TelegramClaim = {
+    instanceId: pollerIdentity(token).instanceId,
+    ownerId: input.ownerId,
+    accountId: input.accountId,
+    mode: input.mode === "standalone" ? "TelegramStandalone" : "TelegramFull",
+    generation: nextGen,
+  }
+  const accepted = await session.claim(claim)
+  if (!accepted) {
+    throw new ElizaError("Telegram bot token is already claimed by an active poller.", {
+      code: "TELEGRAM_POLLER_TOKEN_IN_USE",
+    })
+  }
+  const stored: StoredLock = { session, claim, mode: input.mode, bot: input.bot }
+  pollerLocks.set(key, stored)
+  const nextState = await session.snapshot()
+  return { ...toHealth(stored, nextState), bot: input.bot }
+}
+
+export async function markTelegramPollerConnected(token: string, bot: Telegraf<Context>, updatedAt = Date.now()): Promise<boolean> {
+  const entry = pollerLocks.get(`bot:${tokenFingerprint(token)}`)
+  if (entry === undefined || entry.bot !== bot) return false
+  entry.lastError = undefined
+  return entry.session.connect(entry.claim, updatedAt)
+}
+
+export async function markTelegramPollerUpdate(token: string, bot: Telegraf<Context>, updatedAt = Date.now()): Promise<boolean> {
+  const entry = pollerLocks.get(`bot:${tokenFingerprint(token)}`)
+  if (entry === undefined || entry.bot !== bot) return false
+  return entry.session.observeUpdate(entry.claim, updatedAt)
+}
+
+export async function markTelegramPollerTerminated(token: string, bot: Telegraf<Context>, lastError?: string): Promise<boolean> {
+  const entry = pollerLocks.get(`bot:${tokenFingerprint(token)}`)
+  if (entry === undefined || entry.bot !== bot) return false
+  entry.lastError = lastError === undefined ? undefined : redactTelegramTokenInError(lastError)
+  return entry.session.terminate(entry.claim)
+}
+
+export async function releaseTelegramPollerToken(token: string, bot: Telegraf<Context>): Promise<boolean> {
+  const key = `bot:${tokenFingerprint(token)}`
+  const entry = pollerLocks.get(key)
+  if (entry === undefined || entry.bot !== bot) return false
+  const released = await entry.session.release(entry.claim)
+  if (released) pollerLocks.delete(key)
+  return released
+}
+
+export async function getTelegramPollerClaim(token: string): Promise<TelegramPollerClaim | undefined> {
+  const entry = pollerLocks.get(`bot:${tokenFingerprint(token)}`)
+  if (entry === undefined) return undefined
+  const state = await entry.session.snapshot()
+  return { ...toHealth(entry, state), bot: entry.bot }
+}
+
+export async function listTelegramPollerHealth(): Promise<TelegramPollerHealth[]> {
+  const out: TelegramPollerHealth[] = []
+  for (const entry of pollerLocks.values()) {
+    const state = await entry.session.snapshot()
+    out.push(toHealth(entry, state))
+  }
+  return out
+}
+
+export function resetTelegramPollerLocksForTest(): void {
+  pollerLocks.clear()
+}
+
+const adaptedClients = new WeakSet<Telegram>()
+
+export function preserveTelegramCancellation(client: Telegram): void {
+  if (adaptedClients.has(client)) return
+  adaptedClients.add(client)
+  const originalCallApi = client.callApi.bind(client)
+  client.callApi = async (method, payload, options) => {
+    const signal = options?.signal
+    if (signal === undefined) return originalCallApi(method, payload, options)
+    const controller = new AbortController()
+    const forwardAbort = () => {
+      const reason: unknown = "reason" in signal ? (signal as { readonly reason?: unknown }).reason : undefined
+      controller.abort(normalizeAbortReason(reason, redactTelegramTokenInError))
+    }
+    signal.addEventListener("abort", forwardAbort, { once: true })
+    try {
+      if (signal.aborted) forwardAbort()
+      return await originalCallApi(method, payload, {
+        ...options,
+        signal: controller.signal as typeof signal,
+      })
+    } finally {
+      signal.removeEventListener("abort", forwardAbort)
+    }
+  }
+}

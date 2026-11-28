@@ -1,0 +1,19 @@
+// spec/nativePhone/index.md, "Story: Check calls and use the dialer without mistaking a handoff for a call"
+import type { Plugin } from "@elizaos/core"
+import { phoneCallLogProvider } from "./call-log.vibe"
+
+export const appPhonePlugin: Plugin = {
+  name: "@elizaos/plugin-native-phone",
+  description: "Phone overlay: Android dialer and read-only recent-calls context via phoneCallLog.",
+  providers: [phoneCallLogProvider],
+  views: [
+    {
+      id: "phone",
+      label: "Phone",
+      description: "Android dialer and recent call log bridge",
+      path: "/phone",
+      modalities: ["gui"],
+      roleGate: { minRole: "ADMIN" },
+    },
+  ],
+}

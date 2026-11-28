@@ -1,0 +1,118 @@
+// spec/goals/index.md, "Story: Review my goals and check-in history"; spec/goals/lifecycle.md, "Story: Keep goal evaluation prompts safe and goal metadata well formed"
+export const GOALS_CONTEXTS = ["goals", "self_care", "owner"] as const
+export type GoalsContext = (typeof GOALS_CONTEXTS)[number]
+
+export const GOAL_ACTIONS = ["create", "update", "delete", "list", "review", "checkin"] as const
+export type GoalActionName = (typeof GOAL_ACTIONS)[number]
+
+export const GOAL_STATUSES = ["active", "paused", "archived", "satisfied"] as const
+export type GoalStatus = (typeof GOAL_STATUSES)[number]
+
+export const GOAL_REVIEW_STATES = ["idle", "needs_attention", "on_track", "at_risk"] as const
+export type GoalReviewState = (typeof GOAL_REVIEW_STATES)[number]
+
+export const GOAL_SUGGESTION_KINDS = [
+  "create_support",
+  "focus_now",
+  "resolve_overdue",
+  "review_progress",
+  "tighten_cadence",
+] as const
+export type GoalSuggestionKind = (typeof GOAL_SUGGESTION_KINDS)[number]
+
+export const GOALS_SERVICE_TYPE = "goals" as const
+export const GOALS_CHECKIN_SERVICE_TYPE = "goals_checkin" as const
+export const GOALS_MIGRATION_SERVICE_TYPE = "goals_migration" as const
+export const GOALS_LOG_PREFIX = "[plugin-goals]" as const
+
+export const MIGRATED_GOAL_TABLES = ["life_goal_definitions", "life_goal_links"] as const
+export type MigratedGoalTable = (typeof MIGRATED_GOAL_TABLES)[number]
+
+export interface GoalCadenceSlot {
+  readonly key: string
+  readonly label?: string
+  readonly hour?: number
+}
+
+export interface GoalCadence {
+  readonly kind: "none" | "daily" | "weekly" | "times_per_day"
+  readonly slots?: readonly GoalCadenceSlot[]
+}
+
+export interface GoalDefinition {
+  readonly id: string
+  readonly agentId: string
+  readonly ownerId: string
+  readonly title: string
+  readonly description: string
+  readonly status: GoalStatus
+  readonly reviewState: GoalReviewState
+  readonly cadence: GoalCadence | null
+  readonly successCriteria: Record<string, unknown> | null
+  readonly metadata: Record<string, unknown>
+  readonly dismissedSlots: readonly number[]
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface GoalLink {
+  readonly id: string
+  readonly goalId: string
+  readonly targetKind: string
+  readonly targetId: string
+  readonly createdAt: string
+}
+
+export interface GoalCheckinRecord {
+  readonly id: string
+  readonly goalId: string
+  readonly ownerId: string
+  readonly slot: number
+  readonly progress: GoalReviewState
+  readonly note: string
+  readonly recordedAt: string
+}
+
+export interface GoalRecord {
+  readonly goal: GoalDefinition
+  readonly links: readonly GoalLink[]
+  readonly checkins: readonly GoalCheckinRecord[]
+}
+
+export interface GoalItem {
+  readonly id: string
+  readonly title: string
+  readonly description: string
+  readonly status: GoalStatus
+  readonly reviewState: GoalReviewState
+  readonly cadenceKind: string | null
+  readonly target: string | null
+  readonly linkedCount: number
+  readonly updatedAt: string
+}
+
+export interface CreateGoalRequest {
+  readonly ownerId: string
+  readonly title: string
+  readonly description?: string
+  readonly status?: GoalStatus
+  readonly cadence?: GoalCadence | null
+  readonly successCriteria?: Record<string, unknown> | null
+  readonly metadata?: Record<string, unknown>
+}
+
+export interface UpdateGoalRequest {
+  readonly title?: string
+  readonly description?: string
+  readonly status?: GoalStatus
+  readonly reviewState?: GoalReviewState
+  readonly cadence?: GoalCadence | null
+  readonly successCriteria?: Record<string, unknown> | null
+  readonly metadata?: Record<string, unknown>
+}
+
+export error GoalsServiceError {
+  status: number
+  message: string
+  code?: string
+}

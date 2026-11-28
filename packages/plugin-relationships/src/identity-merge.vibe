@@ -1,0 +1,174 @@
+// spec/relationships/identity.md, "Identity observation auto-merges only a single match at or above 85% confidence"
+import { decideObservation, type IdentityDecision } from "../gen/relationships__identity.effect.vibe"
+import type { Entity, EntityAttribute, EntityIdentity, EntityIdentityObservation } from "./types.vibe"
+
+export const AUTO_MERGE_CONFIDENCE_THRESHOLD = 0.85
+export const OVERRIDE_CONFIDENCE_DELTA = 0.15
+
+export function normalizePlatform(platform: string): string {
+  return platform.trim().toLowerCase()
+}
+
+export function normalizeConnectorAccountId(accountId?: string): string {
+  const trimmed = typeof accountId === "string" ? accountId.trim() : ""
+  return trimmed.length > 0 ? trimmed : "default"
+}
+
+export function normalizeHandle(platform: string, handle: string): string {
+  const trimmed = handle.trim()
+  const normPlatform = normalizePlatform(platform)
+  if (normPlatform === "email") return trimmed.toLowerCase()
+  if (normPlatform === "phone" || normPlatform === "sms" || normPlatform === "imessage") {
+    const plus = trimmed.startsWith("+") ? "+" : ""
+    const digits = trimmed.replace(/\D+/g, "")
+    return digits.length > 0 ? `${plus}${digits}` : trimmed.toLowerCase()
+  }
+  return trimmed.replace(/^@+/, "").toLowerCase()
+}
+
+export function normalizeEmailAddress(email: string): string | null {
+  const trimmed = email.trim().toLowerCase()
+  if (trimmed.length === 0 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return null
+  }
+  return trimmed
+}
+
+export function laterIso(left: string | null | undefined, right: string | null | undefined): string | null {
+  if (!left) return right ?? null
+  if (!right) return left
+  return left >= right ? left : right
+}
+
+export function clampConfidence(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  if (value < 0) return 0
+  if (value > 1) return 1
+  return value
+}
+
+export function identityKey(identity: Pick<EntityIdentity, "platform" | "connectorAccountId" | "handle">): string {
+  const platform = normalizePlatform(identity.platform)
+  const account = normalizeConnectorAccountId(identity.connectorAccountId)
+  const handle = normalizeHandle(platform, identity.handle)
+  return `${platform}::${account}::${handle}`
+}
+
+export function findIdentityMatches(
+  entities: readonly Entity[],
+  observation: Pick<EntityIdentityObservation, "tenant" | "platform" | "handle" | "connectorAccountId">,
+): Entity[] {
+  const targetKey = identityKey({
+    platform: observation.platform,
+    connectorAccountId: normalizeConnectorAccountId(observation.connectorAccountId),
+    handle: observation.handle,
+  })
+  return entities.filter(
+    (entity) =>
+      entity.tenant === observation.tenant &&
+      entity.identities.some((identity) => identityKey(identity) === targetKey),
+  )
+}
+
+export function decideIdentityOutcome(candidateCount: number, confidence: number): IdentityDecision {
+  const confidenceBps = Math.round(clampConfidence(confidence) * 1000)
+  return decideObservation(candidateCount, confidenceBps)
+}
+
+export function foldIdentity(existing: EntityIdentity, incoming: EntityIdentity): EntityIdentity {
+  const existingConf = clampConfidence(existing.confidence)
+  const incomingConf = clampConfidence(incoming.confidence)
+  const incomingWins =
+    incomingConf > existingConf + OVERRIDE_CONFIDENCE_DELTA ||
+    (incomingConf >= existingConf && incoming.verified && !existing.verified)
+  const winner = incomingWins ? incoming : existing
+  const evidence = [...new Set([...existing.evidence, ...incoming.evidence].filter((entry) => entry.length > 0))]
+  return {
+    platform: normalizePlatform(winner.platform),
+    handle: normalizeHandle(winner.platform, winner.handle),
+    connectorAccountId: normalizeConnectorAccountId(winner.connectorAccountId),
+    verified: existing.verified || incoming.verified,
+    confidence: Math.max(existingConf, incomingConf),
+    evidence,
+    observedAt: laterIso(existing.observedAt, incoming.observedAt) ?? winner.observedAt,
+  }
+}
+
+export function mergeIdentities(
+  left: readonly EntityIdentity[],
+  right: readonly EntityIdentity[],
+): EntityIdentity[] {
+  const byKey = new Map<string, EntityIdentity>()
+  for (const identity of [...left, ...right]) {
+    const normalized: EntityIdentity = {
+      platform: normalizePlatform(identity.platform),
+      handle: normalizeHandle(identity.platform, identity.handle),
+      connectorAccountId: normalizeConnectorAccountId(identity.connectorAccountId),
+      verified: Boolean(identity.verified),
+      confidence: clampConfidence(identity.confidence),
+      evidence: [...new Set(identity.evidence.filter((item) => item.length > 0))],
+      observedAt: identity.observedAt,
+    }
+    const key = identityKey(normalized)
+    const prev = byKey.get(key)
+    byKey.set(key, prev ? foldIdentity(prev, normalized) : normalized)
+  }
+  return [...byKey.values()]
+}
+
+export function mergeAttributes(
+  left: readonly EntityAttribute[],
+  right: readonly EntityAttribute[],
+): EntityAttribute[] {
+  const byKey = new Map<string, EntityAttribute>()
+  for (const attr of [...left, ...right]) {
+    const key = attr.key.trim().toLowerCase()
+    if (key.length === 0) continue
+    const prev = byKey.get(key)
+    if (!prev || attr.confidence > prev.confidence || (attr.confidence === prev.confidence && attr.updatedAt >= prev.updatedAt)) {
+      byKey.set(key, { ...attr, key })
+    }
+  }
+  return [...byKey.values()]
+}
+
+export function mergeEntityRecords(target: Entity, sources: readonly Entity[], nowIso: string): Entity {
+  let identities = [...target.identities]
+  let attributes = [...target.attributes]
+  const aliasSet = new Set<string>(target.aliases)
+  const tagSet = new Set<string>(target.tags)
+  const noteParts: string[] = target.notes.trim().length > 0 ? [target.notes.trim()] : []
+  let lastInteractionAt = target.lastInteractionAt
+
+  for (const source of sources) {
+    if (source.id === target.id) continue
+    identities = mergeIdentities(identities, source.identities)
+    attributes = mergeAttributes(attributes, source.attributes)
+    if (source.name.trim().length > 0 && source.name.trim().toLowerCase() !== target.name.trim().toLowerCase()) {
+      aliasSet.add(source.name.trim())
+    }
+    for (const alias of source.aliases) {
+      if (alias.trim().length > 0 && alias.trim().toLowerCase() !== target.name.trim().toLowerCase()) {
+        aliasSet.add(alias.trim())
+      }
+    }
+    for (const tag of source.tags) {
+      if (tag.trim().length > 0) tagSet.add(tag.trim())
+    }
+    if (source.notes.trim().length > 0 && !noteParts.includes(source.notes.trim())) {
+      noteParts.push(source.notes.trim())
+    }
+    lastInteractionAt = laterIso(lastInteractionAt, source.lastInteractionAt)
+  }
+
+  return {
+    ...target,
+    aliases: [...aliasSet],
+    identities,
+    attributes,
+    tags: [...tagSet],
+    notes: noteParts.join("\n"),
+    lastInteractionAt,
+    updatedAt: nowIso,
+  }
+}

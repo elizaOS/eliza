@@ -1,0 +1,157 @@
+// spec/meetings/urlAndDisclosure.md, "Join requests require HTTPS and matching provider identity"; spec/meetings/urlAndDisclosure.md, "Transcript disclosure fails closed when a row is missing or ungranted and filters unusable segments"
+import type { PluginAutoEnableContext } from "@elizaos/core"
+import type { MeetingProvider } from "../gen/meetings.effect.vibe"
+import {
+  checkMeetingJoin,
+  resolveMeetingDisclosure,
+  type JoinCheck,
+  type ViewerDisclosure,
+} from "../gen/meetings__urlAndDisclosure.effect.vibe"
+import type {
+  MeetingPlatform,
+  MeetingRuntimeSupport,
+  MeetingSession,
+  ParsedMeetingUrl,
+  TranscriptRecord,
+  ViewerAccessContext,
+} from "./types.vibe"
+
+export function platformToProvider(platform: MeetingPlatform): MeetingProvider {
+  if (platform === "teams") return "MicrosoftTeams"
+  if (platform === "zoom") return "ZoomMeeting"
+  return "GoogleMeet"
+}
+
+export function parseMeetingUrl(rawUrl: string): ParsedMeetingUrl | null {
+  const trimmed = rawUrl.trim()
+  if (trimmed.length === 0) return null
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return null
+  }
+  const https = parsed.protocol === "https:"
+  const host = parsed.hostname.toLowerCase()
+  const path = parsed.pathname.replace(/^\/+|\/+$/g, "")
+  if (host === "meet.google.com") {
+    const code = path.split("/")[0] ?? ""
+    if (!/^[a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3}$/i.test(code)) return null
+    return {
+      platform: "google_meet",
+      provider: "GoogleMeet",
+      meetingUrl: parsed.toString(),
+      nativeMeetingId: code.toLowerCase(),
+      https,
+    }
+  }
+  if (host === "teams.microsoft.com" || host === "teams.live.com") {
+    const id = path.length > 0 ? path : parsed.searchParams.get("meetingId") ?? ""
+    if (id.length === 0) return null
+    return {
+      platform: "teams",
+      provider: "MicrosoftTeams",
+      meetingUrl: parsed.toString(),
+      nativeMeetingId: id,
+      https,
+    }
+  }
+  if (host === "zoom.us" || host.endsWith(".zoom.us")) {
+    const match = /(?:^|\/)(?:j|wc\/join|s)\/(\d{9,11})/.exec(parsed.pathname)
+    if (!match) return null
+    return {
+      platform: "zoom",
+      provider: "ZoomMeeting",
+      meetingUrl: parsed.toString(),
+      nativeMeetingId: match[1]!,
+      https,
+    }
+  }
+  return null
+}
+
+export function extractMeetingUrlFromText(text: string): ParsedMeetingUrl | null {
+  const matches = text.match(/https?:\/\/[^\s<>()"']+/gi) ?? []
+  for (const candidate of matches) {
+    const cleaned = candidate.replace(/[.,;!?]+$/g, "")
+    const parsed = parseMeetingUrl(cleaned)
+    if (parsed) return parsed
+  }
+  return null
+}
+
+export function authorizeMeetingJoin(args: {
+  readonly parsed: ParsedMeetingUrl | null
+  readonly requestedPlatform?: MeetingPlatform
+  readonly alreadyActive: boolean
+}): JoinCheck {
+  if (!args.parsed) {
+    return checkMeetingJoin(false, false, false, args.alreadyActive)
+  }
+  const providerMatches = !args.requestedPlatform || args.requestedPlatform === args.parsed.platform
+  return checkMeetingJoin(args.parsed.https, true, providerMatches, args.alreadyActive)
+}
+
+export function evaluateViewerDisclosure(args: {
+  readonly transcript: TranscriptRecord | null
+  readonly rowParseable?: boolean
+  readonly viewer: ViewerAccessContext
+}): ViewerDisclosure {
+  const rowPresent = args.transcript !== null
+  const rowParseable = args.rowParseable ?? true
+  const viewerIsOwner = args.viewer.isOwner || (args.transcript !== null && args.transcript.ownerId === args.viewer.viewerId)
+  const transcriptId = args.transcript?.id ?? ""
+  const hasFullGrant = Boolean(
+    args.transcript?.scope === "shared" || (transcriptId && args.viewer.fullGrantIds?.includes(transcriptId)),
+  )
+  const hasRedactedGrant = Boolean(transcriptId && args.viewer.redactedGrantIds?.includes(transcriptId))
+  return resolveMeetingDisclosure(rowPresent, rowParseable, viewerIsOwner, hasFullGrant, hasRedactedGrant)
+}
+
+export function selectSessionForViewer(args: {
+  readonly session: MeetingSession
+  readonly transcript: TranscriptRecord | null
+  readonly rowParseable?: boolean
+  readonly viewer?: ViewerAccessContext
+}): MeetingSession {
+  if (!args.viewer || !args.session.transcriptId) return args.session
+  const disclosure = evaluateViewerDisclosure({
+    transcript: args.transcript,
+    rowParseable: args.rowParseable,
+    viewer: args.viewer,
+  })
+  if (disclosure === "DisclosureFull") return args.session
+  if (disclosure === "DisclosureRedacted") {
+    return { ...args.session, transcriptRedacted: true }
+  }
+  const { transcriptId: _withheld, ...rest } = args.session
+  return rest
+}
+
+export function shouldEnableMeetings(ctx: PluginAutoEnableContext): boolean {
+  const features = ctx.config.features as Record<string, unknown> | undefined
+  const feature = features?.meetings
+  const enabled =
+    feature === true ||
+    (Boolean(feature) && typeof feature === "object" && (feature as Record<string, unknown>).enabled !== false)
+  return enabled && !ctx.isNativePlatform
+}
+
+export function resolveMeetingRuntimeSupport(options?: {
+  readonly isNativePlatform?: boolean
+  readonly headless?: boolean
+  readonly chromiumPath?: string
+}): MeetingRuntimeSupport {
+  if (options?.isNativePlatform) {
+    return {
+      supported: false,
+      reason: "Browser meeting bots are unsupported on mobile platforms.",
+      headless: true,
+    }
+  }
+  return {
+    supported: true,
+    headless: options?.headless ?? true,
+    chromiumPath: options?.chromiumPath,
+  }
+}

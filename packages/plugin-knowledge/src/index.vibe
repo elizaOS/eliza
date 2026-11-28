@@ -1,4 +1,5 @@
 // spec/knowledge/index.md, "Story: Find and manage the documents I am allowed to use"
+import { Service, type IAgentRuntime, type Plugin } from "@elizaos/core"
 import {
   documentManageable,
   documentReadable,
@@ -6,6 +7,45 @@ import {
   visibleDocuments,
   type KnowledgeDocument,
 } from "../gen/knowledge.effect.vibe"
+import {
+  DocumentUrlFetcher,
+  handleKnowledgeRoute,
+  InMemoryKnowledgeRepository,
+  KnowledgeRouteFailure,
+  type KnowledgeRepository,
+  type KnowledgeRouteRequest,
+  type KnowledgeRouteResponse,
+} from "./routes.vibe"
+
+export {
+  getDocumentContentType,
+  getDocumentDeleteability,
+  getDocumentEditability,
+  getDocumentProvenance,
+  getDocumentTitleFromMetadata,
+  getDocumentVisibilityScope,
+  isDocumentTextBacked,
+  normalizeDocumentSource,
+  presentDocument,
+  type DocumentProvenance,
+  type DocumentProvenanceKind,
+  type PresentedDocument,
+} from "./presenter.vibe"
+
+export {
+  DOCUMENT_UPLOAD_MAX_BODY_BYTES,
+  DocumentUrlFetcher,
+  handleKnowledgeRoute,
+  InMemoryKnowledgeRepository,
+  KnowledgeRouteFailure,
+  resolveTrustedLocalDocumentAccessContext,
+  validateDocumentContentType,
+  type DocumentAccessContext,
+  type KnowledgeRepository,
+  type KnowledgeRouteRequest,
+  type KnowledgeRouteResponse,
+  type StoredKnowledgeDocument,
+} from "./routes.vibe"
 
 export error DocumentStoreUnavailable { reason: string }
 export error DocumentMissingOrDenied { docId: string }
@@ -36,3 +76,47 @@ export effect function pinDocument(ownerId: string, docId: string, pinned: boole
   if (!documentManageable(row, ownerId)) throw new DocumentMissingOrDenied({ docId })
   return try (try KnowledgeStore).setPinned(ownerId, docId, pinned)
 }
+
+export class KnowledgeService extends Service {
+  static override serviceType = "knowledge"
+  override capabilityDescription = "Stores, searches, presents, and governs owner-scoped knowledge documents."
+  readonly repository: KnowledgeRepository
+
+  constructor(runtime?: IAgentRuntime, repository: KnowledgeRepository = new InMemoryKnowledgeRepository()) {
+    super(runtime)
+    this.repository = repository
+  }
+
+  static override start(runtime: IAgentRuntime): Promise<KnowledgeService> {
+    return Promise.resolve(new KnowledgeService(runtime))
+  }
+
+  override stop(): Promise<void> {
+    return Promise.resolve()
+  }
+
+  handleRoute(
+    request: KnowledgeRouteRequest,
+    urlFetcher?: Layer.Layer<DocumentUrlFetcher>,
+  ): Promise<KnowledgeRouteResponse> {
+    const fetcherLayer = urlFetcher ?? Layer.succeed(DocumentUrlFetcher, {
+      fetch: () => effect { throw new KnowledgeRouteFailure({ reason: "No URL fetcher configured." }) },
+    })
+    return Effect.runPromise(
+      Effect.provide(handleKnowledgeRoute(this.repository, { ...request, runtime: request.runtime ?? this.runtime }), fetcherLayer),
+    )
+  }
+}
+
+export const knowledgePlugin: Plugin = {
+  name: "@elizaos/plugin-knowledge",
+  description: "Owner-scoped knowledge document storage, presentation, search, and management routes.",
+  services: [KnowledgeService],
+  actions: [],
+  async dispose(runtime) {
+    const svc = runtime.getService<KnowledgeService>(KnowledgeService.serviceType)
+    await svc?.stop()
+  },
+}
+
+export default knowledgePlugin

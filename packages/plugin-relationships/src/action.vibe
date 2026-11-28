@@ -1,0 +1,304 @@
+// spec/relationships/index.md, "Story: Resolve people and manage the graph inside my agent"; spec/relationships/identity.md, "Story: Resolve identity observations and confirmed recipients without guessing"
+import {
+  type Action,
+  type ActionResult,
+  type EffectReceipt,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core"
+import { getKnowledgeGraphService, type KnowledgeGraphService } from "./store.vibe"
+import {
+  BUILT_IN_ENTITY_KINDS,
+  ENTITY_OPS,
+  RELATIONSHIPS_ACTION_NAME,
+  RELATIONSHIPS_CONTEXTS,
+  SELF_ENTITY_ID,
+  type EntityKind,
+  type EntityOp,
+} from "./types.vibe"
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function readParams(options?: HandlerOptions): Record<string, unknown> {
+  if (!options || !isRecord(options)) return {}
+  if (isRecord(options.parameters)) return options.parameters
+  return options
+}
+
+function readText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function readKind(value: unknown): EntityKind {
+  const text = readText(value)
+  if (text && (BUILT_IN_ENTITY_KINDS as readonly string[]).includes(text)) {
+    return text as EntityKind
+  }
+  return "person"
+}
+
+function readOp(value: unknown): EntityOp | null {
+  const text = readText(value) ?? "list"
+  if ((ENTITY_OPS as readonly string[]).includes(text)) {
+    return text as EntityOp
+  }
+  return null
+}
+
+function resolveTenant(runtime: IAgentRuntime, message: Memory, params: Record<string, unknown>): string {
+  return readText(params.tenant) ?? (typeof message.entityId === "string" && message.entityId.trim() ? message.entityId.trim() : runtime.agentId)
+}
+
+function makeReceipt(op: EntityOp, resourceKind: string, targetId: string): EffectReceipt {
+  const now = new Date().toISOString()
+  return {
+    outcome: "applied",
+    receiptId: `kg:${op}:${targetId}:${now}`,
+    operation: `${RELATIONSHIPS_ACTION_NAME}.${op}`,
+    resource: { kind: resourceKind, id: targetId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: now,
+    commit: { kind: "durable", id: targetId, committedAt: now },
+  }
+}
+
+function resolveEntityId(service: KnowledgeGraphService, tenant: string, params: Record<string, unknown>): string | null {
+  const explicit = readText(params.entityId)
+  if (explicit) return explicit
+  const name = readText(params.name)
+  if (!name) return null
+  const matches = service.entities.list(tenant, { query: name })
+  const exact = matches.find((entity) => entity.name.toLowerCase() === name.toLowerCase())
+  if (exact) return exact.id
+  if (matches.length === 1) return matches[0]!.id
+  return null
+}
+
+function runEntityOp(
+  service: KnowledgeGraphService,
+  tenant: string,
+  op: EntityOp,
+  params: Record<string, unknown>,
+): ActionResult {
+  if (op === "create") {
+    const name = readText(params.name)
+    if (!name) return { success: false, text: "name is required", error: "MISSING_NAME" }
+    const entity = service.createEntity({
+      tenant,
+      name,
+      kind: readKind(params.kind),
+      aliases: Array.isArray(params.aliases) ? params.aliases.filter((v): v is string => typeof v === "string") : [],
+      tags: Array.isArray(params.tags) ? params.tags.filter((v): v is string => typeof v === "string") : [],
+      notes: readText(params.notes) ?? "",
+    })
+    return {
+      success: true,
+      text: `Created ${entity.kind} entity "${entity.name}" (${entity.id}).`,
+      data: { op, entity },
+      effectReceipts: [makeReceipt(op, "relationships.entity", entity.id)],
+    }
+  }
+  if (op === "read") {
+    const entityId = resolveEntityId(service, tenant, params)
+    if (!entityId) return { success: false, text: "Entity not found.", error: "ENTITY_NOT_FOUND" }
+    const entity = service.entities.get(tenant, entityId)
+    if (!entity) return { success: false, text: `Entity ${entityId} not found.`, error: "ENTITY_NOT_FOUND" }
+    const relationships = service.relationships.list(tenant, { entityId }).slice(0, 30)
+    return {
+      success: true,
+      text: `${entity.name} (${entity.kind}) — ${entity.identities.length} identities, ${relationships.length} relationships.`,
+      data: { op, entity, relationships },
+    }
+  }
+  if (op === "log_interaction") {
+    const entityId = resolveEntityId(service, tenant, params)
+    if (!entityId) return { success: false, text: "Entity not found.", error: "ENTITY_NOT_FOUND" }
+    const summary = readText(params.summary) ?? readText(params.notes)
+    if (!summary) return { success: false, text: "summary is required for log_interaction", error: "MISSING_SUMMARY" }
+    const result = service.logInteraction({
+      tenant,
+      entityId,
+      summary,
+      relation: readText(params.relation),
+    })
+    if (!result) return { success: false, text: `Entity ${entityId} not found.`, error: "ENTITY_NOT_FOUND" }
+    return {
+      success: true,
+      text: `Logged interaction with "${result.entity.name}".`,
+      data: { op, entity: result.entity, relationship: result.relationship },
+      effectReceipts: [makeReceipt(op, "relationships.interaction", entityId)],
+    }
+  }
+  if (op === "set_relationship") {
+    const fromId = readText(params.fromId) ?? SELF_ENTITY_ID
+    const toId = readText(params.toId) ?? resolveEntityId(service, tenant, params)
+    const relation = readText(params.relation)
+    if (!toId) return { success: false, text: "target entity not found", error: "ENTITY_NOT_FOUND" }
+    if (!relation) return { success: false, text: "relation is required for set_relationship", error: "MISSING_RELATION" }
+    if (fromId === SELF_ENTITY_ID) service.entities.ensureSelf(tenant)
+    const relationship = service.relationships.observe({
+      tenant,
+      fromId,
+      toId,
+      relation,
+      strengthDelta: typeof params.strength === "number" ? params.strength : undefined,
+      notes: readText(params.notes),
+    })
+    return {
+      success: true,
+      text: `Recorded relationship ${fromId} -[${relationship.relation}]-> ${toId} (strength ${relationship.strength.toFixed(2)}).`,
+      data: { op, relationship },
+      effectReceipts: [makeReceipt(op, "relationships.edge", relationship.id)],
+    }
+  }
+  const kind = readText(params.kind) ? readKind(params.kind) : undefined
+  const limit = typeof params.limit === "number" && params.limit > 0 ? Math.min(params.limit, 40) : 30
+  const entities = service.entities.list(tenant, { kind, query: readText(params.query), limit })
+  const text =
+    entities.length === 0
+      ? "No entities found."
+      : entities.map((entity) => `- ${entity.name} (${entity.kind}, ${entity.id})`).join("\n")
+  return {
+    success: true,
+    text,
+    data: { op, entities, count: entities.length },
+  }
+}
+
+export const entityAction: Action = {
+  name: RELATIONSHIPS_ACTION_NAME,
+  similes: ["ENTITY", "CONTACT", "RELATIONSHIP", "PEOPLE_GRAPH", "LOG_INTERACTION"],
+  description: "Create, read, list entities, log interactions, or record relationships in the owner's knowledge graph.",
+  descriptionCompressed: "Manage knowledge graph entities & relationships (create/read/list/log_interaction/set_relationship).",
+  toolSchemaStrict: true,
+  cacheStable: true,
+  roleGate: { minRole: "OWNER" },
+  contexts: [...RELATIONSHIPS_CONTEXTS],
+  contextGate: { anyOf: [...RELATIONSHIPS_CONTEXTS] },
+  parameters: [
+    {
+      name: "aliases",
+      description: "Optional alternative names for create",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "entityId",
+      description: "Target entity ID for read or log_interaction",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "fromId",
+      description: "Source entity ID for set_relationship (defaults to self)",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "kind",
+      description: "Entity kind: person, org, place, project, or thing",
+      required: false,
+      schema: { type: "string", enum: [...BUILT_IN_ENTITY_KINDS] },
+    },
+    {
+      name: "limit",
+      description: "Maximum number of entities to return (capped at 40)",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "name",
+      description: "Entity display name",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "notes",
+      description: "Optional notes for entity or relationship",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "op",
+      description: "Operation: create, read, list, log_interaction, or set_relationship",
+      required: true,
+      schema: { type: "string", enum: [...ENTITY_OPS] },
+    },
+    {
+      name: "query",
+      description: "Optional substring filter for list",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "relation",
+      description: "Relationship label (e.g. colleague, friend, advisor)",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "strength",
+      description: "Relationship strength or increment in [0, 1]",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "summary",
+      description: "Interaction summary text for log_interaction",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "tags",
+      description: "Optional tags for create",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "tenant",
+      description: "Optional tenant scope override",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "toId",
+      description: "Target entity ID for set_relationship",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+    return getKnowledgeGraphService(runtime) !== null
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    const service = getKnowledgeGraphService(runtime)
+    if (!service) {
+      return { success: false, text: "KnowledgeGraphService is unavailable.", error: "KNOWLEDGE_GRAPH_UNAVAILABLE" }
+    }
+    const params = readParams(options)
+    const op = readOp(params.op)
+    if (!op) {
+      return { success: false, text: `op must be one of: ${ENTITY_OPS.join(", ")}`, error: "INVALID_OP" }
+    }
+    const tenant = resolveTenant(runtime, message, params)
+    const result = runEntityOp(service, tenant, op, params)
+    if (callback && result.text) {
+      await callback({ text: result.text, action: RELATIONSHIPS_ACTION_NAME })
+    }
+    return result
+  },
+}

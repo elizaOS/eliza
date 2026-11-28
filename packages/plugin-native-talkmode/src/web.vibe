@@ -1,0 +1,192 @@
+// spec/nativeTalkmode/index.md, "Story: Converse by voice without audio from a retired session playing or recording"; spec/nativeTalkmode/audioPolicy.md, "Story: Keep voice capture active and TTS progressing under output mute"
+import type { PluginListenerHandle } from "@capacitor/core"
+import type {
+  AudioFrameOptions,
+  AudioFrameResult,
+  SpeakOptions,
+  SpeakResult,
+  TTSCompleteEvent,
+  TTSSpeakingEvent,
+  TalkModeAudioFrameEvent,
+  TalkModeConfig,
+  TalkModeErrorEvent,
+  TalkModePermissionStatus,
+  TalkModePlaybackFrameEvent,
+  TalkModePlaybackStartEvent,
+  TalkModePlugin,
+  TalkModeState,
+  TalkModeStateEvent,
+  TalkModeTranscriptEvent,
+} from "./native-contract.vibe"
+import { createTalkModeAudioState, reduceTalkModeAudioPolicy, type TalkModeAudioState } from "./volume-mute-policy.vibe"
+
+type TalkListenerMap = {
+  stateChange: Set<(event: TalkModeStateEvent) => void>
+  transcript: Set<(event: TalkModeTranscriptEvent) => void>
+  speaking: Set<(event: TTSSpeakingEvent) => void>
+  speakComplete: Set<(event: TTSCompleteEvent) => void>
+  error: Set<(event: TalkModeErrorEvent) => void>
+  playbackStart: Set<(event: TalkModePlaybackStartEvent) => void>
+  playbackFrame: Set<(event: TalkModePlaybackFrameEvent) => void>
+  audioFrame: Set<(event: TalkModeAudioFrameEvent) => void>
+}
+
+export class TalkModeWeb implements TalkModePlugin {
+  private enabled = false
+  private state: TalkModeState = "idle"
+  private statusText = "Idle"
+  private config: TalkModeConfig = {}
+  private speaking = false
+  private capturing = false
+  private utteranceSeq = 0
+  private activeUtteranceId: string | null = null
+  private audioPolicy: TalkModeAudioState = createTalkModeAudioState()
+  private readonly listeners: TalkListenerMap = {
+    stateChange: new Set(),
+    transcript: new Set(),
+    speaking: new Set(),
+    speakComplete: new Set(),
+    error: new Set(),
+    playbackStart: new Set(),
+    playbackFrame: new Set(),
+    audioFrame: new Set(),
+  }
+
+  private transition(next: TalkModeState, statusText: string): void {
+    const previousState = this.state
+    this.state = next
+    this.statusText = statusText
+    for (const fn of this.listeners.stateChange) {
+      fn({ state: next, previousState, mode: this.config.mode ?? "idle", statusText, usingSystemTts: true })
+    }
+  }
+
+  async start(options?: { config?: TalkModeConfig }): Promise<{ started: boolean; error?: string }> {
+    if (options?.config) this.config = { ...this.config, ...options.config }
+    this.enabled = true
+    this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "capture-started" })
+    this.transition("listening", "Listening")
+    return { started: true }
+  }
+
+  async stop(): Promise<void> {
+    this.enabled = false
+    this.speaking = false
+    this.capturing = false
+    if (this.activeUtteranceId) {
+      this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "tts-finished", utteranceId: this.activeUtteranceId })
+      this.activeUtteranceId = null
+    }
+    this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "capture-stopped" })
+    this.transition("idle", "Idle")
+  }
+
+  async isEnabled(): Promise<{ enabled: boolean }> {
+    return { enabled: this.enabled }
+  }
+
+  async getState(): Promise<{ state: TalkModeState; statusText: string }> {
+    return { state: this.state, statusText: this.statusText }
+  }
+
+  async updateConfig(options: { config: Partial<TalkModeConfig> }): Promise<void> {
+    this.config = { ...this.config, ...options.config }
+  }
+
+  async speak(options: SpeakOptions): Promise<SpeakResult> {
+    const text = options.text.trim()
+    if (!text) return { completed: false, interrupted: false, usedSystemTts: true, error: "Text is required." }
+    this.utteranceSeq += 1
+    const utteranceId = `web-utt-${this.utteranceSeq}`
+    this.activeUtteranceId = utteranceId
+    this.speaking = true
+    this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "tts-started", utteranceId })
+    this.transition("speaking", "Speaking")
+    for (const fn of this.listeners.speaking) fn({ text, isSystemTts: true })
+    for (const fn of this.listeners.playbackStart) fn({ provider: "system", sampleRate: 16_000, channels: 1 })
+    const interrupted = !this.speaking
+    this.speaking = false
+    this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "tts-finished", utteranceId })
+    this.activeUtteranceId = null
+    for (const fn of this.listeners.speakComplete) fn({ completed: !interrupted })
+    if (this.enabled) this.transition("listening", "Listening")
+    return { completed: !interrupted, interrupted, usedSystemTts: true }
+  }
+
+  async stopSpeaking(): Promise<{ interruptedAt?: number }> {
+    const wasSpeaking = this.speaking
+    this.speaking = false
+    if (this.activeUtteranceId) {
+      this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "tts-finished", utteranceId: this.activeUtteranceId })
+      this.activeUtteranceId = null
+    }
+    return wasSpeaking ? { interruptedAt: 0 } : {}
+  }
+
+  async isSpeaking(): Promise<{ speaking: boolean }> {
+    return { speaking: this.speaking }
+  }
+
+  async checkPermissions(): Promise<TalkModePermissionStatus> {
+    return { microphone: "prompt", speechRecognition: "not_supported" }
+  }
+
+  async requestPermissions(): Promise<TalkModePermissionStatus> {
+    return { microphone: "prompt", speechRecognition: "not_supported" }
+  }
+
+  async startAudioFrames(options?: AudioFrameOptions): Promise<AudioFrameResult> {
+    const sampleRate = options?.sampleRate ?? 16_000
+    const frameMs = options?.frameMs ?? 20
+    this.capturing = true
+    this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "capture-started" })
+    return { started: true, sampleRate, frameSamples: Math.max(1, Math.floor((sampleRate * frameMs) / 1000)), suspendedStt: false }
+  }
+
+  async stopAudioFrames(): Promise<void> {
+    this.capturing = false
+    this.audioPolicy = reduceTalkModeAudioPolicy(this.audioPolicy, { type: "capture-stopped" })
+  }
+
+  async isCapturingAudioFrames(): Promise<{ capturing: boolean }> {
+    return { capturing: this.capturing }
+  }
+
+  getAudioPolicyState(): TalkModeAudioState {
+    return this.audioPolicy
+  }
+
+  emitAudioFrame(frame: TalkModeAudioFrameEvent): void {
+    if (!this.capturing) return
+    for (const fn of this.listeners.audioFrame) fn(frame)
+  }
+
+  addListener(eventName: "stateChange", listenerFunc: (event: TalkModeStateEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "transcript", listenerFunc: (event: TalkModeTranscriptEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "speaking", listenerFunc: (event: TTSSpeakingEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "speakComplete", listenerFunc: (event: TTSCompleteEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "error", listenerFunc: (event: TalkModeErrorEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "playbackStart", listenerFunc: (event: TalkModePlaybackStartEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "playbackFrame", listenerFunc: (event: TalkModePlaybackFrameEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "audioFrame", listenerFunc: (event: TalkModeAudioFrameEvent) => void): Promise<PluginListenerHandle>
+  async addListener(eventName: keyof TalkListenerMap, listenerFunc: (event: never) => void): Promise<PluginListenerHandle> {
+    const bucket = this.listeners[eventName] as Set<(event: never) => void>
+    bucket.add(listenerFunc)
+    return {
+      remove: async () => {
+        bucket.delete(listenerFunc)
+      },
+    }
+  }
+
+  async removeAllListeners(): Promise<void> {
+    this.listeners.stateChange.clear()
+    this.listeners.transcript.clear()
+    this.listeners.speaking.clear()
+    this.listeners.speakComplete.clear()
+    this.listeners.error.clear()
+    this.listeners.playbackStart.clear()
+    this.listeners.playbackFrame.clear()
+    this.listeners.audioFrame.clear()
+  }
+}

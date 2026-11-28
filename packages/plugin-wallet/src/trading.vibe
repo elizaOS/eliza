@@ -1,0 +1,575 @@
+// spec/wallet/index.md, "Story: Preview an exact wallet operation before executing it"; spec/wallet/index.md, "A route quote answers the current amount and destination"
+import { ElizaError, Service, type IAgentRuntime, type Plugin, type Provider, type ProviderResult } from "@elizaos/core"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { freshWalletQuote, walletQuoteMatches, type WalletIntent } from "../gen/wallet.effect.vibe"
+import { createDynamicWalletProvider } from "./analytics.vibe"
+import { SpendingPolicy, createTradeIdempotencyKey, raise } from "./policy.vibe"
+
+export const STEWARD_TRADING_SERVICE_TYPE = "steward_trading"
+export const WALLET_BACKEND_SERVICE_TYPE = "wallet_backend"
+export const TX_SERVICE_TYPE = "wallet_tx"
+export const LP_MANAGER_PLUGIN_NAME = "lp-manager"
+
+export interface TradeQuoteRequest {
+  readonly chain: string
+  readonly inputToken: string
+  readonly outputToken: string
+  readonly amount: string
+  readonly slippageBps?: number
+  readonly account: string
+}
+
+export interface TradeQuote {
+  readonly quoteId: string
+  readonly intent: WalletIntent
+  readonly venueId: string
+  readonly inputToken: string
+  readonly outputToken: string
+  readonly inputAmount: string
+  readonly expectedOutputAmount: string
+  readonly priceImpactBps: number
+  readonly slippageBps: number
+  readonly observedAt: number
+}
+
+export interface TradeExecutionResult {
+  readonly idempotencyKey: string
+  readonly quoteId: string
+  readonly status: "simulated" | "submitted" | "confirmed" | "refused"
+  readonly txHash?: string
+  readonly outputAmount?: string
+  readonly reason?: string
+}
+
+export interface StewardTradingServiceOptions {
+  readonly baseUrl?: string
+  readonly apiKey?: string
+  readonly policy?: SpendingPolicy
+  readonly httpLayer?: Layer.Layer<HttpClient.HttpClient>
+}
+
+export class StewardTradingService extends Service {
+  static override serviceType = STEWARD_TRADING_SERVICE_TYPE
+  override capabilityDescription = "Quote, simulate, and policy-gated swap/bridge execution across EVM and Solana venues"
+  readonly policy: SpendingPolicy
+  private readonly baseUrl: string
+  private readonly apiKey: string
+  private readonly httpLayer: Layer.Layer<HttpClient.HttpClient>
+  private readonly historyList: TradeExecutionResult[] = []
+
+  constructor(runtime?: IAgentRuntime, options: StewardTradingServiceOptions = {}) {
+    super(runtime)
+    this.baseUrl = (options.baseUrl ?? "https://api.steward.fi").replace(/\/+$/, "")
+    const key = runtime?.getSetting("STEWARD_API_KEY")
+    this.apiKey = options.apiKey ?? (typeof key === "string" ? key : "")
+    this.policy = options.policy ?? new SpendingPolicy()
+    this.httpLayer = options.httpLayer ?? FetchHttpClient.layer
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new StewardTradingService(runtime)
+  }
+
+  override async stop(): Promise<void> {}
+
+  async quoteSwap(req: TradeQuoteRequest): Promise<TradeQuote> {
+    const slippageBps = req.slippageBps ?? 50
+    const isSol = req.chain.toLowerCase() === "solana"
+    const raw = await runPromise(
+      Effect.provide(
+        effect {
+          let httpReq = HttpClientRequest.post(`${this.baseUrl}/v1/trade/quote`).pipe(
+            HttpClientRequest.acceptJson,
+            HttpClientRequest.bodyJsonUnsafe({
+              chain: req.chain,
+              inputToken: req.inputToken,
+              outputToken: req.outputToken,
+              amount: req.amount,
+              slippageBps,
+              account: req.account,
+            }),
+          )
+          if (this.apiKey.length > 0) httpReq = HttpClientRequest.bearerToken(httpReq, this.apiKey)
+          const res = Effect.provideService(HttpClient.execute(httpReq), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+            throw new ElizaError("Trade quote venue unreachable.", { code: "WALLET_TRADE_VENUE_UNREACHABLE" })
+          }
+          const text = res.text catch effect () => ""
+          if (res.status < 200 || res.status >= 300) {
+            throw new ElizaError(`Trade quote failed (${res.status}): ${text.slice(0, 160)}`, { code: "WALLET_TRADE_QUOTE_FAILED" })
+          }
+          return try Effect.try({
+            try: () => JSON.parse(text) as { readonly quoteId?: string; readonly venueId?: string; readonly outputAmount?: string; readonly priceImpactBps?: number },
+            catch: () => new ElizaError("Trade quote returned invalid JSON.", { code: "WALLET_TRADE_QUOTE_FAILED" }),
+          })
+        },
+        this.httpLayer,
+      ),
+    )
+    const observedAt = Date.now()
+    const quoteId = raw.quoteId ?? createTradeIdempotencyKey({ accountId: req.account, chain: req.chain, inputToken: req.inputToken, outputToken: req.outputToken, amount: req.amount, nonce: String(observedAt) })
+    const intent: WalletIntent = {
+      intentId: quoteId,
+      commitment: `${req.chain}:${req.inputToken}->${req.outputToken}:${req.amount}:${slippageBps}`,
+      account: req.account,
+      chainId: req.chain,
+      family: isSol ? "SolanaWallet" : "EvmWallet",
+      backend: "StewardSigner",
+      operation: "TokenSwap",
+      intentMode: "WalletExecution",
+    }
+    return {
+      quoteId,
+      intent,
+      venueId: raw.venueId ?? "steward",
+      inputToken: req.inputToken,
+      outputToken: req.outputToken,
+      inputAmount: req.amount,
+      expectedOutputAmount: raw.outputAmount ?? "0",
+      priceImpactBps: raw.priceImpactBps ?? 0,
+      slippageBps,
+      observedAt,
+    }
+  }
+
+  async executeQuotedSwap(params: {
+    readonly quote: TradeQuote
+    readonly intent: WalletIntent
+    readonly amountUsd: number
+    readonly ownerConfirmed: boolean
+    readonly simulateOnly?: boolean
+    readonly wallTime?: number
+  }): Promise<TradeExecutionResult> {
+    const now = params.wallTime ?? Date.now()
+    const idempotencyKey = createTradeIdempotencyKey({
+      accountId: params.intent.account,
+      chain: params.intent.chainId,
+      inputToken: params.quote.inputToken,
+      outputToken: params.quote.outputToken,
+      amount: params.quote.inputAmount,
+      nonce: params.quote.quoteId,
+    })
+    if (!walletQuoteMatches(params.intent, { quotedIntent: params.quote.intent, venueId: params.quote.venueId, observedAt: params.quote.observedAt }, now)) {
+      return { idempotencyKey, quoteId: params.quote.quoteId, status: "refused", reason: "Quote does not match intent or is stale (>60s)." }
+    }
+    if (params.simulateOnly) {
+      return { idempotencyKey, quoteId: params.quote.quoteId, status: "simulated", outputAmount: params.quote.expectedOutputAmount }
+    }
+    if (!params.ownerConfirmed && !this.policy.canAutoTrade(params.quote.observedAt, now)) {
+      return { idempotencyKey, quoteId: params.quote.quoteId, status: "refused", reason: "Owner confirmation required or autonomous daily cap reached." }
+    }
+    const decision = this.policy.evaluateAndRecord({
+      actor: params.ownerConfirmed ? "owner" : "agent",
+      actionName: "TRADE",
+      amount: Math.max(1, Math.round(params.amountUsd)),
+      slippageBps: params.quote.slippageBps,
+      quoteObservedAt: params.quote.observedAt,
+      wallTime: now,
+    })
+    if (!decision.allowed) {
+      return { idempotencyKey, quoteId: params.quote.quoteId, status: "refused", reason: decision.reason }
+    }
+    const executed = await runPromise(
+      Effect.provide(
+        effect {
+          let httpReq = HttpClientRequest.post(`${this.baseUrl}/v1/trade/execute`).pipe(
+            HttpClientRequest.acceptJson,
+            HttpClientRequest.setHeader("idempotency-key", idempotencyKey),
+            HttpClientRequest.bodyJsonUnsafe({ quoteId: params.quote.quoteId, intent: params.intent }),
+          )
+          if (this.apiKey.length > 0) httpReq = HttpClientRequest.bearerToken(httpReq, this.apiKey)
+          const res = Effect.provideService(HttpClient.execute(httpReq), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => {
+            throw new ElizaError("Trade execution venue unreachable.", { code: "WALLET_TRADE_EXECUTE_FAILED" })
+          }
+          const text = res.text catch effect () => ""
+          if (res.status < 200 || res.status >= 300) {
+            throw new ElizaError(`Trade execution failed (${res.status}).`, { code: "WALLET_TRADE_EXECUTE_FAILED" })
+          }
+          return try Effect.try({
+            try: () => JSON.parse(text) as { readonly txHash?: string; readonly outputAmount?: string; readonly status?: "submitted" | "confirmed" },
+            catch: () => new ElizaError("Trade execution returned invalid JSON.", { code: "WALLET_TRADE_EXECUTE_FAILED" }),
+          })
+        },
+        this.httpLayer,
+      ),
+    )
+    const record: TradeExecutionResult = {
+      idempotencyKey,
+      quoteId: params.quote.quoteId,
+      status: executed.status ?? "submitted",
+      ...(executed.txHash === undefined ? {} : { txHash: executed.txHash }),
+      outputAmount: executed.outputAmount ?? params.quote.expectedOutputAmount,
+    }
+    this.historyList.push(record)
+    return record
+  }
+
+  history(): readonly TradeExecutionResult[] {
+    return [...this.historyList]
+  }
+}
+
+export class WalletBackendService extends Service {
+  static override serviceType = WALLET_BACKEND_SERVICE_TYPE
+  override capabilityDescription = "Routes signing and custody operations between local sealed device signer and Steward backend"
+  readonly mode: "local" | "steward"
+
+  constructor(runtime?: IAgentRuntime, mode: "local" | "steward" = "local") {
+    super(runtime)
+    this.mode = mode
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    const backend = runtime.getSetting("WALLET_BACKEND")
+    return new WalletBackendService(runtime, backend === "steward" ? "steward" : "local")
+  }
+
+  override async stop(): Promise<void> {}
+
+  activeBackend(): "LocalSigner" | "StewardSigner" {
+    return this.mode === "steward" ? "StewardSigner" : "LocalSigner"
+  }
+}
+
+export function normalizeJsonRpcUrl(raw: string): string {
+  const trimmed = raw.trim()
+  const parsed = new URL(trimmed)
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    raise(new ElizaError("RPC URL must use http or https.", { code: "WALLET_RPC_URL_INVALID" }))
+  }
+  return parsed.toString().replace(/\/+$/, "")
+}
+
+export function formatPrivateKeyPreview(_key: string): string {
+  return "[REDACTED_SEALED_KEY]"
+}
+
+export interface JsonRpcEndpointProbeResult {
+  readonly url: string
+  readonly reachable: boolean
+  readonly chainId?: string
+  readonly latencyMs: number
+}
+
+export async function probeJsonRpcEndpoint(
+  url: string,
+  httpLayer: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient.layer,
+): Promise<JsonRpcEndpointProbeResult> {
+  const normalized = normalizeJsonRpcUrl(url)
+  const started = Date.now()
+  const result = await runPromise(
+    Effect.provide(
+      effect {
+        const req = HttpClientRequest.post(normalized).pipe(
+          HttpClientRequest.acceptJson,
+          HttpClientRequest.bodyJsonUnsafe({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+        )
+        const res = Effect.provideService(HttpClient.execute(req), FetchHttpClient.RequestInit, { redirect: "error" }) catch effect () => undefined
+        if (res === undefined || res.status < 200 || res.status >= 300) return undefined
+        const text = res.text catch effect () => ""
+        return Effect.try(() => JSON.parse(text) as { readonly result?: string }) catch () => undefined
+      },
+      httpLayer,
+    ),
+  )
+  return {
+    url: normalized,
+    reachable: result !== undefined && typeof result.result === "string",
+    ...(result?.result === undefined ? {} : { chainId: result.result }),
+    latencyMs: Math.max(0, Date.now() - started),
+  }
+}
+
+export class TxService extends Service {
+  static override serviceType = TX_SERVICE_TYPE
+  override capabilityDescription = "JSON-RPC endpoint health probing and transaction broadcast coordination"
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    return new TxService(runtime)
+  }
+
+  override async stop(): Promise<void> {}
+
+  probe(url: string, httpLayer?: Layer.Layer<HttpClient.HttpClient>): Promise<JsonRpcEndpointProbeResult> {
+    return probeJsonRpcEndpoint(url, httpLayer)
+  }
+}
+
+export type LpProtocolName = "uniswap-v3" | "aerodrome" | "pancakeswap-v3" | "raydium" | "orca" | "meteora"
+
+export interface LpPosition {
+  readonly id: string
+  readonly protocol: LpProtocolName
+  readonly chain: string
+  readonly poolId: string
+  readonly tokenA: string
+  readonly tokenB: string
+  readonly liquidityUsd: number
+  readonly lowerTick: number
+  readonly upperTick: number
+  readonly aprPct: number
+  readonly status: "open" | "closed"
+}
+
+export interface LpPoolOpportunity {
+  readonly protocol: LpProtocolName
+  readonly chain: string
+  readonly poolId: string
+  readonly tokenA: string
+  readonly tokenB: string
+  readonly tvlUsd: number
+  readonly aprPct: number
+}
+
+export class BaseLpProtocolService extends Service {
+  override capabilityDescription = "Concentrated liquidity protocol adapter"
+  readonly protocol: LpProtocolName
+  readonly chain: string
+  private readonly positions = new Map<string, LpPosition>()
+
+  constructor(protocol: LpProtocolName, chain: string, runtime?: IAgentRuntime) {
+    super(runtime)
+    this.protocol = protocol
+    this.chain = chain
+  }
+
+  override async stop(): Promise<void> {}
+
+  listPositions(): LpPosition[] {
+    return [...this.positions.values()].filter((p) => p.status === "open")
+  }
+
+  openPosition(input: {
+    readonly poolId: string
+    readonly tokenA: string
+    readonly tokenB: string
+    readonly liquidityUsd: number
+    readonly lowerTick: number
+    readonly upperTick: number
+    readonly aprPct?: number
+  }): LpPosition {
+    const id = `${this.protocol}:${this.positions.size + 1}`
+    const position: LpPosition = {
+      id,
+      protocol: this.protocol,
+      chain: this.chain,
+      poolId: input.poolId,
+      tokenA: input.tokenA,
+      tokenB: input.tokenB,
+      liquidityUsd: input.liquidityUsd,
+      lowerTick: input.lowerTick,
+      upperTick: input.upperTick,
+      aprPct: input.aprPct ?? 12.5,
+      status: "open",
+    }
+    this.positions.set(id, position)
+    return position
+  }
+
+  closePosition(positionId: string): LpPosition | undefined {
+    const existing = this.positions.get(positionId)
+    if (existing === undefined) return undefined
+    const closed: LpPosition = { ...existing, status: "closed" }
+    this.positions.set(positionId, closed)
+    return closed
+  }
+
+  reposition(positionId: string, lowerTick: number, upperTick: number): LpPosition | undefined {
+    const existing = this.positions.get(positionId)
+    if (existing === undefined || existing.status !== "open") return undefined
+    const moved: LpPosition = { ...existing, lowerTick, upperTick }
+    this.positions.set(positionId, moved)
+    return moved
+  }
+}
+
+export class UniswapV3LpService extends BaseLpProtocolService {
+  static override serviceType = "lp_uniswap_v3"
+  override capabilityDescription = "Uniswap v3 concentrated liquidity management"
+  constructor(runtime?: IAgentRuntime) { super("uniswap-v3", "ethereum", runtime) }
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new UniswapV3LpService(runtime) }
+}
+
+export class AerodromeLpService extends BaseLpProtocolService {
+  static override serviceType = "lp_aerodrome"
+  override capabilityDescription = "Aerodrome Base concentrated liquidity management"
+  constructor(runtime?: IAgentRuntime) { super("aerodrome", "base", runtime) }
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new AerodromeLpService(runtime) }
+}
+
+export class PancakeSwapV3LpService extends BaseLpProtocolService {
+  static override serviceType = "lp_pancakeswap_v3"
+  override capabilityDescription = "PancakeSwap v3 concentrated liquidity management"
+  constructor(runtime?: IAgentRuntime) { super("pancakeswap-v3", "bsc", runtime) }
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new PancakeSwapV3LpService(runtime) }
+}
+
+export class RaydiumService extends BaseLpProtocolService {
+  static override serviceType = "lp_raydium"
+  override capabilityDescription = "Raydium Solana concentrated liquidity management"
+  constructor(runtime?: IAgentRuntime) { super("raydium", "solana", runtime) }
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new RaydiumService(runtime) }
+}
+
+export class OrcaService extends BaseLpProtocolService {
+  static override serviceType = "lp_orca"
+  override capabilityDescription = "Orca Whirlpool Solana liquidity management"
+  constructor(runtime?: IAgentRuntime) { super("orca", "solana", runtime) }
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new OrcaService(runtime) }
+}
+
+export class MeteoraLpService extends BaseLpProtocolService {
+  static override serviceType = "lp_meteora"
+  override capabilityDescription = "Meteora DLMM Solana liquidity management"
+  constructor(runtime?: IAgentRuntime) { super("meteora", "solana", runtime) }
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new MeteoraLpService(runtime) }
+}
+
+export class NoMatchingLpProtocolError extends ElizaError {
+  constructor(protocol: string) {
+    super(`No matching LP protocol service registered for "${protocol}".`, { code: "LP_PROTOCOL_NOT_FOUND", context: { protocol } })
+  }
+}
+
+export class DexInteractionService extends Service {
+  static override serviceType = "dex_interaction"
+  override capabilityDescription = "Unified router across EVM and Solana concentrated liquidity protocol adapters"
+  private readonly adapters: ReadonlyMap<LpProtocolName, BaseLpProtocolService>
+
+  constructor(runtime?: IAgentRuntime) {
+    super(runtime)
+    this.adapters = new Map<LpProtocolName, BaseLpProtocolService>([
+      ["uniswap-v3", new UniswapV3LpService(runtime)],
+      ["aerodrome", new AerodromeLpService(runtime)],
+      ["pancakeswap-v3", new PancakeSwapV3LpService(runtime)],
+      ["raydium", new RaydiumService(runtime)],
+      ["orca", new OrcaService(runtime)],
+      ["meteora", new MeteoraLpService(runtime)],
+    ])
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new DexInteractionService(runtime) }
+  override async stop(): Promise<void> {}
+
+  adapter(protocol: LpProtocolName): BaseLpProtocolService {
+    const found = this.adapters.get(protocol)
+    if (found === undefined) {
+      raise(new NoMatchingLpProtocolError(protocol))
+    }
+    return found
+  }
+
+  allPositions(): LpPosition[] {
+    return [...this.adapters.values()].flatMap((svc) => svc.listPositions())
+  }
+}
+
+export class ConcentratedLiquidityService extends Service {
+  static override serviceType = "concentrated_liquidity"
+  override capabilityDescription = "Concentrated liquidity position range math and management"
+  readonly dex: DexInteractionService
+
+  constructor(runtime?: IAgentRuntime, dex?: DexInteractionService) {
+    super(runtime)
+    this.dex = dex ?? new DexInteractionService(runtime)
+  }
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new ConcentratedLiquidityService(runtime) }
+  override async stop(): Promise<void> {}
+}
+
+export class YieldOptimizationService extends Service {
+  static override serviceType = "yield_optimization"
+  override capabilityDescription = "Ranks LP opportunities by net APR and minimum TVL safety thresholds"
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new YieldOptimizationService(runtime) }
+  override async stop(): Promise<void> {}
+
+  rankOpportunities(pools: readonly LpPoolOpportunity[], minTvlUsd = 50_000): LpPoolOpportunity[] {
+    return pools
+      .filter((p) => p.tvlUsd >= minTvlUsd && Number.isFinite(p.aprPct))
+      .sort((a, b) => b.aprPct - a.aprPct)
+  }
+}
+
+export class UserLpProfileService extends Service {
+  static override serviceType = "user_lp_profile"
+  override capabilityDescription = "Tracks owner LP risk profile, auto-rebalance preference, and max slippage"
+  private readonly profiles = new Map<string, { readonly maxSlippageBps: number; readonly minTvlUsd: number; readonly autoRebalance: boolean }>()
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new UserLpProfileService(runtime) }
+  override async stop(): Promise<void> {}
+
+  getProfile(userId: string) {
+    return this.profiles.get(userId) ?? { maxSlippageBps: 100, minTvlUsd: 100_000, autoRebalance: false }
+  }
+
+  setProfile(userId: string, profile: { readonly maxSlippageBps: number; readonly minTvlUsd: number; readonly autoRebalance: boolean }): void {
+    this.profiles.set(userId, profile)
+  }
+}
+
+export class VaultService extends Service {
+  static override serviceType = "wallet_vault"
+  override capabilityDescription = "Manages non-custodial yield vault deposits and withdrawals"
+  private readonly balances = new Map<string, number>()
+
+  static override async start(runtime: IAgentRuntime): Promise<Service> { return new VaultService(runtime) }
+  override async stop(): Promise<void> {}
+
+  deposit(vaultId: string, amountUsd: number): number {
+    const next = (this.balances.get(vaultId) ?? 0) + Math.max(0, amountUsd)
+    this.balances.set(vaultId, next)
+    return next
+  }
+
+  withdraw(vaultId: string, amountUsd: number): number {
+    const current = this.balances.get(vaultId) ?? 0
+    const next = Math.max(0, current - Math.max(0, amountUsd))
+    this.balances.set(vaultId, next)
+    return next
+  }
+
+  balanceOf(vaultId: string): number {
+    return this.balances.get(vaultId) ?? 0
+  }
+}
+
+export const stewardTradingProvider: Provider = createDynamicWalletProvider({
+  name: "STEWARD_TRADING",
+  description: "Current trading policy limits, daily trade count, and recent trade executions",
+  descriptionCompressed: "Trading limits & recent trades",
+  get: async (runtime): Promise<ProviderResult> => {
+    const svc = runtime.getService<StewardTradingService>(STEWARD_TRADING_SERVICE_TYPE) ?? new StewardTradingService(runtime)
+    const st = svc.policy.status()
+    const recent = svc.history().slice(-5)
+    return {
+      text: `Trading policy: ${st.paused ? "PAUSED" : "active"}, spent ${st.dailySpent}/${st.dailyLimit}, trades ${st.dailyTxCount}/${st.maxDailyTxs}, max slippage ${st.maxSlippageBps} bps. Recent trades: ${recent.length}.`,
+      values: { tradingPaused: st.paused, dailyTradeCount: st.dailyTxCount },
+      data: { policy: st, recentTrades: recent },
+    }
+  },
+})
+
+export const lpManagerPlugin: Plugin = {
+  name: LP_MANAGER_PLUGIN_NAME,
+  description: "Multi-chain concentrated liquidity manager across Uniswap v3, Aerodrome, PancakeSwap v3, Raydium, Orca, and Meteora",
+  services: [
+    UniswapV3LpService,
+    AerodromeLpService,
+    PancakeSwapV3LpService,
+    RaydiumService,
+    OrcaService,
+    MeteoraLpService,
+    DexInteractionService,
+    ConcentratedLiquidityService,
+    YieldOptimizationService,
+    UserLpProfileService,
+    VaultService,
+  ],
+  actions: [],
+  providers: [],
+}
+
+export function isFreshQuote(observedAt: number, wallTime = Date.now()): boolean {
+  return freshWalletQuote(observedAt, wallTime)
+}

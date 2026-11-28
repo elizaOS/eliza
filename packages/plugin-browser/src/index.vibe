@@ -1,14 +1,99 @@
-// spec/browser/control.md, "An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"
+// spec/browser/control.md, "An open has one home: the Browser proposal where my enrolled phone takes it, else the screen I asked from"; spec/browser/remoteControl.md, "Story: Go back, forward or reload only on the tab the turn observed"; spec/browser/control.md, "Story: Tell me a Browser command was sent, never that the page finished"; spec/browser/control.md, "Story: Propose a Browser control in my own words"; spec/browser/control.md, "A history move has one home: the Browser control where my phone negotiated it, or else the BROWSER command"; spec/agent/conversation/planning.md, "An action may narrow its tool to the turn, never beyond its registered form"; spec/browser/arbitration.md, "Story: Follow the browser the person can see"; spec/browser/clipboardLease.md, "Story: A copied credential is erased by the command that wrote it"; spec/browser/inference.md, "Story: Send each model call through my account's route with private text removed, and drop stale results"; spec/browser/manualActivity.md, "Story: Ask about manual activity when the browser's record leaves it uncertain"; spec/browser/paymentControl.md, "Story: Ask before guiding the person to a payment control"; spec/browser/websiteGoal.md, "Story: Preserve a checked answer while honoring the task's completion and ownership fences"
 import { offeredOnlyWhere, showsApp, registerDeviceProposalFamily } from "@elizaos/agent-host"
-import { promoteSubactionsToActions, type Plugin } from "@elizaos/core"
+import { promoteSubactionsToActions, type Plugin, type ServiceClass } from "@elizaos/core"
+import { field, record } from "@elizaos/plugin-browser-client"
 import { browserAction, browserContext, browserView, historyAsCommand } from "./native-browser.vibe"
 import { browserProposalFamily } from "./proposal.vibe"
 import { browserOpenAction, opensOnScreen } from "./screen-open.vibe"
+import { BROWSER_SERVICE_TYPE, BrowserService, browserWorkspaceAction, browserWorkspaceProvider, browserWorkspaceRoutes, workspaceAvailable, type BrowserWorkspaceRoute } from "./workspace.vibe"
 
 export { BROWSER_VIEW, NativeBrowser, browserAction, browserViewAsker, historyActionResult, viewNativeBrowser } from "./native-browser.vibe"
 export type { BrowserFailureCode, BrowserViewAsked, BrowserViewAsker, BrowserViewGrant, BrowserViewWait, HistoryOutcome, HistoryRequest } from "./native-browser.vibe"
 export { BROWSER_PROPOSAL_TYPES, browserProposalFamily } from "./proposal.vibe"
 export { BROWSER_OPEN, browserOpenAction, opensOnScreen, type ScreenOpenResult } from "./screen-open.vibe"
+export {
+  createBrowserArbitrationSession,
+  isBindingEpochAdmitted,
+  isBindingEpochCurrent,
+  resolveActiveBrowserPeer,
+  resolveBrowserGuideComposition,
+  resolveBrowserOperationRoute,
+  resolveBrowserPageRoute,
+  resolveBrowserRevokeOutcome,
+  type BrowserArbitrationSession,
+} from "./arbitration.vibe"
+export {
+  ClipboardLeaseError,
+  ClipboardPort,
+  createClipboardLeaseSession,
+  withCredentialClipboardLease,
+  type ClipboardLeaseSession,
+} from "./clipboard-lease.vibe"
+export {
+  BrowserInferenceChannel,
+  BrowserInferenceFailure,
+  createBrowserInferenceSession,
+  redactNonSystemText,
+  runBoundedBrowserInference,
+  type BoundedInferenceOutcome,
+  type BrowserInferenceSession,
+  type InferenceChannelReply,
+  type PreparedInferenceRequest,
+} from "./inference.vibe"
+export {
+  ManualActivityTracker,
+  canHostCoverLanding,
+  canUpstreamPointExplainGap,
+  resolveManualActivityQuestion,
+  shouldWithdrawHostAnswer,
+  validateManualActivity,
+} from "./manual-activity.vibe"
+export {
+  assessPaymentControl,
+  assessReplacementPaymentControl,
+  filterReportedOptInBoxes,
+  isPaymentHandoffPresent,
+  resolvePaymentPointer,
+  type PaymentControlAssessment,
+} from "./payment-control.vibe"
+export {
+  WEBSITE_GOAL_RETENTION_MS,
+  createWebsiteGoalSession,
+  evaluateHostWebsiteResult,
+  evaluateRouteAfterWebsiteSave,
+  evaluateWebsiteCompletionAdmission,
+  evaluateWebsiteGoalReview,
+  evaluateWebsiteResultExpiry,
+  evaluateWebsiteResultProjection,
+  evaluateWebsiteResultRoute,
+  evaluateWebsiteResultSave,
+  validateGoalRequirementReview,
+  validateObservedWebsiteAnswer,
+  validateWebsiteGoal,
+  type WebsiteGoalSession,
+} from "./website-goal.vibe"
+export {
+  BROWSER_SERVICE_TYPE,
+  BrowserService,
+  WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS,
+  WAIT_FOR_URL_DEFAULT_TIMEOUT_MS,
+  browserWorkspaceAction,
+  browserWorkspaceProvider,
+  browserWorkspaceRoutes,
+  buildWaitForUrlPredicate,
+  handleBrowserWorkspaceRoute,
+  waitForUrl,
+  workspaceAvailable,
+  type BrowserWorkspaceMode,
+  type BrowserWorkspaceRoute,
+  type BrowserWorkspaceRouteRequest,
+  type BrowserWorkspaceRouteResponse,
+  type BrowserWorkspaceSnapshot,
+  type BrowserWorkspaceTab,
+  type WaitForUrlOptions,
+  type WaitForUrlOutcome,
+  type WaitForUrlStatus,
+} from "./workspace.vibe"
 export * from "@elizaos/plugin-browser-client"
 
 const browserActions = promoteSubactionsToActions(browserAction)
@@ -18,15 +103,35 @@ for (const action of browserActions) {
 }
 offeredOnlyWhere(browserOpenAction, opensOnScreen)
 showsApp(browserOpenAction, browserContext.id)
+offeredOnlyWhere(browserWorkspaceAction, workspaceAvailable)
+showsApp(browserWorkspaceAction, browserContext.id)
 
-export const browserPlugin: Plugin = {
+export type BrowserPlugin = Plugin & { readonly routes: readonly BrowserWorkspaceRoute[] }
+
+export const browserPlugin: BrowserPlugin = {
   name: "@elizaos/plugin-browser",
-  description: "Authenticated native device browser control",
-  actions: [...browserActions, browserOpenAction],
+  description: "Authenticated native device browser control and agent browser workspace",
+  actions: [...browserActions, browserOpenAction, browserWorkspaceAction],
+  providers: [browserWorkspaceProvider],
+  routes: browserWorkspaceRoutes,
+  services: [BrowserService as ServiceClass],
   views: [browserView],
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const features = record(field(config, "features"))
+      const flag = features === undefined ? undefined : field(features, "browser")
+      if (flag === true) return true
+      const flagRecord = record(flag)
+      return flagRecord !== undefined && field(flagRecord, "enabled") !== false
+    },
+  },
   init: async (_config, runtime) => {
     runtime.contexts.tryRegister(browserContext)
     await runPromise(registerDeviceProposalFamily(runtime, browserProposalFamily))
+  },
+  dispose: async (runtime) => {
+    const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE)
+    await service?.stop()
   },
 }
 

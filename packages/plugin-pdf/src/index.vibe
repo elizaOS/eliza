@@ -1,6 +1,15 @@
-// spec/pdf/index.md, "Story: Read text and metadata from a PDF"; spec/pdf/index.md, "Story: Extract a complete document while my request is active"
+// spec/pdf/index.md, "Story: Read text and metadata from a PDF"; spec/pdf/index.md, "Story: Extract a complete document while my request is active"; spec/pdf/index.md, "A blank visual claim is accepted only when no contradicting text or unchecked drawing exists"
 import { ModelType, Service, ServiceType, type IAgentRuntime, type Plugin } from "@elizaos/core"
-import { Machine, machine, normalizedPdfLast, type PdfReadMode, type TextRun } from "../gen/pdf.effect.vibe"
+import {
+  classifyCompletePage,
+  Machine,
+  machine,
+  normalizedPdfLast,
+  type PdfRead,
+  type PdfReadMode,
+  type TextRun,
+} from "../gen/pdf.effect.vibe"
+import { parsePdfSpecDate } from "./pdf-date.vibe"
 
 module node {
   import { getDocumentProxy, renderPageAsImage } from "unpdf"
@@ -17,7 +26,64 @@ module node {
 }
 import { openPdf, pngBytes, renderPdfPage } from node
 
+export { parsePdfSpecDate } from "./pdf-date.vibe"
+
 export error PdfExtractionFailed { reason: string; cause?: unknown }
+
+export interface PdfConversionResult {
+  readonly success: boolean
+  readonly text?: string
+  readonly pageCount?: number
+  readonly error?: string
+}
+
+export interface PdfExtractionOptions {
+  readonly startPage?: number
+  readonly endPage?: number
+  readonly preserveWhitespace?: boolean
+  readonly cleanContent?: boolean
+}
+
+export interface PdfPageInfo {
+  readonly pageNumber: number
+  readonly width: number
+  readonly height: number
+  readonly text: string
+}
+
+export interface PdfPositionedTextItem {
+  readonly page: number
+  readonly text: string
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+export interface PdfPositionedTextDocument {
+  readonly pageCount: number
+  readonly items: readonly PdfPositionedTextItem[]
+}
+
+export interface PdfMetadata {
+  readonly title?: string
+  readonly author?: string
+  readonly subject?: string
+  readonly keywords?: string
+  readonly creator?: string
+  readonly producer?: string
+  readonly creationDate?: Date
+  readonly modificationDate?: Date
+}
+
+export interface PdfDocumentInfo {
+  readonly pageCount: number
+  readonly metadata: PdfMetadata
+  readonly text: string
+  readonly pages: readonly PdfPageInfo[]
+}
+
+export type PdfCompletePageMethod = "native" | "native+vision" | "vision" | "blank"
 
 export interface PdfReadOptions {
   readonly startPage?: number
@@ -26,26 +92,65 @@ export interface PdfReadOptions {
   readonly assertActive?: () => void | Promise<void>
   readonly renderScale?: number
   readonly ocrPage?: (input: { pageNumber: number; pngBytes: Uint8Array }) => Promise<string>
-  readonly onPageComplete?: (page: PdfReadPage) => void | Promise<void>
+  readonly onPageComplete?: (page: PdfCompletePage) => void | Promise<void>
   readonly visionPrompt?: string
 }
 
-export interface PdfReadPage {
+export type PdfCompleteExtractionOptions = Omit<PdfReadOptions, "startPage" | "endPage">
+
+export interface PdfCompletePage {
   readonly pageNumber: number
   readonly width: number
   readonly height: number
+  readonly method: PdfCompletePageMethod
   readonly nativeText: string
-  readonly visionText: string
+  readonly nativePositionedText: readonly PdfPositionedTextItem[]
   readonly ocrText: string | null
+  readonly visionText: string | null
   readonly text: string
-  readonly method: "native" | "vision" | "native+vision" | "blank"
   readonly hasVisualContent: boolean
+}
+
+export type PdfReadPage = PdfCompletePage
+
+export interface PdfCompleteDocument {
+  readonly complete: true
+  readonly pageCount: number
+  readonly pages: readonly PdfCompletePage[]
+  readonly text: string
 }
 
 export interface PdfDocumentExtraction {
   readonly pageCount: number
-  readonly pages: readonly PdfReadPage[]
+  readonly pages: readonly PdfCompletePage[]
   readonly text: string
+}
+
+export interface PdfReadSession {
+  begin(kind: PdfReadMode, document: string, first: number, lastPage: number, pageCount: number, authorized: boolean): Promise<boolean>
+  record(document: string, pageNumber: number, visualSucceeded: boolean, authorized: boolean): Promise<boolean>
+  fail(): Promise<boolean>
+  cancel(): Promise<boolean>
+  publish(authorized: boolean): Promise<boolean>
+  snapshot(): Promise<PdfRead>
+}
+
+export function createPdfReadSession(): PdfReadSession {
+  const runtime = Effect.runSync(Effect.provide(Machine, machine()))
+  const dispatch = async (event: Parameters<typeof runtime.send>[0]): Promise<boolean> => {
+    const outcome = await Effect.runPromise(Effect.result(runtime.send(event)))
+    return outcome._tag === "Success"
+  }
+  return {
+    begin: (kind, document, first, lastPage, pageCount, authorized) =>
+      dispatch({ type: "beginPdfRead", kind, document, first, lastPage, pageCount, authorized }),
+    record: (document, pageNumber, visualSucceeded, authorized) =>
+      dispatch({ type: "recordPdfPage", document, pageNumber, visualSucceeded, authorized }),
+    fail: () => dispatch({ type: "failPdfRead" }),
+    cancel: () => dispatch({ type: "cancelPdfRead" }),
+    publish: (authorized) => dispatch({ type: "publishPdfRead", authorized }),
+    snapshot: () => Effect.runPromise(runtime.get()),
+  }
 }
 
 function textRun(item: unknown): TextRun[] {
@@ -53,13 +158,59 @@ function textRun(item: unknown): TextRun[] {
   return [{ letters: item.str, hardBreak: "hasEOL" in item && item.hasEOL === true }]
 }
 
-function joinRuns(runs: readonly TextRun[]): string {
-  return runs.map((run) => run.letters + (run.hardBreak ? "\n" : "")).join("")
+function joinRuns(runs: readonly TextRun[], separator = "\n"): string {
+  return runs.map((run) => run.letters + (run.hardBreak ? separator : "")).join("")
+}
+
+function extractPositionedItems(
+  items: readonly unknown[],
+  pageNumber: number,
+  strict: boolean,
+): { readonly ok: true; readonly items: readonly PdfPositionedTextItem[] } | { readonly ok: false; readonly reason: string } {
+  const positioned: PdfPositionedTextItem[] = []
+  for (const item of items) {
+    if (typeof item !== "object" || item === null || !("str" in item) || typeof item.str !== "string") continue
+    if (item.str.trim() === "") continue
+    const transform = "transform" in item ? item.transform : undefined
+    const width = "width" in item ? item.width : undefined
+    const height = "height" in item ? item.height : undefined
+    const transformValid = Array.isArray(transform) && transform.length >= 6 &&
+      transform.every((value) => typeof value === "number" && Number.isFinite(value))
+    const dimsValid = typeof width === "number" && Number.isFinite(width) &&
+      typeof height === "number" && Number.isFinite(height)
+    if (!transformValid || !dimsValid) {
+      if (strict) return { ok: false, reason: "PDF positioned text item has invalid geometry." }
+      continue
+    }
+    const x = transform[4]
+    const y = transform[5]
+    if (typeof x === "number" && typeof y === "number") {
+      positioned.push({ page: pageNumber, text: item.str, x, y, width, height })
+    }
+  }
+  return { ok: true, items: positioned }
 }
 
 function hasHeader(input: Uint8Array): boolean {
   const header = [37, 80, 68, 70, 45]
   return input.subarray(0, 1024).some((_byte, offset) => header.every((byte, i) => input[offset + i] === byte))
+}
+
+function readInfoString(info: Readonly<Record<string, unknown>>, key: string): string | undefined {
+  const value = Object.getOwnPropertyDescriptor(info, key)?.value
+  return typeof value === "string" ? value : undefined
+}
+
+function parseMetadataDate(value: unknown): Date | undefined {
+  return typeof value === "string" ? parsePdfSpecDate(value) : undefined
+}
+
+export function cleanUpPdfContent(content: string): string {
+  const filtered = content.split("").filter((char) => {
+    const code = char.charCodeAt(0)
+    return !(code === 0 || (code >= 1 && code <= 8) || (code >= 11 && code <= 12) || (code >= 14 && code <= 31) || code === 127)
+  }).join("")
+  return filtered.replace(/[^\S\r\n]+/g, " ").replaceAll(" \r\n", "\r\n").replaceAll(" \n", "\n").trim()
 }
 
 effect function ensureCurrent(options: PdfReadOptions) {
@@ -71,14 +222,37 @@ effect function ensureCurrent(options: PdfReadOptions) {
   if (options.signal?.aborted) throw new PdfExtractionFailed({ reason: "PDF extraction was cancelled." })
 }
 
-effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: PdfReadOptions, mode: PdfReadMode) {
+effect function withPdfDocument<A, E>(bytes: Uint8Array, run: (document: Awaited<ReturnType<typeof openPdf>>) => A!E!never) {
   if (!hasHeader(bytes)) throw new PdfExtractionFailed({ reason: "The input is not a PDF." })
-  try ensureCurrent(options)
   const document = try tryPromise({
     try: () => openPdf(Uint8Array.from(bytes)),
     catch: (cause) => new PdfExtractionFailed({ reason: "The PDF could not be opened.", cause }),
   })
-  return try ensuring(effect {
+  return try ensuring(run(document), effect { tryPromise(() => document.loadingTask.destroy()) catch effect () => {} })
+}
+
+effect function readPageContent(document: Awaited<ReturnType<typeof openPdf>>, pageNumber: number) {
+  const page = try tryPromise({
+    try: () => document.getPage(pageNumber),
+    catch: (cause) => new PdfExtractionFailed({ reason: `PDF page ${pageNumber} could not be opened.`, cause }),
+  })
+  const parsed = try tryPromise({
+    try: () => page.getTextContent(),
+    catch: (cause) => new PdfExtractionFailed({ reason: `Text on PDF page ${pageNumber} could not be read.`, cause }),
+  })
+  return { page, parsed }
+}
+
+effect function readPageViewport(page: Awaited<ReturnType<Awaited<ReturnType<typeof openPdf>>["getPage"]>>) {
+  return try Effect.try({
+    try: () => page.getViewport({ scale: 1 }),
+    catch: (cause) => new PdfExtractionFailed({ reason: "PDF page geometry was invalid.", cause }),
+  })
+}
+
+effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: PdfReadOptions, mode: PdfReadMode) {
+  try ensureCurrent(options)
+  return try withPdfDocument(bytes, effect (document) => {
     const pageCount = document.numPages
     const complete = mode === "CompleteDocument"
     const first = complete ? 1 : options.startPage ?? 1
@@ -87,30 +261,22 @@ effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: P
     if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || !Number.isFinite(scale) || scale <= 0) {
       throw new PdfExtractionFailed({ reason: "PDF extraction settings are invalid." })
     }
-    const pages: PdfReadPage[] = []
+    const pages: PdfCompletePage[] = []
     const documentRef = "active"
     provide machine() {
       const read = try Machine
       try read.send({ type: "beginPdfRead", kind: mode, document: documentRef, first, lastPage: last, pageCount, authorized: true })
       for (let pageNumber = first; pageNumber <= normalizedPdfLast(last, pageCount); pageNumber++) {
         try ensureCurrent(options)
-        const page = try tryPromise({
-          try: () => document.getPage(pageNumber),
-          catch: (cause) => new PdfExtractionFailed({ reason: `PDF page ${pageNumber} could not be opened.`, cause }),
-        })
-        const parsed = try tryPromise({
-          try: () => page.getTextContent(),
-          catch: (cause) => new PdfExtractionFailed({ reason: `Text on PDF page ${pageNumber} could not be read.`, cause }),
-        })
-        const nativeText = joinRuns(parsed.items.flatMap(textRun))
-        const viewport = try Effect.try({
-          try: () => page.getViewport({ scale: 1 }),
-          catch: (cause) => new PdfExtractionFailed({ reason: "PDF page geometry was invalid.", cause }),
-        })
+        const { page, parsed } = try readPageContent(document, pageNumber)
+        const nativeText = joinRuns(parsed.items.flatMap(textRun), "\n")
+        const extractedPositioned = extractPositionedItems(parsed.items, pageNumber, false)
+        const nativePositionedText = extractedPositioned.ok ? extractedPositioned.items : []
+        const viewport = try readPageViewport(page)
         let ocrText: string | null = null
-        let visionText = ""
+        let visionText: string | null = null
         let hasVisualContent = false
-        let method: PdfReadPage["method"] = "native"
+        let method: PdfCompletePageMethod = "native"
         if (complete) {
           try ensureCurrent(options)
           const operations = try tryPromise({
@@ -141,17 +307,35 @@ effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: P
             catch: (cause) => new PdfExtractionFailed({ reason: "PDF page visual transcription failed.", cause }),
           })
           try ensureCurrent(options)
-          visionText = observation.description.trim()
-          if (visionText === "" || (visionText === "[BLANK PAGE]" && (nativeText.trim() !== "" || ocrText !== null || (operations.fnArray.length > 0 && ocrPage === undefined)))) {
-            throw new PdfExtractionFailed({ reason: "PDF page visual transcription lacked matching evidence." })
+          const rawVision = observation.description.trim()
+          const visionBlank = rawVision === "[BLANK PAGE]"
+          const classified = classifyCompletePage(
+            nativeText.trim() !== "",
+            visionBlank,
+            rawVision !== "" && !visionBlank,
+            ocrText !== null,
+            ocrPage !== undefined,
+            operations.fnArray.length > 0,
+          )
+          if (classified === "MethodConflict") {
+            throw new PdfExtractionFailed({ reason: "PDF page visual transcription conflicts with native or OCR evidence." })
           }
-          method = visionText === "[BLANK PAGE]" ? "blank" : nativeText.trim() === "" ? "vision" : "native+vision"
+          visionText = visionBlank ? null : rawVision
+          method = classified === "MethodBlank" ? "blank" : classified === "MethodVision" ? "vision" : "native+vision"
         }
-        const result: PdfReadPage = {
-          pageNumber, width: viewport.width, height: viewport.height, nativeText, visionText, ocrText, hasVisualContent, method,
-          text: [nativeText, ocrText ?? "", visionText === "[BLANK PAGE]" ? "" : visionText].filter((part) => part !== "").join("\n\n"),
+        const result: PdfCompletePage = {
+          pageNumber,
+          width: viewport.width,
+          height: viewport.height,
+          method,
+          nativeText,
+          nativePositionedText,
+          ocrText,
+          visionText,
+          hasVisualContent,
+          text: [nativeText, ocrText ?? "", visionText ?? ""].filter((part) => part !== "").join("\n\n"),
         }
-        try read.send({ type: "recordPdfPage", document: documentRef, pageNumber, visualSucceeded: !complete || visionText !== "", authorized: true })
+        try read.send({ type: "recordPdfPage", document: documentRef, pageNumber, visualSucceeded: !complete || method !== "native", authorized: true })
         pages.push(result)
         if (options.onPageComplete !== undefined) {
           const onPage = options.onPageComplete
@@ -160,14 +344,94 @@ effect function extractPdf(runtime: IAgentRuntime, bytes: Uint8Array, options: P
       }
       try ensureCurrent(options)
       try read.send({ type: "publishPdfRead", authorized: true })
-      return { pageCount, pages, text: pages.map((page) => page.text).join("\n\n") } satisfies PdfDocumentExtraction
+      return {
+        complete: true as const,
+        pageCount,
+        pages,
+        text: pages.map((page) => page.text).join("\n\n"),
+      }
     }
-  }, tryPromise(() => document.loadingTask.destroy()).pipe(Effect.ignore))
+  })
+}
+
+effect function readPositionedText(bytes: Uint8Array) {
+  return try withPdfDocument(bytes, effect (document) => {
+    const pageCount = document.numPages
+    const items: PdfPositionedTextItem[] = []
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+      const { parsed } = try readPageContent(document, pageNumber)
+      const extracted = extractPositionedItems(parsed.items, pageNumber, true)
+      if (!extracted.ok) throw new PdfExtractionFailed({ reason: extracted.reason })
+      items.push(...extracted.items)
+    }
+    return { pageCount, items } satisfies PdfPositionedTextDocument
+  })
+}
+
+effect function readDocumentInfo(bytes: Uint8Array) {
+  return try withPdfDocument(bytes, effect (document) => {
+    const pageCount = document.numPages
+    const metaResult = try tryPromise({
+      try: () => document.getMetadata(),
+      catch: (cause) => new PdfExtractionFailed({ reason: "PDF metadata could not be read.", cause }),
+    })
+    const info = typeof metaResult.info === "object" && metaResult.info !== null
+      ? (metaResult.info as Readonly<Record<string, unknown>>)
+      : {}
+    const metadata: PdfMetadata = {
+      title: readInfoString(info, "Title"),
+      author: readInfoString(info, "Author"),
+      subject: readInfoString(info, "Subject"),
+      keywords: readInfoString(info, "Keywords"),
+      creator: readInfoString(info, "Creator"),
+      producer: readInfoString(info, "Producer"),
+      creationDate: parseMetadataDate(Object.getOwnPropertyDescriptor(info, "CreationDate")?.value),
+      modificationDate: parseMetadataDate(Object.getOwnPropertyDescriptor(info, "ModDate")?.value),
+    }
+    const pages: PdfPageInfo[] = []
+    const allText: string[] = []
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+      const { page, parsed } = try readPageContent(document, pageNumber)
+      const viewport = try readPageViewport(page)
+      const rawText = joinRuns(parsed.items.flatMap(textRun), "\n")
+      pages.push({ pageNumber, width: viewport.width, height: viewport.height, text: cleanUpPdfContent(rawText) })
+      allText.push(rawText)
+    }
+    return {
+      pageCount,
+      metadata,
+      text: cleanUpPdfContent(allText.join("\n")),
+      pages,
+    } satisfies PdfDocumentInfo
+  })
+}
+
+effect function readTextWithOptions(bytes: Uint8Array, options: PdfExtractionOptions) {
+  return try withPdfDocument(bytes, effect (document) => {
+    const pageCount = document.numPages
+    const startPage = Math.max(1, options.startPage ?? 1)
+    const endPage = normalizedPdfLast(options.endPage ?? pageCount, pageCount)
+    if (!Number.isSafeInteger(startPage) || !Number.isSafeInteger(endPage) || startPage > endPage) {
+      throw new PdfExtractionFailed({ reason: "PDF page window is invalid." })
+    }
+    const separator = options.preserveWhitespace ? "" : " "
+    const pageTexts: string[] = []
+    for (let pageNumber = startPage; pageNumber <= endPage; pageNumber++) {
+      const { parsed } = try readPageContent(document, pageNumber)
+      pageTexts.push(joinRuns(parsed.items.flatMap(textRun), separator))
+    }
+    const joined = pageTexts.join("\n")
+    return {
+      success: true,
+      text: options.cleanContent === false ? joined : cleanUpPdfContent(joined),
+      pageCount,
+    } satisfies PdfConversionResult
+  })
 }
 
 export class PdfService extends Service {
   static override serviceType = ServiceType.PDF
-  override capabilityDescription = "Extracts native or complete visual PDF text."
+  override capabilityDescription = "Extracts native, positioned, metadata, or complete visual PDF text."
 
   static override start(runtime: IAgentRuntime): Promise<PdfService> {
     return Promise.resolve(new PdfService(runtime))
@@ -177,7 +441,7 @@ export class PdfService extends Service {
     return Promise.resolve()
   }
 
-  extractCompleteDocument(input: Uint8Array, options: PdfReadOptions = {}): Promise<PdfDocumentExtraction> {
+  extractCompleteDocument(input: Uint8Array, options: PdfCompleteExtractionOptions = {}): Promise<PdfCompleteDocument> {
     return runPromise(extractPdf(this.runtime, input, { ...options }, "CompleteDocument"), { signal: options.signal })
   }
 
@@ -188,12 +452,36 @@ export class PdfService extends Service {
   async convertPdfToText(input: Uint8Array): Promise<string> {
     return (await this.extractText(input)).text
   }
+
+  convertPdfToPositionedText(input: Uint8Array): Promise<PdfPositionedTextDocument> {
+    return runPromise(readPositionedText(input))
+  }
+
+  async convertPdfToTextWithOptions(input: Uint8Array, options: PdfExtractionOptions = {}): Promise<PdfConversionResult> {
+    const outcome = await Effect.runPromise(Effect.result(readTextWithOptions(input, options)))
+    if (outcome._tag === "Success") return outcome.success
+    return { success: false, error: outcome.failure.reason }
+  }
+
+  getDocumentInfo(input: Uint8Array): Promise<PdfDocumentInfo> {
+    return runPromise(readDocumentInfo(input))
+  }
+
+  cleanUpContent(content: string): string {
+    return cleanUpPdfContent(content)
+  }
 }
 
-export const plugin: Plugin = {
+export const pdfPlugin: Plugin = {
   name: "@elizaos/plugin-pdf",
-  description: "Native PDF text extraction and authorized visual transcription of complete documents.",
+  description: "Native PDF text extraction, positioned geometry, metadata parsing, and authorized visual transcription of complete documents.",
   services: [PdfService],
+  actions: [],
+  async dispose(runtime) {
+    const svc = runtime.getService<PdfService>(PdfService.serviceType)
+    await svc?.stop()
+  },
 }
 
-export default plugin
+export const plugin: Plugin = pdfPlugin
+export default pdfPlugin

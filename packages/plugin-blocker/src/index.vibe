@@ -2,6 +2,23 @@
 import { Machine, installedAppId, stored, type BlockKind, type FocusBlock } from "../gen/blocker.effect.vibe"
 import { AppBlocker, applyAppBlock, type AppBlockerPlugin } from "@elizaos/capacitor-appblocker"
 import { WebsiteBlocker, applyWebsiteBlock, type WebsiteBlockerPlugin } from "@elizaos/capacitor-websiteblocker"
+import { logger, type IAgentRuntime, type Plugin } from "@elizaos/core"
+import { AppBlockerService } from "./app-blocker.vibe"
+import { appBlockerProvider, websiteBlockerProvider } from "./providers.vibe"
+import { BLOCKER_LOG_PREFIX } from "./types.vibe"
+import {
+  getSelfControlStatus,
+  registerWebsiteBlockerTaskWorker,
+  setSelfControlPluginConfig,
+  WebsiteBlockerService,
+  type SelfControlPluginConfig,
+} from "./website-blocker.vibe"
+
+export * from "./access.vibe"
+export * from "./app-blocker.vibe"
+export * from "./providers.vibe"
+export * from "./types.vibe"
+export * from "./website-blocker.vibe"
 
 export error FocusBackendFailed { operation: "apply" | "read" | "clear"; reason: string }
 export error FocusIdentityMissing
@@ -146,3 +163,39 @@ effect function blockKey(ownerId: string, blockKind: BlockKind) {
   if (ownerId === "" || ownerId === "device" || ownerId === "scheduler") throw new FocusIdentityMissing()
   return "focus:" + blockKind + ":" + ownerId
 }
+
+export const blockerPlugin: Plugin = {
+  name: "@elizaos/plugin-blocker",
+  description:
+    "Focus / distraction control — website blocking via the SelfControl-style hosts engine and native app blocking. Exposes websiteBlockerProvider + appBlockerProvider and WebsiteBlockerService + AppBlockerService.",
+  providers: [websiteBlockerProvider, appBlockerProvider],
+  services: [WebsiteBlockerService, AppBlockerService],
+  init: async (pluginConfig: Record<string, unknown>, runtime: IAgentRuntime) => {
+    registerWebsiteBlockerTaskWorker(runtime)
+    setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig)
+    const status = await getSelfControlStatus()
+    if (status.available) {
+      logger.info(
+        `${BLOCKER_LOG_PREFIX} Hosts-file blocker ready${
+          status.active && status.endsAt !== null
+            ? ` until ${status.endsAt}`
+            : status.active
+              ? " until manually unblocked"
+              : ""
+        }`,
+      )
+    } else {
+      logger.warn(
+        `${BLOCKER_LOG_PREFIX} Plugin loaded, but local website blocking is unavailable: ${status.reason ?? "unknown reason"}`,
+      )
+    }
+  },
+  dispose: async (runtime: IAgentRuntime) => {
+    const website = runtime.getService<WebsiteBlockerService>(WebsiteBlockerService.serviceType)
+    await website?.stop()
+    const app = runtime.getService<AppBlockerService>(AppBlockerService.serviceType)
+    await app?.stop()
+  },
+}
+
+export default blockerPlugin

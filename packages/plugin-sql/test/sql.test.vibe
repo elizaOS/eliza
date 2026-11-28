@@ -1,0 +1,269 @@
+// spec/sql/index.md, "Story: Attach a SQL adapter only after its schema is ready"; spec/sql/connectionLifecycle.md, "Adapter lifecycle transitions preserve transaction, RLS, schema, and embedding invariants"
+import type { Metadata, UUID } from "@elizaos/core"
+import { describe, expect, it } from "@effect/vitest"
+import {
+  AdvancedMemoryStorageService,
+  PGLITE_ERROR_CODES,
+  PGliteClientManager,
+  PgliteDatabaseAdapter,
+  SqlMembershipService,
+  SqlPrincipalService,
+  assertJsonbStorable,
+  closePgliteSingleton,
+  createDatabaseAdapter,
+  createPgliteInitError,
+  getOrCreatePgliteManagerForAgent,
+  getPgliteErrorCode,
+  isUnsupportedJsonTextError,
+  normalizePgSslMode,
+  prepareEmbeddedPostgres,
+  sanitizeJsonObject,
+  sqlPlugin,
+  sqlRecordVisible,
+  type PgliteManagerCache,
+} from "../src/index.vibe"
+
+const AGENT_ID = "00000000-0000-4000-8000-000000000101" as UUID
+const WORLD_ID = "00000000-0000-4000-8000-000000000102" as UUID
+const ROOM_ID = "00000000-0000-4000-8000-000000000103" as UUID
+const ENTITY_ID = "00000000-0000-4000-8000-000000000104" as UUID
+const TARGET_ENTITY_ID = "00000000-0000-4000-8000-000000000105" as UUID
+
+describe("plugin-sql real PGlite E2E journeys", () => {
+  it("runs verified embedded Postgres migrations and checks tenant scope rules", async () => {
+    const ledger = await runPromise(
+      prepareEmbeddedPostgres("memory://", [], [
+        {
+          revision: 1,
+          checksum: "sha256-m1",
+          sql: "CREATE TABLE IF NOT EXISTS sample_items (id integer PRIMARY KEY, label text NOT NULL)",
+        },
+      ]),
+    )
+    expect(ledger).toEqual([{ revision: 1, checksum: "sha256-m1" }])
+    expect(
+      sqlRecordVisible(
+        { tenantId: "t1", agentId: "a1" },
+        { rowTenant: "t1", rowAgent: "a1" },
+      ),
+    ).toBe(true)
+    expect(
+      sqlRecordVisible(
+        { tenantId: "t1", agentId: "a1" },
+        { rowTenant: "t2", rowAgent: "a1" },
+      ),
+    ).toBe(false)
+  })
+
+  it("persists entities, memories, vectors, world/cache CAS, documents, connector accounts, OAuth, and authority services on real PGlite", async () => {
+    const adapter = createDatabaseAdapter({ dataDir: "memory://" }, AGENT_ID)
+    expect(adapter).toBeInstanceOf(PgliteDatabaseAdapter)
+    await adapter.initialize()
+    expect(await adapter.isReady()).toBe(true)
+
+    await adapter.createAgents([{ id: AGENT_ID, name: "SqlAgent", bio: ["SQL test"] }])
+    expect((await adapter.getAgentsByIds([AGENT_ID]))[0]?.name).toBe("SqlAgent")
+
+    await adapter.createWorlds([
+      { id: WORLD_ID, agentId: AGENT_ID, name: "MainWorld", metadata: { ownership: { ownerId: ENTITY_ID } } },
+    ])
+    const casOk = await adapter.compareAndSwapWorldMetadata({
+      worldId: WORLD_ID,
+      expectedMetadata: { ownership: { ownerId: ENTITY_ID } } as Metadata,
+      replacementMetadata: { ownership: { ownerId: ENTITY_ID }, roles: { [ENTITY_ID]: "OWNER" } } as Metadata,
+    })
+    expect(casOk.status).toBe("updated")
+    const casConflict = await adapter.compareAndSwapWorldMetadata({
+      worldId: WORLD_ID,
+      expectedMetadata: { ownership: { ownerId: ENTITY_ID } } as Metadata,
+      replacementMetadata: { ownership: { ownerId: TARGET_ENTITY_ID } } as Metadata,
+    })
+    expect(casConflict.status).toBe("conflict")
+
+    await adapter.createRooms([
+      { id: ROOM_ID, name: "Lobby", source: "test", type: "GROUP" as never, worldId: WORLD_ID },
+    ])
+    await adapter.createEntities([
+      { id: ENTITY_ID, agentId: AGENT_ID, names: ["Alice"], metadata: {} },
+      { id: TARGET_ENTITY_ID, agentId: AGENT_ID, names: ["Bob"], metadata: {} },
+    ])
+    await adapter.createRoomParticipants([ENTITY_ID, TARGET_ENTITY_ID], ROOM_ID)
+    expect(await adapter.areRoomParticipants([{ roomId: ROOM_ID, entityId: ENTITY_ID }])).toEqual([true])
+
+    await adapter.ensureEmbeddingDimension(4)
+    await adapter.ensureEmbeddingSpace("test-embed-v1")
+    const memIds = await adapter.createMemories([
+      {
+        tableName: "messages",
+        memory: {
+          agentId: AGENT_ID,
+          entityId: ENTITY_ID,
+          roomId: ROOM_ID,
+          worldId: WORLD_ID,
+          content: { text: "hello vector postgres" },
+          embedding: [1, 0, 0, 0],
+        },
+      },
+      {
+        tableName: "messages",
+        memory: {
+          agentId: AGENT_ID,
+          entityId: TARGET_ENTITY_ID,
+          roomId: ROOM_ID,
+          worldId: WORLD_ID,
+          content: { text: "unrelated topic" },
+          embedding: [0, 1, 0, 0],
+        },
+      },
+    ])
+    const searchHits = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: [0.99, 0.01, 0, 0],
+      match_threshold: 0.8,
+      count: 5,
+    })
+    expect(searchHits.length).toBe(1)
+    expect(searchHits[0]?.id).toBe(memIds[0])
+
+    const segParentId = "00000000-0000-4000-8000-000000000199" as UUID
+    const pub = await adapter.publishMessageContentSegments({
+      mode: "create",
+      parent: {
+        id: segParentId,
+        agentId: AGENT_ID,
+        entityId: ENTITY_ID,
+        roomId: ROOM_ID,
+        content: { text: "hello segmented world" },
+      },
+      segments: [],
+    })
+    expect(pub.status).toBe("created")
+    const range = await adapter.readMessageContentRange({
+      messageId: segParentId,
+      agentId: AGENT_ID,
+      authorizedRoomId: ROOM_ID,
+      accessContext: { requesterEntityId: ENTITY_ID, role: "OWNER" },
+      source: { kind: "message-text" },
+      offset: 0,
+      limit: 64,
+    })
+    expect(range.status).toBe("inline")
+
+    expect(await adapter.compareAndSetCache("lock-key", undefined, { step: 1 })).toBe(true)
+    expect(await adapter.compareAndSetCache("lock-key", undefined, { step: 2 })).toBe(false)
+    expect(await adapter.compareAndSetCache("lock-key", { step: 1 }, { step: 2 })).toBe(true)
+
+    const account = await adapter.upsertConnectorAccount({
+      agentId: AGENT_ID,
+      provider: "github",
+      accountKey: "acct-1",
+      displayName: "Octocat",
+      status: "connected",
+      scopes: ["repo"],
+      capabilities: ["read"],
+    })
+    expect(account.accountKey).toBe("acct-1")
+    await adapter.setConnectorAccountCredentialRef({
+      accountId: account.id,
+      credentialType: "access_token",
+      vaultRef: "sec-1",
+    })
+    expect((await adapter.getConnectorAccountCredentialRef({ accountId: account.id, credentialType: "access_token" }))?.vaultRef).toBe("sec-1")
+    const audit = await adapter.appendConnectorAccountAuditEvent({
+      agentId: AGENT_ID,
+      accountId: account.id,
+      provider: "github",
+      action: "token_refresh",
+      outcome: "success",
+      metadata: { accessToken: "secret-value", ok: true },
+    })
+    expect(JSON.stringify(audit.metadata)).not.toContain("secret-value")
+
+    const flow = await adapter.createOAuthFlowState({
+      agentId: AGENT_ID,
+      provider: "github",
+      accountId: account.id,
+      state: "raw-oauth-state",
+      scopes: ["repo"],
+    })
+    expect(flow.consumedAt).toBeNull()
+    const consumed = await adapter.consumeOAuthFlowState({
+      agentId: AGENT_ID,
+      provider: "github",
+      state: "raw-oauth-state",
+    })
+    expect(consumed?.consumedAt).not.toBeNull()
+    expect(await adapter.consumeOAuthFlowState({ agentId: AGENT_ID, provider: "github", state: "raw-oauth-state" })).toBeNull()
+
+    const advMemory = new AdvancedMemoryStorageService(undefined, adapter.sqlExecutor)
+    await advMemory.upsertSessionSummary({
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      summary: "Discussed Postgres migration.",
+      messageCount: 4,
+      lastMessageOffset: 4,
+      startTime: 1000,
+      endTime: 2000,
+      topics: ["sql"],
+      metadata: {},
+    })
+    expect((await advMemory.getSessionSummaries(AGENT_ID, ROOM_ID)).length).toBe(1)
+
+    const principalSvc = new SqlPrincipalService(undefined, adapter.sqlExecutor)
+    const p1 = await principalSvc.ensurePrincipal(AGENT_ID)
+    const p2 = await principalSvc.ensurePrincipal(AGENT_ID)
+    await principalSvc.bindClaim({
+      agentId: AGENT_ID,
+      principalId: p1.id,
+      connectorId: "github",
+      externalId: "gh-42",
+      verified: true,
+    })
+    expect(await principalSvc.resolvePrincipalByClaim(AGENT_ID, "github", "gh-42")).toBe(p1.id)
+    await principalSvc.mergePrincipals(AGENT_ID, p1.id, p2.id)
+    expect(await principalSvc.resolvePrincipalByClaim(AGENT_ID, "github", "gh-42")).toBe(p2.id)
+
+    const membershipSvc = new SqlMembershipService(undefined, adapter.sqlExecutor)
+    const scope = {
+      agentId: AGENT_ID,
+      connectorId: "github",
+      connectorAccountId: account.id,
+      externalWorldId: "org-1",
+      externalRoomId: "repo-1",
+    }
+    await membershipSvc.upsertMembership(scope, p2.id, "active", ["admin"], { canPush: true })
+    const members = await membershipSvc.getMembershipsForScope(scope)
+    expect(members[0]?.roles).toEqual(["admin"])
+
+    await adapter.close()
+    expect(await adapter.isReady()).toBe(false)
+  })
+
+  it("sanitizes jsonb payloads, normalizes pg sslmode, tracks fatal pglite errors, and manages pglite singleton cache", async () => {
+    expect(normalizePgSslMode("postgres://u:p@host/db?sslmode=require")).toBe(
+      "postgres://u:p@host/db?sslmode=verify-full",
+    )
+    expect(normalizePgSslMode("postgres://u:p@host/db?sslmode=require&uselibpqcompat=true")).toBe(
+      "postgres://u:p@host/db?sslmode=require&uselibpqcompat=true",
+    )
+    expect(sanitizeJsonObject({ text: "ab\u0000cd" })).toEqual({ text: "abcd" })
+    let caught: unknown
+    try {
+      assertJsonbStorable({ text: "bad\u0000nul" })
+    } catch (err) {
+      caught = err
+    }
+    expect(isUnsupportedJsonTextError(caught)).toBe(true)
+
+    const err = createPgliteInitError(PGLITE_ERROR_CODES.ACTIVE_LOCK, "locked", { dataDir: "/tmp/x" })
+    expect(getPgliteErrorCode(new Error("wrapped", { cause: err }))).toBe(PGLITE_ERROR_CODES.ACTIVE_LOCK)
+
+    const cache: PgliteManagerCache<PGliteClientManager> = {}
+    const m1 = getOrCreatePgliteManagerForAgent(cache, "memory://", AGENT_ID, () => new PGliteClientManager({ dataDir: "memory://" }))
+    const m2 = getOrCreatePgliteManagerForAgent(cache, "memory://", AGENT_ID, () => new PGliteClientManager({ dataDir: "memory://" }))
+    expect(m1).toBe(m2)
+    const closed = await closePgliteSingleton(cache)
+    expect(closed.closed).toBe(true)
+    expect(sqlPlugin.databaseBackends).toEqual(["postgres", "pglite"])
+  })
+})

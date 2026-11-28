@@ -1,0 +1,662 @@
+// spec/localInference/models.md, "Story: Run a model of my choice on my device"; spec/localInference/textAndEmbeddings.md, "The operator's embedding endpoint wins, then the hosted service when chosen, then the device"
+import { thrown } from "@elizaos/core"
+import type { SlotName } from "./models.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import fs from "node:fs"
+  import os from "node:os"
+
+  export function readHostMemory(): {
+    readonly totalRamGb: number
+    readonly freeRamGb: number
+    readonly cpuCores: number
+    readonly platform: string
+    readonly arch: string
+    readonly appleSilicon: boolean
+  } {
+    const bytesPerGb = 1024 ** 3
+    const totalRamGb = Math.round((os.totalmem() / bytesPerGb) * 10) / 10
+    const freeRamGb = Math.round((os.freemem() / bytesPerGb) * 10) / 10
+    const platform = process.platform
+    const arch = process.arch
+    return {
+      totalRamGb,
+      freeRamGb,
+      cpuCores: os.cpus().length,
+      platform,
+      arch,
+      appleSilicon: platform === "darwin" && arch === "arm64",
+    }
+  }
+
+  export function readFileHeaderAndHash(filePath: string): {
+    readonly exists: boolean
+    readonly sizeBytes: number
+    readonly magic: string
+    readonly sha256: string
+  } {
+    if (!fs.existsSync(filePath)) {
+      return { exists: false, sizeBytes: 0, magic: "", sha256: "" }
+    }
+    const bytes = fs.readFileSync(filePath)
+    const hex = createHash("sha256").update(bytes).digest("hex")
+    const magic = bytes.subarray(0, 4).toString("ascii")
+    return { exists: true, sizeBytes: bytes.byteLength, magic, sha256: hex }
+  }
+}
+
+import { readFileHeaderAndHash, readHostMemory } from node
+
+export type GpuBackend = "metal" | "cuda" | "vulkan" | "cpu"
+
+export interface GpuInfo {
+  readonly backend: GpuBackend
+  readonly name: string
+  readonly totalVramGb: number
+}
+
+export interface HardwareProbe {
+  readonly totalRamGb: number
+  readonly freeRamGb: number
+  readonly cpuCores: number
+  readonly platform: string
+  readonly arch: string
+  readonly appleSilicon: boolean
+  readonly mobile: boolean
+  readonly gpu: GpuInfo | null
+  readonly recommendedBucket: ModelBucket
+}
+
+export type ModelBucket = "small" | "mid" | "large" | "xl"
+
+export function recommendModelBucket(
+  totalRamGb: number,
+  vramGb: number,
+  appleSilicon: boolean,
+): ModelBucket {
+  const effective = appleSilicon
+    ? totalRamGb
+    : vramGb > 0
+      ? Math.max(vramGb * 1.25, totalRamGb * 0.5)
+      : totalRamGb * 0.5
+  if (effective >= 36) return "xl"
+  if (effective >= 18) return "large"
+  if (effective >= 9) return "mid"
+  return "small"
+}
+
+export function probeHardware(overrides: Partial<HardwareProbe> = {}): HardwareProbe {
+  const host = readHostMemory()
+  const gpu: GpuInfo | null =
+    overrides.gpu !== undefined
+      ? overrides.gpu
+      : host.appleSilicon
+        ? { backend: "metal", name: "Apple Silicon Unified", totalVramGb: host.totalRamGb }
+        : null
+  const totalRamGb = overrides.totalRamGb ?? host.totalRamGb
+  const appleSilicon = overrides.appleSilicon ?? host.appleSilicon
+  return {
+    totalRamGb,
+    freeRamGb: overrides.freeRamGb ?? host.freeRamGb,
+    cpuCores: overrides.cpuCores ?? host.cpuCores,
+    platform: overrides.platform ?? host.platform,
+    arch: overrides.arch ?? host.arch,
+    appleSilicon,
+    mobile: overrides.mobile ?? false,
+    gpu,
+    recommendedBucket:
+      overrides.recommendedBucket ??
+      recommendModelBucket(totalRamGb, gpu?.totalVramGb ?? 0, appleSilicon),
+  }
+}
+
+export type EmbeddingTier = "fallback" | "standard" | "performance"
+
+export interface EmbeddingPreset {
+  readonly tier: EmbeddingTier
+  readonly label: string
+  readonly description: string
+  readonly model: string
+  readonly modelRepo: string
+  readonly dimensions: number
+  readonly gpuLayers: "auto" | 0
+  readonly contextSize: number
+  readonly downloadSizeMB: number
+}
+
+const BGE_BASE = {
+  model: "bge-small-en-v1.5-f16.gguf",
+  modelRepo: "CompendiumLabs/bge-small-en-v1.5-gguf",
+  dimensions: 384,
+  contextSize: 512,
+  downloadSizeMB: 64,
+} as const
+
+export const EMBEDDING_PRESETS: Readonly<Record<EmbeddingTier, EmbeddingPreset>> = {
+  fallback: {
+    tier: "fallback",
+    label: "Efficient (CPU)",
+    description: "bge-small-en-v1.5 local embeddings for Intel Macs and low-RAM machines",
+    ...BGE_BASE,
+    gpuLayers: 0,
+  },
+  standard: {
+    tier: "standard",
+    label: "Efficient (compact text embedding)",
+    description: "bge-small-en-v1.5 local embeddings on a verified accelerator or CPU",
+    ...BGE_BASE,
+    gpuLayers: "auto",
+  },
+  performance: {
+    tier: "performance",
+    label: "Efficient (compact text embedding)",
+    description: "384-dim bge-small-en-v1.5 text embedding model on high-memory hardware",
+    ...BGE_BASE,
+    gpuLayers: "auto",
+  },
+}
+
+export function selectEmbeddingTierFromHardware(
+  hardware: Pick<HardwareProbe, "appleSilicon" | "gpu" | "totalRamGb">,
+): EmbeddingTier {
+  if (hardware.totalRamGb <= 8) return "fallback"
+  const backend = hardware.gpu?.backend
+  const accelerated =
+    hardware.appleSilicon || backend === "cuda" || backend === "metal" || backend === "vulkan"
+  if (!accelerated) return "fallback"
+  if (hardware.totalRamGb >= 128) return "performance"
+  return "standard"
+}
+
+export function selectEmbeddingPresetFromHardware(
+  hardware: Pick<HardwareProbe, "appleSilicon" | "gpu" | "totalRamGb">,
+): EmbeddingPreset {
+  return EMBEDDING_PRESETS[selectEmbeddingTierFromHardware(hardware)]
+}
+
+export function detectEmbeddingTier(): EmbeddingTier {
+  return selectEmbeddingTierFromHardware(probeHardware())
+}
+
+export function detectEmbeddingPreset(): EmbeddingPreset {
+  return EMBEDDING_PRESETS[detectEmbeddingTier()]
+}
+
+export type DeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR"
+
+export const DEVICE_TIER_ORDER: readonly DeviceTier[] = ["POOR", "OKAY", "GOOD", "MAX"]
+
+export const DEVICE_TIER_THRESHOLDS = {
+  MAX: {
+    effectiveModelMemoryGb: 24,
+    freeRamGbAtSession: 16,
+    dGpuMinVramGb: 16,
+    appleSiliconMinMemoryGb: 32,
+  },
+  GOOD: {
+    effectiveModelMemoryGb: 12,
+    freeRamGbAtSession: 8,
+    dGpuMinVramGb: 8,
+    appleSiliconMinMemoryGb: 16,
+    x86CpuOnlyMinTotalGb: 32,
+  },
+  OKAY: {
+    effectiveModelMemoryGb: 6,
+    freeRamGbAtSession: 3,
+    minTotalRamGb: 16,
+    mobileMinTotalRamGb: 6,
+    mobileEffectiveModelMemoryGb: 3,
+  },
+} as const
+
+export type RecommendedMode = "local" | "cloud-with-local-voice" | "cloud-only"
+
+export interface Eliza1Fit {
+  readonly modelId: string
+  readonly tierLabel: "2b" | "4b" | "9b"
+  readonly contextTokens: number
+  readonly estimatedResidentGb: number
+}
+
+export interface DeviceTierAssessment {
+  readonly tier: DeviceTier
+  readonly reasons: readonly string[]
+  readonly topRecommendation: string
+  readonly canRunLocalLm: boolean
+  readonly canRunLocalVoice: boolean
+  readonly recommendedMode: RecommendedMode
+  readonly recommendedFit: Eliza1Fit | null
+  readonly numericContext: {
+    readonly totalRamGb: number
+    readonly freeRamGb: number
+    readonly effectiveModelMemoryGb: number
+    readonly vramGb: number | null
+    readonly cpuCores: number
+    readonly appleSilicon: boolean
+    readonly mobile: boolean
+  }
+}
+
+export function effectiveModelMemoryGb(probe: HardwareProbe): number {
+  if (probe.appleSilicon) return probe.totalRamGb
+  if (probe.gpu !== null) {
+    return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5)
+  }
+  return probe.totalRamGb * 0.5
+}
+
+export function selectBestEliza1Fit(effectiveGb: number, mobile: boolean): Eliza1Fit | null {
+  if (mobile) {
+    return effectiveGb >= 3
+      ? { modelId: "eliza-1-2b", tierLabel: "2b", contextTokens: 32_768, estimatedResidentGb: 2.5 }
+      : null
+  }
+  if (effectiveGb >= 24) {
+    return { modelId: "eliza-1-9b", tierLabel: "9b", contextTokens: 131_072, estimatedResidentGb: 9.5 }
+  }
+  if (effectiveGb >= 12) {
+    return { modelId: "eliza-1-4b", tierLabel: "4b", contextTokens: 131_072, estimatedResidentGb: 5.0 }
+  }
+  if (effectiveGb >= 6) {
+    return { modelId: "eliza-1-2b", tierLabel: "2b", contextTokens: 65_536, estimatedResidentGb: 2.5 }
+  }
+  return null
+}
+
+export function classifyDeviceTier(probe: HardwareProbe = probeHardware()): DeviceTierAssessment {
+  const effectiveGb = effectiveModelMemoryGb(probe)
+  const vramGb = probe.gpu?.totalVramGb ?? null
+  const reasons: string[] = []
+  let tier: DeviceTier = "POOR"
+
+  if (probe.mobile) {
+    if (
+      probe.totalRamGb >= DEVICE_TIER_THRESHOLDS.OKAY.mobileMinTotalRamGb &&
+      effectiveGb >= DEVICE_TIER_THRESHOLDS.OKAY.mobileEffectiveModelMemoryGb
+    ) {
+      tier = "OKAY"
+      reasons.push("Mobile platform clamped to OKAY for OS background memory limits.")
+    } else {
+      reasons.push("Mobile device below minimum 6 GB RAM threshold for local models.")
+    }
+  } else if (
+    effectiveGb >= DEVICE_TIER_THRESHOLDS.MAX.effectiveModelMemoryGb &&
+    probe.freeRamGb >= DEVICE_TIER_THRESHOLDS.MAX.freeRamGbAtSession &&
+    ((vramGb !== null && vramGb >= DEVICE_TIER_THRESHOLDS.MAX.dGpuMinVramGb) ||
+      (probe.appleSilicon && probe.totalRamGb >= DEVICE_TIER_THRESHOLDS.MAX.appleSiliconMinMemoryGb))
+  ) {
+    tier = "MAX"
+    reasons.push("Sufficient unified/VRAM memory for parallel resident local LM and voice stack.")
+  } else if (
+    effectiveGb >= DEVICE_TIER_THRESHOLDS.GOOD.effectiveModelMemoryGb &&
+    probe.freeRamGb >= DEVICE_TIER_THRESHOLDS.GOOD.freeRamGbAtSession &&
+    ((vramGb !== null && vramGb >= DEVICE_TIER_THRESHOLDS.GOOD.dGpuMinVramGb) ||
+      (probe.appleSilicon && probe.totalRamGb >= DEVICE_TIER_THRESHOLDS.GOOD.appleSiliconMinMemoryGb) ||
+      probe.totalRamGb >= DEVICE_TIER_THRESHOLDS.GOOD.x86CpuOnlyMinTotalGb)
+  ) {
+    tier = "GOOD"
+    reasons.push("Sufficient memory for serialized local LM and voice models.")
+  } else if (
+    effectiveGb >= DEVICE_TIER_THRESHOLDS.OKAY.effectiveModelMemoryGb &&
+    probe.freeRamGb >= DEVICE_TIER_THRESHOLDS.OKAY.freeRamGbAtSession
+  ) {
+    tier = "OKAY"
+    reasons.push("Local LM viable on-demand; voice stack recommended on cloud.")
+  } else {
+    reasons.push("Insufficient available memory for reliable on-device inference.")
+  }
+
+  const canRunLocalLm = tier !== "POOR"
+  const canRunLocalVoice = tier === "MAX" || tier === "GOOD"
+  const recommendedMode: RecommendedMode =
+    tier === "MAX" || tier === "GOOD"
+      ? "local"
+      : tier === "OKAY"
+        ? "cloud-with-local-voice"
+        : "cloud-only"
+  const recommendedFit = selectBestEliza1Fit(effectiveGb, probe.mobile)
+  const topRecommendation =
+    tier === "POOR"
+      ? "Use cloud inference for best responsiveness."
+      : `Run ${recommendedFit?.modelId ?? "eliza-1-2b"} locally (${tier} tier).`
+
+  return {
+    tier,
+    reasons,
+    topRecommendation,
+    canRunLocalLm,
+    canRunLocalVoice,
+    recommendedMode,
+    recommendedFit,
+    numericContext: {
+      totalRamGb: probe.totalRamGb,
+      freeRamGb: probe.freeRamGb,
+      effectiveModelMemoryGb: effectiveGb,
+      vramGb,
+      cpuCores: probe.cpuCores,
+      appleSilicon: probe.appleSilicon,
+      mobile: probe.mobile,
+    },
+  }
+}
+
+export const KV_SPILL_MIN_CONTEXT = 65_536
+export const KV_PAGE_TOKENS = 256
+export const KV_SPILL_VOICE_LATENCY_BUDGET_MS = 200
+export const KV_SPILL_TEXT_LATENCY_BUDGET_MS = 1_500
+
+const KV_RESTORE_BANDWIDTH_BYTES_PER_MS = {
+  "cpu-apple": 40_000_000,
+  "cpu-pcie": 12_000_000,
+  "disk-nvme": 1_500_000,
+  "disk-sata": 250_000,
+} as const
+
+export type KvRestoreClass = keyof typeof KV_RESTORE_BANDWIDTH_BYTES_PER_MS
+
+export type KvSpillPlan =
+  | { readonly mode: "resident"; readonly residentPages: number; readonly spillBytes: 0 }
+  | {
+      readonly mode: "spill"
+      readonly tier: "cpu" | "disk"
+      readonly residentPages: number
+      readonly spillPages: number
+      readonly spillBytes: number
+      readonly estimatedRestoreMs: number
+    }
+  | { readonly mode: "unsupported"; readonly reason: string; readonly estimatedRestoreMs: number }
+
+export function planKvSpill(input: {
+  readonly contextTokens: number
+  readonly bytesPerToken: number
+  readonly availableKvBytes: number
+  readonly restoreClass: KvRestoreClass
+  readonly voiceMode: boolean
+}): KvSpillPlan {
+  const totalPages = Math.ceil(input.contextTokens / KV_PAGE_TOKENS)
+  const bytesPerPage = KV_PAGE_TOKENS * input.bytesPerToken
+  const totalKvBytes = totalPages * bytesPerPage
+  if (input.contextTokens < KV_SPILL_MIN_CONTEXT || totalKvBytes <= input.availableKvBytes) {
+    return { mode: "resident", residentPages: totalPages, spillBytes: 0 }
+  }
+  const residentPages = Math.max(1, Math.floor(input.availableKvBytes / bytesPerPage))
+  const spillPages = Math.max(0, totalPages - residentPages)
+  const spillBytes = spillPages * bytesPerPage
+  const bandwidth = KV_RESTORE_BANDWIDTH_BYTES_PER_MS[input.restoreClass]
+  const estimatedRestoreMs = Math.ceil(spillBytes / bandwidth)
+  const budgetMs = input.voiceMode ? KV_SPILL_VOICE_LATENCY_BUDGET_MS : KV_SPILL_TEXT_LATENCY_BUDGET_MS
+  if (estimatedRestoreMs > budgetMs) {
+    return {
+      mode: "unsupported",
+      reason: `KV restore (${estimatedRestoreMs}ms) exceeds ${input.voiceMode ? "voice" : "text"} budget (${budgetMs}ms).`,
+      estimatedRestoreMs,
+    }
+  }
+  return {
+    mode: "spill",
+    tier: input.restoreClass.startsWith("cpu-") ? "cpu" : "disk",
+    residentPages,
+    spillPages,
+    spillBytes,
+    estimatedRestoreMs,
+  }
+}
+
+export type ThermalState = "nominal" | "fair" | "serious" | "critical" | "unknown"
+export const DECODE_TPS_METRIC = "inference.decode_tps"
+export const MIN_DECODE_TPS_BUDGET = 6
+
+export interface LiveDeviceSignals {
+  readonly thermalState: ThermalState | null
+  readonly decodeTpsP50: number | null
+}
+
+export function estimateDecodeTokens(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+export function liveSignalsDemoteLocal(signals: LiveDeviceSignals): boolean {
+  if (signals.thermalState === "serious" || signals.thermalState === "critical") return true
+  if (signals.decodeTpsP50 !== null && signals.decodeTpsP50 < MIN_DECODE_TPS_BUDGET) return true
+  return false
+}
+
+export class ThroughputTracker {
+  readonly #samples: number[] = []
+  readonly #maxSamples: number
+
+  constructor(maxSamples = 32) {
+    this.#maxSamples = maxSamples
+  }
+
+  record(decodedTokens: number, elapsedMs: number): number | null {
+    if (decodedTokens < 4 || !Number.isFinite(elapsedMs) || elapsedMs <= 0) return null
+    const tps = (decodedTokens * 1000) / elapsedMs
+    this.#samples.push(tps)
+    if (this.#samples.length > this.#maxSamples) this.#samples.shift()
+    return tps
+  }
+
+  p50(): number | null {
+    if (this.#samples.length === 0) return null
+    const sorted = [...this.#samples].sort((a, b) => a - b)
+    return sorted[Math.floor(sorted.length / 2)] ?? null
+  }
+}
+
+export type RoutingPolicy =
+  | "manual"
+  | "auto"
+  | "cheapest"
+  | "fastest"
+  | "prefer-local"
+  | "local-only"
+  | "cloud-only"
+  | "round-robin"
+
+export interface ProviderCandidate {
+  readonly provider: string
+  readonly priority: number
+  readonly costPerMillionTokens?: number
+}
+
+export interface VoiceModalityViability {
+  readonly viable: boolean
+  readonly reason: string
+}
+
+const LOCAL_PROVIDERS = new Set([
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+])
+
+const VOICE_SLOTS = new Set<SlotName>(["TEXT_TO_SPEECH", "TRANSCRIPTION"])
+
+export function isLocalInferenceProvider(provider: string): boolean {
+  return LOCAL_PROVIDERS.has(provider)
+}
+
+export function assessVoiceModalityViability(
+  assessment: DeviceTierAssessment,
+  signals?: LiveDeviceSignals,
+): VoiceModalityViability {
+  if (!assessment.canRunLocalVoice) {
+    return {
+      viable: false,
+      reason: `Device tier ${assessment.tier} routes voice to cloud by default.`,
+    }
+  }
+  if (signals !== undefined && liveSignalsDemoteLocal(signals)) {
+    return { viable: false, reason: "Live thermal or throughput pressure demoted local voice." }
+  }
+  return { viable: true, reason: `Device tier ${assessment.tier} supports local voice.` }
+}
+
+export class RoutingPolicyEngine {
+  readonly #latencies = new Map<string, number[]>()
+  readonly #rrIndex = new Map<string, number>()
+
+  recordLatency(slot: SlotName, provider: string, latencyMs: number): void {
+    if (!Number.isFinite(latencyMs) || latencyMs < 0) return
+    const key = `${slot}:${provider}`
+    const ring = this.#latencies.get(key) ?? []
+    ring.push(latencyMs)
+    if (ring.length > 32) ring.shift()
+    this.#latencies.set(key, ring)
+  }
+
+  p50Latency(slot: SlotName, provider: string): number | null {
+    const ring = this.#latencies.get(`${slot}:${provider}`)
+    if (ring === undefined || ring.length < 3) return null
+    const sorted = [...ring].sort((a, b) => a - b)
+    return sorted[Math.floor(sorted.length / 2)] ?? null
+  }
+
+  pickProvider<C extends ProviderCandidate>(args: {
+    readonly slot: SlotName
+    readonly policy: RoutingPolicy
+    readonly candidates: readonly C[]
+    readonly preferredProvider?: string
+    readonly assessment?: DeviceTierAssessment
+    readonly signals?: LiveDeviceSignals
+  }): C | null {
+    if (args.candidates.length === 0) return null
+    const ordered = [...args.candidates].sort((a, b) => b.priority - a.priority)
+    const locals = ordered.filter((c) => isLocalInferenceProvider(c.provider))
+    const clouds = ordered.filter((c) => !isLocalInferenceProvider(c.provider))
+    const modalityOk =
+      args.assessment === undefined
+        ? true
+        : VOICE_SLOTS.has(args.slot)
+          ? args.assessment.canRunLocalVoice
+          : args.assessment.canRunLocalLm
+    const demoted = args.signals !== undefined && liveSignalsDemoteLocal(args.signals)
+
+    if (args.policy === "local-only") return locals[0] ?? null
+    if (args.policy === "cloud-only") return clouds[0] ?? null
+    if (args.policy === "manual") {
+      if (args.preferredProvider !== undefined) {
+        const preferred = ordered.find((c) => c.provider === args.preferredProvider)
+        if (preferred !== undefined) return preferred
+      }
+      return ordered[0] ?? null
+    }
+    if (args.policy === "prefer-local") {
+      return modalityOk && locals[0] !== undefined ? locals[0] : (clouds[0] ?? locals[0] ?? null)
+    }
+    if (args.policy === "auto") {
+      return modalityOk && !demoted && locals[0] !== undefined
+        ? locals[0]
+        : (clouds[0] ?? locals[0] ?? null)
+    }
+    if (args.policy === "cheapest") {
+      return [...ordered].sort((a, b) => {
+        const costA = a.costPerMillionTokens ?? (isLocalInferenceProvider(a.provider) ? 0 : 1)
+        const costB = b.costPerMillionTokens ?? (isLocalInferenceProvider(b.provider) ? 0 : 1)
+        return costA - costB || b.priority - a.priority
+      })[0] ?? null
+    }
+    if (args.policy === "fastest") {
+      const scored = ordered
+        .map((c) => ({ candidate: c, p50: this.p50Latency(args.slot, c.provider) }))
+        .filter((entry): entry is { readonly candidate: C; readonly p50: number } => entry.p50 !== null)
+        .sort((a, b) => a.p50 - b.p50)
+      return scored[0]?.candidate ?? ordered[0] ?? null
+    }
+    const idx = this.#rrIndex.get(args.slot) ?? 0
+    this.#rrIndex.set(args.slot, (idx + 1) % ordered.length)
+    return ordered[idx % ordered.length] ?? null
+  }
+}
+
+export type VerifyState = "verified" | "missing" | "corrupt" | "digest-mismatch"
+
+export interface VerifyResult {
+  readonly state: VerifyState
+  readonly sizeBytes: number
+  readonly sha256: string
+  readonly isGguf: boolean
+}
+
+export function verifyModelFile(
+  filePath: string,
+  expectedSha256?: string,
+  requireGgufMagic = true,
+): VerifyResult {
+  const info = readFileHeaderAndHash(filePath)
+  if (!info.exists) {
+    return { state: "missing", sizeBytes: 0, sha256: "", isGguf: false }
+  }
+  const isGguf = info.magic === "GGUF"
+  if (requireGgufMagic && !isGguf) {
+    return { state: "corrupt", sizeBytes: info.sizeBytes, sha256: info.sha256, isGguf }
+  }
+  if (expectedSha256 !== undefined && info.sha256 !== expectedSha256.toLowerCase()) {
+    return { state: "digest-mismatch", sizeBytes: info.sizeBytes, sha256: info.sha256, isGguf }
+  }
+  return { state: "verified", sizeBytes: info.sizeBytes, sha256: info.sha256, isGguf }
+}
+
+export function sanitizeLocalInferenceSpeechText(input: string): string {
+  let text = input.normalize("NFKC")
+  text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/giu, " ")
+  text = text.replace(/<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/giu, " ")
+  text = text.replace(/```[\s\S]*?```/gu, " ")
+  text = text.replace(/```[\s\S]*$/gu, " ")
+  text = text.replace(/`([^`]+)`/gu, "$1")
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
+  text = text.replace(/<[^>\n]+>/gu, " ")
+  text = text.replace(/\bhttps?:\/\/\S+/giu, " ")
+  return text.replace(/\s+/gu, " ").trim()
+}
+
+export error NonBinaryAudioPayload { message: string }
+
+effect function failNonBinaryAudioEffect(): never!NonBinaryAudioPayload {
+  throw new NonBinaryAudioPayload({ message: "TEXT_TO_SPEECH returned a non-binary payload" })
+}
+
+export function normalizeAudioBytes(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+  }
+  if (value instanceof ArrayBuffer) return new Uint8Array(value)
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+  }
+  return thrown(failNonBinaryAudioEffect)()
+}
+
+export function sniffAudioContentType(bytes: Uint8Array): string {
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x41 &&
+    bytes[10] === 0x56 &&
+    bytes[11] === 0x45
+  ) {
+    return "audio/wav"
+  }
+  if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+    return "audio/mpeg"
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0) {
+    return "audio/mpeg"
+  }
+  return "application/octet-stream"
+}
+
+export interface NativeInferenceRuntimePort {
+  readonly platform: "ios" | "android" | "desktop"
+  readonly available: boolean
+  generate?(args: { readonly prompt: string; readonly maxTokens?: number }): Promise<string>
+  embed?(text: string): Promise<readonly number[]>
+  synthesize?(text: string): Promise<Uint8Array>
+  transcribe?(wav: Uint8Array): Promise<string>
+}
