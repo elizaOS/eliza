@@ -45,8 +45,8 @@ import accounts as Acc from "../identity/accounts"
 import deployment as D from "../deployment"
 type PlanSource = FromSubscription | FromGrant | FromFree
 type PlanEnd = NoPlanEnd | PlanEndsAt({ endsAtMs: Millis })
-type HeldGrant = { grant: G::Grant, planKey: PlanKey }
-type Policy = { planKey: PlanKey, source: PlanSource, ends: PlanEnd, subscription: Sub::SubscriptionStatus }
+type HeldGrant = { grant: G::Grant, planKey: PlanKey, sponsoredInference: bool }
+type Policy = { planKey: PlanKey, source: PlanSource, ends: PlanEnd, subscription: Sub::SubscriptionStatus, sponsoredInference: bool }
 pure def subscriptionEnd(s: Sub::Subscription): PlanEnd =
   if (s.status == Sub::Active) PlanEndsAt({ endsAtMs: s.periodEnd })
   else if (s.status == Sub::Dunning) PlanEndsAt({ endsAtMs: Sub::dunningEndsAt(s.dunning) })
@@ -68,7 +68,7 @@ plan wins. A canceled, expired, pending or incomplete subscription leaves
 the organization on its grant or on the free plan.
 
 ```quint
-pure val noHeldGrant: HeldGrant = { grant: G::noGrant, planKey: Free }
+pure val noHeldGrant: HeldGrant = { grant: G::noGrant, planKey: Free, sponsoredInference: false }
 pure def grantWindowHolds(ends: G::GrantEnd, now: Millis): bool = match ends { | EndsAt(x) => now < x.endsAtMs | NeverEnds => true }
 pure def grantServes(g: HeldGrant, now: Millis): bool =
   g.grant.grantId != "" and isPaid(g.planKey) and g.grant.standing == G::InForce and g.grant.startsAt <= now and grantWindowHolds(g.grant.ends, now)
@@ -77,16 +77,20 @@ pure def servingGrant(grants: List[HeldGrant], now: Millis): HeldGrant =
 pure def grantEnd(ends: G::GrantEnd): PlanEnd = match ends { | EndsAt(x) => PlanEndsAt({ endsAtMs: x.endsAtMs }) | NeverEnds => NoPlanEnd }
 pure def policyFrom(subscription: Sub::Subscription, grants: List[HeldGrant], now: Millis): Policy = {
   val g = servingGrant(grants, now)
-  if (Sub::hasPaidLimits(subscription.status)) { planKey: subscription.planKey, source: FromSubscription, ends: subscriptionEnd(subscription), subscription: subscription.status }
-  else if (isPaid(g.planKey)) { planKey: g.planKey, source: FromGrant, ends: grantEnd(g.grant.ends), subscription: subscription.status }
-  else { planKey: Free, source: FromFree, ends: NoPlanEnd, subscription: subscription.status }
+  val sponsored = grants.some(held => sponsorsInference(held, now))
+  if (Sub::hasPaidLimits(subscription.status)) { planKey: subscription.planKey, source: FromSubscription, ends: subscriptionEnd(subscription), subscription: subscription.status, sponsoredInference: sponsored }
+  else if (isPaid(g.planKey)) { planKey: g.planKey, source: FromGrant, ends: grantEnd(g.grant.ends), subscription: subscription.status, sponsoredInference: sponsored }
+  else { planKey: Free, source: FromFree, ends: NoPlanEnd, subscription: subscription.status, sponsoredInference: sponsored }
 }
 pure val grantsValues: Set[List[HeldGrant]] = {
-  val pro = { grant: { ...G::noGrant, grantId: "grant1", organizationId: "org1", idempotencyKey: "key1", startsAt: 0, ends: G::EndsAt({ endsAtMs: 1000000 }) }, planKey: ProMonthly }
-  val plus = { grant: { ...G::noGrant, grantId: "grant2", organizationId: "org1", idempotencyKey: "key2", startsAt: 0 }, planKey: PlusMonthly }
+  val pro = { grant: { ...G::noGrant, grantId: "grant1", organizationId: "org1", idempotencyKey: "key1", startsAt: 0, ends: G::EndsAt({ endsAtMs: 1000000 }) }, planKey: ProMonthly, sponsoredInference: false }
+  val plus = { grant: { ...G::noGrant, grantId: "grant2", organizationId: "org1", idempotencyKey: "key2", startsAt: 0 }, planKey: PlusMonthly, sponsoredInference: false }
   val revoked = { ...pro, grant: { ...pro.grant, grantId: "grant3", standing: G::RevokedAt({ revokedAtMs: 1 }) } }
   val later = { ...pro, grant: { ...pro.grant, grantId: "grant4", startsAt: 600000 } }
+  val sponsored = { ...pro, grant: { ...pro.grant, ends: G::NeverEnds }, sponsoredInference: true }
+  val withdrawn = { ...sponsored, grant: { ...sponsored.grant, standing: G::RevokedAt({ revokedAtMs: 1 }) } }
   Set(List()).union(Set(List(plus))).union(Set(List(plus, pro))).union(Set(List(revoked))).union(Set(List(later, plus)))
+    .union(Set(List(sponsored))).union(Set(List(withdrawn))).union(Set(List({ ...pro, sponsoredInference: true })))
 }
 pure val nowValues = Set(0, 500000, 1000000, 2592000000)
 pure def lawAPaidSubscriptionComesBeforeAnyGrant(subscription: Sub::Subscription, grants: List[HeldGrant], now: Millis): bool =
@@ -97,6 +101,22 @@ pure def lawOnlyTheHighestServingGrantGivesAPlan(subscription: Sub::Subscription
 }
 pure def lawAPlanIsPaidExactlyWhenSomethingPaysForIt(subscription: Sub::Subscription, grants: List[HeldGrant], now: Millis): bool =
   Sub::alwaysSubscriptionHasIdPlanAndCustomer(subscription) implies (isPaid(policyFrom(subscription, grants, now).planKey) iff policyFrom(subscription, grants, now).source != FromFree)
+```
+
+### An active lifetime Pro sponsorship pays for inference regardless of the selected subscription or grant
+
+A grant that explicitly sponsors inference must be lifetime Pro and in
+force. It funds inference without drawing from the account's allowance or
+credit balance, even when a provider subscription takes precedence as the
+displayed plan. Speech and maps use the regular plan funding. Inference
+still requires an active account, live credential and available request
+capacity.
+
+```quint
+pure def sponsorsInference(g: HeldGrant, now: Millis): bool =
+  g.sponsoredInference and g.planKey == ProMonthly and g.grant.ends == G::NeverEnds and grantServes(g, now)
+pure def lawOnlyAServingLifetimeProSponsorshipPaysForInference(subscription: Sub::Subscription, grants: List[HeldGrant], now: Millis): bool =
+  policyFrom(subscription, grants, now).sponsoredInference iff grants.some(g => sponsorsInference(g, now))
 ```
 
 ### A policy that cannot be read answers 503 and gives no plan
@@ -117,15 +137,20 @@ pure val policyRefusal: Refusal = refuse(ServiceUnavailable)
 
 ### A grant or an entitled subscription spends the allowance before credits, any other policy spends credits only, and an unreadable one funds nothing
 
-The lane is the same for inference, speech and maps, and the snapshot shows
-it for each. A past-due or unpaid subscription keeps its plan's request
-limits but no longer spends allowance. `meteredAllowance` is what metering
-receives as `allowanceAvailable`.
+Sponsorship takes precedence over the regular lane for inference. A
+past-due or unpaid subscription keeps its plan's request limits and
+spends only credits for calls without sponsorship. `meteredAllowance`
+is what metering receives as `allowanceAvailable`.
 
 ```quint
 pure def fundsAllowance(p: Policy): bool = isPaid(p.planKey) and (p.source == FromGrant or (p.source == FromSubscription and Sub::isEntitled(p.subscription)))
 pure def laneOf(p: Policy): M::FundingLane = if (fundsAllowance(p)) M::AllowanceThenCredits else M::CreditsOnly
-pure def fundingLane(a: PolicyAnswer): M::FundingLane = match a { | PolicyOf(x) => laneOf(x.policy) | PolicyUnavailable => M::Refused }
+pure def inferenceLaneOf(p: Policy): M::FundingLane = if (p.sponsoredInference) M::SponsoredInference else laneOf(p)
+pure def serviceFundingLane(a: PolicyAnswer, service: MeteredService): M::FundingLane = match a {
+  | PolicyOf(x) => if (service == MeteredInference) inferenceLaneOf(x.policy) else laneOf(x.policy)
+  | PolicyUnavailable => M::Refused
+}
+pure def fundingLane(a: PolicyAnswer): M::FundingLane = serviceFundingLane(a, MeteredInference)
 pure def meteredAllowance(lane: M::FundingLane, period: A::Period, now: Millis): Micros = if (lane == M::AllowanceThenCredits) A::spendableAt(period, now) else 0
 pure def isUnreadable(read: PolicyRead): bool = match read { | PolicyUnreadable => true | _ => false }
 pure val readValues: Set[PolicyRead] = Set(PolicyUnreadable).union(Set(PolicyReadable({ subscription: Sub::initial, grants: List() })))
@@ -173,10 +198,11 @@ pure def issueEntitlement(p: Policy, period: A::Period, offered: Set[D::Capabili
     allowance: if (shown) ClaimsAllowance({ granted: period.granted + period.adjustment, remaining: period.available, periodStartSec: secondsOf(period.startsAt), resetsAtSec: secondsOf(period.endsAt) }) else NoAllowanceClaim }
 }
 pure def endsBy(end: PlanEnd, iat: int, exp: int): bool = match end { | PlanEndsAt(x) => secondsOf(x.endsAtMs) > iat implies exp <= secondsOf(x.endsAtMs) | NoPlanEnd => true }
-pure val pValues: Set[Policy] = Set({ planKey: Free, source: FromFree, ends: NoPlanEnd, subscription: Sub::NoSubscription })
-  .union(Set({ planKey: PlusMonthly, source: FromSubscription, ends: PlanEndsAt({ endsAtMs: 600000 }), subscription: Sub::Active }))
-  .union(Set({ planKey: ProMonthly, source: FromGrant, ends: NoPlanEnd, subscription: Sub::Canceled }))
-  .union(Set({ planKey: PlusMonthly, source: FromSubscription, ends: NoPlanEnd, subscription: Sub::Unpaid }))
+pure val pValues: Set[Policy] = Set({ planKey: Free, source: FromFree, ends: NoPlanEnd, subscription: Sub::NoSubscription, sponsoredInference: false })
+  .union(Set({ planKey: PlusMonthly, source: FromSubscription, ends: PlanEndsAt({ endsAtMs: 600000 }), subscription: Sub::Active, sponsoredInference: false }))
+  .union(Set({ planKey: ProMonthly, source: FromGrant, ends: NoPlanEnd, subscription: Sub::Canceled, sponsoredInference: false }))
+  .union(Set({ planKey: ProMonthly, source: FromGrant, ends: NoPlanEnd, subscription: Sub::NoSubscription, sponsoredInference: true }))
+  .union(Set({ planKey: PlusMonthly, source: FromSubscription, ends: NoPlanEnd, subscription: Sub::Unpaid, sponsoredInference: false }))
 pure val periodValues: Set[A::Period] = {
   val open = { ...A::initial, phase: A::PeriodOpen, source: A::RenewalInvoice({ invoiceId: "in_1" }), planKey: PlusMonthly, startsAt: 0, endsAt: 1200000, granted: 25000000, available: 20000000, settled: 5000000 }
   Set(A::initial).union(Set(open)).union(Set({ ...open, phase: A::PeriodExpired, available: 0, expired: 20000000 }))
@@ -247,9 +273,10 @@ The shell renders it as `schemaVersion: 3` (`spec/cloud` plan, section
 5.4) with times in milliseconds: `account.status`, `balance.usdMicros`
 (`F::availableCredits`), `plan {key, source, effectiveUntil}`, the
 subscription with its cancel `control` (`Sub::controlOf`), the grant, the
-allowance period and `funding {inference, speech, maps}`. The allowance
-shows the latest period of the organization; its `available` is what it can
-pay now, 0 when the lane spends credits only.
+allowance period and `funding {inference, speech, maps}`. The funding
+fields show the regular lane. The optional `sponsoredInference: true`
+field marks that the inference lane is sponsored. The allowance shows the
+latest period of the organization and how much the regular lane can spend.
 
 ```quint
 type AllowanceView = NoAllowanceView | AllowanceShown({ phase: A::PeriodPhase, granted: Micros, available: Micros, startsAt: Millis, resetsAt: Millis })
@@ -272,17 +299,18 @@ pure def billingSnapshot(billing: BillingRead, now: Millis): SnapshotAnswer = ma
 ### An account is usable exactly when it is active and the cloud would fund a call of one micro-dollar
 
 The device decides from the snapshot whether the account needs attention
-(`spec/cloud/client.md`): usable when the account is Active, its inference
-lane is not refused and its allowance plus its balance is above zero. That
-is the same answer metering gives a 1 µUSD quote from the same rows.
+(`spec/cloud/client.md`): usable when the account is Active and its
+inference lane funds a 1 µUSD quote. Sponsorship can fund this call while
+both account balances are empty.
 
 ```quint
 pure def allowanceAvailable(v: AllowanceView): Micros = match v { | AllowanceShown(x) => x.available | NoAllowanceView => 0 }
-pure def accountUsable(s: Snapshot): bool = s.account == Acc::Active and s.lane != M::Refused and allowanceAvailable(s.allowance) + s.balance > 0
+pure def accountUsable(s: Snapshot): bool =
+  s.account == Acc::Active and M::fundable(inferenceLaneOf(s.policy), 1, allowanceAvailable(s.allowance), s.balance)
 pure val fundsValues: Set[F::Funds] = Set({ creditBalance: 0, creditHeld: 0, collected: 0 }).union(Set({ creditBalance: 5, creditHeld: 0, collected: 0 })).union(Set({ creditBalance: 5, creditHeld: 5, collected: 0 }))
 pure def lawUsableExactlyWhenACallIsFunded(funds: F::Funds, subscription: Sub::Subscription, grants: List[HeldGrant], period: A::Period, now: Millis): bool = {
   val s = snapshotFrom(Acc::Active, funds, subscription, grants, period, now)
   (F::alwaysNeverOverdrawn(funds) and A::alwaysEveryMicroAccounted(period)) implies
-    (accountUsable(s) iff M::fundable(s.lane, 1, allowanceAvailable(s.allowance), s.balance))
+    (accountUsable(s) iff M::fundable(fundingLane(effectivePolicy(PolicyReadable({ subscription: subscription, grants: grants }), now)), 1, allowanceAvailable(s.allowance), s.balance))
 }
 ```

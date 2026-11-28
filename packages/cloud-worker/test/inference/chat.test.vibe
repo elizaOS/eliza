@@ -2,10 +2,12 @@
 import { assert, describe, it } from "@effect/vitest"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { addCredits } from "../../src/billing/funds.vibe"
-import { parseProfile } from "@elizaos/cloud"
+import { checkEntitlement, parseEntitlementKeys, parseProfile, snapshotFromResponse } from "@elizaos/cloud"
+import { operate } from "../../src/operator/admin.vibe"
 import { setModelPrice } from "../../src/services/models.vibe"
 import { Store, storeLayer } from "../../src/store/store.vibe"
 import { check, sql, testCloud, type TestCloud } from "../support/cloud.vibe"
+import { signedIn } from "../support/identity-fixture.ts"
 import { llmFake, replyText, upstreamModel, wholeAnswer, type LlmFake } from "../support/llm-fake.ts"
 import { signedCaller } from "../support/caller.vibe"
 import { testProfile } from "../support/profile.ts"
@@ -186,6 +188,71 @@ describe("WP5 Inference: chat completions", () => {
         balance: 1_000_000 - 31 * 2 - 27 - 50 * 2
       }
     ))
+  }), 90_000)
+
+  it.live("Redeem sponsored inference and complete chat above the plan's allowance until the grant is revoked (spec/cloud/billing/grantCodes.md, \"A sponsored inference offer is lifetime Pro for one account with a verified Gmail address and no open paid plan\"; spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\"; spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\"; spec/cloud/shared/metering.md, \"A reserved hold covers its quote and splits only account-funded holds between allowance and credits\")", () => scoped(effect {
+    const { cloud, llm, chat } = try chatCloud()
+    const { accessToken, user, organizationId } = try signedIn(cloud, "sponsored-chat@gmail.com")
+    const headers = { authorization: `Bearer ${accessToken}` }
+    const priced = try cloud.inside(operate(["prices", "set", "--model", request.model, "--input-per-1k", "1000", "--output-per-1k", "10000000"]))
+    const expensive = { ...request, max_tokens: 8192 }
+    const unfunded = try chat(expensive, {}, accessToken)
+    const minted = try cloud.inside(operate(["grants", "mint", "--family", "sponsored-chat", "--plan", "pro_monthly", "--count", "1", "--lifetime", "--sponsored-inference"]))
+    const code = minted.kind === "done" ? minted.lines[0] ?? "" : ""
+    try check(() => assert.match(code, /^[0-9A-HJKMNP-TV-Z]{16}$/))
+    const redeemed = try cloud.call("/api/v1/subscription/redeem", { headers, json: { code, idempotencyKey: "sponsored-chat" } })
+    const before = try cloud.call("/api/v1/billing/limits", { headers })
+    const beforeSnapshot = try snapshotFromResponse(before.body)
+    const publicKeys = try cloud.call("/api/v1/subscription/entitlement-keys")
+    const signed = try cloud.call("/api/v1/subscription/entitlement", { headers })
+    const { entitlement } = try Schema.decodeUnknownEffect(Schema.Struct({ entitlement: Schema.String }))(signed.body)
+    const now = try Clock.currentTimeMillis
+    const verified = try tryPromise(() => checkEntitlement(entitlement, {
+      keys: parseEntitlementKeys(publicKeys.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription",
+      userId: user.id, organizationId, now
+    }))
+    const whole = try chat(expensive, {}, accessToken)
+    const streamed = try chat({ ...expensive, stream: true }, {}, accessToken)
+    const reply = Schema.Struct({ model: Schema.String, choices: Schema.Array(Schema.Struct({ message: Schema.Struct({ content: Schema.String }) })) })
+    const answer = try Schema.decodeUnknownEffect(reply)(whole.body)
+    const parsed = try chunks(String(streamed.body))
+    try settledCount(cloud, organizationId, 2)
+    const usage = try sql(cloud, "SELECT quote, charged, from_allowance, from_credits, uncollected, sponsored_cost FROM usage_records WHERE organization_id = $1", [organizationId])
+    const after = try cloud.call("/api/v1/billing/limits", { headers })
+    const afterSnapshot = try snapshotFromResponse(after.body)
+    const revoked = try cloud.inside(operate(["grants", "revoke", "--code", code, "--reason", "Confirm access ends when the sponsored grant is revoked"]))
+    const ended = try cloud.call("/api/v1/billing/limits", { headers })
+    const endedSnapshot = try snapshotFromResponse(ended.body)
+    const afterRevocation = try chat(expensive, {}, accessToken)
+    try check(() => assert.deepStrictEqual({
+      priced: priced.kind,
+      unfunded: status(unfunded),
+      redeemed: redeemed.status,
+      subscription: [before.status, beforeSnapshot.plan, beforeSnapshot.subscription, beforeSnapshot.sponsoredInference],
+      entitlement: [signed.status, verified.plan.id, verified.plan.status, verified.planEndsAt, verified.services.includes("inference")],
+      whole: [whole.status, answer.model, answer.choices[0]?.message.content],
+      streamed: [streamed.status, parsed.flatMap((chunk) => chunk.choices.map((choice) => choice.delta.content ?? "")).join(""), frames(String(streamed.body)).at(-1)],
+      upstream: llm.bodies.map((body) => [body.stream ?? false, body.max_tokens]),
+      usage: usage.map((row) => [Number(row.quote) > (beforeSnapshot.allowance?.available ?? 0), Number(row.charged), Number(row.from_allowance), Number(row.from_credits), Number(row.uncollected), Number(row.sponsored_cost)]),
+      funds: [beforeSnapshot.balance.usdMicros, afterSnapshot.balance.usdMicros, beforeSnapshot.allowance?.available, afterSnapshot.allowance],
+      revoked,
+      ended: [ended.status, endedSnapshot.plan.key, endedSnapshot.sponsoredInference],
+      afterRevocation: status(afterRevocation),
+    }, {
+      priced: "done",
+      unfunded: [402, "insufficient_credits", undefined],
+      redeemed: 200,
+      subscription: [200, { key: "pro_monthly", source: "grant", effectiveUntil: null }, null, true],
+      entitlement: [200, "pro_monthly", "active", null, true],
+      whole: [200, "test-chat", replyText],
+      streamed: [200, replyText, "[DONE]"],
+      upstream: [[false, 8192], [true, 8192]],
+      usage: [[true, 0, 0, 0, 0, 84_014], [true, 0, 0, 0, 0, 84_014]],
+      funds: [0, 0, 90_000_000, beforeSnapshot.allowance],
+      revoked: { kind: "done", lines: ["1 grants revoked"] },
+      ended: [200, "free", undefined],
+      afterRevocation: [402, "insufficient_credits", undefined],
+    }))
   }), 90_000)
 
   it.live("Stream a reply in the shape clients read, charging a hang-up for every delivered character (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\"; spec/cloud/services/inference.md, \"A dispatched call is charged its reported usage, what it delivered when the caller hung up, and its quote when nothing was reported\")", () => scoped(effect {

@@ -1,5 +1,5 @@
 // spec/cloud/billing/entitlements.md, "Story: Read my plan without substituting another account or source"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
-import { effectivePolicy, fundingLane, type HeldGrant, type PlanSource as SpecPlanSource, type Policy, type PolicyRead } from "../../gen/cloud__billing__entitlements.effect.vibe"
+import { effectivePolicy, serviceFundingLane, type HeldGrant, type PlanSource as SpecPlanSource, type Policy, type PolicyRead } from "../../gen/cloud__billing__entitlements.effect.vibe"
 import { initial as unopenedPeriod, type Period } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import type { MeteredService } from "../../gen/cloud__shared__types.ts"
@@ -23,7 +23,10 @@ export function planSummary(policy: Policy) {
 
 effect function heldGrants(tx: Tx, organizationId: string): (HeldGrant[] | undefined)!StoreFailure {
   const rows = try tx.query(
-    "SELECT id, idempotency_key, plan_key, effective_from, effective_until FROM grants WHERE organization_id = $1 AND NOT revoked ORDER BY effective_until IS NULL DESC, effective_until DESC, id",
+    `SELECT g.id, g.idempotency_key, g.plan_key, g.effective_from, g.effective_until, c.sponsored_inference
+     FROM grants g LEFT JOIN grant_codes c ON c.key = g.code_key
+     WHERE g.organization_id = $1 AND NOT g.revoked
+     ORDER BY g.effective_until IS NULL DESC, g.effective_until DESC, g.id`,
     [organizationId]
   )
   const grants: HeldGrant[] = []
@@ -33,6 +36,7 @@ effect function heldGrants(tx: Tx, organizationId: string): (HeldGrant[] | undef
     if (planKey === undefined || grantId === undefined) return undefined
     grants.push({
       planKey,
+      sponsoredInference: row.sponsored_inference === true,
       grant: {
         grantId, organizationId, idempotencyKey: toText(row.idempotency_key) ?? "", startsAt: toInt(row.effective_from),
         ends: row.effective_until === null ? { tag: "NeverEnds" } : { tag: "EndsAt", endsAtMs: toInt(row.effective_until) },
@@ -58,8 +62,8 @@ export effect function readPolicy(tx: Tx, organizationId: string, now: number): 
   return answer.policy
 }
 
-export effect function laneFor(tx: Tx, organizationId: string, _service: MeteredService, now: number): FundingLane!StoreFailure {
-  return fundingLane(effectivePolicy(try readPolicyRead(tx, organizationId), now))
+export effect function laneFor(tx: Tx, organizationId: string, serviceKind: MeteredService, now: number): FundingLane!StoreFailure {
+  return serviceFundingLane(effectivePolicy(try readPolicyRead(tx, organizationId), now), serviceKind)
 }
 
 export effect function readLatestPeriod(tx: Tx, organizationId: string, now: number): Period!(StoreFailure | RowCorrupt) {

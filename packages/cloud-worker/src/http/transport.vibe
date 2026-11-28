@@ -1,6 +1,8 @@
 // spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/identity/requestAuth.md, "A device key is limited to 120 requests a minute before it is looked up"; spec/cloud/identity/requestAuth.md, "A failed credential or revocation lookup is an outage, never a credential refusal"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
+// spec/cloud/billing/grantCodes.md, "A sponsored inference offer is lifetime Pro for one account with a verified Gmail address and no open paid plan"
 import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders, gateOf, routeOpen } from "../../gen/cloud__deployment.effect.vibe"
 import { lookupRetryMs } from "../../gen/cloud__identity__requestAuth.effect.vibe"
+import { activateSponsoredAssignments } from "../billing/grant-codes.vibe"
 import { planRpm } from "../billing/plans.vibe"
 import { readPolicy } from "../billing/policy.vibe"
 import { capabilityOf, corsForOrigin, Deployment, type EnvironmentProfile } from "@elizaos/cloud"
@@ -39,12 +41,17 @@ function isRefused(failure: { readonly _tag: string }): failure is Refused {
   return failure instanceof Refused
 }
 
-effect function admitPlanRate(route: Route, caller: Caller, now: number): void!Refused!Store {
-  if (route.rateClass === undefined || caller.kind === "anonymous") return
+effect function admitPlanRate(route: Route, caller: Caller, now: number, billing: boolean): void!Refused!(Deployment | Store) {
+  const rateClass = route.rateClass
+  if (caller.kind === "anonymous" || rateClass === undefined) return
+  const checkAssignments = billing && (route.area === "BillingSnapshotRoutes" || route.area === "ChatCompletionRoutes" || route.area === "EntitlementRoutes")
   const store = try Store
-  const policy = store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
+  const policy = store.transaction(effect (tx) => {
+    if (checkAssignments) try activateSponsoredAssignments(tx, caller, now)
+    return try readPolicy(tx, caller.organizationId, now)
+  }) catch () => undefined
   if (policy === undefined) throw refused("ServiceUnavailable", "NoReason", now + 5000)
-  try admit({ subject: caller.organizationId, scope: `plan-${route.rateClass}`, limit: planRpm(policy.planKey, route.rateClass), widthMs: minute })
+  try admit({ subject: caller.organizationId, scope: `plan-${rateClass}`, limit: planRpm(policy.planKey, rateClass), widthMs: minute })
 }
 
 effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefined, requestId: string, now: number, compatibility?: Compatibility): HttpServerResponse.HttpServerResponse!Refused!(HttpServerRequest.HttpServerRequest | CloudContext) {
@@ -73,7 +80,7 @@ effect function dispatch(routes: ReadonlyArray<Route>, fallback: Route | undefin
     default: throw refused("ServiceUnavailable", "NoReason", now + lookupRetryMs);
   }
   if (!offered) throw refused("CapabilityUnavailable")
-  try admitPlanRate(route, caller, now)
+  try admitPlanRate(route, caller, now, deployment.settings.capabilities.includes("billing"))
   if (authorization !== undefined) {
     const compatible = try compatibleResponse
     if (compatible !== undefined) return compatible

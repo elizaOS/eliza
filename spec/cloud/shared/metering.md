@@ -1,8 +1,9 @@
 # Metering
 
 Every paid call (chat inference, batch and realtime speech, maps) runs over
-one hold: the cloud reserves money before the call, marks it dispatched before
-the provider is called, and settles it once. This spec owns the `Hold` machine
+one hold: the cloud reserves the funding before the call, marks it dispatched before
+the provider is called, and settles it once. Sponsored inference records the
+provider's cost against the deployment. This spec owns the `Hold` machine
 and the one lost-reply and replay policy; the services keep only validation,
 quote, actual cost and admission order. `billing/funds` and `billing/allowance`
 apply each hold step to the credit balance and the allowance period in the
@@ -28,15 +29,16 @@ The quote is the service's estimate in µUSD, 0 or more. The hold is 150 % of
 it and at least 1 µUSD (develop's `COST_BUFFER` and `MIN_RESERVATION`), but
 never more than the lane offers, so a call the account can pay at its quote
 still runs; a free call on an empty lane holds 0. `billing/entitlements` chooses the
-lane and passes it in; `Refused` means the plan could not be read and funds
-nothing.
+lane and passes it in. Sponsored inference holds its buffered provider quote
+against the deployment with no account funding requirement. `Refused` means
+the plan could not be read and funds nothing.
 
 ```quint
 import types.* from "./types"
-type FundingLane = AllowanceThenCredits | CreditsOnly | Refused
+type FundingLane = AllowanceThenCredits | CreditsOnly | Refused | SponsoredInference
 type HoldPhase = Unfunded | Reserved | Dispatched | Settled | Released
 type ChargeBasis = NotCharged | Measured | Quoted
-type Hold = { phase: HoldPhase, key: HoldKey, quote: Micros, reserved: Micros, fromAllowance: Micros, fromCredits: Micros, charged: Micros, uncollected: Micros, basis: ChargeBasis, since: Millis }
+type Hold = { phase: HoldPhase, key: HoldKey, quote: Micros, reserved: Micros, fromAllowance: Micros, fromCredits: Micros, charged: Micros, uncollected: Micros, basis: ChargeBasis, since: Millis, sponsored: bool }
 type HoldSplit = { allowancePart: Micros, creditPart: Micros }
 pure val holdMarginPercent: int = 150
 pure def minOf(a: int, b: int): int = if (a < b) a else b
@@ -49,11 +51,12 @@ pure def laneOffers(lane: FundingLane, allowanceAvailable: Micros, creditAvailab
 pure def validAmounts(quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool =
   quote >= 0 and allowanceAvailable >= 0 and creditAvailable >= 0
 pure def fundable(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool =
-  validAmounts(quote, allowanceAvailable, creditAvailable) and lane != Refused and laneOffers(lane, allowanceAvailable, creditAvailable) >= quote
+  validAmounts(quote, allowanceAvailable, creditAvailable) and lane != Refused and (lane == SponsoredInference or laneOffers(lane, allowanceAvailable, creditAvailable) >= quote)
 pure def holdAmount(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): Micros =
-  minOf(reservedFor(quote), laneOffers(lane, allowanceAvailable, creditAvailable))
+  if (lane == SponsoredInference) reservedFor(quote) else minOf(reservedFor(quote), laneOffers(lane, allowanceAvailable, creditAvailable))
 pure def lawHoldCoversQuoteWithinOffer(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool =
-  fundable(lane, quote, allowanceAvailable, creditAvailable) implies (holdAmount(lane, quote, allowanceAvailable, creditAvailable) >= quote and holdAmount(lane, quote, allowanceAvailable, creditAvailable) <= laneOffers(lane, allowanceAvailable, creditAvailable))
+  fundable(lane, quote, allowanceAvailable, creditAvailable) implies (holdAmount(lane, quote, allowanceAvailable, creditAvailable) >= quote and
+    (if (lane == SponsoredInference) holdAmount(lane, quote, allowanceAvailable, creditAvailable) == reservedFor(quote) else holdAmount(lane, quote, allowanceAvailable, creditAvailable) <= laneOffers(lane, allowanceAvailable, creditAvailable)))
 pure val quoteValues = Set(0, 1, 2, 3, 4)
 pure val allowanceAvailableValues = Set(0, 2, 5)
 pure val creditAvailableValues = Set(0, 1, 3, 6)
@@ -61,24 +64,31 @@ pure val creditAvailableValues = Set(0, 1, 3, 6)
 
 ### The allowance pays first, credits pay the rest, and neither part exceeds what it offers
 
-`CreditsOnly` never touches the allowance. Settlement charges the allowance
-part first as well (`allowanceCharge`), and only credits pay beyond the hold.
+`CreditsOnly` never touches the allowance. Account-funded settlement charges
+the allowance part first as well (`allowanceCharge`), and only credits pay
+beyond the hold. Sponsored calls hold and charge zero from either account
+source, even when provider usage exceeds the quote.
 
 ```quint
 pure def splitHold(lane: FundingLane, reserved: Micros, allowanceAvailable: Micros): HoldSplit =
   if (lane == AllowanceThenCredits) { allowancePart: minOf(allowanceAvailable, reserved), creditPart: reserved - minOf(allowanceAvailable, reserved) }
+  else if (lane == SponsoredInference) { allowancePart: 0, creditPart: 0 }
   else { allowancePart: 0, creditPart: reserved }
 pure def lawSplitStaysWithinEachSource(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool = {
   val reserved = holdAmount(lane, quote, allowanceAvailable, creditAvailable)
   val parts = splitHold(lane, reserved, allowanceAvailable)
-  fundable(lane, quote, allowanceAvailable, creditAvailable) implies (parts.allowancePart + parts.creditPart == reserved and parts.allowancePart >= 0 and parts.allowancePart <= allowanceAvailable and parts.creditPart >= 0 and parts.creditPart <= creditAvailable)
+  fundable(lane, quote, allowanceAvailable, creditAvailable) implies
+    (parts.allowancePart + parts.creditPart == (if (lane == SponsoredInference) 0 else reserved) and
+      parts.allowancePart >= 0 and parts.allowancePart <= allowanceAvailable and parts.creditPart >= 0 and parts.creditPart <= creditAvailable)
 }
 pure def lawCreditsOnlyAfterTheAllowance(quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool = {
   val parts = splitHold(AllowanceThenCredits, holdAmount(AllowanceThenCredits, quote, allowanceAvailable, creditAvailable), allowanceAvailable)
   (fundable(AllowanceThenCredits, quote, allowanceAvailable, creditAvailable) and parts.creditPart > 0) implies parts.allowancePart == allowanceAvailable
 }
-pure def allowanceCharge(h: Hold): Micros = minOf(h.charged, h.fromAllowance)
-pure def creditCharge(h: Hold): Micros = h.charged - allowanceCharge(h)
+pure def allowanceCharge(h: Hold): Micros = if (h.sponsored) 0 else minOf(h.charged, h.fromAllowance)
+pure def creditCharge(h: Hold): Micros = if (h.sponsored) 0 else h.charged - allowanceCharge(h)
+pure def lawSponsoredHoldsNeverChargeAccountFunds(h: Hold): bool =
+  h.sponsored implies (allowanceCharge(h) == 0 and creditCharge(h) == 0)
 ```
 
 ### A known key answers its hold unchanged, and a fresh key is admitted only when the lane can fund its quote
@@ -99,26 +109,26 @@ pure def admission(h: Hold, sameRequest: bool, lane: FundingLane, quote: Micros,
   else if (lane == Refused or not(validAmounts(quote, allowanceAvailable, creditAvailable))) RefuseHold({ code: ServiceUnavailable })
   else if (fundable(lane, quote, allowanceAvailable, creditAvailable)) AdmitHold
   else RefuseHold({ code: InsufficientCredits })
-pure val initial: Hold = { phase: Unfunded, key: { service: MeteredInference, caller: "", requestId: "", part: WholeRequest }, quote: 0, reserved: 0, fromAllowance: 0, fromCredits: 0, charged: 0, uncollected: 0, basis: NotCharged, since: 0 }
+pure val initial: Hold = { phase: Unfunded, key: { service: MeteredInference, caller: "", requestId: "", part: WholeRequest }, quote: 0, reserved: 0, fromAllowance: 0, fromCredits: 0, charged: 0, uncollected: 0, basis: NotCharged, since: 0, sponsored: false }
 pure def holdKeyOf(h: Hold): HoldKey = { service: h.key.service, caller: h.key.caller, requestId: h.key.requestId, part: h.key.part }
-pure def canReserve(h: Hold, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): bool =
-  h.phase == Unfunded and now >= 0 and fundable(lane, quote, allowanceAvailable, creditAvailable)
+pure def canReserve(h: Hold, key: HoldKey, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): bool =
+  h.phase == Unfunded and now >= 0 and (lane != SponsoredInference or key.service == MeteredInference) and fundable(lane, quote, allowanceAvailable, creditAvailable)
 pure def reserve(h: Hold, key: HoldKey, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): Hold = {
   val reserved = holdAmount(lane, quote, allowanceAvailable, creditAvailable)
   val parts = splitHold(lane, reserved, allowanceAvailable)
-  { ...h, phase: Reserved, key: { service: key.service, caller: key.caller, requestId: key.requestId, part: key.part }, quote: quote, reserved: reserved, fromAllowance: parts.allowancePart, fromCredits: parts.creditPart, since: now }
+  { ...h, phase: Reserved, key: { service: key.service, caller: key.caller, requestId: key.requestId, part: key.part }, quote: quote, reserved: reserved, fromAllowance: parts.allowancePart, fromCredits: parts.creditPart, since: now, sponsored: lane == SponsoredInference }
 }
 pure val keyValues = Set({ service: MeteredInference, caller: "c1", requestId: "r1", part: WholeRequest }, { service: MeteredSpeech, caller: "c1", requestId: "s1", part: SpeechWindow({ direction: Transcribe, window: 1 }) })
 pure val nowValues = Set(0, 900000, 8100000)
 pure def stepTermsFixedOnceReserved(before: Hold, after: Hold): bool =
-  before.phase != Unfunded implies (after.key == before.key and after.quote == before.quote and after.reserved == before.reserved and after.fromAllowance == before.fromAllowance and after.fromCredits == before.fromCredits)
+  before.phase != Unfunded implies (after.key == before.key and after.quote == before.quote and after.reserved == before.reserved and after.fromAllowance == before.fromAllowance and after.fromCredits == before.fromCredits and after.sponsored == before.sponsored)
 ```
 
-### A reserved hold is split exactly into its allowance and credit parts and covers its quote
+### A reserved hold covers its quote and splits only account-funded holds between allowance and credits
 
 ```quint
 pure def alwaysHoldSplitsExactly(h: Hold): bool =
-  h.phase != Unfunded implies (h.quote >= 0 and h.reserved >= h.quote and h.fromAllowance >= 0 and h.fromCredits >= 0 and h.fromAllowance + h.fromCredits == h.reserved and h.since >= 0)
+  h.phase != Unfunded implies (h.quote >= 0 and h.reserved >= h.quote and h.fromAllowance >= 0 and h.fromCredits >= 0 and h.fromAllowance + h.fromCredits == (if (h.sponsored) 0 else h.reserved) and h.since >= 0 and (h.sponsored implies h.key.service == MeteredInference))
 pure def sometimesAllowanceAndCreditsShareAHold(h: Hold): bool = h.fromAllowance > 0 and h.fromCredits > 0
 ```
 
@@ -147,11 +157,13 @@ pure def sometimesDispatched(h: Hold): bool = h.phase == Dispatched
 `creditFree` is the credit balance not held by any hold at settlement. A
 dispatched call is never released: a refusal or terminal error after dispatch
 settles as a known outcome at its observed price, 0 when nothing was served.
+For sponsored inference, the deployment pays the observed price in full,
+including any overage.
 
 ```quint
 pure def canSettleKnown(h: Hold, actual: Micros, creditFree: Micros): bool = h.phase == Dispatched and actual >= 0 and creditFree >= 0
 pure def settleKnown(h: Hold, actual: Micros, creditFree: Micros): Hold = {
-  val charged = minOf(actual, h.reserved + creditFree)
+  val charged = if (h.sponsored) actual else minOf(actual, h.reserved + creditFree)
   { ...h, phase: Settled, basis: Measured, charged: charged, uncollected: actual - charged }
 }
 pure val actualValues = Set(0, 1, 3, 9)

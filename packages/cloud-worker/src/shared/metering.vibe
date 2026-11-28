@@ -1,5 +1,5 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/shared/metering.md, "A known key answers its hold unchanged, and a fresh key is admitted only when the lane can fund its quote"; spec/cloud/billing/allowance.md, "Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute"
-import { type Rejected, admission, apply, decodeState, initial, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
+import { type NotAState, type Rejected, admission, apply, decodeState, initial, allowanceCharge, creditCharge, reservedTimeout, dispatchedTimeout, type Event, type Hold } from "../../gen/cloud__shared__metering.effect.vibe"
 import { NotAState as NotAPeriod, type Rejected as PeriodRejected, apply as applyPeriod, decodeState as decodePeriod, initial as initialPeriod, type ClawbackCause, type Event as PeriodEvent, type Period, type PeriodPhase } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { creditAvailable, readFunds, stepFunds, type FundsFailure } from "../billing/funds.vibe"
@@ -12,7 +12,12 @@ import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/conne
 
 export type { Hold, HoldKey, WireAllowanceState }
 
-export const holdRows = machineRows<Hold, Event, Rejected, unknown>("holds", { initial, decodeState, apply })
+effect function decodeHold(input: unknown): Hold!NotAState {
+  const hold = typeof input === "object" && input !== null && !("sponsored" in input) ? { ...input, sponsored: false } : input
+  return try decodeState(hold)
+}
+
+export const holdRows = machineRows<Hold, Event, Rejected, NotAState>("holds", { initial, decodeState: decodeHold, apply })
 type StoredAllowancePhase =
   | { readonly phase: Exclude<PeriodPhase, "PeriodDisputed" | "PeriodRefunded">; readonly clawbackCause: "NoClawback" }
   | { readonly phase: "PeriodClawedBack"; readonly clawbackCause: Exclude<ClawbackCause, "NoClawback"> }
@@ -153,15 +158,15 @@ export effect function reserveIn(tx: Tx, owner: HoldOwner, requested: HoldKey, q
   try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [owner.organizationId])
   const prior = try priorHold(tx, owner, key, rendered, now)
   const lane = try laneFor(tx, owner.organizationId, key.service, now)
-  const funds = try readFunds(tx, owner.organizationId)
+  const credit = lane === "SponsoredInference" ? 0 : creditAvailable(try readFunds(tx, owner.organizationId))
   const open = lane === "AllowanceThenCredits" ? try openPeriod(tx, owner.organizationId, now) : undefined
   const allowanceAvailable = open?.period.available ?? 0
   const sameRequest = digest === undefined || prior?.digest === undefined || prior.digest === digest
-  const admitted = admission(prior?.hold ?? initial, sameRequest, lane, quote, allowanceAvailable, creditAvailable(funds))
+  const admitted = admission(prior?.hold ?? initial, sameRequest, lane, quote, allowanceAvailable, credit)
   if (admitted.tag === "RefuseHold") throw refused(admitted.code, "NoReason", admitted.code === "ServiceUnavailable" ? now + 5000 : 0)
   if (admitted.tag === "ReplayHold" && prior !== undefined) return { key: prior.key, hold: prior.hold, replayed: true }
   const row: HoldRow = { organizationId: owner.organizationId, userId: owner.userId, service: serviceName(key.service), period: open?.key, createdAt: now }
-  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: creditAvailable(funds), now }, (reserved) => ({ ...columns(row, now)(reserved), request_digest: digest ?? null }))
+  const { state: hold } = try stepRow(tx, holdRows, rendered, { type: "reserve", key, quote, lane, allowanceAvailable, creditAvailable: credit, now }, (reserved) => ({ ...columns(row, now)(reserved), request_digest: digest ?? null }))
   if (hold.fromAllowance > 0 && open !== undefined) try stepPeriod(tx, open.key, { type: "reserveHold", amount: hold.fromAllowance, now }, now)
   if (hold.fromCredits > 0) try stepFunds(tx, owner.organizationId, { type: "holdCredits", fromCredits: hold.fromCredits }, now, rendered)
   return { key: rendered, hold, replayed: false, lane }
@@ -218,17 +223,19 @@ effect function settleIn(tx: Tx, key: string, settlement: Settlement, now: numbe
   const row = try holdRow(tx, key)
   const before = (try loadRow(tx, holdRows, key)).state
   if (before.phase === "Settled" || before.phase === "Released") return before
-  const funds = try readFunds(tx, row.organizationId)
-  const { state: hold } = try stepRow(tx, holdRows, key, settleEvent(settlement, creditAvailable(funds)), columns(row, now))
+  const credit = before.sponsored ? 0 : creditAvailable(try readFunds(tx, row.organizationId))
+  const { state: hold } = try stepRow(tx, holdRows, key, settleEvent(settlement, credit), columns(row, now))
+  const fromAllowance = allowanceCharge(hold)
+  const fromCredits = creditCharge(hold)
   if (row.period !== undefined && hold.fromAllowance > 0) {
-    try stepPeriod(tx, row.period, { type: "settleHold", held: hold.fromAllowance, used: allowanceCharge(hold), now }, now)
+    try stepPeriod(tx, row.period, { type: "settleHold", held: hold.fromAllowance, used: fromAllowance, now }, now)
   }
-  if (hold.fromCredits > 0 || creditCharge(hold) > 0) {
-    try stepFunds(tx, row.organizationId, { type: "settleCredits", fromCredits: hold.fromCredits, charged: creditCharge(hold) }, now, key)
+  if (hold.fromCredits > 0 || fromCredits > 0) {
+    try stepFunds(tx, row.organizationId, { type: "settleCredits", fromCredits: hold.fromCredits, charged: fromCredits }, now, key)
   }
   try tx.query(
-    "INSERT INTO usage_records (hold_key, organization_id, user_id, service, quote, charged, from_allowance, from_credits, uncollected, outcome, settled_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (hold_key) DO NOTHING",
-    [key, row.organizationId, row.userId, row.service, hold.quote, hold.charged, allowanceCharge(hold), creditCharge(hold), hold.uncollected, settlement.kind === "release" ? "released" : settlement.kind, now]
+    "INSERT INTO usage_records (hold_key, organization_id, user_id, service, quote, charged, from_allowance, from_credits, uncollected, outcome, settled_at, sponsored_cost) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (hold_key) DO NOTHING",
+    [key, row.organizationId, row.userId, row.service, hold.quote, fromAllowance + fromCredits, fromAllowance, fromCredits, hold.uncollected, settlement.kind === "release" ? "released" : settlement.kind, now, hold.sponsored ? hold.charged : null]
   )
   if (hold.uncollected > 0) {
     try annotateLogs(logWarning("a settled call charged more than the account held"), { holdKey: key, uncollected: hold.uncollected })

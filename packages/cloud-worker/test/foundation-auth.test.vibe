@@ -20,6 +20,7 @@ import { tokenDigest } from "../src/shared/sealing.vibe"
 import { refused, Refused } from "../src/http/refusal.vibe"
 import { addCredits } from "../src/billing/funds.vibe"
 import { operate } from "../src/operator/admin.vibe"
+import { landAccount } from "../src/identity/accounts.vibe"
 import { redeemResultFromResponse, snapshotFromResponse } from "@elizaos/cloud"
 import { admitWindow, openSocket, retire, settleWindow, sessionSpeechRoutes } from "../src/services/speech-session.vibe"
 import { manualClock } from "./support/clock.ts"
@@ -140,7 +141,57 @@ function outcome(answer: { readonly status: number; readonly body: unknown }): s
 }
 
 describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
-  it.live("Mint, redeem and retire a membership code (spec/cloud/billing/grantCodes.md, \"Story: Redeem a membership code once\"; spec/cloud/billing/grantCodes.md, \"Story: Stop a code or a grant\")", () => scoped(effect {
+  it.live("Assign before verified sign-in and activate only the intended account (spec/cloud/operator.md, \"Assignment schedules a sponsored offer even before the intended account exists\"; spec/cloud/billing/grantCodes.md, \"A sponsored inference offer is lifetime Pro for one account with a verified Gmail address and no open paid plan\")", () => scoped(effect {
+    const now = try Clock.currentTimeMillis
+    const cloud = try testHttp(billing.routes)
+    const active = { live: true, epoch: 0, authAt: now, accessExpiresAt: now + minuteMs, refreshExpiresAt: now + 10 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+    const exact = "alpha-assigned@gmail.com"
+    const alternate = "alpha-other@gmail.com"
+    const assignment = ["grants", "assign", "--email", exact.toUpperCase(), "--family", "sponsored-pilot"]
+    const first = try cloud.inside(operate(assignment))
+    const repeated = try cloud.inside(operate(assignment))
+    const alternateOwner = try cloud.store.transaction((tx) => landAccount(tx, { method: "EmailSignIn", subject: alternate }, alternate, now))
+    const alternateToken = sessionToken("a")
+    try session(cloud, alternateOwner.userId, alternateToken, active, now)
+    const wrong = try cloud.call("/api/v1/billing/limits", alternateToken)
+    const wrongPlan = try snapshotFromResponse(wrong.body)
+    const exactOwner = try cloud.store.transaction((tx) => landAccount(tx, { method: "GoogleSignIn", subject: "verified-google-subject" }, exact, now))
+    const exactToken = sessionToken("e")
+    try session(cloud, exactOwner.userId, exactToken, active, now)
+    const live = try cloud.call("/api/v1/billing/limits", exactToken)
+    const snapshot = try snapshotFromResponse(live.body)
+    const existing = try cloud.inside(operate(assignment))
+    const grantId = snapshot.grant?.id ?? ""
+    const held = try sql(cloud, "SELECT key, sponsored_inference, recipient_digest, state FROM grant_codes WHERE family = 'sponsored-pilot'", [])
+    try check(() => {
+      assert.deepStrictEqual([first, repeated], [
+        { kind: "done", lines: ["assignment pending verified sign-in"] },
+        { kind: "done", lines: ["assignment pending verified sign-in"] },
+      ])
+      assert.deepStrictEqual([wrong.status, wrongPlan.plan.source, live.status, snapshot.plan, snapshot.sponsoredInference], [
+        200, "free", 200, { key: "pro_monthly", source: "grant", effectiveUntil: null }, true,
+      ])
+      assert.isNotEmpty(grantId)
+      assert.deepStrictEqual(existing, { kind: "done", lines: [`active grant ${grantId}`] })
+      assert.lengthOf(held, 1)
+      assert.isTrue(held[0]?.sponsored_inference)
+      assert.match(String(held[0]?.recipient_digest), /^[0-9a-f]{64}$/)
+      assert.notInclude(JSON.stringify(held), exact)
+    })
+    try cloud.inside(operate(["grants", "revoke", "--grant-id", grantId, "--reason", "End the pilot test"]))
+    const retired = try cloud.inside(operate(assignment))
+    const after = try cloud.call("/api/v1/billing/limits", exactToken)
+    const afterPlan = try snapshotFromResponse(after.body)
+    try check(() => assert.deepStrictEqual([retired, after.status, afterPlan.plan.source], [{ kind: "done", lines: ["assignment retired"] }, 200, "free"]))
+    const immediate = try cloud.inside(operate(["grants", "assign", "--email", alternate, "--family", "sponsored-pilot"]))
+    const alternateLive = try cloud.call("/api/v1/billing/limits", alternateToken)
+    const alternatePlan = try snapshotFromResponse(alternateLive.body)
+    try check(() => assert.deepStrictEqual([immediate, alternateLive.status, alternatePlan.sponsoredInference], [
+      { kind: "done", lines: [`active grant ${alternatePlan.grant?.id}`] }, 200, true,
+    ]))
+  }))
+
+  it.live("Mint, redeem and retire a membership code (spec/cloud/billing/grantCodes.md, \"Story: Redeem a membership code once\"; spec/cloud/billing/grantCodes.md, \"A redeem accepts the idempotency header or a legacy body key and rejects conflicting values\"; spec/cloud/billing/grantCodes.md, \"Story: Stop a code or a grant\")", () => scoped(effect {
     const now = try Clock.currentTimeMillis
     const stripe = try sync(() => createStripeFake({ now: () => now }))
     const cloud = try testHttp(billing.routes, stripe.handler)
@@ -171,13 +222,19 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
       headers: { "idempotency-key": idempotencyKey }, json: { code: offered, idempotencyKey }
     })
     const formatted = `\u00a0${code.slice(0, 8).toLowerCase()}-${code.slice(8).toLowerCase()}\u00a0`
-    const issued = try redeem(formatted, "member-request")
+    const mismatched = try cloud.call("/api/v1/subscription/redeem", otherSession, {
+      headers: { "idempotency-key": "member-conflicting-key" }, json: { code: formatted, idempotencyKey: "member-request" }
+    })
+    try check(() => assert.strictEqual(mismatched.status, 400))
+    const issued = try cloud.call("/api/v1/subscription/redeem", token, {
+      headers: { "idempotency-key": "member-request" }, json: { code: formatted }
+    })
     const original = try redeemResultFromResponse(issued.body, now)
     if (original.kind !== "redeemed") {
       try check(() => assert.fail("a lifetime grant should be active immediately"))
       return
     }
-    const peerIssued = try redeem(formatted, "peer-request", peerToken)
+    const peerIssued = try cloud.call("/api/v1/subscription/redeem", peerToken, { json: { code: formatted, idempotencyKey: "peer-request" } })
     const peer = try redeemResultFromResponse(peerIssued.body, now)
     if (peer.kind !== "redeemed") {
       try check(() => assert.fail("the second organization should receive its own grant"))
