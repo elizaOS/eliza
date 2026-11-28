@@ -88,7 +88,10 @@ pure def alwaysWalletPreviewNeverDispatches(s: WalletRun): bool =
 
 Persist a unique signing reservation for the approved operation before
 signing. Persist its signed transaction identity before broadcast. Another
-request with the same reservation may only observe it. An unsigned or
+request with the same reservation may only observe it. On Android and
+desktop, each complete journal record is published atomically without
+replacing an existing record. Older file-format reservations and signed
+transaction identities retain the same authority after an upgrade. An unsigned or
 interrupted reservation does not authorize a new signing attempt. Chain
 receipt settlement requires the exact original operation on the expected
 chain and canonical finality. On EVM, the receipt block must be canonical
