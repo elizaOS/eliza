@@ -10,7 +10,7 @@ The source is [turn-controller.ts](https://github.com/elizaOS/eliza/blob/72fed7e
 
 ### Independent turns retain controller identity until their own cleanup
 
-Active room order follows Map insertion order. A completed or rejected function still owns its registration until its terminal telemetry dispatch returns. Cleanup removes only that invocation; a newer turn in the same room remains. A fulfilled function emits completed even if its signal was aborted. A rejected function preserves the original error and selects aborted-cleanup only when its signal was aborted. A turn started while the registry is closed starts aborted with the closing reason. Turns start while the stack is empty or from the top callback; they return and clean up only when the synchronous stack is empty.
+Active room order follows Map insertion order. A completed or rejected function still owns its registration until its terminal telemetry dispatch returns. Cleanup removes only that invocation, and a newer turn in the same room remains. A fulfilled function emits completed even if its signal was aborted. A rejected function preserves the original error and selects aborted-cleanup only when its signal was aborted. A turn started while the registry is closed starts aborted with the closing reason. Turns start while the stack is empty or from the top callback. A turn returns on an empty stack and cleans up when its cleanup frame is the only frame left.
 
 ```quint
 type TurnPhase = RunningTurn | TurnReturned | TurnDetached
@@ -295,9 +295,9 @@ pure def sometimesNestedListenerEmission(s: Turns): bool = s.frames.select(f => 
 
 Turn identities, notice identities and room-array groups are each issued
 once, and every turn keeps the room array it started in after it detaches.
-A room has at most one live array. Every frame on the stack belongs to an
-unfinished notice, a returned turn awaiting cleanup, or a scan within its
-array.
+A room has at most one live array. A stack frame retains its own unfinished
+notice, returned turn awaiting cleanup, global abort snapshot, captured room
+scan or room-abort return.
 
 Without these facts the first notice published into an empty history
 could take identity zero, which means no notice, and a callback could
@@ -313,7 +313,13 @@ room array cannot change a signal.
 pure def alwaysTurnIdentity(s: Turns): bool = s.controllers.turns.every(t => t.id > 0 and s.controllers.turns.select(other => other.id == t.id).length() == 1)
 pure def alwaysNoticesUnique(s: Turns): bool = s.controllers.nextNotice > 0 and s.controllers.notices.every(n => n.id > 0 and n.id < s.controllers.nextNotice and s.controllers.notices.select(other => other.id == n.id).length() == 1 and n.delivered.every(generation => generation <= n.cursor))
 pure def alwaysGroupAllocatorValid(s: Turns): bool = s.nextGroup > 0 and s.groups.every(g => g.id > 0 and g.id < s.nextGroup and s.groups.select(other => other.id == g.id).length() == 1 and (g.active implies s.groups.select(other => other.active and other.room == g.room).length() == 1))
-pure def alwaysTurnsRetainGroups(s: Turns): bool = s.turnGroups.every(g => s.turnGroups.select(other => other.turnId == g.turnId).length() == 1 and s.controllers.turns.some(t => t.id == g.turnId and s.groups.some(roomGroup => roomGroup.id == g.group and roomGroup.room == t.room))) and s.controllers.turns.every(t => s.turnGroups.some(g => g.turnId == t.id) and s.groups.some(g => g.id == groupOf(s, t.id) and g.room == t.room))
+pure def groupMappingRetainsTurn(s: Turns, mapping: TurnGroup): bool =
+  s.turnGroups.select(other => other.turnId == mapping.turnId).length() == 1 and
+  s.controllers.turns.some(t => t.id == mapping.turnId and s.groups.some(g => g.id == mapping.group and g.room == t.room))
+pure def turnRetainsGroup(s: Turns, t: TurnEntry): bool =
+  s.turnGroups.some(g => g.turnId == t.id) and s.groups.some(g => g.id == groupOf(s, t.id) and g.room == t.room)
+pure def alwaysTurnsRetainGroups(s: Turns): bool =
+  s.turnGroups.every(g => groupMappingRetainsTurn(s, g)) and s.controllers.turns.every(t => turnRetainsGroup(s, t))
 pure def alwaysLiveGroupOwnsTurns(s: Turns): bool = s.groups.every(g => g.active iff s.controllers.turns.some(t => t.phase != TurnDetached and groupOf(s, t.id) == g.id))
 pure def noticeFrameMatches(f: TurnFrame, noticeId: int): bool = match f { | EventFrameKind(frame) => frame.noticeId == noticeId | _ => false }
 pure def cleanupFrameMatches(f: TurnFrame, turnId: int): bool = match f { | CleanupFrameKind(frame) => frame.turnId == turnId | _ => false }

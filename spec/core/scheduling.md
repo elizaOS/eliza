@@ -5,8 +5,8 @@ Task scheduling and retirement for one task, one service registration and its cu
 ## Story: Execute due work within its owning agent
 
 > As a host, I want due work run only within its owning agent, whether the
-> process scheduler or I drive it, so that no task runs twice or for another
-> agent.
+> process scheduler or I drive it, so that a task cannot run for another agent
+> or overlap an already claimed exclusive execution.
 
 The scheduler queries the requested agent set, verifies generation and registration identity after awaits, and dispatches each task only to its owning agent. One-shots and blocking repeats have exclusive execution across timer, daemon, runDueTasks, executeTaskById and resumeTask paths.
 

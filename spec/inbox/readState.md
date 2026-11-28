@@ -4,8 +4,8 @@ Marking a loaded message read or unread goes through the reviewed
 [managed operation](../cloud/services/google/mailOperations.md) of its
 grant: the server reviews the exact message at the history it was loaded
 at, and one dispatch follows. The label change is idempotent, so it does
-not take the durable review slot of [drafts](./drafts.md), but it is still
-dispatched exactly once. This machine is one mailbox view's record of the
+not take the durable review slot of [drafts](./drafts.md). Each accepted
+request dispatches at most once. This machine is one mailbox view's record of the
 changes it has in flight and the ones whose outcome it never saw.
 
 ## Story: Change a message's read state once, and never repeat a change I did not ask for

@@ -109,10 +109,10 @@ pure def lawAnUnreadableRowKeepsWhatWasRecovered(recovered: int, unreadable: int
 
 ### A run's stored record leaves out U+0000, which the store cannot hold
 
-The store keeps a run as JSON that cannot hold the character U+0000. Text a run
-carries can still contain one: a model's reply, a step's value, an approval's
-summary. Every string in the stored record is kept without that character, so
-the run is stored and finishes as it would have without it.
+The JSON document store rejects U+0000 in decoded strings. A run can
+receive the character in text such as a model's reply, a step's value, an approval's
+summary. The adapter strips it from string values before storing the run, leaving
+its remaining text available.
 If an object key contains U+0000, the store keeps the document as escaped
 JSON text and restores the exact key when it reads the record. A key that
 contains U+0000 stays distinct from a key that already omits it.

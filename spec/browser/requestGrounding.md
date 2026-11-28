@@ -1,13 +1,14 @@
 # Browser request grounding
 
-The browser opens a destination only when the current message grounds it.
-The device's [browser tab document](../os/browser/tabHost/reading.md)
-owns which visits commit; this spec owns admission from the current message.
+The browser grounds an open in the current message and its carried page.
+A destination the model proposes for an unmentioned host can also go to
+review. The device's [browser tab document](../os/browser/tabHost/document.md)
+owns which visits commit.
 
 ## Story: Open a destination stated in this message
 
-> As the person, I want the browser to open only a destination I wrote in this
-> message, and never one I said not to open.
+> As the person, I want the browser to open a destination directly only
+> when my whole message asks for it, and never open one I said to avoid.
 
 ### A negated destination cannot be authorized by a proposal
 

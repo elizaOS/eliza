@@ -157,9 +157,10 @@ pure def stepTheEpochOnlyAdvances(before: VoiceSession, via: str, after: VoiceSe
 Once the final transcript is accepted, the profile's short gap (300 ms by
 default) starts one query
 for the utterance's text with whitespace collapsed, never audio, through
-the local inference route; text of no units or over 4,096 is not sent,
-never truncated. The query's 600 ms deadline ends before the long gap.
-Complete submits at once; incomplete, unavailable, a reply of another
+the local inference route. The scorer receives only text of 1 to 4,096
+units, with no truncation. A query has a 600 ms deadline. A complete
+answer before the long gap submits at once. An incomplete or unavailable
+answer, a reply of another
 shape, a failed request and a missed deadline wait. Silence for the
 profile's long gap (1,200 ms by default), counted from the speech end, submits whatever the query said, and a
 later answer is refused. A half-duplex submission starts closing the
@@ -204,9 +205,9 @@ pure def sometimesSubmittedByTheLongGap(s: VoiceSession): bool = s.cause == Long
 
 ### A turn is sent once, and a half-duplex turn only after the capture confirmed its close
 
-The turn goes out as a `VOICE_DM` message with the screen's
-`metadata.voiceUi`, so it holds the whole recording; the request is never
-resent, not even when a barge-in or Stop aborts it. What a barge-in takes
+The turn goes out as a `VOICE_DM` message carrying the accepted transcript
+and the screen's `metadata.voiceUi` when supplied. The request is never
+resent, even when a barge-in or Stop aborts it. What a barge-in takes
 back before its reply started goes out again only inside the next turn
 (below). A close that fails ends the session and sends nothing.
 
@@ -377,9 +378,9 @@ barge-in is confirmed while that turn still awaits its reply, the person
 was not finished: the aborted turn's text is carried into the utterance in
 progress, so the next turn sends the carried text joined with what was
 said since, and names the aborted turn's `clientMessageId` in
-`supersedes`, so the host replaces the aborted message with the joined
-one. The carried text is sent even when the resumed speech turns out to be
-filler. Nothing of the aborted request is spoken. A reply that has started
+the message port's `supersedes` field. The carried text is sent even when
+the resumed speech turns out to be filler. Nothing of the aborted request
+is spoken. A reply that has started
 playing is cut and reported instead, and its speech becomes a turn of its
 own; a Stop or a failed capture carries nothing.
 
@@ -419,9 +420,9 @@ pure val eval_witness_sometimesATakenBackTurnGoesOutAgain = (
 A reply with no speech segments ends the turn at once; each segment plays
 once, in order. A failed turn ends it. A barge-in while the reply plays,
 a Stop while it plays when the profile reports on Stop, or a segment that fails after some played, reserves exactly one
-report for that reply: the text of the played segments, or nothing heard
-when none had (a failure before any played reports nothing and keeps the
-stored reply whole). The report is keyed by the reply and kept until it
+report for that reply with the text of the played segments or a
+`nothingHeard` marker. A playback failure before any segment played
+reserves no report and leaves the stored reply whole. The report is keyed by the reply and kept until it
 settles. A half-duplex session then reopens the microphone.
 
 ```quint

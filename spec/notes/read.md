@@ -12,7 +12,7 @@ and [Trash](./trash.md) owns deletion.
 
 ### Local title and chronology selection is distinct from sharing
 
-`notes.query.v1` accepts an exact title request, with nonblank text up
+`notes.query.v1` accepts a title-search request, with nonblank text up
 to 256 UTF-16 units and no NUL, or latest created or updated. Candidate
 selection is local. Title compares NFKC-folded lowercase strings using
 substring matching. Latest compares exact date evidence. A finite
@@ -21,7 +21,8 @@ is accepted. Updated uses modifiedAt then updatedAt. If several notes
 exist and a date is missing, all remain candidates and chronology is
 unverified. If latest timestamps tie, only the tied latest candidates
 remain, with the same unverified basis. One saved note has only-note
-basis for a latest query. Even a sole candidate needs review.
+basis for a latest query. Even a sole candidate needs review. The sharing machine receives the
+identity selected from those local candidates, or zero for no match.
 
 The selected-read target binds collection source, source revision,
 note and note revision. The client rechecks its snapshot and the exact

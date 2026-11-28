@@ -171,6 +171,9 @@ pure def sometimesAdoptedStart(s: Invocation): bool = adoptedStart(s.answer)
 
 ### A take while locked or out of view only opens the assistant
 
+The native bridge passes either condition to the take as its
+`locked` input. The renderer checks visibility again before starting voice.
+
 ```quint
 pure val ageValues = Set(0, 4500, 5001, 15001)
 pure val arrivalValues = Set(1, 2)

@@ -6,8 +6,8 @@ Sources are `runtime/state-composition.ts`, `context-gates.ts`, `context-hash.ts
 
 > As a user, I want each prompt the agent sends to hold the providers I am
 > allowed to see, in their declared order, to reuse its cache when nothing
-> changed, and never to exceed the model's input budget, so that answers are
-> grounded, private and not silently cut short.
+> changed, and to preserve the full input for the provider's budget check,
+> so that answers are grounded, private and keep their complete context.
 
 ### Providers compose in their declared order
 
@@ -57,24 +57,31 @@ pure def sometimesCacheReused(s: Composition): bool = s.cacheReused and s.segmen
 pure def sometimesContextChanged(s: Composition): bool = s.compositions > 1 and not(s.cacheReused)
 ```
 
-### A request never exceeds its input budget
+### Dispatch records the estimate and preserves the complete request
 
-The dispatch threshold is the model's context window less its output reserve, and at least one token. Only the registered window or an explicit caller window sets it. A composed request whose estimated input exceeds the threshold is refused as over budget; it is never truncated to fit, and its segments stay as composed.
+The diagnostic threshold is the resolved context window less its output
+reserve, with a minimum of one token. The estimate describes the complete
+composed segments and may exceed that threshold independently of dispatch.
+The provider's [prepared request guard](./preparedRequests.md) owns admission
+from an exact token count when both limits were supplied. This model receives
+the provider's budget decision and retains the composed segments in either
+outcome.
 
 ```quint
 pure val contextWindowValues = Set(1, 4, 8)
 pure val reserveValues = Set(0, 2)
 pure def estimate(segments: List[ProviderDecl]): int = segments.foldl(0, (total, p) => total + p.tokens)
 pure def dispatchThreshold(contextWindow: int, reserve: int): int = if (contextWindow - reserve < 1) 1 else contextWindow - reserve
-pure def canDispatch(s: Composition, contextWindow: int, reserve: int): bool = s.compositions > 0 and s.outcome == NotDispatched and contextWindow >= 1 and reserve >= 0
-pure def dispatch(s: Composition, contextWindow: int, reserve: int): Composition = {
+pure def canDispatch(s: Composition, contextWindow: int, reserve: int, providerWithinBudget: bool): bool = s.compositions > 0 and s.outcome == NotDispatched and contextWindow >= 1 and reserve >= 0
+pure def dispatch(s: Composition, contextWindow: int, reserve: int, providerWithinBudget: bool): Composition = {
   val threshold = dispatchThreshold(contextWindow, reserve)
   val estimated = estimate(s.segments)
-  { ...s, threshold: threshold, estimated: estimated, outcome: if (estimated <= threshold) Dispatched else RefusedOverBudget }
+  { ...s, threshold: threshold, estimated: estimated, outcome: if (providerWithinBudget) Dispatched else RefusedOverBudget }
 }
-pure def alwaysDispatchWithinBudget(s: Composition): bool =
-  (s.outcome == Dispatched implies (s.estimated <= s.threshold and s.estimated == estimate(s.segments))) and (s.outcome == RefusedOverBudget implies s.estimated > s.threshold)
+pure def alwaysDispatchDiagnosticsDescribeTheSegments(s: Composition): bool =
+  s.outcome != NotDispatched implies s.threshold >= 1 and s.estimated == estimate(s.segments)
 pure def stepDispatchNeverTruncates(before: Composition, via: str, after: Composition): bool = via == "dispatch" implies after.segments == before.segments
 pure def sometimesDispatched(s: Composition): bool = s.outcome == Dispatched and s.segments.length() > 1
-pure def sometimesRefusedOverBudget(s: Composition): bool = s.outcome == RefusedOverBudget
+pure def sometimesEstimateDoesNotPreventDispatch(s: Composition): bool = s.outcome == Dispatched and s.estimated > s.threshold
+pure def sometimesProviderRefusesWithinEstimate(s: Composition): bool = s.outcome == RefusedOverBudget and s.estimated <= s.threshold
 ```

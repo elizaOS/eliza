@@ -305,10 +305,12 @@ pure val weight_fallback = 8
 pure val weight_fallbackEnded = 8
 ```
 
-### A release is retained as known-good only from an admitted release-keys record with no placeholder, whose target files and image are the bytes it names
+### Known-good retention requires a clean release-keys record and matching signed target-files and vbmeta digests
 
-Retention copies the record, target files and image into a new read-only
-directory, re-hashed before every recovery plan. The plan unlocks the
+Retention checks the target-files archive and the recovery image's root
+`vbmeta.img` against the recorded digests. It copies the record, target
+files and recovery image into a new read-only directory, re-hashed
+before every recovery plan. The plan unlocks the
 bootloader and erases user data, so the shell prints it and never runs it.
 
 ```quint

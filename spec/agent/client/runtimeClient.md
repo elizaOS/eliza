@@ -80,9 +80,10 @@ pure def sometimesRefreshWaitsForStartup(c: RuntimeClient): bool = c.gen >= 1 an
 
 ### A request path starts with one slash and not two
 
-Any other path is refused before it is numbered or sent, so a
-protocol-relative path never reaches another host. `request` submits a
-`Plain` request and `stream` a `Stream` one.
+The client also refuses backslashes, spaces and ASCII control characters
+through U+0020 before numbering or sending the request. The HTTP fallback
+checks the resolved origin against its configured origin. `request`
+submits a `Plain` request and `stream` a `Stream` one.
 
 ```quint
 pure def canSubmit(c: RuntimeClient, path: PathShape, delivery: Delivery): bool = path == Rooted
@@ -328,10 +329,11 @@ pure def sometimesRefreshServedAfterStartup(c: RuntimeClient): bool =
 HTTP serves a request only when its probe found no bridge and the host
 configured an HTTP base; with no base the request fails as `NoRoute`. A
 request that waited for a startup goes over the bridge or fails. A sent
-request only settles, or opens as a stream. A bridge probe or call settles by the bridge's own
-contract (one answer or one failure, `Restarted` included); an HTTP call
-fails after `requestTimeoutMs`, and an answer whose body is not JSON fails as
-`TransportFailed` and is not published.
+request only settles or opens as a stream. The request timeout applies to
+probing, a buffered call and opening a stream. A successful buffered HTTP
+answer must have a JSON body or status `204`; invalid JSON fails as
+`TransportFailed`. A non-2xx HTTP answer can still report the refusal
+status when its body is unreadable.
 
 ```quint
 pure def canTransportFailed(c: RuntimeClient, id: int): bool = own(c, id) and (stageIs(c, id, Probing) or sentNow(c, id) or streamingNow(c, id))

@@ -71,12 +71,12 @@ pure def lawUnlockedNeverMeetsALockedImage(minimum: BootState): bool = (minimum 
 pure def lawRedNeverMeetsAnyExpectation(minimum: BootState): bool = minimum != Red implies not(verifiedBootNotWeaker(Red, minimum))
 ```
 
-### First-boot grants are exactly the descriptor's defaults, each granted by default and none fixed
+### First-boot grants include every descriptor default and only reviewed compatibility extras, with no fixed grants
 
 The shell reads the launcher's granted runtime permissions for the user
 with their flags. Each of the descriptor's `defaultPermissions` is granted
-by default; any other grant is one Android makes itself for compatibility,
-carrying that flag; and no grant is fixed (`FIXED`, `SYSTEM_FIXED` or
+by default. An extra grant must carry Android's compatibility flag and
+appear in `compatibilityGrants`. No grant is fixed (`FIXED`, `SYSTEM_FIXED` or
 `POLICY_FIXED`), so the person can revoke each.
 
 ```quint

@@ -10,6 +10,7 @@ import { DatabaseAdapter } from "../src/database.vibe"
 import { parseAndValidateCharacter } from "../src/character-schema.vibe"
 import { actionToJsonSchemaOrThrow } from "../src/actions/action-schema.vibe"
 import { validateToolArgsOrThrow } from "../src/actions/validate-tool-args.vibe"
+import { filterMemoryReadByAccessContext } from "../src/access-control/filter.vibe"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 import { sha1Digest, sha256HexDigest } from "../src/utils/crypto-primitives.vibe"
 
@@ -2448,6 +2449,19 @@ it.live("Remember segmented messages, embeddings, facts and privacy (spec/core/s
     reader: ["j05-other-shared", "j05-reader-private"],
     unsupported: { name: "ElizaError", code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED", message: "Atomic memory publication is unsupported by this adapter" },
   }))
+  const otherWorldId = stringToUuid("j05-other-world")
+  const scopedRecords = [
+    { ...note("j05-local-world", reader, "private", eighths), worldId },
+    { ...note("j05-other-world", reader, "private", eighths), worldId: otherWorldId },
+    note("j05-no-world", reader, "private", eighths),
+  ]
+  const requester = { requesterEntityId: reader, role: "USER" } as const
+  const worldOnly = filterMemoryReadByAccessContext(scopedRecords, { ...requester, worldId }, agentId)
+  const verifiedRooms = filterMemoryReadByAccessContext(scopedRecords, { ...requester, authorizedRoomIds: [roomId] }, agentId)
+  try Effect.try(() => assert.deepStrictEqual(
+    [worldOnly.map((memory) => memory.content.text), verifiedRooms.map((memory) => memory.content.text)],
+    [["j05-local-world"], ["j05-local-world", "j05-other-world", "j05-no-world"]],
+  ))
 
   // spec/core/embeddingService.md, "Initialization has one shared promise and a failed activation can retry"
   const vector = () => identifyEmbeddingVector([...eighths], "test:j05-eighths")
@@ -4152,6 +4166,17 @@ it.live("Connect a connector account through OAuth and send through it (spec/cor
   const teamAccounts = try host(() => manager.listAccounts("slack"))
   const teamByKey = try host(() => manager.getAccount("slack", "team-bot"))
   const teamRows = try host(() => adapter.listConnectorAccounts({ provider: "slack" }))
+  // spec/core/accountValues.md, "Normalization preserves explicit values and applies only documented defaults"
+  try Effect.try(() => adapter.fault("listConnectorAccounts", { resolve: [{ ...teamRows[0], status: "active" }] }))
+  const legacyStatus = (try host(() => facade.listAccounts("slack")))[0]?.status
+  try Effect.try(() => adapter.fault("listConnectorAccounts", { resolve: [{ ...teamRows[0], status: "needs_reauth" }] }))
+  const reauthorizationStatus = (try host(() => facade.listAccounts("slack")))[0]?.status
+  try Effect.try(() => adapter.fault("listConnectorAccounts", { resolve: [{ ...teamRows[0], status: "unknown-status" }] }))
+  const invalidStatus = try Effect.flip(host(() => facade.listAccounts("slack")))
+  try Effect.try(() => assert.deepStrictEqual(
+    [legacyStatus, reauthorizationStatus, (invalidStatus as Error).message],
+    ["connected", "needs_reauth", "The stored connector account has an unknown status"],
+  ))
   const workRow = try host(() => adapter.getOAuthFlowState({ state: work.state, provider: "google" }))
   const staleRow = try host(() => adapter.getOAuthFlowState({ state: staleFallback.state, provider: "outlook", includeConsumed: true, includeExpired: true }))
   // spec/core/oauth/index.md, "Persistence precedes provider initiation and failed cleanup retains both errors"; spec/core/oauth/verifiers.md, "Story: Use a one-time verifier only with its originating flow"
@@ -5163,7 +5188,7 @@ it.live('Two scrub items drained together keep both people\'s pseudonyms, and a 
 }), 60_000)
 
 // spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella's summarize and model class unless it sets its own"
-it.effect('Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella\'s summarize and model class unless it sets its own")', () => effect {
+it.effect(`Promoted subactions preserve summarize and modelClass with override precedence and pin their discriminator (spec/core/actionPlanning.md, "A promoted subaction keeps its umbrella's summarize and model class unless it sets its own")`, () => effect {
   const seen: Record<string, unknown>[] = []
   const parentSummarize = (result: { text?: string } | undefined) => `parent:${result?.text ?? ""}`
   const listSummarize = (result: { text?: string } | undefined) => `list:${result?.text ?? ""}`

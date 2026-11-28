@@ -147,7 +147,7 @@ for (const transport of ["socket", "http"] as const) {
       }))
     }, 120_000)
 
-    it.live('A refused reply write ends without announcing the preview (spec/agent/conversation/replyStream.md, "The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results")', effect () => {
+    it.live('A refused reply write ends without announcing the preview (spec/agent/conversation/replyStream.md, "The early reply is written at most once, and a later done carries the same action results")', effect () => {
       const { cloud, agent, id } = try streamingConversation(transport)
       try Effect.sync(() => {
         delayReplyWrite(agent.agent.runtime, true)

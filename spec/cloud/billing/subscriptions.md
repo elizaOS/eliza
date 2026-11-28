@@ -210,10 +210,12 @@ pure def alwaysPlannedDowngradeIsLower(s: Subscription): bool = { val p = s.plan
 pure def sometimesDowngradeScheduled(s: Subscription): bool = s.planned != NoPlannedChange
 ```
 
-### The revision grows by one with every change to the subscription, and limits change only with a policy change
+### The revision grows by one with each change to the subscription view, and limits change only with a policy change
 
-Commands confirm against the revision. `PolicyChanged` advances the
-organization's policy generation in the same transaction.
+Commands confirm against the revision of the subscription view. Pinning a
+customer and claiming or releasing the command slot leave that revision
+alone. `PolicyChanged` advances the organization's policy generation in the
+same transaction.
 
 ```quint
 type ProviderView = { status: SubscriptionStatus, subscriptionId: str, planKey: PlanKey, periodStart: Millis, periodEnd: Millis, cancelAtPeriodEnd: bool, planned: PlannedChange, dunning: DunningWindow, lastRenewalInvoice: str }

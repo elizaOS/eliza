@@ -11,7 +11,7 @@ type Pin = { readonly digest: string; readonly operation: FilesPathOperation }
 
 export effect function filesReviews(runner: FilesAgentRunner, capabilities: readonly string[]) {
   const pins = try Ref.make(new Map<string, Pin>())
-  const latest = try Ref.make(new Map<string, number>())
+  const latest = try Ref.make(new Map<string, symbol>())
 
   effect function bound(op: FilesAgentOperation): (FilesPathOperation | undefined)!! {
     const shown = filesShownTarget(op) ? (runner.shownPaths(op.shown) catch () => undefined) : undefined
@@ -36,10 +36,10 @@ export effect function filesReviews(runner: FilesAgentRunner, capabilities: read
     const notice = { proposalId, kind: "notice", notice: `${title}: These files are not in Files.` } as const
     const pinned = (try Ref.get(pins)).get(proposalId)
     if (pinned !== undefined) return pinned.digest === digest ? { proposalId, kind: "card", operation: pinned.operation, ...describeFilesOperation(pinned.operation) } : notice
-    const review = ((try Ref.get(latest)).get(proposalId) ?? 0) + 1
+    const review = Symbol(proposalId)
     try Ref.update(latest, (current) => new Map(current).set(proposalId, review))
     const operation = try bound(op)
-    if (((try Ref.get(latest)).get(proposalId) ?? 0) !== review) return notice
+    if ((try Ref.get(latest)).get(proposalId) !== review) return notice
     if (operation === undefined) return notice
     const kept = (try Ref.get(pins)).get(proposalId)
     if (kept !== undefined) return kept.digest === digest ? { proposalId, kind: "card", operation: kept.operation, ...describeFilesOperation(kept.operation) } : notice

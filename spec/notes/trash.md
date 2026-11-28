@@ -107,7 +107,7 @@ pure def lawRestorableSourceGrantSurvives(readBoth: bool, liveReference: bool, t
 > note can be erased for good once I review it or once three days pass,
 > and never while a recording it holds is shared.
 
-### Erase and expiry need the owner's three-day choice, a current review, and no shared recording
+### Manual erase needs a current review; erase and expiry need three-day Trash and no shared recording
 
 When the owner has chosen three-day Trash, a deleted note can be erased
 by the owner after reviewing that exact deletion: the same note
@@ -280,18 +280,18 @@ type LookupIntent = ReadIntent | EditIntent | DeleteIntent
 type LookupOutcome = NoteFound | NoNoteFound | ChoiceUncertain
 type DeletionReply = OffersDeletionReview | SaysNothingWasDeleted | NotADeletion
 pure def deletionIntent(intent: LookupIntent): bool = intent == DeleteIntent
-pure def deleteAfterLookup(intent: LookupIntent, found: LookupOutcome): bool = deletionIntent(intent) and found == NoteFound
+pure def canOfferDeletionAfterLookup(intent: LookupIntent, found: LookupOutcome): bool = deletionIntent(intent) and found == NoteFound
 pure def deletionReply(intent: LookupIntent, found: LookupOutcome): DeletionReply =
   if (not(deletionIntent(intent))) NotADeletion
-  else if (deleteAfterLookup(intent, found)) OffersDeletionReview
+  else if (canOfferDeletionAfterLookup(intent, found)) OffersDeletionReview
   else SaysNothingWasDeleted
-pure def lawOnlyADeleteIntentDeletes(intent: LookupIntent, found: LookupOutcome): bool =
-  deleteAfterLookup(intent, found) implies intent == DeleteIntent
-pure def lawAnUnresolvedLookupDeletesNothing(intent: LookupIntent): bool =
-  not(deleteAfterLookup(intent, NoNoteFound)) and not(deleteAfterLookup(intent, ChoiceUncertain))
-pure def lawAReadOrAnEditDeletesNothing(found: LookupOutcome): bool =
-  not(deleteAfterLookup(ReadIntent, found)) and not(deleteAfterLookup(EditIntent, found)) and
+pure def lawOnlyADeleteIntentOffersDeletion(intent: LookupIntent, found: LookupOutcome): bool =
+  canOfferDeletionAfterLookup(intent, found) implies intent == DeleteIntent
+pure def lawAnUnresolvedLookupOffersNoDeletion(intent: LookupIntent): bool =
+  not(canOfferDeletionAfterLookup(intent, NoNoteFound)) and not(canOfferDeletionAfterLookup(intent, ChoiceUncertain))
+pure def lawAReadOrAnEditOffersNoDeletion(found: LookupOutcome): bool =
+  not(canOfferDeletionAfterLookup(ReadIntent, found)) and not(canOfferDeletionAfterLookup(EditIntent, found)) and
     deletionReply(ReadIntent, found) == NotADeletion and deletionReply(EditIntent, found) == NotADeletion
-pure def lawADeletionAlwaysAnswersWhatItDeleted(found: LookupOutcome): bool =
+pure def lawADeletionIntentAlwaysGetsAnAnswer(found: LookupOutcome): bool =
   deletionReply(DeleteIntent, found) != NotADeletion
 ```

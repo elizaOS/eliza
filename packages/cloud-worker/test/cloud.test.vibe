@@ -2401,6 +2401,70 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
     })
   }))
 
+  it.live('A message read sees revocation and a same-millisecond relink, and survives a refresh of the same grant (spec/cloud/services/google/mailRead.md, "A message read answers the message whole, with inert HTML whole or absent, or is refused as too large")', () => scoped(effect {
+    const start = 1_800_000_000_000
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(start))
+    provide Clock.Clock = clock.clock {
+    const google = try sync(() => googleFakeState())
+    const mailbox = try sync(() => readableMailbox([{
+      id: "private-message", threadId: "private-thread", internalDate: start, labelIds: ["INBOX"],
+      headers: { From: "Ada <ada@example.org>", Subject: "Private plan" }, bodyText: "Private message body",
+    }]))
+    let providerRead = Promise.withResolvers<void>()
+    let releaseProvider = Promise.withResolvers<void>()
+    const cloud = try testCloud({ mount: (fakes) => {
+      const mailProvider = gmailReads(mailbox)
+      fakes.mount("/google/", mountGoogleToken(google))
+      fakes.mount("/google/api/", async (request) => {
+        providerRead.resolve()
+        await releaseProvider.promise
+        return mailProvider(request)
+      })
+    } })
+    const { token, owner } = try sessionMailCaller("mail-generation")(cloud, start)
+    const headers = { authorization: `Bearer ${token}` }
+    const connectionId = "mail-generation"
+    const subject = "subject-mail-generation"
+    const email = "mail-generation@example.com"
+    const scopes = scopeFor("google.gmail.triage")
+    const refreshToken = try sync(() => seedGrant(google, { subject, email, scopes }))
+    const link = (accessToken: string) => cloud.inside(cloud.store.transaction((tx) => storeGrant(tx, {
+      connectionId, owner, subject, email, grantedScopes: scopes, now: start,
+      tokens: { refreshToken, accessToken, expiresAt: start + 6 * 60_000 },
+    })))
+    const heldRead = <A, E, R>(during: A!E!R) => effect {
+      providerRead = Promise.withResolvers<void>()
+      releaseProvider = Promise.withResolvers<void>()
+      const read = try forkChild(cloud.call("/api/v1/eliza/google/gmail/read?messageId=private-message", { headers }))
+      try timeout(promise(() => providerRead.promise), "5 seconds")
+      try during.pipe(Effect.ensuring(sync(() => releaseProvider.resolve())))
+      return try Fiber.join(read)
+    }
+    const marker = () => sql(cloud, "SELECT linked_at, revision FROM google_connections WHERE key = $1", [connectionId])
+
+    try link("first")
+    const replaced = try heldRead(link("second"))
+    const afterReplacement = (try marker())[0]
+    const refreshed = try heldRead(effect {
+      try sync(() => clock.set(start + 2 * 60_000))
+      try cloud.inside(useGrant(owner, connectionId, "google.gmail.triage"))
+    })
+    const afterRefresh = (try marker())[0]
+    const revoked = try heldRead(cloud.call("/api/v1/eliza/google/disconnect", { headers, json: { grantId: connectionId } }))
+
+    try check(() => {
+      assert.deepStrictEqual([errorOf(replaced), errorOf(revoked)], [[409, "stale_revision"], [409, "stale_revision"]])
+      assert.strictEqual(Number(afterReplacement?.linked_at), start + 1)
+      assert.strictEqual(Number(afterRefresh?.linked_at), start + 1)
+      assert.ok(Number(afterRefresh?.revision) > Number(afterReplacement?.revision))
+      assert.strictEqual(google.tokenCalls, 1)
+      assert.strictEqual(refreshed.status, 200)
+      assert.strictEqual((refreshed.body as { readonly bodyText: string }).bodyText, "Private message body")
+    })
+    }
+  }))
+
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     const now = try Clock.currentTimeMillis
@@ -5210,7 +5274,7 @@ it.live('A reviewed link decision stays within the current account and candidate
 }, 30_000)
 
 
-it.live('Use Grace Google consent on the web and tablet, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"; spec/cloud/identity/federatedSignIn.md, "A native connect stores tokens only for the signed-in account\'s own Google identity and only the selected scopes Google granted"; spec/cloud/identity/sessions.md, "A mail or calendar route admits a session or a device lease, and refuses the device key"; spec/cloud/index.md, "An approved connection grants the owner only the selected reads")', () => effect {
+it.live(`Use Grace Google consent on the web and tablet, send once, then disconnect (spec/cloud/deployment.md, "A Worker routes the declared Grace Google mount, then the server table, then Worker-only paths"; spec/cloud/identity/accounts.md, "A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active"; spec/cloud/identity/federatedSignIn.md, "Story: Connect mail and calendar from the same Google sheet"; spec/cloud/identity/federatedSignIn.md, "A native connect stores tokens only for the signed-in account's own Google identity and only the selected scopes Google granted"; spec/cloud/identity/sessions.md, "A mail or calendar route admits a session or a device lease, and refuses the device key"; spec/cloud/index.md, "An approved connection grants the owner only the selected reads")`, () => effect {
   const got = try tryPromise(() => openGraceGoogleConnector())
   try check(() => assert.deepStrictEqual(got, {
     refusals: [403, 403, 401, 401, 404, 404],

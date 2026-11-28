@@ -22,7 +22,8 @@ The speech profile's `realtimeUrl` is the provider's WebSocket base, such as
 
 ### The wire is version 1 with 16 kHz mono PCM16 and bounded frames
 
-Control frames are JSON of at most 8192 UTF-8 bytes. The device sends
+Control frames are JSON. Device-to-relay control frames are at most 8192
+UTF-8 bytes. The device sends
 `{t: "hello", token, errorReasons?: true, extend?: true}` (token 1 to 6144
 chars, no other key; develop's `timings` flag is gone), `{t: "prepare" |
 "finish" | "cancel", id}`, `{t: "tts", id, text, flush?}` (text 1 to 1024
@@ -113,10 +114,10 @@ pure def lawStepKeepsTheRelayWellFormed(r: Relay, input: RelayInput): bool =
   relayWellFormed(relayAtUpgrade) and (relayWellFormed(r) implies relayWellFormed(relayStep(r, input).relay))
 ```
 
-### Every end of a socket is one error and a close code for its cause, except a stop the device asked for, and only funding carries a reason
+### The relay sends one error and a close code when it ends a socket, except for the device's stop
 
-A live device's `stop` closes with 1000 and no error. Any other end sends
-one `error`, then closes: `unauthorized` (4401) for a wrong token, no hello
+A live device's `stop` closes with 1000 and no error. Any other close the
+relay initiates sends one `error`, then closes: `unauthorized` (4401) for a wrong token, no hello
 within 5 s, or a refused credential; `unavailable` (4402) when funding
 refused a window; `closed` (4410) when the session is over (deadline passed
 unrenewed, owner revoked it, account deleting); `protocol` (1008) for a
@@ -307,10 +308,11 @@ pure val inputValues = Set(
 > current credential once, so that nobody can start listening for me by
 > sending a session request alone.
 
-### Consent lasts five minutes, is bound to its account and credential, and is consumed atomically before a session is minted
+### Consent is bound to its account and credential and is consumed atomically before a session is minted
 
-The consent row belongs to the signed-in account and credential. Minting
-checks that binding, its expiry and unused status in the same transaction
+The consent row belongs to the signed-in account and credential. It expires
+after five minutes or with that credential, whichever comes first. Minting
+checks the binding, expiry and unused status in the same transaction
 that inserts the session. A refused or failed mint rolls the consumption
 back. The session model starts unminted; that state never stands for consent.
 The initial window lives at most one minute and never past the credential.

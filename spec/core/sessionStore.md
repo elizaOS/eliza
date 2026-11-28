@@ -4,9 +4,9 @@ The source is `messaging/interaction-sessions.ts`. The store owns the reference-
 
 ## Story: Serialize independent sessions without sharing authority
 
-> As a runtime, I want every session operation applied one at a time and
-> only to the row whose full context it names, so that concurrent sessions
-> never share or steal each other's authority.
+> As a runtime, I want each session transaction applied one at a time, with
+> authority-changing operations checked against the addressed row, so that
+> concurrent sessions keep their own authority.
 
 ### One admitted transaction owns each atomic map operation
 

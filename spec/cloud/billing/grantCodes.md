@@ -13,16 +13,15 @@ is redeemed against `initial`, so an unknown code and an unusable code get
 the same answer. The grants a code issued are kept in its row, one per
 organization.
 
-Sources are develop `packages/cloud/shared/src/db/repositories/subscription-grants.ts`
-(redeem order, normalization, grant end, revocation), the route
-`packages/cloud/api/v1/subscription/redeem/route.ts` and
-`packages/cloud/scripts/admin/mint-subscription-grant-codes.ts`. Downstream,
-one product redeems codes from its plan screen and reads the grant in the
-billing snapshot; another vendors the call and keeps it switched off.
+The redemption route and store operations live in
+`packages/cloud-worker/src/billing/grant-codes.vibe`. The operator commands
+live in `packages/cloud-worker/src/operator/grants.vibe`. Downstream, one
+product redeems codes from its plan screen and reads the grant in the
+billing snapshot, while another vendors the call and keeps it switched off.
 
 The shell redeems in one store transaction. It locks the organization, the
-account, and the code row in that order. It reads `now` from the store's
-clock once the rows are locked and passes in what the store says about the
+account, and the code row in that order. It reads `now` once the rows are
+locked and passes in what the store says about the
 account, idempotency keys and families of its grants, and an open or unknown
 paid subscription. The
 effective plan, where a paid subscription always comes before an unrevoked

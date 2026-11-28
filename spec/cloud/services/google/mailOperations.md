@@ -1,19 +1,20 @@
 # Reviewed Gmail changes
 
 Every change the cloud makes to the owner's mailbox, reviewed first and sent
-to Google at most once on a receipt of [the dispatch ledger](../../shared/dispatchOnce.md)
-(develop `agent-google-connector/inbox-{receipts,provider,operation-routes}.ts`).
-Routes under `/api/v1/eliza/google/gmail/inbox-v1/` (device key or session,
-grant chosen by [the connection](./connection.md)): `POST operations
+to Google at most once on a receipt of [the dispatch ledger](../../shared/dispatchOnce.md).
+The routes in `packages/cloud-worker/src/services/google/mail-operations.vibe`
+require a signed session and use the grant chosen by
+[the connection](./connection.md). Under `/api/v1/eliza/google/gmail/inbox-v1/`
+they are `POST operations
 {grantId, requestId, proposal}`, `POST operations/:requestId/dispatch
-{grantId, reviewDigest, proposal}`, `GET operations/:requestId?grantId`; ids
-are UUIDs. There is no other Gmail write route.
+{grantId, reviewDigest, proposal}` and `GET operations/:requestId?grantId`.
+Request IDs are UUIDs. There is no other Gmail write route.
 
 One instance is one `mail_operations` row, keyed by organization, user,
-grant and request id (provider key `grantId:requestId`). The shell reads
-Google for the review, computes its digest (SHA-256 hex of the canonical
-review, kind included), builds the MIME message, calls Google with a 30 s
-deadline and renders the wire.
+grant and request id. Its dispatch-ledger provider key identifies the target
+for later lookup. The shell reads Google for the review, computes its digest
+(SHA-256 hex of the canonical review, kind included), builds the MIME
+message, calls Google with a 30 s deadline and renders the wire.
 
 ## Story: Change or send from my mailbox once, as I reviewed it
 
@@ -22,7 +23,7 @@ deadline and renders the wire.
 > outcome readable even after a lost connection, so that nothing is sent
 > twice or changed behind my back.
 
-### A proposal passes review only whole: its shape, then the mail cap, then every message or draft it names at the revision read
+### A fresh proposal passes review only whole, with a valid shape, within the mail cap and at the revisions read
 
 A label change (`archive`, `unarchive`, `trash`, `untrash`, `mark-read`,
 `mark-unread`, `star`, `unstar`) names `{messageId, expectedHistoryId}`;
@@ -121,11 +122,12 @@ pure def lawAnAdmittedChangeIsOneTheCapabilitiesOffer(proposal: Proposal, author
 
 ### Preparing binds the request id to its kind and reviewed digest once, and a repeat with the same digest answers the receipt as it stands
 
-A receipt already held is answered first: as it stands for the same digest,
-`409 idempotency_conflict` (unchanged) for another. Otherwise authority and
-review must pass, and the answer adds `review: {from, to, cc, subject,
-attachments, forwardedAttachments}`. A claim is stale after 90 s, three
-times Google's call deadline.
+Preparation checks the grant and computes the proposal's current review.
+A repeat skips the label target's and existing draft's fresh revision
+checks. A receipt already held stands for the same kind and digest. For
+another, `409 idempotency_conflict` leaves it unchanged. The answer adds
+the review, whose fields depend on the operation. A claim is stale after
+90 s, three times Google's call deadline.
 
 ```quint
 type KindSlot = NoKind | KindOf({ kind: MailOperationKind })
@@ -142,11 +144,27 @@ pure def canPrepare(o: Operation, by: S::SessionOwner, proposal: Proposal, provi
   o.slot == NoKind and authorityAllows(proposal, authority) and reviewOf(proposal) == ReviewPasses and D::canPrepare(o.receipt, by, digest, keyOf(providerId), mailStaleAfter, nowOf(o) + preparedLifetime)
 pure def prepare(o: Operation, by: S::SessionOwner, proposal: Proposal, providerId: str, digest: str, authority: MailAuthority): Operation =
   { ...o, slot: KindOf({ kind: kindOfProposal(proposal) }), receipt: D::prepare(o.receipt, by, digest, keyOf(providerId), mailStaleAfter, nowOf(o) + preparedLifetime) }
+pure def reviewForPrepare(proposal: Proposal, replayed: bool): ReviewOutcome =
+  if (not(replayed)) reviewOf(proposal)
+  else match proposal {
+    | LabelChangeProposal(x) => reviewOf(LabelChangeProposal({ ...x, target: TargetCurrent }))
+    | DraftDeleteProposal(x) => reviewOf(DraftDeleteProposal({ ...x, target: TargetCurrent }))
+    | MessageProposal(x) =>
+        if (x.kind == DraftReplaceKind and x.reply == NotReplying and not(x.files.forwarded))
+          reviewOf(MessageProposal({ ...x, target: TargetCurrent }))
+        else reviewOf(proposal)
+  }
 pure def prepareAnswer(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority): OperationAnswer = {
-  val review = reviewOf(proposal)
-  if (o.receipt.session.phase != S::Absent) (if (D::isConflict(o.receipt, by, digest)) AnswerRefused({ refusal: refuse(IdempotencyConflict) }) else AnswerReceipt)
-  else if (not(authorityAllows(proposal, authority))) AnswerRefused({ refusal: authorityRefusal(proposal, authority) })
-  else match review { | ReviewRefused(x) => AnswerRefused({ refusal: x.refusal }) | ReviewPasses => AnswerReceipt }
+  val replayed = o.receipt.session.phase != S::Absent
+  val review = reviewForPrepare(proposal, replayed)
+  if (not(authorityAllows(proposal, authority))) AnswerRefused({ refusal: authorityRefusal(proposal, authority) })
+  else match review {
+    | ReviewRefused(x) => AnswerRefused({ refusal: x.refusal })
+    | ReviewPasses =>
+        if (replayed and (D::isConflict(o.receipt, by, digest) or o.slot != KindOf({ kind: kindOfProposal(proposal) })))
+          AnswerRefused({ refusal: refuse(IdempotencyConflict) })
+        else AnswerReceipt
+  }
 }
 pure val byValues = Set({ agentId: "org1", actorId: "user1", connector: "gmail_operation" })
 pure val providerIdValues = Set("g1:r1")
@@ -160,10 +178,11 @@ pure def sometimesPreparedAwaitingDispatch(o: Operation): bool = o.slot != NoKin
 
 ### A prepared change is claimed only by a dispatch naming its digest, reviewed again against Google at that moment
 
-No receipt is `404 not_found`, another `reviewDigest` or kind `409
-stale_revision`; a receipt no longer prepared is answered as it stands,
-without credentials or Google. A prepared one is reviewed again under the
-grant's authority and claimed (committed) before Google is asked.
+No receipt is `404 not_found`, and another `reviewDigest` is `409
+stale_revision`. A matching receipt no longer prepared is answered as it
+stands without acquiring the Google grant. A prepared change is reviewed
+again under the grant's authority. Its kind, digest and any prepared draft
+content must still match before the claim is committed and Google is asked.
 
 ```quint
 pure def canDispatch(o: Operation, by: S::SessionOwner, proposal: Proposal, digest: str, authority: MailAuthority): bool =
@@ -173,10 +192,13 @@ pure def dispatch(o: Operation, by: S::SessionOwner, proposal: Proposal, digest:
 pure def dispatchAnswer(o: Operation, proposal: Proposal, digest: str, authority: MailAuthority): OperationAnswer = {
   val review = reviewOf(proposal)
   if (o.receipt.session.phase == S::Absent) AnswerRefused({ refusal: refuse(NotFound) })
-  else if (digest != o.receipt.digest or o.slot != KindOf({ kind: kindOfProposal(proposal) })) AnswerRefused({ refusal: refuse(StaleRevision) })
+  else if (digest != o.receipt.digest) AnswerRefused({ refusal: refuse(StaleRevision) })
   else if (D::receiptStatus(o.receipt) != D::StatusPrepared or nowOf(o) >= o.receipt.session.expiresAt) AnswerReceipt
   else if (not(authorityAllows(proposal, authority))) AnswerRefused({ refusal: authorityRefusal(proposal, authority) })
-  else match review { | ReviewRefused(x) => AnswerRefused({ refusal: x.refusal }) | ReviewPasses => AnswerReceipt }
+  else match review {
+    | ReviewRefused(x) => AnswerRefused({ refusal: x.refusal })
+    | ReviewPasses => if (o.slot != KindOf({ kind: kindOfProposal(proposal) })) AnswerRefused({ refusal: refuse(StaleRevision) }) else AnswerReceipt
+  }
 }
 pure val weight_dispatch = 5
 pure def sometimesClaimedBeforeGoogleIsAsked(o: Operation): bool = o.receipt.session.phase == S::Committed and o.receipt.session.effects == 0 and o.receipt.session.executorAlive
@@ -218,8 +240,9 @@ pure def stepReceiptKeepsItsRules(before: Operation, via: str, after: Operation)
 
 A label change succeeds when the returned labels show its label (`TRASH`,
 `UNREAD`, `INBOX`, `STARRED`) added or removed, a send when Google returns
-its ids, a draft save when the draft read back holds exactly the reviewed
-bytes, a draft delete when Google confirms it. Google's 404 rejects as
+the message ID with its `SENT` label, a draft save when the draft read back
+holds exactly the reviewed bytes, and a draft delete when Google confirms
+the draft is gone. Google's 404 rejects as
 `not_found`, 401 or 403 as `reauth_required`, 400, 409, 412 or 422 as
 `provider_rejected`. Only a succeeded receipt carries `providerResult`.
 
@@ -264,15 +287,17 @@ pure def sometimesUnverifiedReplyLeftUnknown(o: Operation): bool =
 pure def sometimesRejectedByGoogle(o: Operation): bool = o.receipt.settlement == D::Refused
 ```
 
-### An unknown outcome settles only when the effect is found or Google was never asked
+### Receipt lookup uses evidence and never resends the operation
 
-Gmail cannot be asked by key whether a change was made, so a sent change
-whose reply was lost or unclear is never settled by a guess. A draft
-creation looks for the draft with the request's Message-ID. A replacement
-reads the named draft. Either save is found only when Gmail holds the
-exact prepared bytes, and returns the draft ID and digest of those bytes
-without sending the operation again. A claim whose sender was lost before
-asking settles `not applied`.
+If the reply was lost or unclear, lookup checks for the evidence the
+operation expects. It reads the target's labels, checks that a deleted
+draft is gone, or looks for the sent message with the request's Message-ID
+and the `SENT` label. A draft creation looks for the draft with the request's
+Message-ID and a replacement reads the named draft. Either save requires
+the prepared bytes' digest and returns the draft ID and that digest. When
+lookup finds no evidence, a sent change stays unknown. A claim whose
+sender was lost before asking can settle `not_applied`. A definitive late
+provider answer can settle an unknown receipt through the dispatch ledger.
 
 ```quint
 pure def draftBytesMatch(prepared: str, seen: str): bool = prepared != "" and seen == prepared
@@ -293,8 +318,10 @@ pure def lawADraftLookupRequiresItsPreparedBytes(prepared: str, seen: str): bool
 
 ### Every answer carries the receipt as it stands, and says Google does not apply a change exactly once
 
-Prepare, dispatch and `GET` (which only reads, even on a lapsed grant)
-answer `{version: 1, receipt, providerExactlyOnce: false}`, the receipt
+Prepare, dispatch and `GET` answer `{version: 1, receipt,
+providerExactlyOnce: false}`. `GET` may settle an unknown receipt using
+read-only evidence from a usable grant. If the grant has lapsed it still
+returns the stored receipt. The receipt is
 `{requestId, kind, reviewDigest, state, providerResult, rejectionCode,
 createdAt, dispatchedAt, finishedAt}`; `state` is `prepared`, `dispatched`,
 `succeeded`, `rejected` (with `rejectionCode`) or `outcome-unknown` (claimed,

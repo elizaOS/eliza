@@ -10,7 +10,7 @@ operations](./reviewedOperations.md) change only as the owner reviewed.
 > As the owner, I want the agent's own file reads and writes to stay inside
 > its workspace, so that no path it is given can reach my other files.
 
-### A workspace path is relative, has no parent or control segment, and names the root only where a folder is asked for
+### A workspace path is relative, has no parent segment or NUL, and names the root only where a folder is asked for
 
 A path is admitted only when it is not absolute (no leading slash and no
 drive letter), holds no `..` segment and no NUL character, and is not empty

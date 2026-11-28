@@ -1,6 +1,6 @@
 # View declarations and completed-action handoffs
 
-Sources are `views/{declarations,surface-manifest,host-external-contract,view-interact-protocol,view-action-handoff,completed-action-navigation}.ts` and `events.ts`. Preserve GUI/TUI/XR modality resolution, view visibility, exact capability ids, surface ownership and renderer-safe imports. Client ids route requests and supply no authority by themselves.
+Sources are `views/{declarations,surface-manifest,host-external-contract,view-interact-protocol,view-action-handoff,completed-action-navigation}.vibe` and `events.vibe`. Preserve GUI/TUI/XR modality resolution, view visibility, exact capability ids, surface ownership and renderer-safe imports. Client ids route requests and supply no authority by themselves.
 
 ## Story: Deliver a completed action to the intended view
 

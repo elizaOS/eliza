@@ -54,7 +54,7 @@ pure def sometimesNewerCopyKept(l: ClipboardLease): bool = l.phase == LeaseFinis
 pure def sometimesMissingExecutableLeavesValue(l: ClipboardLease): bool = l.phase == LeaseFinished and valueAt(l, l.bound) == ClipOwned
 ```
 
-### An active lease is always cleaned up
+### An active lease always finishes after attempting cleanup
 
 The scheduled expiry or process-exit cleanup runs, and its subprocess
 operations settle, so every active lease ends.

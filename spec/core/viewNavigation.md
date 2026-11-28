@@ -1,8 +1,8 @@
 # Renderer handoff deduplication and navigation fences
 
-Source `views/completed-action-navigation.ts` owns per-renderer pending and handled handoff indexes, a navigation epoch and its observed window. Each index retains at most 256 identities. This is a separate lifecycle from the interaction request in [views](./views.md).
+Source `views/completed-action-navigation.vibe` owns per-renderer pending and handled handoff indexes, a navigation epoch and its observed window. Each index retains at most 256 identities. This is a separate lifecycle from the interaction request in [views](./views.md).
 
-The renderer's navigate-view requests, from `events/index.ts` of the user interface package, wait in a bounded queue until a mounted view listener claims one. Their claims are kept in the same renderer state, in its `views` field.
+The model also covers the renderer's bounded navigate-view request queue. A mounted listener can claim its head request. The model's `views` field holds those claims.
 
 ## Story: Respect navigation made while a completed-action handoff is pending
 
@@ -11,7 +11,7 @@ The renderer's navigate-view requests, from `events/index.ts` of the user interf
 
 ### Pending handoffs capture the pre-dispatch epoch and path
 
-A handled id is suppressed. A pending id whose epoch or path changed is retired without redispatch. Otherwise the renderer emits the cancelable navigation event. If a shell handles it, the id enters the handled index. If unhandled and new, the pending index retains the pre-dispatch snapshot. An absent normalized id is dispatched without tracking. A handler can navigate synchronously during dispatch; its new epoch does not replace the captured snapshot.
+A handled id is suppressed. A pending id whose epoch or path changed is retired without redispatch. Otherwise, when the renderer has a window, it emits the cancelable navigation event. If a shell handles it, the id enters the handled index. If unhandled and new, the pending index retains the pre-dispatch snapshot. An absent normalized id is dispatched without tracking. A handler can navigate synchronously during dispatch; its new epoch does not replace the captured snapshot.
 
 ```quint
 type PendingHandoff = { id: str, epoch: int, path: str }
@@ -53,8 +53,8 @@ pure val entryValues = Set({ id: "first", epoch: 0, path: "/chat" }, { id: "seco
 ## Story: Hand a navigate-view request to one mounted listener
 
 > As a user, I want a request to open a view, made before any view listener
-> is mounted or while one is busy, to be applied once by a listener that can
-> apply it, and not to be lost to a listener that declined it.
+> is mounted or while one is busy, to be committed once by a listener that
+> can apply it and to remain available when a listener declines it.
 
 A request carries no payload here; its number is its identity. Delivery to a
 listener is split into invoking it, the listener returning, and a promise it
@@ -235,8 +235,8 @@ pure def alwaysQueuedViewRequestsWait(s: Navigation): bool = s.views.queue.every
 A mounted listener can apply part of a request, once per attempt, while the
 request is live and unclaimed, before its callback or its promise reports
 back. A request that a listener partly applied and then declined, threw on
-or gave up by unmounting is offered again, and the next attempt applies it
-again, so a view listener's effect must be idempotent.
+or gave up by unmounting can be offered again, and a later attempt can apply
+it again, so a view listener's effect must be idempotent.
 
 ```quint
 pure def canApplyViewEffect(s: Navigation, attempt: int): bool = {

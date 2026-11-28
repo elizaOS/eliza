@@ -105,7 +105,8 @@ function saidOf(raw: string): Said {
 }
 
 const notAsked: Said = { result: { tag: "ModelSaid", units: 0, saysNone: true, keptSafe: true }, draft: "" }
-const closed: Said = { result: { tag: "CallerClosed" }, draft: "" }
+const closedBeforeCall: Said = { result: { tag: "CallerClosedBeforeCall" }, draft: "" }
+const closedDuringCall: Said = { result: { tag: "CallerClosedDuringCall" }, draft: "" }
 
 error DraftCallFailed { cause: unknown }
 
@@ -114,12 +115,12 @@ effect function draftCall(runtime: AgentRuntime, thread: ReadThread, signal: Abo
     try: () => runtime.useModel(ModelType.TEXT_SMALL, { system: systemText, prompt: userText(thread), omitMaxTokens: true, reasoning: "off", providerOptions: { eliza: { thinking: "off" } }, signal }),
     catch: (cause) => new DraftCallFailed({ cause }),
   })
-  return signal.aborted ? closed : saidOf(raw)
+  return signal.aborted ? closedDuringCall : saidOf(raw)
 }
 
 effect function asked(runtime: AgentRuntime, thread: ReadThread, signal: AbortSignal) {
   return draftCall(runtime, thread, signal) catch (failure) => {
-    if (signal.aborted) return closed
+    if (signal.aborted) return closedDuringCall
     const cause = failure.cause
     return { result: { tag: "ModelFailed", failureName: cause instanceof Error ? cause.name : typeof cause }, draft: "" } satisfies Said
   }
@@ -141,7 +142,7 @@ effect function replyDraft(runtime: AgentRuntime, binding: ModuleContext["bindin
   const request = requestOf(thread)
   const state = binding()
   const callStarts = drafterCanCall(state, clockAt(state, try Clock.currentTimeMillis))
-  const said = signal.aborted ? closed
+  const said = signal.aborted ? closedBeforeCall
     : thread !== undefined && callStarts && decision(request) === "AskModel" ? try asked(runtime, thread, signal) : notAsked
   const handled = handle(request, callStarts, said.result)
   if (handled.log.tag === "LoggedFailure") {

@@ -116,8 +116,9 @@ pure def grantsChanged(s: ContactsState, readGranted: bool, writeGranted: bool):
 
 A writing install declares `WRITE_CONTACTS` and only a verified system
 image admits it; a read-only install never writes and never names the
-capability. The device names `contacts.write.v1` only while it could admit a
-write.
+capability. A registered writing install names `contacts.write.v1` while
+it holds both Contacts grants. Each write still needs the open view and
+current foreground, unlock and focus evidence.
 
 ```quint
 type ContactsInstall = ReadOnlyInstall | WritingInstall

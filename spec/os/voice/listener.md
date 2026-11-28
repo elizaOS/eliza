@@ -64,7 +64,7 @@ pure def resume(s: ListenerService, by: Caller): ListenerService = {
 pure def sometimesListening(s: ListenerService): bool = decide(s) == Listening and s.capturing
 ```
 
-### The microphone is held only while listening, and the service runs only while listening or paused
+### The listener reads audio only while listening and keeps its service running while paused
 
 The first condition that fails names the state. A silenced recording stays
 open only so Android reports its release; its frames are never read.
@@ -106,7 +106,7 @@ pure val dValues = Set(readyDevice, { ...readyDevice, inCall: true }, { ...ready
   { ...readyDevice, micSilenced: true }, { ...readyDevice, speechPlaying: true }, unknownDevice)
 ```
 
-### The status chip and the host can pause or turn off listening but never start it
+### The status chip and host can pause listening, and the host can also turn it off
 
 The chip sends the listener's own immutable pause action and the host holds
 only the listener-control permission; their pause lasts until I resume. In

@@ -24,7 +24,7 @@ public final class CloudRequestLawCheck {
   private static final List<List<String>> HEADER_LISTS = List.of(List.of(), List.of("Idempotency-Key"), List.of("If-Match"), List.of("Authorization"),
     List.of("Accept", "If-None-Match"), List.of("Cookie"), List.of("Content-Type", "X-Request-ID"));
   private static final List<String> HEADERS = List.of("Authorization", "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", "Accept",
-    "If-None-Match", "If-Match", "Idempotency-Key", "Cookie", "ETag");
+    "If-None-Match", "If-Match", "Idempotency-Key", "X-Renewed-Credential-Id", "Cookie", "ETag");
   private static final List<Attach> ATTACHES = List.of(new Bare(), new WithKey(1), new WithSession(1), new WithKey(3), new WithLease(1));
   private static final List<Long> BYTES = List.of(0L, 8_388_608L, 8_388_609L, 67_108_864L, 67_108_865L);
   private static final List<String> WEB_HOSTS = List.of("web.cloud.test");
@@ -184,6 +184,7 @@ public final class CloudRequestLawCheck {
     foreign.add(new RouteGate.Route(Method.GET, RouteGate.Delivery.BUFFERED, at("agents"), List.of(), null));
     List<RouteGate.Route> signIn = new ArrayList<>(routes);
     signIn.add(new RouteGate.Route(Method.POST, RouteGate.Delivery.BUFFERED, at("auth", "refresh"), List.of(), null));
+    signIn.add(new RouteGate.Route(Method.DELETE, RouteGate.Delivery.BUFFERED, at("api-keys", "current"), List.of(), null));
     List<RouteGate.Route> streamed = new ArrayList<>(routes);
     streamed.add(new RouteGate.Route(Method.POST, RouteGate.Delivery.STREAMED, at("chat", "completions"), List.of(), null));
     return List.of(List.of(new RouteGate.Group(prefixes, "id", routes)), List.of(new RouteGate.Group(prefixes, "id", foreign)),

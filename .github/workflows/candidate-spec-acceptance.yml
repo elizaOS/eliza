@@ -1,0 +1,55 @@
+name: Candidate spec acceptance
+
+on:
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-spec-acceptance-${{ github.event.pull_request.number }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  accept-reviewed-specs:
+    if: github.event.pull_request.number == 40711 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TURBO_CACHE: local:rw
+      TURBO_TELEMETRY_DISABLED: "1"
+      VITEST_MAX_WORKERS: "2"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          job: verify
+      - name: Build workspace dependencies
+        run: node vibestack/spec.ts tasks build --continue=dependencies-successful --concurrency=4
+      - name: Recheck and accept the reviewed specs
+        run: |
+          pnpm accept
+          git diff --exit-code -- . ':!spec/lock.json'
+          if git diff --quiet -- spec/lock.json; then
+            echo "::error::Acceptance did not update spec/lock.json"
+            exit 1
+          fi
+          git rev-parse HEAD HEAD^1 HEAD^2 > "$RUNNER_TEMP/acceptance-commit.txt"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: accepted-spec-lock
+          path: |
+            spec/lock.json
+            ${{ runner.temp }}/acceptance-commit.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: candidate-acceptance-proof
+          path: |
+            gen/proof/
+            gen/traces/

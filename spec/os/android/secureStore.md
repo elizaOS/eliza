@@ -18,9 +18,8 @@ device credential in `signIn/credential` and the task keys in
 ## Story: Persist a value without losing a newer edit
 
 > As a person using the device, I want each value saved only where the
-> caller may write it, and never over a newer edit, a native record or a
-> value the device cannot read, so that nothing I saved is lost or claimed
-> saved when it was not.
+> caller may write it. When I compare and exchange, the store checks the
+> current value and preserves a newer or unreadable value.
 
 ### The app view names only slots its consumer policy opens to it, and never a delegation slot
 
@@ -64,10 +63,10 @@ The shell opens the frame and reports what it found: no file and no backup
 (`NoFile`), a file or backup it cannot open (`Unopenable`), a frame that is
 not version 1 with a 12-byte nonce, fails authentication, or is not exactly
 one JSON value (`Rejected`), or an authentic value with its UTF-8 size. An
-authentic value larger than the retained ceiling is unreadable. An
-unreadable slot is reported as an error and kept: nothing creates a new
-value or a new Keystore key in its place, so only an absent slot may be
-initialised.
+authentic value larger than the retained ceiling is unreadable. A read
+reports an unreadable slot as an error. Compare-and-exchange cannot treat
+it as absent, so only an absent slot may be initialised through an
+exchange that expects no value.
 
 ```quint
 type Frame = NoFile | Unopenable | Rejected | Authentic({ bytes: int })
@@ -87,7 +86,7 @@ pure def lawOversizedValueIsUnreadable(frame: Frame, rule: SlotRule): bool = mat
 }
 ```
 
-### A value above the current limit may only shrink a value stored under an older, larger limit
+### A value above the current limit cannot grow beyond the value already stored
 
 A value is at most the retained ceiling. Above the current limit it is
 accepted only when the slot already holds a value at least as large, so an

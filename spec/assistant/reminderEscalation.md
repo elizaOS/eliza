@@ -152,7 +152,8 @@ pure def lawAnUnsetIntensityIsNormal(owners: ReminderIntensity): bool =
 
 ### Intensity shapes only the follow-ups: minimal drops them, persistent adds one, and high priority only keeps them for a high-priority reminder
 
-A reminder's first alert always comes. Minimal schedules no follow-up, and
+Intensity leaves the reminder's first delivery choice in place. Minimal
+schedules no follow-up, and
 high priority only schedules them only for a reminder the owner said was
 high priority. Persistent adds one more nudge in the conversation an hour
 after the plan's last step, or an hour after the reminder fired when it

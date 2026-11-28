@@ -16,21 +16,23 @@ account does connect and exchange in one call (`POST
 `spec/os/signIn/credential.md`.
 
 One machine instance is one grant row. The shell draws the code, the key and
-the credential id at random, stores only digests and a sealed copy of the
-key (`Sealed` with purpose `DeviceKeyCopy`), and hands the key out only in
-the token, native sign-in and renewal answers; the key never enters the
-model. The sealed copy also carries the refresh of the lease offered with
-the key, so a lost token reply answers the same lease again. A code
+the credential id at random. It stores the code and key by digest, with
+separate sealed copies of the key and offered lease refresh under the
+`device-key` sealing purpose. The key stays in the shell and is returned only
+by token exchange, native sign-in, and renewal. A repeated exchange can
+return the same lease refresh from its sealed copy. A code
 digest with no row answers `401 authentication_required` reason
 `credential_unknown` before this machine. The person's device epoch lives on
 the account and enters each check as the observation `deviceEpoch`, read
 under the account lock; the shell never lowers it. The optional device name
-(1 to 80 characters) and the scopes are stored with the grant and checked by
-the Effect Schema. Sources are develop
-`packages/cloud/shared/src/lib/services/mobile-app-auth.ts`,
-`packages/cloud/api/v1/app-auth/**` (`mobile/renew`), `api/v1/api-keys/current`,
-`db/repositories/mobile-app-auth-grants.ts` (`createRenewal`) and the Quint
-models `MobileAppCredential` and `MobileAppGrantCleanup`.
+is trimmed and must contain 1 to 80 characters without control or format
+characters. The response carries the fixed `cloud:user` scope. The
+transition shell lives in
+`packages/cloud-worker/src/native-clients/device-keys.vibe`,
+`packages/cloud-worker/src/native-clients/grants.vibe`, and
+`packages/cloud-worker/src/native-clients/mobile-google.vibe`.
+`packages/cloud-worker/src/identity.vibe` also handles legacy Worker
+enrollment.
 
 ## Story: Sign a device in and keep its key
 
@@ -102,9 +104,9 @@ challengeId, methods, expiresAt}` and nothing is issued; after the factor the
 app connects with the new session. Otherwise the answer is `{status:
 "signed_in"}` with the token answer, `secret`, `tokenType: "Bearer"`,
 `scopes`, `acknowledgementRequired: true`, the `code` to acknowledge with,
-`accountCreated`, `identity`, `google` and `lease: {refresh,
-refreshExpiresIn}`. A server auth code links the
-Google connection (`services/google/connection`) in the same request; its
+`accountCreated`, `identity` and `lease: {refresh, refreshExpiresIn}`. When
+the device sends a server auth code, the response also includes `google`.
+That code links the Google connection (`services/google/connection`) in the same request; its
 outcome fills only `google`, so a failed link never fails the sign-in.
 
 ```quint
@@ -181,10 +183,10 @@ pure def alwaysACredentialExistsExactlyOnceExchanged(g: Grant): bool = hasCreden
 
 ### Until the acknowledgement, the sealed copy is the only way a key is answered again, and nothing mints a second key
 
-Only the first exchange or the native sign-in mints the key and seals it; a
-repeated exchange answers from the copy and changes nothing; the
-acknowledgement or the grant lapsing erases it. So an acknowledged key is
-never revealed again, and a credential keeps its id.
+The first exchange, native sign-in, or first renewal for a waiting
+successor mints and seals the key. A repeated exchange returns the copy
+with the same credential id. Acknowledging or lapsing the grant erases the
+copy, so an acknowledged key is never revealed again.
 
 ```quint
 pure def stepTheSealedCopyLivesOnlyUntilTheAcknowledgement(before: Grant, via: str, after: Grant, out: List[GrantEffect]): bool =
@@ -197,11 +199,13 @@ pure def sometimesAwaitingAcknowledgement(g: Grant): bool = g.phase == Exchanged
 
 ### A key becomes usable only when acknowledged before its code's deadline, and then lives the client's key lifetime
 
-The acknowledgement proves the code, verifier, credential id and key
-(`proofMatches`), names the client of its grant, makes the lease offered
-with the key live, and answers `{status: "acknowledged", credentialId,
-expiresAt, scopes}`; a repeated one with the
-right proof while the key is live answers the same and changes nothing. A
+The acknowledgement must present the credential id and key
+(`proofMatches`). It checks the code, state, verifier, and client binding
+fields whenever supplied. It makes a newly offered lease live, or moves
+the existing lease to an acknowledged successor, and answers
+`{status: "acknowledged", credentialId, expiresAt, scopes}`. A repeated
+acknowledgement with the right proof while the key is live returns the same
+answer and changes nothing. A
 wrong proof is `401 credential_proof_invalid`. A key not acknowledged in time
 is never usable.
 
@@ -364,9 +368,9 @@ the person's current device epoch is revoked, and an acknowledged key past
 its lifetime is expired. The shell answers `credential_unknown` for a key
 whose row is gone.
 
-The independent Worker enrollment records `FlatTokenStarted` on each new
-row. Its credential lifetime starts when the token is exchanged; its real
-acknowledgement activates that same recorded expiry without extending it.
+The legacy Worker enrollment marks its rows as `FlatTokenStarted`. Its
+credential lifetime starts when the token is exchanged. Acknowledgement
+activates that recorded expiry without extending it.
 Both protocols use the same account device generation for basic authority.
 Only imported, previously active rows and explicitly marked Worker rows
 use recorded authority. An imported row that claims to have exchanged a
@@ -480,9 +484,9 @@ pure def lawRevokeAllEndsEveryEarlierKey(g: Grant, now: Millis, deviceEpoch: int
 
 A grant past its code deadline without an acknowledgement ends, its sealed
 copy erased and the lease offered with it ended; an acknowledged key past its
-lifetime closes as expired and keeps its lease, which renews it. The shell
-may then delete the row of a grant no lease names. Only signing out, the
-acknowledgement of its renewed successor or the theft of its lease ends a
+lifetime closes as expired and keeps its lease, which can renew it. The hourly
+sweep closes expired grants and keeps their rows. Signing out, acknowledging
+a renewed successor, and presenting a spent lease refresh can each end a
 live key, and a closed grant never reopens except that a renewal or a lease
 theft ends an expired one.
 
@@ -511,12 +515,12 @@ pure def sometimesKeyExpired(g: Grant): bool = g.phase == Expired
 
 `POST /api/v1/app-auth/mobile/renew`, with `Authorization: Bearer <lease
 refresh>`, mints a new grant for the same client and device epoch with the
-registration's key lifetime, already exchanged, and answers `{credentialId,
-secret, expiresIn}`. The device stores it and acknowledges it through the
-same `/mobile/ack`. The native shell renews when less than half the key's
-life is left, at a lease refresh or a daily job, so a tablet signs in again
-only after 90 days without a refresh or a revocation. The device key can
-never renew itself.
+registration's key lifetime, already exchanged. The token response
+includes `credentialId`, `secret`, and `expiresIn`. The device stores it and
+acknowledges it through the same `/mobile/ack`. The native shell renews
+when less than half the key's life is left, at a lease refresh or a daily job,
+so a tablet signs in again only after 90 days without a refresh or a
+revocation. The device key can never renew itself.
 
 ### Only a live lease renews a key, and only while the key it replaces is live or merely expired and of the person's current device epoch
 

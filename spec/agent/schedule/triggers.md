@@ -61,7 +61,7 @@ pure def create(t: Trigger, schedule: TriggerType, requested: str, defaultRoom: 
 pure def alwaysASavedTriggerHasARoomAndOnlyItsTypesData(t: Trigger): bool = t.life == Unsaved or (t.room != "" and t.revision >= 1 and (if (t.schedule == OnRuntimeEvent) (t.eventKind != "" and t.nextAt == 0) else t.eventKind == ""))
 ```
 
-### An edit, enable or removal is refused only when it names a revision that has moved on
+### An edit, enable or removal with a stale expected revision is refused
 
 `revision` in the summary counts saved writes. `PUT` and `DELETE` may carry
 `expectedRevision`, the revision the client read; a different current one

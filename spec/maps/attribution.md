@@ -51,5 +51,5 @@ pure def alwaysPendingRequestIsForCurrentView(s: MapAttribution): bool = s.pendi
 pure def alwaysShownAttributionMatchesView(s: MapAttribution): bool =
   s.visible implies s.alive and not(s.failed) and s.pending == 0 and s.shownView == s.view
 pure def sometimesAttributionShown(s: MapAttribution): bool = s.visible and s.view > 0
-pure def sometimesRecoveredAfterFailure(s: MapAttribution): bool = s.visible and s.nextToken > 2
+pure def sometimesNewerAttributionShown(s: MapAttribution): bool = s.visible and s.nextToken > 2
 ```

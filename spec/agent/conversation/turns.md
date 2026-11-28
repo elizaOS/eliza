@@ -1,25 +1,31 @@
 # Conversation turns
 
 One message in, one reply out. `POST /api/conversations/:id/messages`
-(Root) takes `{text, images?, channelType, metadata?, task?,
-clientMessageId?}` and answers `{text, agentName, messageId, userMessageId,
-actionResults: [{action, data}], taskChoices?, failureKind?, planAction?,
-retryAfterMs?}`. The boundary
-checks the body before this machine sees it: `channelType` is `DM` or
-`VOICE_DM`; images follow core's chat-upload limits; `metadata` is a JSON
-object of at most 64 KiB stored with the user message, of which only
-`observation` and `voiceUi` are decoded ([turn context](./turnContext.md))
-and no key grants anything; `clientMessageId` has at most 128 characters;
-the optional header `X-ElizaOS-Client-Id` (`[A-Za-z0-9._-]{1,128}`) binds
-view interactions of this turn to one client; `task` goes to the tasks
-module. A conversation is its room ([conversations](./conversations.md)).
+(Root) takes `{text?, images?, channelType?, metadata?, task?,
+clientMessageId?}` and answers `{text, fullText, agentName, messageId,
+userMessageId, actionResults: [{action, data}], taskChoices?, failureKind?,
+planAction?, retryAfterMs?, cloudCode?, cutOffEffect?, action?}`. The
+boundary accepts `DM` (the default) and `VOICE_DM`. It trims `text`, caps it
+at 32,768 UTF-16 units and checks images against core's chat-upload limits.
+A turn needs nonblank text, an attachment, a valid reviewed email or a
+valid selected voice-note transcript flag. The `metadata` JSON object
+has a 64 KiB limit. Its `observation`, `voiceUi`, `browserPage`,
+`reviewedEmail` and `useSelectedVoiceNoteTranscript` fields go through the
+[turn context](./turnContext.md) decoders before storage. The runner checks
+`replyToMessageId` separately. Metadata grants no authority. The request
+key `clientMessageId` has at most 128 characters and is scoped to the
+agent, sender and room. The optional `X-ElizaOS-Client-Id` header
+(`[A-Za-z0-9._-]{1,128}`) binds view interactions to one client. The tasks
+module checks `task`. A conversation is its room
+([conversations](./conversations.md)).
 
 The shell runs each turn in core's room queue
 ([concurrency](../../core/concurrency.md), `maxPerRoom = 1`) and stops it
-with core's [turn controllers](../../core/turnControllers.md) `abortRoom`;
-this machine holds the decisions above them: which message starts a turn,
-which repeat replays which reply, what a Stop reports, and what of a reply
-was heard. The fingerprint is the shell's positive digest of the body.
+with core's [turn controllers](../../core/turnControllers.md) `abortTurn`.
+This machine decides which message starts a turn, which repeat replays
+which reply, what a Stop reports, and what part of a reply was heard. The
+shell hashes the message body with the normalized text and default channel.
+The model represents each distinct fingerprint by a positive integer.
 
 ## Story: Send one message and get one reply even when the request repeats
 
@@ -34,7 +40,7 @@ When the owner's request includes a message identity in
 is an earlier message from the owner or the agent in the same conversation.
 A system notice cannot be a reply target. An absent, invalid or unavailable
 identity leaves an ordinary message. The accepted quotation is presented
-as data, preserving its text and whitespace up to 4,096 characters. It
+as data, preserving its text and whitespace up to 4,096 UTF-16 units. It
 adds no authority to the new request. A retry keeps the original reply.
 
 ```quint
@@ -48,13 +54,14 @@ pure def lawAQuoteStaysWithThisConversation(sameRoom: bool, participant: bool, o
 ### A message is refused, joined, replayed or admitted by its key, its room and the backend
 
 A launch without a text backend answers 503 `INFERENCE_UNAVAILABLE` and
-stores nothing. A key whose turn is running joins it and waits; a key
-answered in this process within five minutes replays its reply even while
-the room is busy; a key seen with another body is 409
-`CHAT_IDEMPOTENCY_CONFLICT`. Otherwise a busy room is 429, so a 429 means
-the message was not taken. A stored key whose turn left no reply (it ended
-without one, or a restart cut it) is answered with an empty reply of kind
-`aborted`, written then, and never run again.
+stores nothing. A matching key whose turn is running joins it and waits.
+A matching key answered in this process within five minutes replays its
+reply even while the room is busy. Those live keys answer 409
+`CHAT_IDEMPOTENCY_CONFLICT` for a different body. The room rejects other
+sends while busy with 429 `ROOM_BUSY`. In an idle room, a durable key
+answers 409 for a different body, replays a stored reply for the same body,
+or stores and returns an empty `aborted` reply if the original turn left
+none. A retry under an existing key never starts another turn.
 
 ```quint
 import binding as B from "../models/binding"
@@ -335,8 +342,8 @@ An abort, timeout, named account failure or provider issue stores
 durable or provider-accepted commit made during the turn. A receipt marked
 as replayed, a receipt undone by a recorded rollback and a Calendar
 approval request provide no proof of an applied change. The marker is
-absent when the turn was cut before the receipt arrived or is recovered
-after a restart with no stored reply.
+absent when the turn was cut before the receipt arrived or its key is
+recovered with no stored reply.
 
 A message POST with the request header `x-eliza-device-cut-off-effect: applied`
 gets the stored marker on its buffered or streamed reply. The header does
@@ -356,12 +363,12 @@ pure def publishesCutOffEffect(stored: bool, negotiated: bool): bool =
 An `aborted` reply stores `abortCause`, a code naming what ended its turn,
 so a stopped reply can be told from a dropped one afterwards: `stop` for a
 Stop, `client_left` when the client that sent or streams the turn left,
-`runtime` when the runtime ended the turn's work without either, and
-`restart` for a turn a restart cut. Whichever reached the turn first names
-it. A Stop's reason is stored with it as `stopReason` when the reason is a
-code: a letter, then at most 63 letters, digits, `_`, `-`, `.` or `:`. A
-`timeout` and every other kind store no cause. The cause is never part of
-the reply's text, its frames or its speech.
+`runtime` when the runtime ended the turn's work without either. The first
+interruption to reach a running turn names it. Recovering a durable key
+with no stored reply records `restart`. A Stop stores its reason as
+`stopReason` if it starts with a letter followed by at most 63 letters,
+digits, `_`, `-`, `.` or `:`. A `timeout` and every other kind store no cause.
+The cause is never part of the reply's text, its frames or its speech.
 
 ```quint
 type TurnEnder = StopEnded | ClientEnded | RuntimeEnded
@@ -379,6 +386,9 @@ pure def lawACutTurnNamesTheRestart(ender: TurnEnder): bool = abortCauseOf(Unfin
 
 A restart loses every running turn and every five-minute receipt; the
 durable records stay, and a record whose turn was running keeps no reply.
+A repeat of an answered key returns the stored reply's whole text,
+including any stored segments. If the text cannot be read back, the repeat
+answers 503 `ASSISTANT_RESPONSE_UNAVAILABLE` without starting another turn.
 
 ```quint
 pure def answeredBoot(p: KeyPhase): int = match p { | KeyAnswered(x) => x.boot | _ => -1 }
@@ -398,11 +408,11 @@ pure def sometimesReplayAfterRestart(s: Turns): bool =
 ### A Stop is confirmed only when its turn ends within five seconds, and is otherwise uncertain
 
 `POST /api/turns/:roomId/abort {reason}` signals the room's turn through
-core's turn controllers and answers `{aborted: true, roomId, reason,
-outcome}`. A room with no turn answers `nothingRunning`. A Stop on a turn
-already stopping joins that Stop's answer. A turn whose Stop is uncertain
-keeps its room until it ends, so the next message is 429, and a later Stop
-waits again.
+core's turn controllers and answers `{aborted, roomId, reason, outcome}`.
+`aborted` is false for `nothingRunning` and true for `stopped` or `uncertain`.
+A Stop on a turn already stopping joins that Stop's answer. A turn whose
+Stop is uncertain keeps its room until it ends, so a new send is 429 and a
+later Stop waits again.
 
 ```quint
 pure def turnInRoom(s: Turns, room: int): Turn = s.turns.select(t => t.room == room).nthOr(0, noTurn)
@@ -445,7 +455,8 @@ the reply's speech text, without its markdown, addresses, code and stage
 directions, whitespace collapsed. A collapsed or spoken prefix stands for
 the shortest prefix of the reply's UTF-16 units that says it, a spoken one
 cut at the end of a word; a report the whole reply says is heard to its
-end. It records the boundary at the end of that prefix, nothing heard at
+end. The boundary passes that exact written prefix to the model. The model
+records the boundary at the end of that prefix, nothing heard at
 zero. A report past the current boundary, or not a prefix, is 409
 `CONVERSATION_HEARD_NOT_PREFIX`; one at the boundary is `unchanged`; an id
 that is not an agent reply of this conversation is 404. A reply heard to

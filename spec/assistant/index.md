@@ -5,14 +5,13 @@ reminders, goals, to-dos and routines, follow-ups on approvals they left
 open, check-in summaries, a daily dossier, and the owner's local time zone
 that all of them fire in, including while the owner says they are away.
 It runs inside the owner's agent, on the owner's
-device, and it stores the owner's records in the agent's database. It
-never limits how much a model may write: every model call it makes names
-no output limit, so an answer is never cut short.
+device, and it stores the owner's records in the agent's database. Its
+model calls use the configured provider's output limits.
 
 The scheduled-task runner, the agent's approvals and the device's native
 reminders are owned elsewhere ([agent scheduled tasks](../agent/schedule/scheduledTasks.md),
 [device action custody](../agent/deviceActions/execution.md),
-[device reminder alarms](../os/android/deepLinks.md)); the specs here say what
+[device reminder alarms](../os/android/reminderAlarms.md)); the specs here say what
 the assistant asks of them and what it keeps itself. Guided bill evidence
 belongs to this package. Household, family, travel, health and blocking
 services belong to their domain owners.

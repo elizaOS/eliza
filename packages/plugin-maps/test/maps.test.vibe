@@ -83,6 +83,22 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
   const installed = holder.provider
   if (installed === undefined) return try Effect.die(new Error("Cloud Maps installed no provider"))
   const found = try installed.search("ferry building")
+  const supersededGate = { started: try Deferred.make<void>(), finish: try Deferred.make<void>() }
+  const newestGate = { started: try Deferred.make<void>(), finish: try Deferred.make<void>() }
+  cloud.gates.search = supersededGate
+  const superseded = fork installed.search("superseded search")
+  try Deferred.await(supersededGate.started)
+  cloud.gates.search = newestGate
+  const newest = fork installed.search("newest search")
+  try Deferred.await(newestGate.started)
+  cloud.gates.refuseSearch = new CloudError({ failure: { tag: "CloudRateLimited", retryAt: Date.now() + 60_000 }, cause: "" })
+  try Deferred.succeed(supersededGate.finish, undefined)
+  const supersededResult = try Fiber.await(superseded)
+  const supersededDidNotPause = (try maps.requests()).until === 0
+  cloud.gates.refuseSearch = undefined
+  try Deferred.succeed(newestGate.finish, undefined)
+  try Fiber.join(newest)
+  const newestCleared = (try maps.requests()).pending === 0
   const gate = { started: try Deferred.make<void>(), finish: try Deferred.make<void>() }
   cloud.gates.search = gate
   const inFlight = fork installed.search("coit tower")
@@ -104,12 +120,14 @@ it.live('Keep Cloud Maps on the account that requested it: coverage installs the
     installs,
     found: found.map((item: Place) => [item.id, item.attribution]),
     fenced: fenced._tag === "Failure" ? "fenced" : "returned",
+    superseded: [supersededResult._tag, supersededDidNotPause, newestCleared],
     limited: [limited.code, held.code, cloud.calls.length === before],
   }, {
     signedOut: ["unauthorized", 0],
     installs: ["configured", "unconfigured", "configured"],
     found: [["ferry", "Google"]],
     fenced: "fenced",
+    superseded: ["Failure", true, true],
     limited: ["rate-limited", "rate-limited", true],
   }))
 })
@@ -242,7 +260,7 @@ it.live('Plan directions and keep me in control of guidance: an agent request wa
   }))
 })
 
-it.live(`Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, the phone runs it once and answers once, the agent bundle reaches the phone that opened its relay for the turn's conversation, showing Maps while it works, and a request made once its turn has ended never reaches the phone (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay delivers each command at most once within its offer"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
+it.live(`Navigate again when the phone never received my request: a lost delivery is delivered again to the same offer after its lease lapses, the phone runs it once and answers once, the agent bundle reaches the phone that opened its relay for the turn's conversation, showing Maps while it works, and a request made once its turn has ended never reaches the phone (spec/maps/relay.md, "Story: Navigate again when the phone never received my request"; spec/maps/navigation.md, "A resident relay admits each command for execution at most once within its offer"; spec/maps/navigation.md, "A valid agent request prepares a route and never turns on guidance itself"; spec/agent/conversation/planning.md, "A tool's progress names its app only when one labelled app applies, and never its arguments or results")`, effect () => {
   const relay = try mapsNavigationRelay({ leaseMs: 40, commandMs: 3_000, liveMs: 2_000, idleMs: 30_000, pollMs: 20 })
   const conversationId = "11111111-2222-4333-8444-555555555555"
   const agent = relay.navigation("phone-scope", conversationId, () => true)
@@ -583,7 +601,7 @@ function messageWith(location: unknown, text = "coffee near me"): Memory {
   return { entityId: "00000000-0000-4000-8000-000000000001", roomId: "00000000-0000-4000-8000-000000000002", content: { text, metadata: { observation } } } as unknown as Memory
 }
 
-it.live(`Search near me with where my phone is now: a recent reported position searches around the phone at any accuracy, an old one asks the phone for its location, routes keep their alternatives and attribution, a route from here goes to the phone with its destination, a place named with its locality is never a namesake elsewhere, a landmark and its same-named area are one place while same-named branches still ask, a kind of place near a named place is searched around the place the planner names while the owner's words alone never move the search, a place not found or not one is said or asked, coordinates are looked up or searched around, a destination is searched around the start, a first result named as asked is taken with the parts of its site around it, a route planned without traffic is warned on its card, every answer is the action's own text and an unreachable Maps says asking again can help, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone's position"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "A route's destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"; spec/maps/routing.md, "A first result named as asked is taken when the others are parts of it or mostly around it"; spec/maps/routing.md, "Every Maps answer is the action's own text, and a failure says whether asking again can help"; spec/maps/routing.md, "Places found around a point are listed nearest first with how far each is"; spec/maps/routing.md, "A route planned without any traffic says so on its card")`, effect () => {
+it.live(`Search near me with where my phone is now: a recent reported position searches around the phone at any accuracy, an old one asks the phone for its location, routes keep their alternatives and attribution, a route from here goes to the phone with its destination, a place named with its locality is never a namesake elsewhere, a landmark and its same-named area are one place while same-named branches still ask, a kind of place near a named place is searched around the place the planner names while the owner's words alone never move the search, a place not found or not one is said or asked, coordinates are looked up or searched around, a destination is searched around the start, a first result named as asked is taken with the parts of its site around it, a route planned without traffic is warned on its card, Maps sends result text and retryability to the reply model, and the card stays recognizable outside a fence (spec/maps/phonePosition.md, "Story: Search near me with where my phone is now"; spec/maps/phonePosition.md, "A kind of place near a named place is searched around that place, never around the phone"; spec/maps/phonePosition.md, "A reported position never becomes a route origin"; spec/maps/phonePosition.md, "Coordinates the owner names are looked up or searched around as given, never the phone's position"; spec/maps/attribution.md, "Story: Show the right copyright for the map I am looking at"; spec/maps/routing.md, "A place named with its locality is taken only from that locality, and otherwise Maps asks which one"; spec/maps/routing.md, "A route's destination that names no locality is taken from within 100 km of its start when any result is there"; spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"; spec/maps/routing.md, "A first result named as asked is taken when the others are parts of it or mostly around it"; spec/maps/routing.md, "A Maps failure tells the reply model whether asking again can help"; spec/maps/routing.md, "Places found around a point are listed nearest first with how far each is"; spec/maps/routing.md, "A route planned without any traffic says so on its card")`, effect () => {
   const { link, bodies } = linkFake({ ...offer, capabilities: { ...offer.capabilities, distanceRank: true } })
   const older = linkFake()
   const pluginOver = (cloud: MapsCloudLink) => createMapsPlugin({ cloud: () => cloud, navigation: () => sync(() => undefined), savedPlaces: () => undefined })

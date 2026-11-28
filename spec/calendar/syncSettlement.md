@@ -1,9 +1,10 @@
 # Calendar sync settlement
 
 Two things decide whether a Calendar sync result may change durable
-state. A provider watch channel leases one sync attempt at a time: an
-attempt whose lease was replaced, or whose channel is stopping or
-stopped, returns without touching the channel row. On the device, a
+state. A provider watch channel leases one sync attempt at a time. A
+superseded attempt or an attempt that returns after stop is confirmed
+leaves sync progress unchanged. While the channel is stopping, only a
+success under its current lease can update sync progress. On the device, a
 foreground resume reads the durable sync opt-in before it owns a sync
 pass: a read started before the app was stopped or hidden can never
 start a pass or change the status. [Linked control](./linkedSync.md)

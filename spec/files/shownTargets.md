@@ -76,7 +76,8 @@ A turn whose client shows no review card (`agentActionMode`
 Files filter or open the owner asked for. Any other Files operation it would
 have to review is refused before it is proposed, and the model is told to have
 the owner ask in the chat, where the card is shown; so no request waits for a
-card nobody can see.
+card nobody can see. With a review card, the kinds allowed by the prior
+negotiation rule all remain eligible.
 
 ```quint
 pure def filesProposedOnTurn(kind: FilesKind, showsCards: bool): bool = showsCards or kind == FilterKind or kind == OpenKind

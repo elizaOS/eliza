@@ -449,8 +449,8 @@ selecting library photos, placing a reply draft in the open conversation or
 a Messages draft (which never sends), opening the Phone keypad (which never
 dials) and reading the latest SMS sender may skip the separate review, and
 only when the host bound the proposal to the owner's own current message and
-no workflow bound it; which of these a family binds to that message is the
-family's ([telephony](./telephony.md)). Every other operation is reviewed on
+it has neither a workflow nor an agenda binding. The family decides which
+of these operations can bind to that message ([telephony](./telephony.md)). Every other operation is reviewed on
 the device first: nothing that sends, calls, writes a contact, shares,
 deletes, closes a Browser tab or hands off to the Clock ever runs directly. Whether the owner allows it is
 [execution](./execution.md)'s rule, and a Browser control's typed words are
@@ -507,8 +507,8 @@ pure def lawTheOnlyCompletableWorkflowReadIsTheCalendarRange(t: OperationType, b
 
 A receipt reports applied, failed or unknown, with an optional native
 operation, failure code and typed result, which must show what the receipt
-reports. Phone and Clock results are evidence: one is missing only from an
-unknown receipt. Other reads and edits carry a result exactly when applied;
+reports. Apart from a verified refusal before dispatch, a Phone or Clock
+receipt can omit its evidence only when it is unknown. Other reads and edits carry a result exactly when applied;
 files, notes organizing, Browser controls, workflow presentations and the
 base operations never carry one, so a shown list of open tabs never reaches
 the agent as a list, a title, an address or a count. An applied receipt names its native operation. An SMS or
@@ -658,15 +658,15 @@ pure def lawANeverDispatchedReceiptSettlesNothingRanForEveryOperation(t: Operati
   receiptOutcome(t, { reported: ReportsFailed, operationId: "", code: NotDispatched, result: NoResult }, claimKey) == ReceiptAdmitted({ settles: SettlesNothingRan })
 ```
 
-### A read, a view change or an opened review is recorded as no effect, even when it applied
+### Selected reads and the listed view and review steps are recorded as no effect
 
 An applied read reports what the phone held, never a change: the
 agent records it as no effect, and a later turn never learns it as one
-([device requests](./index.md)). So do the steps that change only what a
-screen shows (filtering or opening Photos or Files, searching, inspecting
-or selecting library photos, opening the Phone keypad and showing matching
-contacts) and the album, share and library
-reviews, which only open a review in Photos that the owner confirms there.
+([device requests](./index.md)). Filtering or opening Photos or Files,
+searching, inspecting or selecting library photos, opening the Phone keypad
+and showing matching contacts also record no effect. The album, share and
+library steps open a separate Photos review for the owner to confirm, and
+those steps record no effect too.
 Every other applied operation is recorded as the change it made.
 
 ```quint

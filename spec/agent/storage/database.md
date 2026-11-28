@@ -3,13 +3,10 @@
 The agent's one store on the device and the agent's own identity: open,
 identity, lock, migrate, query, close and log retention. The store is PGlite,
 in memory unless the launch sets `persistMemory`, then over a data directory
-inside the `--state` directory. Every failure here fails boot as
-`Storage` (exit 74, `host/launch.md`). SQL, file I/O and the adapter
-methods stay in `storage/*.vibe`; this spec holds the decisions. Sources:
-`plugins/plugin-sql/src/pglite/manager.ts` (lock, corruption, close),
-`pglite/migrated-snapshot.ts` (snapshot), `packages/agent/src/runtime/logs-retention-service.ts`
-and `memory-retention.ts` (retention). A store of an older Eliza is never
-read or migrated: the v4 store uses a new directory name. There is no export.
+inside the `--state` directory. An open failure stops boot as `Storage`
+(exit 74, `host/launch.md`). SQL, file I/O and the adapter methods live in
+`packages/agent-host/src/storage/`. A store of an older Eliza is never read
+or migrated because the v4 store uses a new directory name.
 
 ## Story: Keep one agent identity for my data across restarts
 
@@ -215,7 +212,7 @@ message bodies. These queries leave all earlier originals in the store.
 
 A query or write admitted before close runs to its end; no new one starts
 once close begins, and the store closes only when none is left and no sweep
-runs. A committed row is removed only by a retention sweep.
+runs. In this model a committed log row is removed only by a retention sweep.
 
 ```quint
 pure val queryIdValues = Set(1, 2)
@@ -300,11 +297,13 @@ pure def lawAClosedStoreRunsNoWrite(text: WriteText, completed: bool): bool = re
 With `retention` set, a sweep runs every `intervalMinutes` as a core
 exclusive scheduled task, so two sweeps never overlap. It deletes every log
 row older than `days` and, in each room, every row beyond the newest
-`maxRowsPerRoom` (newer means a later time, then a higher id). A bound of 0
-is off, and a `Prune` with both off is refused at open. It reads only ids,
-rooms and times. Rows written while it runs stay unless already targeted.
-The shell turns the launch's `retention` into `Prune` with
-`ageMs = days × 86,400,000`; `KeepLogs` becomes `KeepAll`, which never sweeps.
+`maxRowsPerRoom` (newer means a later time, then a higher id). The model
+uses 0 to disable one bound and refuses `Prune` with both off. The launch
+schema requires positive `days`, `maxRowsPerRoom` and `intervalMinutes`
+when `retention` is present. The shell rounds `days × 86,400,000` up to
+its `ageMs`. With no `retention`, it keeps all logs and never sweeps. A
+sweep reads only ids, rooms and times. Rows written after it selects
+its targets stay.
 
 ```quint
 pure val nowValues = Set(50000, 200000)

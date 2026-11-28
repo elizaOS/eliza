@@ -20,7 +20,7 @@ this model; so are scheduling, delivery and cancellation at the scheduler.
 Rendering may find no model, have the model refuse, return blank text, or
 return text that declares a report day other than the current one. Only a
 valid answer goes on to storage, and storage may still refuse the write.
-The model is asked with no output limit, so a summary is never cut short.
+The model call uses the configured provider's output limit.
 
 ```quint
 type CheckinPhase = CheckinIdle | Collected | Rendered | SummaryStored | CheckinFailed
@@ -154,9 +154,8 @@ recaps the day, with the to-dos, routines and reminders the owner
 finished today and the goal check-ins they answered. Each source is read
 on its own: one that could not be read is said to be unchecked and the
 rest are still told. A section the owner asked to leave out of their
-briefs stays out until they ask for it back. The model writes the brief
-from the whole fact sheet, with no output limit, and the owner hears what
-it wrote whole.
+briefs stays out until they ask for it back. The model receives the whole
+fact sheet and uses the configured provider's output limit.
 
 ```quint
 type BriefKind = MorningBrief | EveningBrief | WeeklyBrief

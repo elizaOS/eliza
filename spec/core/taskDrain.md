@@ -4,9 +4,9 @@
 
 ## Story: Reconcile a reusable drain and retire its persisted task
 
-> As a service, I want a repeating drain to find or create its one
-> persisted task and delete it on disposal, so that a drain never leaves a
-> duplicate or orphaned task behind.
+> As a service, I want a repeating drain to reuse its first matching task,
+> attempt duplicate cleanup, and delete its captured task on disposal when
+> storage supports deletion.
 
 ### Every asynchronous start retains its own storage operation and checks disposal after lookup
 

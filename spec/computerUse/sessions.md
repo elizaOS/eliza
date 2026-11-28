@@ -36,7 +36,7 @@ pure val initial: SessionMachine = {
 
 ### Opening a closed session advances its epoch and grants an active lease
 
-A closed session opens into `Idle` with a higher epoch, a fresh sequence counter, an active lease, and no active action or stale observation.
+A closed session opens into `Idle`, advances its epoch and sequence, grants an active lease, and clears any action or observation from the previous session.
 
 ```quint
 pure def canOpenSession(s: SessionMachine, target: SessionTargetKind): bool =
@@ -109,7 +109,7 @@ pure def completeAction(s: SessionMachine, forEpoch: int, forActionSeq: int): Se
 
 ### Pausing, resuming, lease expiration, lease renewal, stopping, and closing maintain strict lifecycle boundaries
 
-Pausing suspends an idle or running session; resuming returns a paused leased session to idle; lease expiry revokes execution until renewed; stopping drains any active action; closing terminates the session and clears leases and active actions.
+Pausing suspends an idle or running session. Resuming returns a paused leased session to idle. Lease expiry revokes execution until renewed. Stopping clears the active action and prevents further action starts. Closing terminates the session and clears its lease, action and observation.
 
 ```quint
 pure def canPauseSession(s: SessionMachine): bool =
@@ -206,7 +206,7 @@ pure def sometimesRunningObservedAction(s: SessionMachine): bool =
 pure def sometimesReopenedAfterClose(s: SessionMachine): bool =
   s.status == Idle and s.epoch >= 2 and s.closedCount >= 1
 
-pure def sometimesLeaseRenewedAfterExpiry(s: SessionMachine): bool =
+pure def sometimesPausedLeaseExpires(s: SessionMachine): bool =
   s.status == Paused and not(s.leaseActive)
 
 pure val expectedEpochValues = Set(0, 1, 2, 3)
@@ -216,5 +216,5 @@ pure val forActionSeqValues = Set(0, 1, 2, 3, 4, 5, 6)
 pure val eval_witness_sometimesRunningObservedAction = (("openSession", HostTarget), "recordObservation", ("beginAction", 1, 2, true))
 pure val eval_witness_canCompleteAction = (("openSession", HostTarget), "recordObservation", ("beginAction", 1, 2, true), ("completeAction", 1, 3))
 pure val eval_witness_sometimesReopenedAfterClose = (("openSession", HostTarget), "closeSession", ("openSession", BrowserTarget))
-pure val eval_witness_sometimesLeaseRenewedAfterExpiry = (("openSession", HostTarget), "pauseSession", "expireLease")
+pure val eval_witness_sometimesPausedLeaseExpires = (("openSession", HostTarget), "pauseSession", "expireLease")
 ```

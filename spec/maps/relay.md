@@ -52,8 +52,8 @@ the lease, the next poll of the same offer delivers the same command again,
 at most `maxDeliveries` times in all; after that it waits for its receipt
 or its expiry. The phone runs a command only the first time it sees its
 identity in its current offer, so a redelivery never repeats a device
-action, and it sends one receipt for the one run. A receipt is accepted only
-from the offer the command is leased to, for a command the phone ran.
+action. One receipt is accepted for the one run, from the offer the command
+is leased to.
 
 ```quint
 pure def canRedeliverCommand(s: MapsRelay): bool = s.phase == Leased and s.deliveries < maxDeliveries

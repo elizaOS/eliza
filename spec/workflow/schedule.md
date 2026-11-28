@@ -50,8 +50,9 @@ pure def lawSkippedLocalTimeNeverRuns(facts: OccurrenceFacts): bool = not(facts.
 ### An inactive schedule never queues an occurrence
 
 The off switch wins over a wakeup that was already armed: once the owner
-deactivates the definition ([admission](./admission.md)), a late wakeup for
-it records an inactive schedule and starts nothing.
+deactivates the definition ([admission](./admission.md)), no wakeup starts
+work. An obsolete arm is refused at the version check. An otherwise current
+wakeup without a prior occurrence is classified as inactive.
 
 ```quint
 pure def lawInactiveScheduleNeverQueues(facts: OccurrenceFacts): bool = not(facts.active) implies decideOccurrence(facts) != QueueOccurrence

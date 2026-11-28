@@ -198,7 +198,7 @@ effect function failure(call: () => Promise<unknown>) {
   return cause
 }
 
-it.live("Talk to the agent through the cloud speech relay (spec/os/voice/cloudSpeech.md, \"Story: Talk to the agent through the cloud speech relay\"; spec/os/voice/cloudSpeech.md, \"The speaker is muted for the whole session without ending voice, and only an open session whose bridge can mute it applies the mute\")", () => effect {
+it.live("Talk to the agent through the cloud speech relay (spec/os/voice/cloudSpeech.md, \"Story: Talk to the agent through the cloud speech relay\"; spec/os/voice/cloudSpeech.md, \"Speaker mute applies in a supported open session and persists across its replies\")", () => effect {
   const phone = device()
   const interim: string[] = []
   const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {}, onInterim: (text) => { interim.push(text) } }, cloudSpeech(phone))

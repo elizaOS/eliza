@@ -62,7 +62,7 @@ pure def alwaysOnlyExactListApplies(s: ListFilter): bool =
 pure def stepEndedNeverReapplies(before: ListFilter, after: ListFilter): bool =
   before.phase == FilterEnded implies after.phase == FilterEnded and after.applied == before.applied
 pure def sometimesApplied(s: ListFilter): bool = s.applied
-pure def sometimesChangedListRefused(s: ListFilter): bool = s.phase == FilterEnded and s.reviewedEpoch >= 0 and not(s.applied)
+pure def sometimesReviewedFilterRefused(s: ListFilter): bool = s.phase == FilterEnded and s.reviewedEpoch >= 0 and not(s.applied)
 pure val fair_propose = "weak"
 pure val fair_reviewFilter = "weak"
 pure val fair_applyFilter = "weak"

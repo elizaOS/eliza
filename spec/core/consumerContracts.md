@@ -67,9 +67,9 @@ Package replacement requires at least one declared consumer, and every
 declared consumer to pass with the same candidate artifact built from one
 spec revision; a result recorded for another revision does not count.
 Accepting the spec revision itself is the toolchain's check and review, not
-a rule of this spec. The expected source identities include the consumer
-commit, the producer pin and the consumer's build profile. Check type-only
-and value imports, runtime and browser-safe entry points, native
+a rule of this spec. The expected identity includes the consumer ID, the
+consumer commit, the producer pin and the consumer's build profile. Check
+type-only and value imports, runtime and browser-safe entry points, native
 registration, and persisted data fixtures using the packed artifacts.
 Include provider and platform journeys at the I/O boundaries in their
 stories. An inventory entry or nearby spec link alone supplies none of
@@ -77,19 +77,19 @@ these results. Development or test-only producers can have their own
 conformance evidence without satisfying a consumer's identity.
 
 ```quint
-type ConsumerPin = { producerPin: str, consumerCommit: str, buildProfile: str }
+type ConsumerPin = { consumerId: str, producerPin: str, consumerCommit: str, buildProfile: str }
 type ConsumerEvidence = { identity: ConsumerPin, specRevision: str, candidate: str, importsCompile: bool, exportsResolve: bool, behaviorMatches: bool, nativeJourneys: bool }
 pure def consumerMatches(expected: ConsumerPin, observed: ConsumerEvidence, artifact: str, specRevision: str): bool =
   artifact != "" and observed.candidate == artifact and specRevision != "" and observed.specRevision == specRevision and
-  expected.producerPin != "" and expected.consumerCommit != "" and expected.buildProfile != "" and observed.identity == expected and
+  expected.consumerId != "" and expected.producerPin != "" and expected.consumerCommit != "" and expected.buildProfile != "" and observed.identity == expected and
   observed.importsCompile and observed.exportsResolve and observed.behaviorMatches and observed.nativeJourneys
 pure def consumerSatisfied(expected: ConsumerPin, evidence: List[ConsumerEvidence], artifact: str, specRevision: str): bool =
   evidence.some(e => consumerMatches(expected, e, artifact, specRevision))
 pure def replacementReady(specRevision: str, artifact: str, consumers: List[ConsumerPin], evidence: List[ConsumerEvidence]): bool =
   consumers.length() > 0 and
   consumers.every(c => consumerSatisfied(c, evidence, artifact, specRevision))
-pure val firstPin: ConsumerPin = { producerPin: "producer-1", consumerCommit: "consumer-1", buildProfile: "profile-1" }
-pure val secondPin: ConsumerPin = { producerPin: "producer-2", consumerCommit: "consumer-2", buildProfile: "profile-2" }
+pure val firstPin: ConsumerPin = { consumerId: "app-one", producerPin: "producer-1", consumerCommit: "consumer-1", buildProfile: "profile-1" }
+pure val secondPin: ConsumerPin = { consumerId: "app-two", producerPin: "producer-2", consumerCommit: "consumer-2", buildProfile: "profile-2" }
 pure val firstEvidence: ConsumerEvidence = { identity: firstPin, specRevision: "spec-a", candidate: "candidate", importsCompile: true, exportsResolve: true, behaviorMatches: true, nativeJourneys: true }
 pure val secondEvidence: ConsumerEvidence = { ...firstEvidence, identity: secondPin }
 pure val consumersValues = Set(List(), List(firstPin), List(firstPin, secondPin), List(secondPin, firstPin))
@@ -113,17 +113,18 @@ pure def lawNoDeclaredConsumerIsNoReplacement(specRevision: str, artifact: str, 
 
 ### One consumer's evidence cannot stand in for another's
 
-Evidence is bound to the exact consumer pin that produced it: its producer
-pin, its consumer commit and its build profile. A result observed for one
-consumer satisfies no other consumer, even one that pins the same producer,
-and a public export at one pin does not establish that a source alias,
+Evidence is bound to the exact consumer pin that produced it, including the
+consumer ID, producer pin, consumer commit and build profile. A result observed
+for one consumer satisfies no other consumer, even when both use the same
+producer pin, commit and build profile. A public export at one pin does not
+establish that a source alias,
 build entry, native registration or runtime route exists at another.
 
 ```quint
 pure def lawEvidenceServesOneConsumer(expected: ConsumerPin, otherConsumer: ConsumerPin, observed: ConsumerEvidence, artifact: str, specRevision: str): bool =
   expected != otherConsumer implies
     not(consumerMatches(expected, observed, artifact, specRevision) and consumerMatches(otherConsumer, observed, artifact, specRevision))
-pure val otherConsumerValues = Set(firstPin, secondPin, { ...firstPin, buildProfile: "profile-2" })
+pure val otherConsumerValues = Set(firstPin, secondPin, { ...firstPin, consumerId: "app-two" }, { ...firstPin, buildProfile: "profile-2" })
 ```
 
 ### Every recorded import names an owner heading or an explicit drop

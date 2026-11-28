@@ -411,3 +411,5 @@ pure val draftOpenValues = Set(
   { current: true, sameReference: false, earlier: false, shelved: true, slotCleared: true },
   { current: true, sameReference: false, earlier: false, shelved: true, slotCleared: false },
   { current: false, sameReference: false, earlier: false, shelved: true, slotCleared: true })
+
+```

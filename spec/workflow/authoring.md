@@ -13,8 +13,8 @@ saved version.
 ### A draft uses the advertised operation catalog and only earlier step outputs
 
 Each decoded step has a unique validated ID and correct kind, operation
-and fields. Steps that consume output must name an earlier step. Read
-steps have no predecessor. Input and canonical JSON must each fit 64 KiB,
+and fields. Steps that consume output must name an earlier step. The
+read-step field schema excludes a predecessor. Input and canonical JSON must each fit 64 KiB,
 and the draft has one to 32 steps. A device operation requires a verified
 installation and enrollment, and the installed protocol the operation
 catalog names for it: two for foreground presentation, three for selected

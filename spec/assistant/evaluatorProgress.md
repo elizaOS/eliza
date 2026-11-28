@@ -51,8 +51,9 @@ pure val idValues = Set("message-a", "message-b", "deleted")
 
 A fresh stage requires the exact private handle, an unchanged progress record
 and fresh evidence. A storage failure preserves the previous record. An exact
-replay of the staged output performs no write. A different staged output or
-binding is a conflict. A fresh snapshot captures durable staged evidence
+replay of the staged output leaves the stored output bytes unchanged. A
+different staged output or binding is a conflict. The adapter compares the
+original serialized outputs before treating equal-sized payloads as equivalent. A fresh snapshot captures durable staged evidence
 ahead of any candidate evidence.
 
 ```quint

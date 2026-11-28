@@ -26,10 +26,13 @@ pure def committedTo(results: List[TurnResult], target: str): bool =
 
 ### A claim that something was not done needs a cited result that failed and was not superseded
 
-A failure is superseded by a later result that applied the same record,
-or, for a failure that named no record, by a result of the same action
-that applied. A failure whose acceptance is unknown proves neither
-outcome, and a success of another record supersedes nothing.
+The shell cites a result for the record it is describing. The evidence
+check considers every result in the turn. An applied result for the same
+record proves it was done, including when a later repeat fails. For a
+failure that names no record, an applied result of the same action rules
+out claiming the action was not done. A failure with unknown acceptance
+proves neither outcome. A success on a different record does not settle
+the cited failure.
 
 ```quint
 pure def supersedes(later: TurnResult, failed: TurnResult): bool =

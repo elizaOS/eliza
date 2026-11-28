@@ -178,9 +178,9 @@ pure def lawAdmittedPackServesExactlyTheDeclaredSafeLeaves(declared: Set[CoreLea
 
 ## Story: Speak only the prose of a reply
 
-> As a person listening to the agent, I hear what it says, never its
-> reasoning, code, links or stage directions, and the client that speaks it
-> uses the same rules as the host.
+> As a person listening to the agent, I hear its reply without reasoning,
+> code blocks, raw web addresses or stage directions, and the client that
+> speaks it uses the same rules as the host.
 
 The speech leaf exports the error type, the reduction of a reply to
 speakable text and the trimming of trailing characters, and nothing that

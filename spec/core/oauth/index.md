@@ -60,9 +60,11 @@ pure def leadsToStartSettles(s: OAuthFlow, later: OAuthFlow): bool = (s.phase ==
 
 A callback arrives for a flow whose start returned it. An unknown, expired
 or previously consumed flow is rejected. Provider-reported OAuth errors and
-missing post-restart PKCE secrets update the flow to failed and return that
-flow. Missing provider callback support throws after consumption. Provider
-exchange begins only after those checks.
+missing post-restart PKCE secrets attempt to mark the flow failed. The call
+returns the updated flow when storage supplies it, or the consumed flow when
+the update returns no row. A throwing update propagates. Missing provider
+callback support throws after consumption. Provider exchange begins only
+after those checks.
 
 ```quint
 pure def canBeginCallback(s: OAuthFlow): bool = s.phase == AwaitingCallback

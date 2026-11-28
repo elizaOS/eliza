@@ -1,4 +1,4 @@
-// spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"
+// spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate my listener only from an enrolled record for this image"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { listenerGates, type ListenerRequest } from "../gen/os__image__listener.effect.vibe"
@@ -138,7 +138,7 @@ it.live(`Stage reviewed SystemUI patches away from the source and refuse exclusi
   }
 })
 
-it.live.skipIf(skipped !== null)(`Bind qualification to observed APK, package and source bytes${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"; spec/os/image/listener.md, "A qualification record counts only when its bytes are the enrolled ones and it names every input of this image")`, effect () => {
+it.live.skipIf(skipped !== null)(`Bind qualification to observed APK, package and source bytes${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/image/listener.md, "Story: Activate my listener only from an enrolled record for this image"; spec/os/image/listener.md, "A qualification record counts only when its bytes are the enrolled ones and it names every input of this image")`, effect () => {
   provide NodeServices.layer {
     if (tools.kind === "missing") return
     const files = try FileSystem.FileSystem

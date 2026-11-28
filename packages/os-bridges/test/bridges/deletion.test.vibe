@@ -266,7 +266,7 @@ it.live("Undo keeps a staged deletion only while it can still win, and an uncert
   ))
 })
 
-it.live("A deleted message, conversation, voicemail or contact is hidden from its list only while its window is queued, and its staging names its own kind (spec/os/android/deletionWindow.md, \"A record waiting in its window is hidden from its list until Undo or the provider settles it\"; spec/os/android/deferredDeletion.md, \"Story: Undo a deleted message, conversation, voicemail or contact\"; spec/os/android/deferredDeletion.md, \"A message, conversation, voicemail or contact is staged only while Android still holds it as I reviewed it\")", () => effect {
+it.live("A deleted message, conversation, voicemail or contact is hidden from its list only while its window is queued, and its staging names its own kind (spec/os/android/deletionWindow.md, \"A queued deletion on its review clock hides the record from its list\"; spec/os/android/deferredDeletion.md, \"Story: Undo a deleted message, conversation, voicemail or contact\"; spec/os/android/deferredDeletion.md, \"A message, conversation, voicemail or contact is staged only while Android still holds it as I reviewed it\")", () => effect {
   const phone = device()
   const deletions = createDeferredDeletions(androidJournal(phone))
   phone.pendingReply = {

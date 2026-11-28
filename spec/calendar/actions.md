@@ -2,10 +2,10 @@
 
 The agent reads and changes the owner's calendars through one Calendar
 action. A read answers from the active account's own listed calendars.
-A change to the resident calendar runs at once for the owner who asked;
-a change to a provider calendar waits for the owner's approval. Both run
-through the [mutation ledger](./mutationLedger.md) with exactly the
-fields that were reviewed.
+The resident calendar can apply changes immediately where the write
+rules allow it. A change to a provider calendar waits for the owner's
+approval. Both run through the [mutation ledger](./mutationLedger.md)
+with exactly the fields that were reviewed.
 
 ## Story: Ask the agent about my calendar and get my active account's events
 
@@ -787,7 +787,7 @@ as any delete does, under the invitation rule below. Declining an
 invitation is a reply to the organizer, not a removal: it is the owner's
 answer declined to that invitation, under the same rule, so it runs only
 for an invitee on a calendar that can answer, and otherwise is refused.
-Either way the event stays on the organizer's calendar.
+A decline leaves the event on the organizer's calendar.
 
 ```quint
 type CancellationMode = OrganizerCancel | DeclineInvitation | RemovePrivateCopy

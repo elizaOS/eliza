@@ -57,7 +57,7 @@ pure def lawFetchedOnlyFromTheLockedUrl(lock: NodeLock, c: RuntimeCandidate): bo
 
 The runtime is `lib/<abi>/libeliza_node.so`, extracted to the native
 library directory and started from there, because app data is never
-executable. It is the only native file installed executable.
+executable. The payload stager gives only that file execute bits.
 
 ```quint
 pure val nodeLibraryName = "libeliza_node.so"

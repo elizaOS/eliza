@@ -1,4 +1,4 @@
-// spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "An item's completion time is set exactly while it is completed"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"; spec/assistant/todos.md, "A miss offers the items that share most of its words, and changes nothing"
+// spec/assistant/todos.md, "Story: Keep my to-do list as I asked, once"; spec/assistant/todos.md, "A mutation is applied once per idempotency key"; spec/assistant/todos.md, "An item is added unless an open item already says the same, unless the owner confirms the duplicate"; spec/assistant/todos.md, "A change by text applies only when exactly one item matches"; spec/assistant/todos.md, "A displayed t-N reference changes only that item, even when text is shared"; spec/assistant/todos.md, "An item's completion time is set exactly while it is completed"; spec/assistant/todos.md, "Clearing the list removes only the previewed items, and only after the owner confirms"; spec/assistant/todos.md, "A miss offers the items that share most of its words, and changes nothing"
 import { isAffirmativeConfirmationReply, type Action, type ActionResult, type Memory, type Provider } from "@elizaos/core"
 import { Machine, Rejected, matching, nearMiss, stored, type Event, type Todo, type TodoStatus, type Todos } from "../gen/assistant__todos.effect.vibe"
 import { Facts, onAgent, parametersOf, readRecord, requestOf, writeRecord } from "./host.vibe"
@@ -38,13 +38,9 @@ function nearMisses(list: Todos, target: string): readonly Todo[] {
 }
 
 function namedTexts(list: Todos, words: string): readonly string[] {
-  const target = words.trim()
-  const ref = /^t-(\d+)$/u.exec(target)
-  const byRef = ref === null ? undefined : list.todos.find((todo) => todo.todoId === Number(ref[1]))
-  if (byRef !== undefined) return [byRef.content]
-  if (list.todos.some((todo) => todo.content === target)) return [target]
-  const loose = [...new Set(list.todos.filter((todo) => plain(todo.content) === plain(target)).map((todo) => todo.content))]
-  return loose.length === 0 ? [target] : loose
+  if (list.todos.some((todo) => todo.content === words)) return [words]
+  const loose = [...new Set(list.todos.filter((todo) => plain(todo.content) === plain(words)).map((todo) => todo.content))]
+  return loose.length === 0 ? [words] : loose
 }
 
 const decodeRequest = Schema.decodeUnknownOption(TodoRequest, { onExcessProperty: "error" })
@@ -61,7 +57,12 @@ export effect function changeTodos(input: unknown, message: Memory) {
     const before = try list.get()
     if (request.op === "list") return { success: true, text: renderTodos(before.todos, true) || "Your to-do list is empty.", data: { todos: before.todos } } satisfies ActionResult
     const targetText = request.op === "create" || request.op === "clear" ? undefined : request.target
-    const named = targetText === undefined ? [] : namedTexts(before, targetText)
+    const trimmedTarget = targetText?.trim()
+    const digits = trimmedTarget === undefined ? undefined : /^t-(\d+)$/u.exec(trimmedTarget)?.[1]
+    const parsedId = Number(digits)
+    const todoId = digits === undefined ? 0 : Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : -1
+    const reference = todoId > 0 ? `t-${todoId}` : trimmedTarget
+    const named = trimmedTarget === undefined || todoId !== 0 ? [] : namedTexts(before, trimmedTarget)
     if (targetText !== undefined && named.length > 1) {
       const candidates = before.todos.filter((todo) => named.includes(todo.content))
       return {
@@ -70,18 +71,19 @@ export effect function changeTodos(input: unknown, message: Memory) {
         data: { outcome: "ambiguous", candidates: candidates.map((todo) => todo.todoId), awaitingUserInput: true },
       } satisfies ActionResult
     }
-    const content = request.op === "create" ? request.content.trim() : request.op === "clear" ? "" : named[0] ?? request.target.trim()
-    const key = `${messageId}:${request.op}:${content}`
-    const facts = { operation: `todo.${request.op}`, kind: request.op === "clear" ? "todo-list" : "todo", id: request.op === "clear" ? listKey : content, key, at }
+    const selector = request.op === "create" ? request.content.trim() : request.op === "clear" ? "" : named[0] ?? reference ?? ""
+    const content = todoId === 0 ? selector : matching(before, selector, todoId)[0]?.content ?? selector
+    const key = `${messageId}:${request.op}${todoId === 0 ? "" : "-ref"}:${selector}`
+    const facts = { operation: `todo.${request.op}`, kind: request.op === "clear" ? "todo-list" : "todo", id: request.op === "clear" ? listKey : selector, key, at }
     const target = `${facts.kind}:${facts.id}`
     const asked = try readRecord(questionKey, decodeQuestion)
     const affirmed = isAffirmativeConfirmationReply(message) && (request.op === "clear" || (asked !== undefined && plain(asked.content) === plain(content) && at - asked.at <= questionLifetime))
     const twin = request.op === "create" && !affirmed ? before.todos.find((todo) => isOpen(todo) && plain(todo.content) === plain(content))?.content : undefined
     const event: Event = request.op === "create" ? { type: "createTodo", key, content: twin ?? content, affirmed }
-      : request.op === "delete" ? { type: "deleteTodo", key, content }
-      : request.op === "rename" ? { type: "renameTodo", key, content, renamed: request.content.trim() }
+      : request.op === "delete" ? { type: "deleteTodo", key, content: selector, todoId }
+      : request.op === "rename" ? { type: "renameTodo", key, content: selector, todoId, renamed: request.content.trim() }
       : request.op === "clear" ? (before.clearPreviewed ? { type: "confirmClear", key, affirmed } : { type: "previewClear", key })
-      : { type: "setTodoStatus", key, content, status: statusOf[request.op], at }
+      : { type: "setTodoStatus", key, content: selector, todoId, status: statusOf[request.op], at }
     const replay = before.mutations.some((mutation) => mutation.key === key)
     const after = list.send(event) catch (refused) => refused
     if (after instanceof Rejected) {
@@ -107,11 +109,12 @@ export effect function changeTodos(input: unknown, message: Memory) {
         return { success: false, effectReceipts: [unchangedReceipt(facts, "duplicate")], text: `"${twin ?? content}" is already on your list. Add another copy anyway? Reply yes to confirm or no to cancel.`, data: { outcome: "duplicate", awaitingUserInput: true } } satisfies ActionResult
       }
       case "Missed": {
-        const candidates = matching(before, content)
-        const offered = candidates.length === 0 ? nearMisses(before, content) : []
+        const candidates = matching(before, selector, todoId)
+        const offered = todoId === 0 && candidates.length === 0 ? nearMisses(before, content) : []
         return {
           success: false, effectReceipts: [unchangedReceipt(facts, candidates.length === 0 ? "no_match" : "ambiguous")],
           text: candidates.length > 0 ? `${candidates.length} to-dos say "${content}", so nothing was changed. Which one did you mean: ${candidates.map((todo) => `t-${todo.todoId}`).join(", ")}?`
+            : todoId !== 0 ? `No to-do has reference ${selector}, so nothing was changed.`
             : offered.length === 0 ? `No to-do says "${content}", so nothing was changed.`
             : `No to-do says "${content}", so nothing was changed. Did you mean ${offered.map((todo) => `"${todo.content}" (t-${todo.todoId})`).join(" or ")}?`,
           data: {

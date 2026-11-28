@@ -8,7 +8,7 @@ The native boundary covers Android VPN DNS consent and iOS Safari content-blocke
 
 ### A block is authorized only by the selected engine and its normalized domain scope
 
-Domain validation and normalization run at the boundary. The exact and proper-subdomain match cases are classified against a parsed domain. Explicit allow rules win. Requested and installed rule counts remain distinct until installation settles.
+Domain validation and normalization run at the boundary. The exact and proper-subdomain match cases are classified against a parsed domain. Explicit allow rules win. The adapter reports requested and blocked domain lists separately. A match counts as a block only while the engine reports an active policy.
 
 ```quint
 type WebsiteEngine = AndroidVpn | AppleContentBlocker | DesktopHosts | DesktopNetworkExtension | WebsiteUnavailable

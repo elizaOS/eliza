@@ -5,8 +5,9 @@ Streaming buffers are JavaScript strings represented here by their complete UTF-
 ## Story: Preserve every buffered unit until it is consumed or explicitly withheld
 
 > As a stream parser, I want exact slicing, search, trimming, surrogate
-> handling and JSON boundary scanning over UTF-16 units, so that no
-> character is lost, split or invented between chunks.
+> handling and JSON boundary scanning over UTF-16 units, so that chunk
+> boundaries preserve complete characters and malformed units receive the
+> same replacement as in a whole string.
 
 ### Slices, prefix search and whitespace stripping preserve exact unit order
 

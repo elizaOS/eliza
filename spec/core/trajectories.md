@@ -1,13 +1,13 @@
 # Turn trajectories
 
-Sources are `runtime/trajectory-recorder.ts`, `trajectory-usage-rollup.ts`, `trajectory-gate.ts`, `trajectory-provider-attribution.ts`, `trajectory-semantic-stage-sink.ts` and `trace-correlation.ts`, and `services/trajectory-json.ts`, `trajectory-semantic-stage.ts` and `trajectory-types.ts`. A trajectory is the record of one turn: the model calls and actions it made, bound to the run that made them, and the token usage they spent. The active trace index that enriches a run's traces is [traces](./traces.md). A trajectory is diagnostic evidence kept on the device that recorded it. It leaves the runtime only when the operator explicitly exports it, for example in a diagnostic bundle; there is no export for training.
+Sources are `runtime/{trajectory-recorder,trajectory-usage-rollup,trajectory-gate,trajectory-provider-attribution,trajectory-semantic-stage-sink,trace-correlation}.vibe` and `services/{trajectory-json,trajectory-semantic-stage,trajectory-types}.vibe`. A trajectory is the record of one turn: the model calls and actions it made, bound to the run that made them, and the token usage they spent. The active trace index that enriches a run's traces is [traces](./traces.md). A trajectory is diagnostic evidence kept on the device that recorded it. It leaves the runtime only when the operator explicitly exports it, for example in a diagnostic bundle; there is no export for training.
 
 ## Story: Record a turn's trajectory
 
-> As an operator, I want each turn the agent takes to leave one trajectory
-> of its model calls and actions, bound to its run and with its token usage
-> summed, so that I can see what the agent did and what it cost, while a
-> source I excluded never leaves the runtime.
+> As an operator, I want each turn with persistence enabled to leave one
+> trajectory of its model calls and actions, bound to its run and with its
+> token usage summed, so that I can see what the agent did and what it cost.
+> I want an export to keep trajectories from currently excluded sources local.
 
 ### A trajectory starts only while persistence is enabled
 
@@ -176,7 +176,7 @@ pure def lawStageFailuresAreReportedNotThrown(hasStepId: bool, hasStageLogger: b
 
 ### The latest copied metadata record determines exclusion
 
-One process-wide map, shared by every runtime and module copy in the process (`trajectory-utils.ts`), holds each source's export exclusion. Registering a nonempty trimmed name replaces its earlier record and applies to later reads from any runtime; restarting one runtime does not reset it, and there is no unregister. A source is known exactly when the map holds its name; an unknown or empty name is not excluded.
+One process-wide map, shared by every runtime and module copy in the process (`trajectory-utils.vibe`), holds each source's export exclusion. Registering a nonempty trimmed name replaces its earlier record and applies to later reads from any runtime; restarting one runtime does not reset it, and there is no unregister. A source is known exactly when the map holds its name; an unknown or empty name is not excluded.
 
 ```quint
 pure val nameValues = Set("", "live-chat", "synthetic")

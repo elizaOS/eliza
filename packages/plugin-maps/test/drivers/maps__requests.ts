@@ -51,7 +51,7 @@ export const driver: Driver<View> = {
         if (before.now < before.until || provider === undefined) return "refused";
         const index = owner.cloud.searches.length;
         owner.searches.push({ fiber: Effect.runFork(on(owner, provider.search("pharmacy"))), index });
-        await until(async () => (await Effect.runPromise(on(owner, owner.maps.requests()))).calls > before.calls);
+        await until(() => owner.cloud.searches.length > index);
         return "accepted";
       }
       case "tick": {
@@ -62,8 +62,17 @@ export const driver: Driver<View> = {
         if (event.retryAfter <= 0) return "refused";
         const latest = owner.searches.at(-1);
         const held = latest === undefined ? undefined : owner.cloud.searches[latest.index];
-        if (event.token !== before.generation || before.pending !== event.token || latest === undefined || held === undefined) return "accepted";
+        if (event.token <= 0 || before.pending !== event.token || latest === undefined || held === undefined) return "accepted";
         await held.open(Exit.fail(cloudFailure({ tag: "CloudRateLimited", retryAt: owner.clock.time.now + event.retryAfter })));
+        await Effect.runPromise(Fiber.await(latest.fiber));
+        return "accepted";
+      }
+      case "settleRequest": {
+        if (event.token <= 0 || before.pending !== event.token) return "refused";
+        const latest = owner.searches.at(-1);
+        const held = latest === undefined ? undefined : owner.cloud.searches[latest.index];
+        if (latest === undefined || held === undefined) return "refused";
+        await held.open(Exit.succeed([]));
         await Effect.runPromise(Fiber.await(latest.fiber));
         return "accepted";
       }

@@ -29,7 +29,7 @@ pure def lawPhaseProjectionKeepsOnlyItsOwnRecords(items: List[TraceKind], phase:
 
 ### An active turn highlights only its latest completed phase before evaluation
 
-Idle, skipped, or failed phases retain their status. A completed turn does not show an active phase.
+The inspector starts from the phase statuses before adding any active highlight. Idle, skipped, or failed phases retain their status. For a completed turn it returns the supplied statuses as they are.
 
 ```quint
 type PhaseProgress = PhaseIdle | PhaseDone | PhaseSkipped | PhaseErrored | PhaseActive

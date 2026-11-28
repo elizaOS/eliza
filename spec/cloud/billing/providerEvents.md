@@ -26,7 +26,7 @@ lease that only its current holder may settle under.
 > order, so that I never pay without getting my plan and never get a plan I
 > did not pay for.
 
-### An event is stored only when its signature verifies, it was signed in the last five minutes and its mode is the environment's
+### An event is stored only when its signature verifies, its signing time is within five minutes of the server clock and its mode is the environment's
 
 The shell checks the signature over the exact body against the configured
 secrets and parses the signed time and `livemode`; production takes live
@@ -49,7 +49,7 @@ pure val drainOwner: S::SessionOwner = { agentId: "cloud", actorId: "providerEve
 pure val noExpiry: Millis = 9007199254740991
 pure def nowOf(e: ProviderEvent): Millis = e.lease.now
 pure def verifiedDelivery(e: ProviderEvent, signatureValid: bool, signedAt: Millis, livemode: bool, liveEnvironment: bool): bool =
-  signatureValid and nowOf(e) - signedAt <= signatureTolerance and livemode == liveEnvironment
+  signatureValid and nowOf(e) - signedAt <= signatureTolerance and signedAt - nowOf(e) <= signatureTolerance and livemode == liveEnvironment
 pure def canReceive(e: ProviderEvent, eventId: str, eventType: ProviderEventType, payloadDigest: str, signatureValid: bool, signedAt: Millis, livemode: bool, liveEnvironment: bool): bool =
   eventId != "" and payloadDigest != "" and S::canCreate(e.lease, drainOwner, noExpiry)
   and intakeAnswer(e, payloadDigest, verifiedDelivery(e, signatureValid, signedAt, livemode, liveEnvironment)) == StoredNew
@@ -62,7 +62,7 @@ pure def alwaysStoredEventIsBound(e: ProviderEvent): bool =
   and ((e.phase == Done) iff (e.lease.phase == S::Committed))
   and ((e.phase == Leased or isDeadLettered(e)) implies e.lease.phase == S::Claimed)
   and (e.phase == Pending implies (e.lease.phase == S::Pending or e.lease.phase == S::Claimed))
-pure val signedAtValues = Set(-400000, 0)
+pure val signedAtValues = Set(-400000, 0, 400000)
 pure val eventIdValues = Set("evt_1")
 pure val payloadDigestValues = Set("p1", "p2")
 ```

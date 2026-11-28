@@ -4,9 +4,9 @@ The source is `sensitive-request-dispatch.ts`. A runtime service maps each deliv
 
 ## Story: Resolve the correct connector while retaining registration order
 
-> As a connector host, I want a sensitive request for a target delivered
-> through the oldest adapter that supports its channel, so that resolution
-> is predictable however many connectors register for one target.
+> As a connector host, I want target resolution to select the oldest adapter
+> that supports the channel, or the latest registration when none does, so
+> that selection stays predictable across registrations.
 
 The default getter returns the latest adapter for a target. A callback exception escapes resolution.
 

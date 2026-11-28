@@ -3,8 +3,9 @@
 The owner's to-do list: items that are pending, in progress, completed or
 cancelled. The agent changes it on the owner's behalf through mutations,
 each carrying an idempotency key, so a retried request never applies
-twice. A mutation that names an item by its text applies only when exactly
-one item matches. This machine follows one owner's list.
+twice. A displayed reference names one item by ID. A mutation that names
+an item by its text applies only when exactly one item matches. This
+machine follows one owner's list.
 
 ## Story: Keep my to-do list as I asked, once
 
@@ -20,7 +21,7 @@ changes nothing. A key seen before with a different request is refused.
 ```quint
 type TodoStatus = TodoPending | TodoInProgress | TodoCompleted | TodoCancelled
 type Todo = { todoId: int, content: str, todoStatus: TodoStatus, completedAt: int }
-type TodoOp = CreateOp | StatusOp | RenameOp | DeleteOp | PreviewClearOp | ConfirmClearOp
+type TodoOp = CreateOp | StatusOp | RenameOp | DeleteOp | PreviewClearOp | ConfirmClearOp | StatusReferenceOp | RenameReferenceOp | DeleteReferenceOp
 type TodoRequest = { op: TodoOp, requestContent: str, requestStatus: TodoStatus, affirmed: bool, requestRenamed: str }
 type MutationRecord = { key: str, request: TodoRequest }
 type TodoOutcome = NoOutcome | Applied | Missed | Duplicate | AlreadySet
@@ -62,8 +63,8 @@ pure def alwaysNextIdIsPositive(s: Todos): bool = s.nextId > 0
 
 ### A change by text applies only when exactly one item matches
 
-The owner's words name an item by its t-N reference, or by its text
-apart from case, punctuation and spacing, so "complete buy milk" names
+The owner's words may name an item by its text apart from case,
+punctuation and spacing, so "complete buy milk" names
 "Buy milk."; the change then carries that item's exact text, and words
 that match several different texts change nothing and ask which one was
 meant. An item matches only when its text is the text of the change, so a
@@ -77,32 +78,52 @@ rename gives the one matching item its new, nonblank text and keeps its
 status.
 
 ```quint
-pure def matching(s: Todos, content: str): List[Todo] = s.todos.select(t => t.content == content)
-pure def statusRequest(content: str, status: TodoStatus): TodoRequest = { op: StatusOp, requestContent: content, requestStatus: status, affirmed: false, requestRenamed: "" }
-pure def canSetTodoStatus(s: Todos, key: str, content: str, status: TodoStatus, at: int): bool = keyAdmits(s, key, statusRequest(content, status)) and at > 0
-pure def setTodoStatus(s: Todos, key: str, content: str, status: TodoStatus, at: int): Todos =
+pure val todoIdValues = Set(0, 1, 2)
+pure def namesTodo(todo: Todo, content: str, todoId: int): bool = if (todoId == 0) todo.content == content else todo.todoId == todoId
+pure def matching(s: Todos, content: str, todoId: int): List[Todo] = s.todos.select(t => namesTodo(t, content, todoId))
+pure def statusRequest(content: str, todoId: int, status: TodoStatus): TodoRequest = { op: if (todoId == 0) StatusOp else StatusReferenceOp, requestContent: content, requestStatus: status, affirmed: false, requestRenamed: "" }
+pure def canSetTodoStatus(s: Todos, key: str, content: str, todoId: int, status: TodoStatus, at: int): bool = keyAdmits(s, key, statusRequest(content, todoId, status)) and at > 0
+pure def setTodoStatus(s: Todos, key: str, content: str, todoId: int, status: TodoStatus, at: int): Todos =
   if (replayed(s, key)) s
-  else if (matching(s, content).length() != 1) recordMutation(key, statusRequest(content, status), s, Missed)
-  else if (matching(s, content).some(t => t.todoStatus == status)) recordMutation(key, statusRequest(content, status), s, AlreadySet)
-  else recordMutation(key, statusRequest(content, status),
-    { ...s, todos: s.todos.listMap(t => if (t.content == content) { ...t, todoStatus: status, completedAt: if (status == TodoCompleted) at else 0 } else t) }, Applied)
+  else if (matching(s, content, todoId).length() != 1) recordMutation(key, statusRequest(content, todoId, status), s, Missed)
+  else if (matching(s, content, todoId).some(t => t.todoStatus == status)) recordMutation(key, statusRequest(content, todoId, status), s, AlreadySet)
+  else recordMutation(key, statusRequest(content, todoId, status),
+    { ...s, todos: s.todos.listMap(t => if (namesTodo(t, content, todoId)) { ...t, todoStatus: status, completedAt: if (status == TodoCompleted) at else 0 } else t) }, Applied)
 pure val renamedValues = Set("oat milk", "milk")
-pure def renameRequest(content: str, renamed: str): TodoRequest = { op: RenameOp, requestContent: content, requestStatus: TodoPending, affirmed: false, requestRenamed: renamed }
-pure def canRenameTodo(s: Todos, key: str, content: str, renamed: str): bool = keyAdmits(s, key, renameRequest(content, renamed)) and renamed != ""
-pure def renameTodo(s: Todos, key: str, content: str, renamed: str): Todos =
+pure def renameRequest(content: str, todoId: int, renamed: str): TodoRequest = { op: if (todoId == 0) RenameOp else RenameReferenceOp, requestContent: content, requestStatus: TodoPending, affirmed: false, requestRenamed: renamed }
+pure def canRenameTodo(s: Todos, key: str, content: str, todoId: int, renamed: str): bool = keyAdmits(s, key, renameRequest(content, todoId, renamed)) and renamed != ""
+pure def renameTodo(s: Todos, key: str, content: str, todoId: int, renamed: str): Todos =
   if (replayed(s, key)) s
-  else if (matching(s, content).length() != 1) recordMutation(key, renameRequest(content, renamed), s, Missed)
-  else if (renamed == content) recordMutation(key, renameRequest(content, renamed), s, AlreadySet)
-  else recordMutation(key, renameRequest(content, renamed), { ...s, todos: s.todos.listMap(t => if (t.content == content) { ...t, content: renamed } else t) }, Applied)
-pure def deleteRequest(content: str): TodoRequest = { op: DeleteOp, requestContent: content, requestStatus: TodoPending, affirmed: false, requestRenamed: "" }
-pure def canDeleteTodo(s: Todos, key: str, content: str): bool = keyAdmits(s, key, deleteRequest(content))
-pure def deleteTodo(s: Todos, key: str, content: str): Todos =
+  else if (matching(s, content, todoId).length() != 1) recordMutation(key, renameRequest(content, todoId, renamed), s, Missed)
+  else if (matching(s, content, todoId).some(t => t.content == renamed)) recordMutation(key, renameRequest(content, todoId, renamed), s, AlreadySet)
+  else recordMutation(key, renameRequest(content, todoId, renamed), { ...s, todos: s.todos.listMap(t => if (namesTodo(t, content, todoId)) { ...t, content: renamed } else t) }, Applied)
+pure def deleteRequest(content: str, todoId: int): TodoRequest = { op: if (todoId == 0) DeleteOp else DeleteReferenceOp, requestContent: content, requestStatus: TodoPending, affirmed: false, requestRenamed: "" }
+pure def canDeleteTodo(s: Todos, key: str, content: str, todoId: int): bool = keyAdmits(s, key, deleteRequest(content, todoId))
+pure def deleteTodo(s: Todos, key: str, content: str, todoId: int): Todos =
   if (replayed(s, key)) s
-  else if (matching(s, content).length() != 1) recordMutation(key, deleteRequest(content), s, Missed)
-  else recordMutation(key, deleteRequest(content), { ...s, todos: s.todos.select(t => t.content != content) }, Applied)
+  else if (matching(s, content, todoId).length() != 1) recordMutation(key, deleteRequest(content, todoId), s, Missed)
+  else recordMutation(key, deleteRequest(content, todoId), { ...s, todos: s.todos.select(t => not(namesTodo(t, content, todoId))) }, Applied)
 pure def stepNoChangeKeepsItems(before: Todos, after: Todos): bool =
   ((after.lastOutcome == Missed or after.lastOutcome == AlreadySet) and after.mutations.length() > before.mutations.length()) implies after.todos == before.todos
 pure def sometimesStatusAlreadySet(s: Todos): bool = s.lastOutcome == AlreadySet
+```
+
+### A displayed t-N reference changes only that item, even when text is shared
+
+The shell passes the parsed numeric ID together with the reference text
+derived from that same ID. A recorded reference keeps the same identity
+after a rename or deletion, so replay never applies a second change. A
+missing reference changes nothing. A text request passes zero for its ID.
+Earlier versions stored only the resolved item text, so an outstanding
+retry of such a request has no recorded reference to recover after its
+item was renamed or deleted.
+
+```quint
+pure val todoValues = Set(
+  { todoId: 1, content: "milk", todoStatus: TodoPending, completedAt: 0 },
+  { todoId: 2, content: "milk", todoStatus: TodoPending, completedAt: 0 })
+pure def lawAReferenceNamesTheExactItem(todo: Todo, content: str, todoId: int): bool =
+  todoId > 0 implies (namesTodo(todo, content, todoId) iff todo.todoId == todoId)
 ```
 
 ### A miss offers the items that share most of its words, and changes nothing

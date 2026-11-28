@@ -4,11 +4,11 @@ The bridge reads an immediate fix or subscribes to updates from Android's locati
 
 ## Story: Use a fresh device location and stop updates when I close the view
 
-> As the person, I want location fixes to respect the selected accuracy, age and permission, and a removed watch to stop publishing.
+> As the person, I want to request an accuracy, receive a fix within my permission and cache-age limit, and stop updates when I remove a watch.
 
-### A fix is usable only when coordinates, accuracy and age fall within the request
+### A fix needs permission, valid coordinates and an allowed cache age
 
-The adapter parses coordinates to millionths of a degree with nonnegative horizontal accuracy. Optional altitude, speed and heading stay in the provider observation. A current fix allows zero age. A cached fix needs explicit positive age allowance.
+The adapter parses coordinates to millionths of a degree with nonnegative horizontal accuracy. Optional altitude, speed and heading stay in the provider observation. The [Android location policy](../os/android/system.md) decides when a request and grant permit reporting a fix as precise. A current fix allows zero age. A cached fix needs explicit positive age allowance.
 
 ```quint
 type LocationGrant = NoLocation | ApproximateLocation | PreciseLocation

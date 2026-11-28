@@ -105,7 +105,7 @@ effect function carriedPage(turn: OpenAsked): (BrowserPage | undefined)!! {
   return decodeBrowserPage(carried, turn.observation) catch () => undefined
 }
 
-// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "The screen shows the address for me to open, and nothing opens until I choose Open there"
+// spec/browser/requestGrounding.md, "Story: Open a destination stated in this message"; spec/browser/control.md, "The screen opens an address my whole message asked for at once, and shows any other address for me to open"
 export effect function groundOpen(asked: OpenAsked, url: string): OpenGrounding!! {
   const page = try carriedPage(asked)
   const links = page !== undefined && "text" in page ? (page.links ?? []).map(({ url }) => url) : []

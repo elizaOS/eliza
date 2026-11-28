@@ -25,7 +25,7 @@ declared ABI.
 > so that an old, revoked, equivocating or foreign release never replaces my
 > app.
 
-### A Stable release needs two distinct approver keys and a Beta release one, and no channel key holds any other authority
+### Stable requires at least two distinct approver keys and Beta at least one, with neither key shared across roles
 
 The two channel roles are the only delegations. Each counts an authorized
 key once, so a repeated signature or an alias of one key never makes two
@@ -126,8 +126,9 @@ A well-formed release of the configured product, repository, channel and
 distribution at or above the lane's sequence, rollout revision and security
 is remembered even when it is not eligible, so a later sequence still
 withdraws an older prepared release. A release that drops a remembered
-revocation, or reuses the remembered sequence with another core or the
-remembered revision with another rollout, is refused and changes nothing.
+revocation or reuses the remembered sequence with another core is refused
+and changes nothing. At the same sequence, reusing the remembered
+revision with another rollout is also refused.
 Only a fetch advances the refresh time; stored bytes never do.
 
 ```quint

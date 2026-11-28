@@ -66,7 +66,7 @@ pure def sometimesBoundToCloud(s: ModelBinding): bool = s.phase == Bound and isC
 pure def sometimesBoundWithoutBackend(s: ModelBinding): bool = s.phase == Bound and s.backend == NoBackend
 ```
 
-### No text handler is ever served by a model on the device
+### Text and image generation use the launch backend, and embeddings can run on the device
 
 `TEXT_SMALL` and `TEXT_LARGE` come from the backend, `IMAGE_DESCRIPTION`
 from the backend too (the cloud's image model, or the own key's large
@@ -210,10 +210,10 @@ A call that offers tools, names the tool to use or asks for a schema gets one
 result: the text, every tool call with its arguments, the finish reason and
 the token use. Any other call gets the text alone. Tool results follow the
 call that asked for them; a result no call asked for is sent as the person's
-text. An answer with neither text nor a tool call is a provider issue, and
-that is the only answer refused for what it holds: the text and the tool
-arguments reach the caller whole at any length, as develop's handlers
-returned them, so a long answer is never turned into a failure. A call
+text. After the adapter validates tool-call names and IDs, a decoded answer
+with neither text nor a tool call is a provider issue. The handler
+keeps the accepted text and tool arguments whole and adds no separate
+length-based refusal. A call
 sends an output cap only when the caller or its admitted lease sets one;
 otherwise the backend owns the output limit. A
 streamed call asks for its token use (`stream_options.include_usage`), which
@@ -247,7 +247,7 @@ pure def lawAnEmptyAnswerIsAProviderIssue(ask: ChatAsk, answer: ChatAnswer): boo
   (answer.textBlank and answer.toolCalls == 0) iff chatReturn(ask, answer) == AnswerProviderIssue
 pure def lawOnlyAToolOrSchemaCallGetsTheResult(ask: ChatAsk, answer: ChatAnswer): bool =
   chatReturn(ask, answer) != AnswerProviderIssue implies (chatReturn(ask, answer) == AnswerResult iff wantsResult(ask))
-pure def lawToolCallsAreNeverDroppedForText(ask: ChatAsk, answer: ChatAnswer): bool =
+pure def lawPlainTextRequestsStillReturnText(ask: ChatAsk, answer: ChatAnswer): bool =
   (answer.toolCalls > 0 and not(wantsResult(ask))) implies chatReturn(ask, answer) == AnswerText
 pure def usageAsked(streamed: bool): bool = streamed
 pure def lawOnlyAStreamAsksForItsTokenUse(streamed: bool): bool = usageAsked(streamed) iff streamed

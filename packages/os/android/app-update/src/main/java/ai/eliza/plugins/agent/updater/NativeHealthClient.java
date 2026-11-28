@@ -1,4 +1,4 @@
-// spec/os/appUpdate/health.md, "Evidence names the installation it was asked about and is sent only before the deadline of an open service"; spec/os/appUpdate/health.md, "Only the updater gets an answer, and only a well-timed request for this version starts the worker"
+// spec/os/appUpdate/health.md, "Evidence names the installation it was asked about and is sent only before the deadline of an open service"; spec/os/appUpdate/health.md, "Only a well-timed updater request for this version starts the worker"
 package ai.eliza.plugins.agent.updater;
 
 import ai.eliza.plugins.agent.health.HealthWork;

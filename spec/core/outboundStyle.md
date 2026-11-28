@@ -1,6 +1,6 @@
 # Outbound style rewriting
 
-Source `security/voice-gate.ts` optionally rewrites finalized outbound text in the agent's persona style; it is not speech. Its cache key is the agent id, the source and the FNV hash of the original text, so two different texts whose hashes collide share one rewrite. Every bio and style directive stays in the rewrite prompt. How faithfully the model rephrases is an external model boundary.
+Source `packages/core/src/security/voice-gate.vibe` optionally rewrites finalized outbound text in the agent's persona style. Its cache key is the agent id, the source and the FNV hash of the original text, so two different texts whose hashes collide share one rewrite. Every bio and style directive stays in the rewrite prompt. How faithfully the model rephrases is an external model boundary.
 
 ## Story: Reuse scoped rephrasing while retaining original text on failure
 

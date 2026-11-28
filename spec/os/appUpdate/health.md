@@ -32,7 +32,7 @@ stay in the shell.
 > installation, so that a broken update is caught and a slow start or a
 > hidden screen never rolls one back.
 
-### Only the updater gets an answer, and only a well-timed request for this version starts the worker
+### Only a well-timed updater request for this version starts the worker
 
 A foreign sender is answered `Unauthorized` whatever it sent, and nothing
 changes. The updater's request is refused as invalid or busy when the

@@ -52,17 +52,17 @@ lemma FilterKeepsTodos(s: Todos, p: Todo -> bool, after: Todos)
   ProofLib.FilterSubset(p, s.todos);
 }
 
-lemma ContentSplit(xs: seq<Todo>, content: string)
-  ensures |ProofLib.Filter((t: Todo) => (t.content != content), xs)| + |ProofLib.Filter((t: Todo) => (t.content == content), xs)| == |xs|
+lemma TargetSplit(xs: seq<Todo>, content: string, todoId: int)
+  ensures |ProofLib.Filter((t: Todo) => (!namesTodo(t, content, todoId)), xs)| + |ProofLib.Filter((t: Todo) => (namesTodo(t, content, todoId)), xs)| == |xs|
   decreases |xs|
 {
   if |xs| == 0 {
-    ProofLib.FilterNil((t: Todo) => (t.content != content), xs);
-    ProofLib.FilterNil((t: Todo) => (t.content == content), xs);
+    ProofLib.FilterNil((t: Todo) => (!namesTodo(t, content, todoId)), xs);
+    ProofLib.FilterNil((t: Todo) => (namesTodo(t, content, todoId)), xs);
   } else {
-    ProofLib.FilterCons((t: Todo) => (t.content != content), xs);
-    ProofLib.FilterCons((t: Todo) => (t.content == content), xs);
-    ContentSplit(xs[1..], content);
+    ProofLib.FilterCons((t: Todo) => (!namesTodo(t, content, todoId)), xs);
+    ProofLib.FilterCons((t: Todo) => (namesTodo(t, content, todoId)), xs);
+    TargetSplit(xs[1..], content, todoId);
   }
 }
 
@@ -85,61 +85,61 @@ lemma createTodo_ensures(s: Todos, key: string, content: string, affirmed: bool)
   }
 }
 
-lemma setTodoStatus_ensures(s: Todos, key: string, content: string, status: TodoStatus, at: int)
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysKeysAreUnique(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysTodoIdsAreUnique(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysNextIdIsPositive(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> alwaysCompletionTimeMatchesStatus(setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> stepNoChangeKeepsItems(s, setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "setTodoStatus", setTodoStatus(s, key, content, status, at)))
-  ensures (inv(s) ==> canSetTodoStatus(s, key, content, status, at) ==> stepClearKeepsUnpreviewedItems(s, "setTodoStatus", setTodoStatus(s, key, content, status, at)))
+lemma setTodoStatus_ensures(s: Todos, key: string, content: string, todoId: int, status: TodoStatus, at: int)
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, todoId, status, at) ==> alwaysKeysAreUnique(setTodoStatus(s, key, content, todoId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, todoId, status, at) ==> alwaysTodoIdsAreUnique(setTodoStatus(s, key, content, todoId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, todoId, status, at) ==> alwaysNextIdIsPositive(setTodoStatus(s, key, content, todoId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, todoId, status, at) ==> alwaysCompletionTimeMatchesStatus(setTodoStatus(s, key, content, todoId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, todoId, status, at) ==> stepNoChangeKeepsItems(s, setTodoStatus(s, key, content, todoId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, todoId, status, at) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "setTodoStatus", setTodoStatus(s, key, content, todoId, status, at)))
+  ensures (inv(s) ==> canSetTodoStatus(s, key, content, todoId, status, at) ==> stepClearKeepsUnpreviewedItems(s, "setTodoStatus", setTodoStatus(s, key, content, todoId, status, at)))
 {
-  if inv(s) && canSetTodoStatus(s, key, content, status, at) && !replayed(s, key) {
-    var mid := s.(todos := (var s_map := s.todos; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var t := s_map[i_map]; (if (t.content == content) then t.(todoStatus := status, completedAt := (if status.TodoCompleted? then at else 0)) else t))));
-    FreshKey(s, key, statusRequest(content, status), TodoOutcome.Missed);
-    FreshKey(s, key, statusRequest(content, status), TodoOutcome.AlreadySet);
+  if inv(s) && canSetTodoStatus(s, key, content, todoId, status, at) && !replayed(s, key) {
+    var mid := s.(todos := (var s_map := s.todos; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var t := s_map[i_map]; (if (namesTodo(t, content, todoId)) then t.(todoStatus := status, completedAt := (if status.TodoCompleted? then at else 0)) else t))));
+    FreshKey(s, key, statusRequest(content, todoId, status), TodoOutcome.Missed);
+    FreshKey(s, key, statusRequest(content, todoId, status), TodoOutcome.AlreadySet);
     IdsBridge(s);
     IdsBridge(mid);
     assert forall i :: 0 <= i < |s.todos| ==> mid.todos[i].todoId == s.todos[i].todoId;
-    FreshKey(mid, key, statusRequest(content, status), TodoOutcome.Applied);
+    FreshKey(mid, key, statusRequest(content, todoId, status), TodoOutcome.Applied);
   }
 }
 
-lemma renameTodo_ensures(s: Todos, key: string, content: string, renamed: string)
-  ensures (inv(s) ==> canRenameTodo(s, key, content, renamed) ==> alwaysKeysAreUnique(renameTodo(s, key, content, renamed)))
-  ensures (inv(s) ==> canRenameTodo(s, key, content, renamed) ==> alwaysTodoIdsAreUnique(renameTodo(s, key, content, renamed)))
-  ensures (inv(s) ==> canRenameTodo(s, key, content, renamed) ==> alwaysNextIdIsPositive(renameTodo(s, key, content, renamed)))
-  ensures (inv(s) ==> canRenameTodo(s, key, content, renamed) ==> alwaysCompletionTimeMatchesStatus(renameTodo(s, key, content, renamed)))
-  ensures (inv(s) ==> canRenameTodo(s, key, content, renamed) ==> stepNoChangeKeepsItems(s, renameTodo(s, key, content, renamed)))
-  ensures (inv(s) ==> canRenameTodo(s, key, content, renamed) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "renameTodo", renameTodo(s, key, content, renamed)))
-  ensures (inv(s) ==> canRenameTodo(s, key, content, renamed) ==> stepClearKeepsUnpreviewedItems(s, "renameTodo", renameTodo(s, key, content, renamed)))
+lemma renameTodo_ensures(s: Todos, key: string, content: string, todoId: int, renamed: string)
+  ensures (inv(s) ==> canRenameTodo(s, key, content, todoId, renamed) ==> alwaysKeysAreUnique(renameTodo(s, key, content, todoId, renamed)))
+  ensures (inv(s) ==> canRenameTodo(s, key, content, todoId, renamed) ==> alwaysTodoIdsAreUnique(renameTodo(s, key, content, todoId, renamed)))
+  ensures (inv(s) ==> canRenameTodo(s, key, content, todoId, renamed) ==> alwaysNextIdIsPositive(renameTodo(s, key, content, todoId, renamed)))
+  ensures (inv(s) ==> canRenameTodo(s, key, content, todoId, renamed) ==> alwaysCompletionTimeMatchesStatus(renameTodo(s, key, content, todoId, renamed)))
+  ensures (inv(s) ==> canRenameTodo(s, key, content, todoId, renamed) ==> stepNoChangeKeepsItems(s, renameTodo(s, key, content, todoId, renamed)))
+  ensures (inv(s) ==> canRenameTodo(s, key, content, todoId, renamed) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "renameTodo", renameTodo(s, key, content, todoId, renamed)))
+  ensures (inv(s) ==> canRenameTodo(s, key, content, todoId, renamed) ==> stepClearKeepsUnpreviewedItems(s, "renameTodo", renameTodo(s, key, content, todoId, renamed)))
 {
-  if inv(s) && canRenameTodo(s, key, content, renamed) && !replayed(s, key) {
-    var mid := s.(todos := (var s_map := s.todos; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var t := s_map[i_map]; (if (t.content == content) then t.(content := renamed) else t))));
-    FreshKey(s, key, renameRequest(content, renamed), TodoOutcome.Missed);
-    FreshKey(s, key, renameRequest(content, renamed), TodoOutcome.AlreadySet);
+  if inv(s) && canRenameTodo(s, key, content, todoId, renamed) && !replayed(s, key) {
+    var mid := s.(todos := (var s_map := s.todos; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var t := s_map[i_map]; (if (namesTodo(t, content, todoId)) then t.(content := renamed) else t))));
+    FreshKey(s, key, renameRequest(content, todoId, renamed), TodoOutcome.Missed);
+    FreshKey(s, key, renameRequest(content, todoId, renamed), TodoOutcome.AlreadySet);
     IdsBridge(s);
     IdsBridge(mid);
     assert forall i :: 0 <= i < |s.todos| ==> mid.todos[i].todoId == s.todos[i].todoId;
-    FreshKey(mid, key, renameRequest(content, renamed), TodoOutcome.Applied);
+    FreshKey(mid, key, renameRequest(content, todoId, renamed), TodoOutcome.Applied);
   }
 }
 
-lemma deleteTodo_ensures(s: Todos, key: string, content: string)
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> alwaysKeysAreUnique(deleteTodo(s, key, content)))
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> alwaysTodoIdsAreUnique(deleteTodo(s, key, content)))
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> alwaysNextIdIsPositive(deleteTodo(s, key, content)))
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> alwaysCompletionTimeMatchesStatus(deleteTodo(s, key, content)))
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> stepNoChangeKeepsItems(s, deleteTodo(s, key, content)))
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "deleteTodo", deleteTodo(s, key, content)))
-  ensures (inv(s) ==> canDeleteTodo(s, key, content) ==> stepClearKeepsUnpreviewedItems(s, "deleteTodo", deleteTodo(s, key, content)))
+lemma deleteTodo_ensures(s: Todos, key: string, content: string, todoId: int)
+  ensures (inv(s) ==> canDeleteTodo(s, key, content, todoId) ==> alwaysKeysAreUnique(deleteTodo(s, key, content, todoId)))
+  ensures (inv(s) ==> canDeleteTodo(s, key, content, todoId) ==> alwaysTodoIdsAreUnique(deleteTodo(s, key, content, todoId)))
+  ensures (inv(s) ==> canDeleteTodo(s, key, content, todoId) ==> alwaysNextIdIsPositive(deleteTodo(s, key, content, todoId)))
+  ensures (inv(s) ==> canDeleteTodo(s, key, content, todoId) ==> alwaysCompletionTimeMatchesStatus(deleteTodo(s, key, content, todoId)))
+  ensures (inv(s) ==> canDeleteTodo(s, key, content, todoId) ==> stepNoChangeKeepsItems(s, deleteTodo(s, key, content, todoId)))
+  ensures (inv(s) ==> canDeleteTodo(s, key, content, todoId) ==> stepItemsLeaveOnlyByDeleteOrConfirmedClear(s, "deleteTodo", deleteTodo(s, key, content, todoId)))
+  ensures (inv(s) ==> canDeleteTodo(s, key, content, todoId) ==> stepClearKeepsUnpreviewedItems(s, "deleteTodo", deleteTodo(s, key, content, todoId)))
 {
-  if inv(s) && canDeleteTodo(s, key, content) && !replayed(s, key) {
-    var mid := s.(todos := ProofLib.Filter((t: Todo) => (t.content != content), s.todos));
-    FreshKey(s, key, deleteRequest(content), TodoOutcome.Missed);
-    FilterKeepsTodos(s, (t: Todo) => (t.content != content), mid);
-    ContentSplit(s.todos, content);
-    FreshKey(mid, key, deleteRequest(content), TodoOutcome.Applied);
+  if inv(s) && canDeleteTodo(s, key, content, todoId) && !replayed(s, key) {
+    var mid := s.(todos := ProofLib.Filter((t: Todo) => (!namesTodo(t, content, todoId)), s.todos));
+    FreshKey(s, key, deleteRequest(content, todoId), TodoOutcome.Missed);
+    FilterKeepsTodos(s, (t: Todo) => (!namesTodo(t, content, todoId)), mid);
+    TargetSplit(s.todos, content, todoId);
+    FreshKey(mid, key, deleteRequest(content, todoId), TodoOutcome.Applied);
   }
 }
 

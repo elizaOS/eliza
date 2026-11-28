@@ -1,4 +1,4 @@
-// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate the listener only on a qualified image"
+// spec/os/image/listener.md, "Story: Put the wake listener in an image only as reviewed"; spec/os/image/listener.md, "Story: Activate my listener only from an enrolled record for this image"
 import {
   listenerPrivilegedPermissions,
   permissionsReviewed,

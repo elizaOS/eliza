@@ -5,22 +5,21 @@ into text (`POST /api/v1/voice/stt`) for a signed-in device. One provider of
 each direction serves a deployment, named with its voices, models, languages
 and prices by the deployment's speech profile, with no fallback. Each request
 runs over one hold of [metering](../shared/metering.md), whose caller is the
-organization, and is settled once. The device side is os `voice/cloudSpeech`;
-realtime speech is [the speech relay](./speechRelay.md). Sources are develop
-`packages/cloud/api/v1/voice/{tts,stt}/route.ts`,
-`packages/cloud/shared/src/lib/services/{timed-speech-stream,tts-synthesis-options}.ts`
-and `pricing-constants.ts`.
+organization, and is settled once. The [device side](../../os/voice/cloudSpeech.md)
+uses these routes and [the realtime speech relay](./speechRelay.md). The
+batch routes and provider integration live in
+`packages/cloud-worker/src/services/speech.vibe` and
+`packages/cloud-worker/src/providers/speech.vibe`.
 
-The shell handles a request in this order: for transcription the body cap,
-then `requestAuth` on a key-or-session route (`speechEntry`), the deployment's
+The shell handles a request in this order: for transcription the declared
+body cap, then `requestAuth` on a key-or-session route (`speechEntry`), the deployment's
 capability gate, the plan's standard request limit (`speechLimit`), the body
 (`ttsCheck` or `sttCheck`), the quote, `M::admission` on a fresh hold, the
 standing check and `M::markDispatched` that metering requires, the provider,
 and one `settlementOf`. A synthesis sent with an `Idempotency-Key` is held
 under that key and what it speaks, so a retry of it is never paid twice; a
 transcription's request id is minted per request. Wire names (`withTimestamps`, `duration_ms`, the 0.7 to 1.2 decimal speed)
-and the NDJSON and multipart codecs are the Effect Schemas of
-`src/services/speech.schema.ts`.
+and the client wire codecs are in `packages/cloud/src/services/speech-batch.schema.ts`.
 
 ## Story: Speak a reply as audio
 
@@ -131,10 +130,11 @@ pure def lawTheAnswerNamesWhatWasServed(profile: SpeechProfile, r: TtsRequest): 
 
 ### A timed answer carries at most 2,048 audio frames numbered from 0 and 8 MiB of audio, and ends with one done line only after some audio
 
-Each line is `{type: "audio", sequence, audioBase64, alignment}`, then
+The service validates and assembles the NDJSON before answering. Each audio
+line is `{type: "audio", sequence, audioBase64, alignment}`, followed by
 `{type: "done"}`. A provider frame that would pass a cap, an empty frame, or
-an end with no audio breaks the stream: the answer ends without `done` and
-the hold settles as an unclear reply.
+an end with no audio refuses the answer as `502 provider_invalid_response`
+and settles the hold as an unclear reply.
 
 ```quint
 type TimedStream = { frames: int, audioBytes: int }
@@ -164,31 +164,34 @@ The provider request and response decoding share a 120-second budget.
 Cloud parses the upload and prepares the multipart request body before
 that budget starts.
 
-### A transcription body over 25 MiB is refused 413 before its credential is read
+### A transcription with a declared body over 25 MiB is refused 413 before its credential is read
 
-Below the cap, and for every synthesis, the credential is checked as
-`requestAuth` checks a key-or-session route, and its refusal is the answer.
+On an offered route, a declared length over the cap is refused before
+credential lookup. The multipart reader also enforces the limit after
+authentication, including when the caller omitted the length. For every
+synthesis, the credential is checked as `requestAuth` checks a key-or-session
+route, and its refusal is the answer.
 
 ```quint
 type BatchSpeech = TtsRoute | SttRoute
 type SpeechEntry = RecordingTooLarge | Authenticated({ admission: RA::Admission })
 pure val maxSttBodyBytes: int = 25 * 1024 * 1024
 pure val tooLargeRefusal: Refusal = refuse(ContentTooLarge)
-pure def speechEntry(route: BatchSpeech, bodyBytes: int, presented: RA::Presented, standing: RA::Standing, now: Millis): SpeechEntry =
-  if (route == SttRoute and bodyBytes > maxSttBodyBytes) RecordingTooLarge
+pure def speechEntry(route: BatchSpeech, declaredBodyBytes: int, presented: RA::Presented, standing: RA::Standing, now: Millis): SpeechEntry =
+  if (route == SttRoute and declaredBodyBytes > maxSttBodyBytes) RecordingTooLarge
   else Authenticated({ admission: RA::admit(RA::KeyOrSessionRoute, presented, standing, now) })
-pure val bodyBytesValues = Set(0, 26214400, 26214401)
-pure def lawAnOversizeRecordingIsRefusedWhoeverSendsIt(bodyBytes: int, presented: RA::Presented, standing: RA::Standing, now: Millis): bool =
-  bodyBytes > maxSttBodyBytes implies (speechEntry(SttRoute, bodyBytes, presented, standing, now) == RecordingTooLarge and wellFormed(tooLargeRefusal) and statusOf(tooLargeRefusal.code) == 413)
+pure val declaredBodyBytesValues = Set(0, 26214400, 26214401)
+pure def lawAPredeclaredOversizeRecordingIsRefusedWhoeverSendsIt(declaredBodyBytes: int, presented: RA::Presented, standing: RA::Standing, now: Millis): bool =
+  declaredBodyBytes > maxSttBodyBytes implies (speechEntry(SttRoute, declaredBodyBytes, presented, standing, now) == RecordingTooLarge and wellFormed(tooLargeRefusal) and statusOf(tooLargeRefusal.code) == 413)
 ```
 
 ### A transcription needs one audio part of an accepted type whose bytes match it, and names only a language the profile lists and only the deployment's provider
 
 The accepted types are `audio/mpeg`, `audio/mp3`, `audio/mp4`, `audio/m4a`,
 `audio/x-m4a`, `audio/wav`, `audio/x-wav`, `audio/webm` and `audio/ogg`; the
-shell checks the leading bytes against the type. The duration is the one
-parsed from the file, or estimated from its size and type when it cannot be
-parsed. Anything else is refused `400 invalid_request`. The answer is
+shell checks the leading bytes against the type. It parses a positive
+duration from WAV files and estimates it from size and type for other
+formats. An invalid part is refused `400 invalid_request`. The answer is
 `{transcript, duration_ms, segments?, words?}` with `X-Eliza-STT-Provider`.
 
 ```quint
@@ -200,7 +203,7 @@ pure def audioFits(a: AudioPart): bool = match a { | AudioFile(x) => audioTypes.
 pure def languageFits(profile: SpeechProfile, p: Pick): bool = match p { | ProfileDefault => true | Named(x) => profile.languages.includes(x.id) }
 pure def providerFits(profile: SpeechProfile, p: Pick): bool = match p { | ProfileDefault => true | Named(x) => x.id == profile.sttProvider }
 pure def sttCheck(profile: SpeechProfile, form: SttForm): SttCheck =
-  if (audioFits(form.audio) and languageFits(profile, form.language) and providerFits(profile, form.provider) and form.durationMs >= 0 and profile.sttPerSecond >= 1)
+  if (audioFits(form.audio) and languageFits(profile, form.language) and providerFits(profile, form.provider) and form.durationMs > 0 and profile.sttPerSecond >= 1)
     TranscriptionAccepted({ providerId: profile.sttProvider, durationMs: form.durationMs })
   else TranscriptionRefused({ refusal: refuse(InvalidRequest) })
 pure val heard: SttForm = { audio: AudioFile({ mime: "audio/wav", bytesMatch: true }), language: ProfileDefault, provider: Named({ id: "s1" }), durationMs: 4200 }
@@ -217,8 +220,9 @@ pure def lawATranscriptionRunsOnlyOnTheDeploymentsProvider(profile: SpeechProfil
 
 ### A transcription is quoted at its whole seconds, at least one, times the per-second price plus 20 percent, and a longer recording never costs less
 
-The quote uses the parsed duration; settlement uses the duration the
-provider reports, or the quote when it reports none.
+The quote uses the upload duration. A successful transcription reports a
+positive duration, which determines settlement. A missing or unreadable
+duration makes the provider answer unclear and settles the quote.
 
 ```quint
 pure def billedSeconds(durationMs: Millis): int = if (durationMs <= millisPerSecond) 1 else (durationMs + millisPerSecond - 1) / millisPerSecond
@@ -312,18 +316,28 @@ pure def lawAnUndispatchedRequestIsChargedNothing(lane: M::FundingLane, quote: M
 }
 ```
 
-### A provider that fails before answering is refused 503 with a retry time one second away, and every batch speech refusal is well formed
+### A provider outage is retryable, and every batch speech refusal is well formed
 
-A refused or unclear provider call before any audio or transcript answers
-`503 provider_unavailable` with `Retry-After`; an unreadable transcription
-answers `502 provider_invalid_response`. The refusals of `requestAuth`,
-the rate limiter and metering pass through unchanged.
+A timeout, network failure, provider `429` or provider `5xx` answers
+`503 provider_unavailable` with `Retry-After`. For `429` and `5xx`, the
+service uses a provider retry hint when present. Otherwise it waits one
+second. Other provider status refusals and unreadable audio or transcription
+answers produce `502 provider_invalid_response`. The refusals of
+`requestAuth`, the rate limiter and metering pass through unchanged.
 
 ```quint
 pure val providerRetryMs: Millis = millisPerSecond
 pure def providerOutage(now: Millis): Refusal = refuseUntil(ProviderUnavailable, now + providerRetryMs)
-pure val unreadableTranscript: Refusal = refuse(ProviderInvalidResponse)
+pure val unreadableSpeech: Refusal = refuse(ProviderInvalidResponse)
+pure def providerStatusRefusal(status: int, hint: Millis, now: Millis): Refusal =
+  if (status == 429 or status >= 500)
+    if (hint >= 0) refuseUntil(ProviderUnavailable, now + hint) else providerOutage(now)
+  else unreadableSpeech
+pure val statusValues = Set(302, 400, 429, 500)
+pure val hintValues = Set(-1, 0, 5000)
 pure def lawProviderFailuresAreWellFormed(now: Millis): bool =
-  wellFormed(providerOutage(now)) and retryableOf(providerOutage(now)) and wellFormed(unreadableTranscript) and not(retryableOf(unreadableTranscript))
+  wellFormed(providerOutage(now)) and retryableOf(providerOutage(now)) and wellFormed(unreadableSpeech) and not(retryableOf(unreadableSpeech))
     and retryAfterSeconds(now + providerRetryMs, now) == 1
+pure def lawOnlyRateLimitsAndServerStatusRefusalsAreRetryable(status: int, hint: Millis, now: Millis): bool =
+  retryableOf(providerStatusRefusal(status, hint, now)) iff (status == 429 or status >= 500)
 ```

@@ -57,7 +57,13 @@ export effect function stageEvaluatorOutput(scope: ProgressScope, observed: read
     const captured = try orDie(progress.send({ type: "capture", evidence }))
     const payload = bytesOf(output)
     if (!canStageOutput(captured, captured.snapshot.handle, payload)) return { kind: "refused", failure: "ProgressNotStaged", state: captured } satisfies ProgressAnswer
-    const durable = captured.record.pending.payload > 0 || (try writes(outputKey(scope, binding), output))
+    const pending = captured.record.pending
+    if (pending.payload > 0 && pending.binding === binding) {
+      const store = try KeyValueStore.KeyValueStore
+      const previous = try orDie(store.get(outputKey(scope, binding)))
+      if (previous !== output) return { kind: "refused", failure: "ProgressConflict", state: captured } satisfies ProgressAnswer
+    }
+    const durable = pending.payload > 0 || (try writes(outputKey(scope, binding), output))
     return answer(try orDie(progress.send({ type: "stageOutput", handle: captured.snapshot.handle, payload, binding, durable })))
   }
 }

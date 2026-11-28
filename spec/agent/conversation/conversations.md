@@ -70,7 +70,8 @@ pure def logModelCall(s: Conversations, conversationId: int, text: str): Convers
 
 ### The list shows only published conversations, most recently updated first
 
-`GET /api/conversations` orders by `updatedAt`, then the newer id, first.
+`GET /api/conversations` orders by `updatedAt`, then by creation sequence,
+newest first.
 A fork still being copied is not listed, read or searched.
 
 ```quint
@@ -330,10 +331,11 @@ pure def stepOnlyRedactionChangesStoredText(before: Conversations, via: str, aft
 `POST /api/conversations/:id/messages/:messageId/redact {expectedText}`: a
 message of another conversation, or none, is 404; a stored text other than
 `expectedText` is 409; a message already redacted answers `unchanged`.
-Otherwise the message and every message and model-call log row of that
-conversation with exactly its text show `[Private information removed]`.
-The whole stored text is compared, and a long text's stored segments are
-removed with it. A redacted reply keeps no record of its turn's tools
+Otherwise the message and every message of that conversation with exactly
+its text show `[Private information removed]`. The whole stored text is
+compared, and a long text's stored segments are removed with it. The
+service also replaces occurrences of the text in string values within the
+conversation's model-call log bodies. A redacted reply keeps no record of its turn's tools
 ([planning](./planning.md)), and in any other reply of that conversation
 the record's copies of the text show the notice in their place, as in a
 log row, a copy the record cut short (the text's first characters and

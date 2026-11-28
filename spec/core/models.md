@@ -173,10 +173,12 @@ pure def alwaysActiveDispatchHasRegistration(s: Dispatch): bool = s.phase == Adm
 
 ### A model-call log row records the request parts its prompt omits and only the token counts the provider reported
 
-The row's `prompt` holds the messages only. `tools` lists each tool schema
-the request sent, in order, with its serialized length and the first twelve
-hex digits of its SHA-256, and is empty when the request sent none. `maxTokens`
-is the cap the request sent, absent when it sent none. `usage` exists only
+The row's `prompt` holds the messages only. `tools` lists each named tool
+schema the request sent, in order, with its serialized length in UTF-16 code
+units and the first twelve hex digits of its SHA-256. The diagnostics adapter
+computes the length and hash. If serialization fails, it records the tool name
+with length zero and omits the hash. `maxTokens` is the cap the request sent
+and stays absent when the request sent none. `usage` exists only
 when the provider reported a prompt count; a completion, cache-read or
 reasoning count the provider did not report is absent, never zero, so no
 report stays distinguishable from a cache miss.

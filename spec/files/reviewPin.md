@@ -46,7 +46,9 @@ pure def lawStaleCompletionChangesNothing(fr: FilesReview, review: int): bool = 
 
 ### One dispatch changes the reviewed object or nothing
 
-The claim, journal and server admission are preconditions outside this model.
+This model follows one active proposal. The coordinator discards the pin
+when that proposal leaves the pending set. The claim, journal and server
+admission are also preconditions outside this model.
 A single dispatch compares the preserved review token with the current object:
 it changes the object only when they match, and leaves a replacement untouched.
 

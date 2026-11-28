@@ -6,9 +6,10 @@ renewed only through the lease), of the device lease that signs this device
 in to mail and calendar (a `DeviceLease` session family of
 `spec/cloud/identity/sessions.md`, bound to the active key) and of the one
 in-memory account session. The sign-in flow (`./flow.md`) runs the exchange.
-Key values, lease secrets, codes, PKCE verifiers and session tokens stay in
-the Java shell and never reach a page or the agent; the model sees versions,
-accounts, times and outcomes. The shell keeps keys and lease refresh secrets
+The shell gives the active device key to the resident agent. It keeps lease
+secrets, codes, PKCE verifiers and session tokens native, outside the page
+and the agent. The page receives the public credential identifier. The
+model sees versions, accounts, times and outcomes. The shell keeps keys and lease refresh secrets
 in secure store slots (`../android/secureStore.md`) prefixed with the
 deployment's authority digest, and this machine's state, except the session
 and the lease's access token, durably beside them. Times are epoch

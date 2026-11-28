@@ -46,10 +46,10 @@ pure def lawLaterResultsSupersedeOffer(offer: DigestOffer, now: int): bool = off
 
 A source counts when it is a native phone source that is neither revoked
 nor past its expiry. A source the request names is used only when it is one
-of those; with no name, the one current source is used when there is
-exactly one. Otherwise nothing runs: with several current sources the owner
-is asked which one, and with none, or a named source that is not current,
-the owner is asked to choose sources in the phone's digest settings first.
+of those. With no name and exactly one current source, that source is used.
+When the request does not resolve to a source, nothing runs. The owner is
+asked which source to use if several current sources exist, and is otherwise
+asked to choose sources in the phone's digest settings first.
 Either refusal lists the current sources by ID, label, review time and
 expiry.
 

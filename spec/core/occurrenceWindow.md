@@ -14,6 +14,9 @@ this window; [scheduling](./scheduling.md) runs the occurrences.
 
 ### An occurrence more than thirty minutes past its scheduled instant is missed, and stays missed
 
+The predicate continues to report missed at the same or a later observed
+clock reading.
+
 ```quint
 pure val missedWindowMs: int = 1800000
 pure def missedOccurrence(scheduledAt: int, now: int): bool = now - scheduledAt > missedWindowMs

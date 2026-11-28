@@ -112,12 +112,13 @@ pure def lawSameReviewDecidesOnce(phase: Phase, lapsed: bool, decision: Decision
 ### Declining never runs the change, and approving never declines
 
 The reply is `{requestId, decision, kind, text?, failure?}`. A decline
-moves an open request to declined and answers `rejected`. An approval
-approves a pending request, has the ledger run the change, and answers
-its outcome: `succeeded` (done), `invalidated` (expired, always when the
-expiry has passed), `retryable`, or `blocked` when the outcome is
-unconfirmed and needs reconciliation; it never declines the request or
-answers `rejected`.
+moves an eligible open request to declined and answers `rejected`. An
+eligible approval asks the ledger to run the change and answers its
+outcome: `succeeded` (done), `invalidated` (expired), `retryable`, or
+`blocked` when the outcome is unconfirmed and needs reconciliation.
+An eligible approval of a lapsed approved or retryable request answers
+`invalidated` without running the change. An approval never declines the
+request or answers `rejected`.
 
 ```quint
 pure def lawDeclineNeverRuns(phase: Phase, lapsed: bool, executorReady: bool, result: LedgerResult): bool = {
@@ -147,7 +148,9 @@ pure def lawMissingExecutorApprovesNothing(phase: Phase, lapsed: bool, result: L
 
 ### A passed expiry changes no phase and no revision until a decision meets it
 
-The queue expires a request lazily, at the next decision on it.
+The queue handles expiry when a decision presents the current revision
+and, for approval, the calendar executor is available. A lapsed pending
+request expires and the queue refuses the decision as stale.
 
 ```quint
 pure def canLapse(s: Queue, id: str): bool = known(s, id) and isOpen(rowAt(s, id).phase) and not(rowAt(s, id).lapsed)

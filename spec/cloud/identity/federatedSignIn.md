@@ -1,9 +1,10 @@
 # Google sign-in
 
 Signing in with Google, the server half: in the browser with a one-time
-code, or on the phone with its own Google account and a one-time challenge
-(develop `packages/auth/src/server/api/routes/auth.ts`; device half
-`spec/os/signIn/flow.md`). Under `/api/v1/auth/google/`: `GET authorize`
+code, or on the phone with its own Google account and a one-time challenge.
+The server lives in `packages/cloud-worker/src/identity/federated.vibe`
+and the device half is [the sign-in flow](../../os/signIn/flow.md).
+Under `/api/v1/auth/google/`, `GET authorize`
 redirects to Google; `GET callback` redirects to
 `<redirect_uri>#code=<code>&state=<state>` or `#error=<error>&state=<state>`;
 `POST exchange` `{code, redirectUri, clientId, codeVerifier}` answers as a
@@ -14,9 +15,10 @@ nonce, serverClientId, expiresAt}`. A challenge is answered inside `POST
 /api/v1/user/methods/google/link` (`signInMethods`).
 
 One machine instance is one attempt row: a browser attempt or a native
-challenge, never both. The shell draws state, code, challenge id and nonce at
-random, stores only digests, and passes every check in as an observation; an
-unknown state, code or challenge id is answered before this machine.
+challenge, never both. The shell draws state, code, challenge ID and nonce
+at random. It stores digests of the provider state, code and nonce, with
+the challenge ID as its row key. It passes each check into the model as an observation. An
+unknown state, code or challenge ID is answered before this machine.
 Google's `email_verified` goes unchanged to `accounts`' first sight.
 
 ## Story: Sign in with Google in the browser
@@ -410,8 +412,9 @@ pure def sometimesNativeBackupProven(a: GoogleAttempt): bool =
 
 ### A native connect stores tokens only for the signed-in account's own Google identity and only the selected scopes Google granted
 
-The device sends Google's one-use `serverAuthCode` for the account it
-signed in with, and the cloud redeems it. After a second factor the request
+An enrolled device continuing its native sign-in sends Google's one-use
+`serverAuthCode` for the account it signed in with. The cloud redeems it.
+After a second factor the request
 uses the device's acknowledged key, and the cloud finds its native app
 registration from that key. The connection is stored only when
 Google returned a refresh token and Google's verified subject is the Google
@@ -420,8 +423,9 @@ lacks. On the Grace Google mount ([deployment](../deployment.md)) a
 request may name the five permissions the owner selected; a request that
 names none of them selects every permission, and one that names only some
 of them is refused `400 invalid_request` before the attempt counts or a code
-reaches Google. The server table's native connect names no permissions and
-selects every one. A stored connection has reading
+reaches Google. The server table's enrolled native connect names no
+permissions and selects every one. Standalone linking follows the
+[managed connection](../services/google/connection.md) rule. A stored connection has reading
 mail exactly when it was selected and Google granted it, and reading the
 calendar exactly when it was selected and Google granted it. It never holds
 a permission the request did not select, even one Google granted. Sending or

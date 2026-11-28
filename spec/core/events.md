@@ -8,8 +8,9 @@ diagnostic forward that calls the agent event service again.
 
 ## Story: Emit ordered events with their run session
 
-> As an observer, I want events delivered in per-run order with their
-> original attribution, so I can follow a run exactly as it happened.
+> As an observer, I want each event to carry its per-run sequence and
+> original attribution, so I can reconstruct emission order even when
+> callbacks trigger nested deliveries.
 
 As an observer I receive the original event and its resulting diagnostics
 with per-run sequence numbers and the original attribution.

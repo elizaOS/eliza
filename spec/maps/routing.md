@@ -402,23 +402,21 @@ type CoverageAnswer = NoMapsServed | ReportedCoverage
 pure def coverageAnswer(served: bool): CoverageAnswer = if (served) ReportedCoverage else NoMapsServed
 ```
 
-## Story: Hear Maps answer in its own words
+## Story: Hear the Maps result and know when I can retry
 
-> As the owner, I want what Maps found said to me as Maps wrote it, with
-> its card, nearest places first, and a failure that tells me whether
-> asking again can help.
+> As the owner, I want to see the Maps card, find the nearest places first,
+> and hear whether asking again can help when Maps fails.
 
-### Every Maps answer is the action's own text, and a failure says whether asking again can help
+### A Maps failure tells the reply model whether asking again can help
 
-A Maps action's answer, its numbered question and its card are shown to
-the owner as the action wrote them, never reworded by the model. Only the
-coaching refusal of a screen selection handle (above) stays out of what
-the owner sees. A failure carries Cloud's own sentence and whether the
-same request can be tried again: only when Maps was unreachable, timed
-out or asked the owner to wait. Every Maps action declares the Maps
-context, registered with its label, beside the general context every
-owner turn is planned in, so it runs on any owner turn and the owner sees
-"Using Maps" while it does ([planning](../agent/conversation/planning.md)).
+Maps supplies the reply model with a grounded result and a retry flag for
+failures. The same request may be retried when Maps was unreachable, timed
+out or asked the owner to wait. The model writes the ordinary reply from
+these facts. The Maps card and the owner's confirmation question for sharing
+retain their original presentation. Coaching for a screen selection handle
+stays internal. Every Maps action declares the Maps context beside the
+general context, so the owner can see "Using Maps" while it runs
+([planning](../agent/conversation/planning.md)).
 
 ```quint
 pure val mapsContext = "maps"

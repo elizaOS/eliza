@@ -2,9 +2,10 @@
 
 Callbacks are buffered until the action result settles. This model
 preserves emission order, transport completion, canonical receipt binding
-and failure separation. The delivered counter counts callbacks passed
-through the delivery chain; successfulDeliveries counts callbacks whose
-transport completed successfully. Which planned calls are validated and
+and failure separation. The delivered counter advances to the next callback's
+position in emission order. The delivery adapter passes that callback through
+the chain and successfulDeliveries counts callbacks whose transport completed
+successfully. Which planned calls are validated and
 invoked is [action planning](./actionPlanning.md); this spec begins once a
 handler is admitted.
 
@@ -87,7 +88,7 @@ pure def alwaysDeliveryAccounting(s: Settlement): bool = s.successfulDeliveries 
 pure def stepCallbackSourceStaysClosed(before: Settlement, after: Settlement): bool = before.callbacksClosed implies after.callbacksClosed and after.emitted == before.emitted
 pure val fair_finishCallbackSource = "weak"
 pure def leadsToAllCallbacksSettled(s: Settlement, later: Settlement): bool = s.callbacksClosed and s.resultKind == ValidResult and (not(s.mutation) or s.canonicalMatch) implies later.delivered == s.emitted and not(later.busy)
-pure def sometimesLaterCallbackAfterTransportFailure(s: Settlement): bool = s.deliveryFailed and s.delivered > 1 and s.successfulDeliveries > 0
+pure def sometimesLaterCallbackAfterTransportFailure(s: Settlement): bool = s.deliveryFailed and s.busy and s.delivered > 1
 ```
 
 ### Every unsettled action has an enabled settlement step

@@ -1,6 +1,6 @@
 # Structural values and boolean configuration
 
-Source `utils/type-guards.ts` defines strict plain records and loose non-array objects. Source `utils/boolean.ts` preserves existing truthy/falsy vocabulary and optional absence. Source `utils.ts` defines `parseBooleanFromText`, the stricter affirmative-text parser that never returns absence. Each structural predicate consumes its own native observations, without sharing an eager classifier.
+Source `utils/type-guards.vibe` defines strict plain records and loose non-array objects. Source `utils/boolean.vibe` preserves existing truthy/falsy vocabulary and optional absence. Source `utils.vibe` defines `parseBooleanFromText`, the stricter affirmative-text parser that never returns absence. Each structural predicate consumes its own native observations, without sharing an eager classifier.
 
 ## Story: Narrow untrusted values without changing their meaning
 

@@ -76,8 +76,9 @@ pure val durationMsValues = Set(1, 1000)
 
 The coordinator captures the requested dates and time zone, checks
 context and device zone before reads, explicitly gets read permission,
-and lists available source IDs and revisions. Retry on unavailable source
-listing is retried a bounded number of times. The owner chooses unique offered calendars within the contract limit.
+and lists available source IDs and revisions. An unavailable source
+listing is retried a bounded number of times. The owner chooses unique
+offered calendars within the contract limit.
 Only a fresh local read of those exact sources produces an availability
 projection. Confirmation is for that projection. The second read repeats
 the same request and compares the full serialized result. A changed zone,
@@ -108,10 +109,10 @@ event read may be proposed from any screen; a new event on the phone's own
 calendar, a named event and an availability check from Home or Calendar;
 a selected read, delete or new event in a chosen calendar only with that
 phone record selected. A selected app calendar record is never proposed to
-the phone. A new event on the phone's own calendar is offered wherever the
-phone negotiated it, beside the agent's own calendar: the model reads from
-the owner's request which calendar it names, so one request writes one
-store, and code matches no calendar words.
+the phone. Negotiating the phone's own calendar advertises its tool form
+beside the agent's own Calendar action. A call to that form must also pass
+the screen check above. The model reads which calendar the request names,
+so one request writes one store, and code matches no calendar words.
 
 ```quint
 type CalendarView = HomeView | CalendarAppView | OtherView

@@ -20,7 +20,8 @@ from the turn's client observation, but only when the observation is a
 browser view that is not sensitive, selects a browser tab, has a revision,
 and both identifiers fit their token bounds. The mounted renderer refuses a
 command whose observed tab or revision no longer matches its current tab
-and document. A command with no observation runs on the current tab.
+and document. When the turn supplies no usable browser selection, the
+unbound history command addresses the renderer's current tab.
 
 ```quint
 type TabSelection = { tabId: str, revision: str }

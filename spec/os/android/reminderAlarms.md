@@ -126,17 +126,19 @@ pure def stepRevisionsOnlyGrow(before: ReminderAlarm, after: ReminderAlarm): boo
 pure def sometimesStaleTap(s: ReminderAlarm): bool = s.noticeRevision > 0 and reminderTap(s, s.noticeRevision) == NR::TapUnavailable
 ```
 
-### Recovery re-arms scheduled reminders and re-posts unhandled notices once per boot without writing the row
+### Recovery re-arms scheduled reminders and restores posted notices for the current boot without writing the row
 
 Android drops alarms and notices at a reboot, and the owner can dismiss a
 notice. Recovery never writes the row, so the occurrence, the revision and
 the tap stay the same. It removes the alarm and notice of a reminder being
 deleted, arms a scheduled one again under the same capability check, and
-posts the notice of a posted one again once per boot. The boot marker
-advances only when that notice was posted again, so a notice that could not
-be posted, because notices are refused or the post failed, is retried at
-the next recovery. Each reminder is recovered on its own, so one damaged
-record does not stop the others.
+re-posts the notice of a posted one until recovery for that boot is complete.
+The model follows one reminder and records its completed recovery. Android
+stores a single boot marker for the whole sweep. If a posted notice cannot
+be restored, the next sweep can post an already restored notice again
+under the same notification ID and tap route. Posting with that ID
+replaces any notice still shown. One damaged record does not stop the
+sweep from attempting the others.
 
 ```quint
 pure def reboot(s: ReminderAlarm): ReminderAlarm = { ...s, alarm: NoAlarm, noticeShown: false, boot: s.boot + 1 }

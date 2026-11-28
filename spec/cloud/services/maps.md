@@ -6,11 +6,9 @@ serves a deployment, `google`, `osm` or `none`, named by the profile of
 [the deployment](../deployment.md), with no fallback. Each paid request runs
 over one hold of [metering](../shared/metering.md) and is settled once; maps
 has no unit allowance, bucket or receipt of its own. The device side is
-[the maps cloud connection](../../maps/cloudConnection.md). Sources are
-develop `packages/cloud/api/src/lib/{maps-route,maps-request-admission}.ts`,
-`packages/cloud/shared/src/lib/services/maps/{contract,google-provider,osm-provider}.ts`
-and the Quint models `maps_credit_funding`, `MapsPlaceLookup` and
-`MapsTileCache`.
+[the maps cloud connection](../../maps/cloudConnection.md). The routes and
+provider integrations live in `packages/cloud-worker/src/services/maps.vibe`
+and `packages/cloud-worker/src/providers/`.
 
 The `google` profile's `baseUrl` is a template with exactly one `{host}`, such
 as `https://{host}.googleapis.com`; for each call the shell puts in its place
@@ -26,7 +24,7 @@ operation but tiles) with `limitOf` in one store transaction, the body,
 provider's tile session is started as soon as the tile address is read,
 beside the hold rather than after it. Wire shapes and string formats are the
 Effect Schemas of `src/services/maps.schema.ts`. Every maps answer is sent
-`Cache-Control: no-store`. A metered answer also reports in `Server-Timing`
+`Cache-Control: no-store`. A successful metered response also reports in `Server-Timing`
 how long the request spent in each phase, by name and duration only:
 `maps_auth` (request authentication), `maps_admission` (the limits and the
 hold, through `M::markDispatched`) and, for a dispatched request,
@@ -299,9 +297,10 @@ pure def lawARouteWithADistanceKeepsOnlyTheProvidersLine(points: int, distanceMe
 `M::admission` answers a known key with the same operation and body as a
 replay, and another request under that key `409 idempotency_conflict`. A
 replay repeats the outcome kept for the first request, its answer or its
-refusal. That copy is the only provider content the cloud holds, it is
-readable only under the same credential and key, and it is deleted 15
-minutes after it was kept. Nothing is kept for a tile or for a lost reply.
+refusal. The result copy is the only provider answer content the cloud
+keeps. It is readable under the same credential and key for 15 minutes,
+after which the expiry sweep deletes it. Nothing is kept for a tile or for
+a lost reply.
 A replay with nothing kept (the first request still runs, its reply was
 lost, the copy was deleted, or it is a tile) is refused
 `409 idempotency_conflict`. A device sends a fresh key for each attempt.

@@ -67,8 +67,8 @@ version. Success requires a mutation reply with explicit note and target
 identity and a nonstale snapshot. A replacement draft token is unaffected.
 If the original draft was edited during its save, the acknowledgement
 updates its target and base revision but preserves authored data. Clean
-same-token success adopts the returned canonical fields. The successful
-same-token save may start a newer queued edit. Failure keeps authored
+same-token success adopts the returned canonical fields. A successful same-token save may start a follow-up save of the latest
+authored version when an explicit save already queued a newer edit. Failure keeps authored
 content and avoids retrying an uncertain mutation.
 
 ```quint

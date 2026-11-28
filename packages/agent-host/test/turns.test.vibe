@@ -18,6 +18,7 @@ import { answerOf, call, cloudFake, deviceKey, host, scratch, startInProcess, ty
 import type { Scratch } from "./support/scratch.ts"
 
 interface Reply {
+  readonly fullText: string
   readonly text: string
   readonly agentName: string
   readonly messageId: string
@@ -35,6 +36,7 @@ module node {
   import { Effect } from "effect"
   import { ChannelType, conversationClientUserMemoryId, EventType, hashStableJson, OWNER_EXCLUSIVE_DISCLOSURE_GATE, sleepWithAbort, stringToUuid, systemNoticeText, type Action, type ActionResult, type AgentRuntime, type EffectReceipt, type Memory, type RunEventPayload, type UUID } from "@elizaos/core"
   import type { CloudFake } from "./support/cloud-fake.ts"
+  import { textSegmentIds } from "../src/conversation/history.vibe"
   import type { AgentPlugin, ModuleFactory } from "../src/host/module.vibe"
   import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 
@@ -359,6 +361,20 @@ module node {
     return id
   }
 
+  export async function storeSegmentedReply(runtime: AgentRuntime, roomId: UUID, world: UUID | undefined, user: UUID, body: { text: string; clientMessageId: string }, text: string) {
+    const inputId = await cutTurn(runtime, roomId, world, user, body)
+    const replyId = stringToUuid(`conversation-reply:${inputId}`)
+    await runtime.createMessageMemory({
+      id: replyId, roomId, agentId: runtime.agentId, entityId: runtime.agentId, createdAt: Date.now(),
+      ...(world === undefined ? {} : { worldId: world }),
+      content: { text, source: "device", inReplyTo: inputId },
+    })
+    const stored = await runtime.getMemoryById(replyId)
+    const segments = stored === null ? [] : textSegmentIds(stored)
+    if (segments.length === 0 || stored?.content.text !== undefined) throw new Error("The reply text was not segmented")
+    return { replyId, inputId, segments }
+  }
+
   /** @throws {never} */
   export function loseRoomOwnershipOnceAfterReply(runtime: AgentRuntime): () => void {
     const save = runtime.createMessageMemory
@@ -447,7 +463,7 @@ module node {
     return text
   }
 }
-import { namedTools, briefProbe, briefs, calendarProbe, completions, notMoved, phoneWords, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, hostWords, refusedConnection, reviewText, roomMessages, seedHistory, storeNotice, watchRunEnds } from node
+import { namedTools, briefProbe, briefs, calendarProbe, completions, notMoved, phoneWords, unsaidMove, untitledChecklist, unrealTime, cutTurn, modelLogRooms, failParticipantLookupOnce, handedDirectly, privateAgenda, privateReadCount, privateReader, failNext, fixtureApp, lastTurnHistory, lastTurnPrompt, localDay, loseRoomOwnershipOnceAfterReply, movedDentist, nearestCafes, overlapping, plainLog, refuseMoves, hostWords, refusedConnection, reviewText, roomMessages, seedHistory, storeNotice, storeSegmentedReply, watchRunEnds } from node
 
 effect function runEndsOf(ends: readonly { messageId?: string, status: string }[], messageId: string | undefined) {
   for (let wait = 0; wait < 100 && !ends.some((end) => end.messageId === messageId); wait += 1) try Effect.sleep("20 millis")
@@ -573,6 +589,13 @@ it.live(`A repeat joins, replays or conflicts by its key, a busy room is 429, a 
   const stored = try host("messages", () => roomMessages(second.agent.runtime, roomId))
   const history = answerOf(try call(second, { method: "GET", path: `/api/conversations/${id}/messages` }))
 
+  const longRequest = { text: "Write a long reply.", clientMessageId: "m-long" }
+  const longText = "Long reply. ".repeat(6000).trimEnd()
+  const long = try host("store a segmented reply", () => storeSegmentedReply(second.agent.runtime, roomId, world, asked.entityId, longRequest, longText))
+  const longReplay = try send(second, id, longRequest)
+  try host("remove reply segments", () => second.agent.runtime.adapter.deleteMemories(long.segments))
+  const unreadableReplay = try send(second, id, longRequest)
+
   try Effect.try(() => {
     const rows = (history.body as { messages: readonly { role: string; clientMessageId?: string; failureKind?: string; abortCause?: string }[] }).messages
     assert.deepStrictEqual({
@@ -622,6 +645,10 @@ it.live(`A repeat joins, replays or conflicts by its key, a busy room is 429, a 
     assert.deepStrictEqual({ status: cut.status, text: replyOf(cut).text, failureKind: replyOf(cut).failureKind, again: replyOf(cutAgain).messageId === replyOf(cut).messageId, calls: completions(cloud) - before },
       { status: 200, text: "", failureKind: "aborted", again: true, calls: 0 })
     assert.strictEqual(stored.filter((memory: Memory) => memory.content.inReplyTo === replyOf(cut).userMessageId).length, 1)
+    const longReply = replyOf(longReplay)
+    assert.deepStrictEqual([longReplay.status, longReply.messageId, longReply.userMessageId, longReply.text === longText, longReply.fullText === longText],
+      [200, long.replyId, long.inputId, true, true])
+    assert.deepStrictEqual(unreadableReplay, { status: 503, body: { error: "ASSISTANT_RESPONSE_UNAVAILABLE" } })
   })
 }, 240_000)
 

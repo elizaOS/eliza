@@ -166,7 +166,9 @@ released. The shell atomically computes the remaining room from committed
 and in-flight reservations inside one transaction or the on-chain
 policy boundary. Compare that room, both per-request caps, and the amount
 without converting to floating point. An unresolved submission keeps
-its reservation.
+its reservation. The model also records a separate policy precondition
+for a planned autonomous trade: a fresh quote and fewer than 25 trades
+that day. That precondition supplies no signing approval.
 
 ```quint
 type RemainingSpendRoom = { globalRequest: List[int], serviceRequest: List[int], globalDay: List[int], serviceDay: List[int] }

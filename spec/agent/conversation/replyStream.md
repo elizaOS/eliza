@@ -13,7 +13,7 @@ framing and its heartbeats. The frames are:
 | `status` | `{activity}`: what the turn is doing, display only |
 | `tool` | `{name, label}`: a tool the turn runs and its label for the owner, `Using <app>` or `Working` ([planning](./planning.md)), display only |
 | `reply_ready` | `{fullText, actionResults}`: the stored reply ahead of the terminal frame |
-| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, cloudCode?, planAction?, retryAfterMs?, cutOffEffect?}`, with Cloud's own funding code, the fix, live wait and negotiated effect marker of [turns](./turns.md) |
+| `done` | `{fullText, messageId, userMessageId, agentName, actionResults, taskChoices?, failureKind?, cloudCode?, planAction?, retryAfterMs?, cutOffEffect?, action?}`, with Cloud's funding code, the fix, live wait, negotiated effect marker of [turns](./turns.md), and the [planning](./planning.md) voice action label when present |
 | `error` | `{code, message}`: the turn left no reply; text it already settled stays as written |
 
 One machine follows one request. The turn itself (admission, deadline,
@@ -257,13 +257,15 @@ pure def stepAcknowledgingNeverTouchesTheText(before: ReplyStream, via: str, aft
 pure def sometimesAcknowledgedThenTool(s: ReplyStream): bool = s.ack == AckSent and s.inFlight and s.progress != NoProgress
 ```
 
-### The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results
+### The early reply is written at most once, and a later done carries the same action results
 
-`reply_ready` lets a voice client speak a stored plain reply with no action
-results while delivery cleanup settles. A reply whose write failed has no
-announcement. Task presentations wait for the terminal because their
-choices and revision are checked again after storage. An announcement
-still waiting when the terminal comes is never written.
+`reply_ready` carries an already stored reply and its action results while
+delivery cleanup settles. A voice client can speak early when the reply
+has no action results. A reply whose write failed has no announcement.
+Task presentations wait for the terminal because their choices and
+revision are checked again after storage. An announcement still waiting
+when the terminal comes is never written. A terminal server error can
+follow an announcement if the stream fails during later cleanup.
 
 ```quint
 pure def announcedResults(r: Readiness): int = match r { | ReadyPending(x) => x.results | ReadySent(x) => x.results | NotReady => -1 }

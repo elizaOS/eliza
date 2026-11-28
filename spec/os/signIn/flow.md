@@ -25,9 +25,9 @@ on cancellation or replacement.
 ## Story: Sign in with a code, Google or a second factor
 
 > As a person signing in on the device, I want to use an email code, an SMS
-> code or my Google account on the app's own screens, finish a second factor
-> when my account has one, and be told plainly what went wrong, so that I
-> am signed in once and never through a hosted page.
+> code or my Google account through the app's registered sign-in methods,
+> finish a second factor when my account has one, and be told plainly what
+> went wrong, so that I can finish signing in to the app.
 
 ### A registration that is incomplete or ambiguous is refused when the plugin loads, and then nothing starts
 
@@ -348,9 +348,9 @@ pure def sometimesEarlierCodeKeptAfterRefusedResend(s: SignIn): bool = s.phase =
 
 A cancel of the owning attempt settles the open request as `cancelled`,
 drops a held server code, empties the slot and, during the key exchange,
-asks the credential to end it. A cancel naming an earlier attempt, or after
-the sign-in ended, changes nothing; one already connecting Google cannot be
-cancelled.
+asks the credential to end it. During an in-flight resend, either
+associated attempt owns the cancel. A cancel naming any other attempt, or
+after sign-in ends or begins connecting Google, changes nothing.
 
 ```quint
 pure def cancellable(phase: SignInPhase): bool = match phase { | Idle => false | Connecting => false | SignedIn => false | Reauthenticated => false | Failed(f) => false | _ => true }

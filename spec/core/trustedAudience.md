@@ -1,6 +1,6 @@
 # Trusted delivery audience and turn leases
 
-The source is `security/trusted-delivery-audience.ts`. The trusted runtime supplies the `RuntimeCaller` sender separately from decoded payloads. HTTP and model inputs use `ExternalCaller`; they cannot attest audiences, acquire leases or renew authority. This component owns one binding's retained record, lease and asynchronous renewal identities. The [audience registry](./audienceRegistry.md) owns message aliases, the process-wide attestation sequence and independent suppression carriers. Reference-counted internal actors are [internal actors](./internalActors.md). Numeric identities denote exact source objects, not payload labels. Returned-call history is a verification observation, not an added runtime registry.
+The source is `security/trusted-delivery-audience.vibe`. The trusted runtime supplies the `RuntimeCaller` sender separately from decoded payloads. HTTP and model inputs use `ExternalCaller`; they cannot attest audiences, acquire leases or renew authority. This component owns one binding's retained record, lease and asynchronous renewal identities. The [audience registry](./audienceRegistry.md) owns message aliases, the process-wide attestation sequence and independent suppression carriers. Reference-counted internal actors are [internal actors](./internalActors.md). Numeric identities denote exact source objects, not payload labels. Returned-call history is a verification observation, not an added runtime registry.
 
 ## Story: Renew audience evidence only for the same active turn
 

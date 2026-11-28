@@ -8,10 +8,10 @@ The [Android phone](../os/android/phone.md) and [voicemail](../os/android/voicem
 
 ### Opening the dialer and placing a call require different authority
 
-The control asks Android to present the dialer without initiating calls. Calling requires platform Telecom and the current phone permission. History limits and transcripts are validated at the provider boundary, and a save needs confirmed persistence.
+The control asks Android to present the dialer without initiating calls. Calling requires platform Telecom and the current phone permission. Reading the call history requires its own grant. The provider validates history limits at the boundary.
 
 ```quint
-type PhoneOperation = PhoneStatus | OpenPhoneDialer | PlaceNativeCall | ReadCallHistory | SaveCallTranscript
+type PhoneOperation = PhoneStatus | OpenPhoneDialer | PlaceNativeCall | ReadCallHistory
 type PhoneAuthority = { supported: bool, dialerAvailable: bool, telecomAvailable: bool, callGrant: bool, historyGrant: bool, owner: bool }
 pure def mayUseNativePhone(authority: PhoneAuthority, operation: PhoneOperation): bool =
   operation == PhoneStatus or
