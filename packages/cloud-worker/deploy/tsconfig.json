@@ -1,6 +1,7 @@
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
+    "noEmit": true,
     "jsx": "react-jsx",
     "lib": [
       "es2024",
@@ -11,10 +12,17 @@
       "node"
     ],
     "resolveJsonModule": true,
-    "allowArbitraryExtensions": true
+    "allowArbitraryExtensions": true,
+    "rootDirs": [
+      "..",
+      "../.vibe/declarations"
+    ]
   },
   "include": [
     "./**/*.ts",
     "../alchemy.run.ts"
-  ]
+  ],
+  "vibe": {
+    "sidecarDir": "../.vibe/declarations"
+  }
 }

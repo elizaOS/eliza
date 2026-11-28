@@ -51,11 +51,22 @@ export interface EndpointCheck {
   readonly method?: "GET" | "HEAD" | "POST";
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: string;
+  readonly redirect?: RequestRedirect;
+  readonly timeoutMs?: number;
   readonly expectedStatus?: number | readonly number[];
   readonly expectedHeaders?: Readonly<Record<string, string | RegExp>>;
   readonly bodyIncludes?: readonly string[];
   readonly expectJson?: (parsed: unknown) => boolean | string;
   readonly expectedCommitSha?: string;
+}
+
+export interface HyperdriveRefOptions<TDev, TResult> {
+  readonly id: string;
+  readonly hyperdriveId: string;
+  readonly accountId?: string;
+  readonly dev?: TDev;
+  readonly asOutput: <T>(value: T) => unknown;
+  readonly isConnectionLookup: (value: unknown) => value is TResult;
 }
 
 export interface VerifyDeploymentOptions {
@@ -414,10 +425,7 @@ function validateProbeResponse(
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
-    const timer = globalThis.setTimeout(resolve, ms);
-    if (typeof timer === "object" && "unref" in timer && typeof timer.unref === "function") {
-      timer.unref();
-    }
+    globalThis.setTimeout(resolve, ms);
   });
 }
 
@@ -429,17 +437,21 @@ async function probeOnce(
   defaultCommitSha: string | undefined,
 ): Promise<{ readonly ok: boolean; readonly status: number; readonly retryable: boolean; readonly error?: string }> {
   const method = check.method ?? "GET";
+  const effectiveTimeoutMs = Math.max(100, check.timeoutMs ?? timeoutMs);
   try {
     const response = await fetchFn(url, {
       method,
       headers: check.headers,
       body: check.body,
-      signal: AbortSignal.timeout(timeoutMs),
+      ...(check.redirect !== undefined ? { redirect: check.redirect } : {}),
+      signal: AbortSignal.timeout(effectiveTimeoutMs),
     });
     const bodyText = method === "HEAD" ? "" : await response.text();
     const mismatch = validateProbeResponse(check, response.status, response.headers, bodyText, defaultCommitSha);
     if (!mismatch) return { ok: true, status: response.status, retryable: false };
-    const retryable = RETRYABLE_STATUSES.has(response.status) && !matchesStatus(response.status, check.expectedStatus);
+    const retryable =
+      (RETRYABLE_STATUSES.has(response.status) && !matchesStatus(response.status, check.expectedStatus))
+      || mismatch.startsWith("expected commit SHA ");
     return { ok: false, status: response.status, retryable, error: mismatch };
   } catch (error) {
     return {
@@ -848,4 +860,28 @@ export function makeR2BucketObjects<E>(
     delete: (key, ifVersion) => adapter.tryPromise({ try: () => client.delete(key, ifVersion), catch: (cause) => toError("delete", cause) }),
     deleteMany: (keys) => adapter.tryPromise({ try: () => client.deleteMany(keys), catch: (cause) => toError("deleteMany", cause) }),
   };
+}
+
+export const HYPERDRIVE_LOOKUP_TYPE_ID = Symbol.for("alchemy/Cloudflare/Hyperdrive/ConnectionLookup");
+
+export function createHyperdriveRef<TDev, TResult>(
+  options: HyperdriveRefOptions<TDev, TResult>,
+): TResult {
+  const id = options.id.trim();
+  if (!id) throw new Error("Hyperdrive reference requires a non-empty id");
+  const hyperdriveId = options.hyperdriveId.trim();
+  if (!hyperdriveId) throw new Error(`Hyperdrive reference "${id}" requires a non-empty hyperdriveId`);
+  const ref: unknown = {
+    [HYPERDRIVE_LOOKUP_TYPE_ID]: true,
+    Type: "Cloudflare.Hyperdrive",
+    LogicalId: id,
+    hyperdriveId: options.asOutput(hyperdriveId),
+    name: options.asOutput(id),
+    accountId: options.asOutput(options.accountId?.trim() ?? ""),
+    dev: options.asOutput<TDev | undefined>(options.dev),
+  };
+  if (!options.isConnectionLookup(ref)) {
+    throw new Error(`Invalid Hyperdrive lookup reference for "${id}"`);
+  }
+  return ref;
 }

@@ -1195,6 +1195,8 @@ lemma ActiveOwners(s: Turns)
   requires inv(s)
   ensures forall t :: t in s.controllers.turns && !t.phase.TurnDetached? ==> exists g :: g in s.groups && g.active && g.id == groupOf(s, t.id) && g.room == t.room
 {
+  hide *;
+  reveal inv;
   forall t | t in s.controllers.turns && !t.phase.TurnDetached?
     ensures exists g :: g in s.groups && g.active && g.id == groupOf(s, t.id) && g.room == t.room
   {
@@ -1589,26 +1591,53 @@ lemma SoloEvent(s: Turns, f: TurnFrame)
 
 lemma {:induction false} RetainSplit(s: Turns)
   requires alwaysTurnsRetainGroups(s)
-  ensures forall g :: g in s.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups)| == 1 && exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
+  ensures forall i, j :: 0 <= i < |s.turnGroups| && 0 <= j < |s.turnGroups| && i != j ==> s.turnGroups[i].turnId != s.turnGroups[j].turnId
+  ensures forall g :: g in s.turnGroups ==> exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
   ensures forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
 {
+  hide *;
   AlwaysTurnsRetainGroupsFilter(s);
+  forall i, j | 0 <= i < |s.turnGroups| && 0 <= j < |s.turnGroups| && i != j
+    ensures s.turnGroups[i].turnId != s.turnGroups[j].turnId
+  {
+    var g := s.turnGroups[i];
+    assert g in s.turnGroups;
+    if s.turnGroups[i].turnId == s.turnGroups[j].turnId {
+      ProofLib.FilterTwo((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups, i, j);
+    }
+  }
+}
+
+lemma {:induction false} RetainJoinUnique(gs: seq<TurnGroup>)
+  requires forall i, j :: 0 <= i < |gs| && 0 <= j < |gs| && i != j ==> gs[i].turnId != gs[j].turnId
+  ensures forall g :: g in gs ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), gs)| == 1
+{
+  hide *;
+  forall g | g in gs
+    ensures |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), gs)| == 1
+  {
+    var i :| 0 <= i < |gs| && gs[i] == g;
+    ProofLib.FilterOne((other: TurnGroup) => (other.turnId == g.turnId), gs, i);
+  }
 }
 
 lemma {:induction false} RetainJoin(s: Turns)
-  requires forall g :: g in s.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups)| == 1 && exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
+  requires forall i, j :: 0 <= i < |s.turnGroups| && 0 <= j < |s.turnGroups| && i != j ==> s.turnGroups[i].turnId != s.turnGroups[j].turnId
+  requires forall g :: g in s.turnGroups ==> exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
   requires forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
   ensures alwaysTurnsRetainGroups(s)
 {
+  hide *;
+  RetainJoinUnique(s.turnGroups);
   AlwaysTurnsRetainGroupsFilter(s);
 }
 
-lemma RetainMapGroups(s: Turns, after: Turns)
-  requires forall g :: g in s.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups)| == 1 && exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
+lemma {:induction false} RetainMapGroups(s: Turns, after: Turns)
+  requires forall g :: g in s.turnGroups ==> exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
   requires after.turnGroups == s.turnGroups
   requires |after.groups| == |s.groups| && forall i :: 0 <= i < |s.groups| ==> after.groups[i].id == s.groups[i].id && after.groups[i].room == s.groups[i].room
   requires |after.controllers.turns| == |s.controllers.turns| && forall i :: 0 <= i < |s.controllers.turns| ==> after.controllers.turns[i].id == s.controllers.turns[i].id && after.controllers.turns[i].room == s.controllers.turns[i].room
-  ensures forall g :: g in after.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), after.turnGroups)| == 1 && exists t :: t in after.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in after.groups && roomGroup.id == g.group && roomGroup.room == t.room
+  ensures forall g :: g in after.turnGroups ==> exists t :: t in after.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in after.groups && roomGroup.id == g.group && roomGroup.room == t.room
 {
   forall tg | tg in after.turnGroups
     ensures exists t :: t in after.controllers.turns && t.id == tg.turnId && exists rg :: rg in after.groups && rg.id == tg.group && rg.room == t.room
@@ -1978,16 +2007,39 @@ lemma ReturnStack(s: Turns, turnId: int, resolved: bool, errorId: string)
   BottomKeep(s, after, 0);
 }
 
+lemma {:induction false} ReturnTurnRows(s: Turns, after: Turns, turnId: int, resolved: bool, errorId: string)
+  requires alwaysTurnIdentity(s) && canReturnTurn(s, turnId, resolved, errorId)
+  requires after == returnTurn(s, turnId, resolved, errorId)
+  ensures after.turnGroups == s.turnGroups && after.groups == s.groups && after.nextGroup == s.nextGroup
+  ensures |after.controllers.turns| == |s.controllers.turns|
+  ensures forall i :: 0 <= i < |s.controllers.turns| ==>
+    after.controllers.turns[i].id == s.controllers.turns[i].id &&
+    after.controllers.turns[i].room == s.controllers.turns[i].room &&
+    after.controllers.turns[i].aborted == s.controllers.turns[i].aborted &&
+    after.controllers.turns[i].reason == s.controllers.turns[i].reason &&
+    (after.controllers.turns[i].phase.TurnDetached? <==> s.controllers.turns[i].phase.TurnDetached?)
+  ensures after.controllers.rooms == s.controllers.rooms
+{
+  hide *;
+  reveal returnTurn, recordReturn, canReturnTurn;
+  LookupTurns(s, turnId);
+  forall i | 0 <= i < |s.controllers.turns|
+    ensures after.controllers.turns[i].phase.TurnDetached? <==> s.controllers.turns[i].phase.TurnDetached?
+  {
+    if s.controllers.turns[i].id == turnId {
+      assert s.controllers.turns[i] in s.controllers.turns;
+    }
+  }
+}
+
 lemma {:induction false} ReturnTurnMapping(s: Turns, after: Turns, turnId: int, resolved: bool, errorId: string)
-  requires inv(s) && canReturnTurn(s, turnId, resolved, errorId)
+  requires alwaysTurnIdentity(s) && alwaysActiveRoomsMatch(s) && alwaysLiveGroupOwnsTurns(s) && alwaysGroupAllocatorValid(s) && alwaysTurnsRetainGroups(s) && canReturnTurn(s, turnId, resolved, errorId)
   requires after == returnTurn(s, turnId, resolved, errorId)
   ensures alwaysTurnIdentity(after) && alwaysActiveRoomsMatch(after) && stepFirstAbortReasonStays(s, after)
   ensures alwaysLiveGroupOwnsTurns(after) && alwaysGroupAllocatorValid(after) && alwaysTurnsRetainGroups(after)
 {
-  LookupTurns(s, turnId);
-  forall i | 0 <= i < |s.controllers.turns|
-    ensures after.controllers.turns[i].id == s.controllers.turns[i].id && after.controllers.turns[i].room == s.controllers.turns[i].room && (after.controllers.turns[i].phase.TurnDetached? <==> s.controllers.turns[i].phase.TurnDetached?)
-  {}
+  hide *;
+  ReturnTurnRows(s, after, turnId, resolved, errorId);
   TurnIdentityMap(s, after);
   TurnRoomMap(s, after);
   AbortMap(s, after);
@@ -2020,12 +2072,13 @@ lemma ReturnClosed(s: Turns, turnId: int, resolved: bool, errorId: string)
 }
 
 lemma {:induction false} StartGroups(s: Turns, turnId: int, room: string)
-  requires inv(s) && canStartTurn(s, turnId, room)
+  requires alwaysGroupAllocatorValid(s) && alwaysLiveGroupOwnsTurns(s) && alwaysTurnsRetainGroups(s) && alwaysClosedPendingHasGlobalOwner(s) && canStartTurn(s, turnId, room)
   ensures alwaysGroupAllocatorValid(startTurn(s, turnId, room))
   ensures alwaysLiveGroupOwnsTurns(startTurn(s, turnId, room))
   ensures alwaysTurnsRetainGroups(startTurn(s, turnId, room))
   ensures alwaysClosedPendingHasGlobalOwner(startTurn(s, turnId, room))
 {
+  hide *;
   var after := startTurn(s, turnId, room);
   var gid, added := StartShape(s, turnId, room, after);
   StartAllocator(s, turnId, room);
@@ -2263,25 +2316,33 @@ lemma {:induction false} StartRetain(s: Turns, after: Turns, added: TurnEntry, g
   RetainJoin(after);
 }
 
-lemma StartRetainGroups(s: Turns, after: Turns, added: TurnEntry, gid: int)
-  requires forall g :: g in s.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups)| == 1 && exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
+lemma {:induction false} StartRetainGroups(s: Turns, after: Turns, added: TurnEntry, gid: int)
+  requires forall i, j :: 0 <= i < |s.turnGroups| && 0 <= j < |s.turnGroups| && i != j ==> s.turnGroups[i].turnId != s.turnGroups[j].turnId
+  requires forall g :: g in s.turnGroups ==> exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
   requires after.controllers.turns == s.controllers.turns + [added]
   requires after.turnGroups == s.turnGroups + [TurnGroup(added.id, gid)]
   requires forall g :: g in s.turnGroups ==> g.turnId != added.id
   requires forall g :: g in s.groups ==> g in after.groups
   requires exists g :: g in after.groups && g.id == gid && g.room == added.room
-  ensures forall g :: g in after.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), after.turnGroups)| == 1 && exists t :: t in after.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in after.groups && roomGroup.id == g.group && roomGroup.room == t.room
+  ensures forall i, j :: 0 <= i < |after.turnGroups| && 0 <= j < |after.turnGroups| && i != j ==> after.turnGroups[i].turnId != after.turnGroups[j].turnId
+  ensures forall g :: g in after.turnGroups ==> exists t :: t in after.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in after.groups && roomGroup.id == g.group && roomGroup.room == t.room
 {
   var tg := TurnGroup(added.id, gid);
   assert added in after.controllers.turns;
+  forall i, j | 0 <= i < |after.turnGroups| && 0 <= j < |after.turnGroups| && i != j
+    ensures after.turnGroups[i].turnId != after.turnGroups[j].turnId
+  {
+    if i < |s.turnGroups| && j < |s.turnGroups| {
+    } else if i < |s.turnGroups| {
+      assert s.turnGroups[i] in s.turnGroups;
+    } else {
+      assert s.turnGroups[j] in s.turnGroups;
+    }
+  }
   forall g | g in after.turnGroups
-    ensures |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), after.turnGroups)| == 1
     ensures exists t :: t in after.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in after.groups && roomGroup.id == g.group && roomGroup.room == t.room
   {
-    ProofLib.FilterAppend((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups, tg);
-    if g == tg {
-      ProofLib.FilterNone((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups);
-    } else {
+    if g != tg {
       assert g in s.turnGroups;
       var t :| t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room;
       assert t in after.controllers.turns;
@@ -2393,8 +2454,6 @@ lemma VisitBasics(s: Turns)
   GroupFrame(s, after);
   assert after.controllers.closed == s.controllers.closed;
   StepsVisit(s, after);
-  RetainFull(s, after);
-  VisitClosed(s); VisitFrames(s); VisitBottom(s);
 }
 
 lemma VisitRetain(s: Turns)

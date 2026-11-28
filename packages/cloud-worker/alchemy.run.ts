@@ -2,6 +2,7 @@
 import path from "node:path"
 import * as Cloudflare from "@alchemy.run/cloudflare"
 import * as Alchemy from "alchemy"
+import * as Output from "alchemy/Output"
 import { makeBucketState } from "alchemy/State/BucketState"
 import { State, StateStoreError } from "alchemy/State/State"
 import * as Effect from "effect/Effect"
@@ -10,6 +11,7 @@ import * as Redacted from "effect/Redacted"
 import * as Scope from "effect/Scope"
 import {
   assertStageGuard,
+  createHyperdriveRef,
   hashAssetDirectory,
   makeR2BucketObjects,
   resolveStage,
@@ -101,44 +103,54 @@ function parseWranglerConfig(raw: string | undefined): WranglerConfig {
 const wranglerConfig = parseWranglerConfig(process.env.ELIZA_CLOUD_V4_WRANGLER_CONFIG)
 
 function resolveStateLayer() {
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || wranglerConfig.accountId
-  if (process.env.ALCHEMY_STATE_STORE === "cloudflare") {
-    return Cloudflare.state({
-      ...(accountId ? { accountId } : {}),
-    })
-  }
-  const accessKeyId = process.env.R2_STATE_ACCESS_KEY_ID?.trim()
-  const secretAccessKey = process.env.R2_STATE_SECRET_ACCESS_KEY?.trim()
-  const bucket = process.env.R2_STATE_BUCKET?.trim()
-  if (accountId && accessKeyId && secretAccessKey && bucket) {
-    const objects = makeR2BucketObjects<StateStoreError>(
-      { kind: "s3", accountId, bucket, accessKeyId, secretAccessKey },
-      {
-        tryPromise: Effect.tryPromise,
-        makeError: ({ message, cause, status }) =>
-          new StateStoreError({
-            message,
-            ...(cause ? { cause } : {}),
-            ...(status !== undefined ? { http: { status } } : {}),
+  return Layer.unwrap(
+    Effect.gen(function* () {
+      const stageName = yield* Alchemy.Stage
+      const stageTarget = resolveStage({ stage: stageName, cwd: packageDir })
+      if (stageTarget.kind === "dev" || stageTarget.kind === "test") {
+        return Alchemy.localState()
+      }
+      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || wranglerConfig.accountId
+      if (process.env.ALCHEMY_STATE_STORE?.trim() === "cloudflare") {
+        return Cloudflare.state({
+          ...(accountId ? { accountId } : {}),
+        })
+      }
+      const accessKeyId = process.env.R2_STATE_ACCESS_KEY_ID?.trim()
+      const secretAccessKey = process.env.R2_STATE_SECRET_ACCESS_KEY?.trim()
+      const bucket = process.env.R2_STATE_BUCKET?.trim()
+      if (accountId && accessKeyId && secretAccessKey && bucket) {
+        const objects = makeR2BucketObjects<StateStoreError>(
+          { kind: "s3", accountId, bucket, accessKeyId, secretAccessKey },
+          {
+            tryPromise: Effect.tryPromise,
+            makeError: ({ message, cause, status }) =>
+              new StateStoreError({
+                message,
+                ...(cause ? { cause } : {}),
+                ...(status !== undefined ? { http: { status } } : {}),
+              }),
+          },
+        )
+        const prefix = process.env.R2_STATE_PREFIX?.trim() || "alchemy/eliza-cloud-worker/"
+        return Layer.effect(
+          State,
+          Effect.gen(function* () {
+            const context = yield* Effect.context()
+            const scope = yield* Effect.scope
+            const make = makeBucketState({
+              id: "r2",
+              label: "Cloudflare R2",
+              prefix,
+              objects: Effect.succeed(objects),
+            }).pipe(Scope.provide(scope), Effect.provideContext(context))
+            return yield* Effect.cached(make)
           }),
-      },
-    )
-    return Layer.effect(
-      State,
-      Effect.gen(function* () {
-        const context = yield* Effect.context()
-        const scope = yield* Effect.scope
-        const make = makeBucketState({
-          id: "r2",
-          label: "Cloudflare R2",
-          prefix: process.env.R2_STATE_PREFIX ?? "alchemy/eliza-cloud-worker/",
-          objects: Effect.succeed(objects),
-        }).pipe(Scope.provide(scope), Effect.provideContext(context))
-        return yield* Effect.cached(make)
-      }),
-    )
-  }
-  return Alchemy.localState()
+        )
+      }
+      return Alchemy.localState()
+    }),
+  )
 }
 
 interface ResolvedCloudWorkerConfig {
@@ -263,10 +275,15 @@ function buildWorkerEnv(
   if (databaseUrl && target.kind !== "production") env.DATABASE_URL = databaseUrl
 
   const devOrigin = parseDevOrigin(databaseUrl)
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || config.accountId
   if (resolved.hyperdriveId) {
-    env.HYPERDRIVE = Cloudflare.Hyperdrive.lookup("HYPERDRIVE", {
+    env.HYPERDRIVE = createHyperdriveRef({
+      id: "HYPERDRIVE",
       hyperdriveId: resolved.hyperdriveId,
+      ...(accountId ? { accountId } : {}),
       ...(devOrigin ? { dev: devOrigin } : {}),
+      asOutput: Output.asOutput,
+      isConnectionLookup: Cloudflare.Hyperdrive.isConnectionLookup,
     })
   } else if (resolved.hyperdriveName) {
     env.HYPERDRIVE = Cloudflare.Hyperdrive.lookup("HYPERDRIVE", {
