@@ -859,14 +859,20 @@ it.effect('The forbidden-command list matches tokens through quoting, operators,
     "env -S 'rm -rf /'",
     "r\\\nm -rf /",
     "eval rm -rf /",
+    "rm${IFS}-rf${IFS}/",
+    "rm$IFS-rf$IFS/",
+    "rm -rf$IFS/",
   ]
-  const allowedForms = ["ls /", "echo \"rm -rf /\"", "rm -rf ./build", "git status", "grep -r shutdown src"]
+  const allowedForms = ["ls /", "echo \"rm -rf /\"", "echo \"rm${IFS}-rf${IFS}/\"", "rm -rf ./build", "git status", "grep -r shutdown src"]
   try check(() => {
     for (const command of forbiddenForms) assert.notEqual(isForbiddenCommand(command), undefined, command)
     for (const command of allowedForms) assert.equal(isForbiddenCommand(command), undefined, command)
     assert.equal(isForbiddenCommand("git push origin main --force", ["git push --force"]), "git push --force")
     assert.equal(isForbiddenCommand("git push origin main", ["git push --force"]), undefined)
     for (const command of ["shutdown -h now", "reboot", "halt", "poweroff", "systemctl reboot", "sudo shutdown -r now"]) {
+      assert.equal(classifyDestructiveCommand(command).destructive, true, command)
+    }
+    for (const command of ["rm${IFS}-rf${IFS}/", "rm$IFS-rf$IFS/", "shred${IFS}/dev/sda"]) {
       assert.equal(classifyDestructiveCommand(command).destructive, true, command)
     }
     for (const command of ["cat", "head -n 1", "wc -l", "sort -u", "grep -i needle", "jq .items", "base64 -d", "gzip -c"]) {
