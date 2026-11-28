@@ -49,6 +49,11 @@ module node {
   const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"])
   const HTTP_URL = /https?:\/\/[^\s<>"']+/giu
   const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"])
+  const SEARCH_CONTROL_PATHS = new Set(["/search", "/preferences", "/advanced_search", "/url"])
+
+  function isGoogleSearchControl(parsed: URL): boolean {
+    return (parsed.hostname === "www.google.com" || parsed.hostname === "google.com") && SEARCH_CONTROL_PATHS.has(parsed.pathname)
+  }
 
   function readParameters(options: unknown): Record<string, unknown> {
     if (!options || typeof options !== "object") return {}
@@ -84,7 +89,7 @@ module node {
     return value.slice(0, end)
   }
 
-  function publicHttpUrl(value: unknown): string | undefined {
+  function publicHttpUrl(value: unknown, allowSearchControl = false): string | undefined {
     if (typeof value !== "string") return undefined
     try {
       const parsed = new URL(value)
@@ -93,7 +98,7 @@ module node {
         heading: "source",
         isWeb: parsed.protocol === "https:" || parsed.protocol === "http:",
         hasCredentials: parsed.username !== "" || parsed.password !== "",
-        isSearchControl: false,
+        isSearchControl: !allowSearchControl && isGoogleSearchControl(parsed),
         destinationPublic: !isBlockedHostname(parsed.hostname) && !isPrivateIpAddress(parsed.hostname),
       })
       return ok ? parsed.toString() : undefined
@@ -105,7 +110,7 @@ module node {
   function containsUnsafeHttpUrl(value: string): boolean {
     HTTP_URL.lastIndex = 0
     for (const match of value.matchAll(HTTP_URL)) {
-      if (!publicHttpUrl(stripTrailingProsePunctuation(match[0]))) return true
+      if (!publicHttpUrl(stripTrailingProsePunctuation(match[0]), true)) return true
     }
     return false
   }

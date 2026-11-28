@@ -170,13 +170,17 @@ function parseFrames(value: unknown): PageFrame[] | "empty" | "incomplete" | "in
   return out
 }
 
+function isGoogleHost(hostname: string): boolean {
+  return hostname === "www.google.com" || hostname === "google.com"
+}
+
 function extractResultLinks(page: PageFrame): Array<{ title: string; url: string }> {
   const links = new Map<string, { title: string; url: string }>()
   for (const element of page.elements) {
     if (!element.href || !element.heading?.trim()) continue
     let url = parseUrlSafe(element.href)
     if (!url) continue
-    if (url.origin === "https://www.google.com" && url.pathname === "/url") {
+    if ((url.protocol === "https:" || url.protocol === "http:") && isGoogleHost(url.hostname) && url.pathname === "/url") {
       const destination = url.searchParams.get("q") ?? url.searchParams.get("url")
       if (!destination) continue
       url = parseUrlSafe(destination)
@@ -188,8 +192,8 @@ function extractResultLinks(page: PageFrame): Array<{ title: string; url: string
       isWeb: url.protocol === "https:" || url.protocol === "http:",
       hasCredentials: url.username !== "" || url.password !== "",
       isSearchControl:
-        url.origin === "https://www.google.com" &&
-        ["/search", "/preferences", "/advanced_search"].includes(url.pathname),
+        isGoogleHost(url.hostname) &&
+        ["/search", "/preferences", "/advanced_search", "/url"].includes(url.pathname),
       destinationPublic: !isBlockedHostname(url.hostname) && !isPrivateIpAddress(url.hostname),
     })
     if (!ok) continue
@@ -203,6 +207,9 @@ export effect function searchAuthorizedBrowserEffect(
   query: string,
   options?: SearchOptions,
 ): (SearchResponse | null)!ElizaError {
+  const normalizedQuery = query.trim()
+  const queryUnits = [...normalizedQuery].length
+  const queryValid = queryUnits > 0 && queryUnits <= 2048
   const supportsFilters = canSearchInBrowser(options)
   const saved: unknown =
     typeof runtime.getCache === "function"
@@ -213,10 +220,10 @@ export effect function searchAuthorizedBrowserEffect(
       : undefined
   const selection = resolveBrowserSelection(saved, runtime)
   const service: unknown = runtime.getService?.("browser")
-  const url = buildGoogleSearchUrl(query)
+  const url = buildGoogleSearchUrl(normalizedQuery)
   const open: Command = { subaction: "open", url: url.href }
   let target: unknown
-  if (supportsFilters && selection.tag === "Ready" && isDispatcher(service)) {
+  if (queryValid && supportsFilters && selection.tag === "Ready" && isDispatcher(service)) {
     target = try tryPromise({
       try: () => service.resolveTarget(selection.targetId, open),
       catch: (cause) => makeUnavailable("Unable to resolve browser search target.", { cause }),
@@ -235,11 +242,10 @@ export effect function searchAuthorizedBrowserEffect(
     }))
   provide machine() {
     const run = try Machine
-    const queryUnits = [...query].length
     const dispatched = run.send({
       type: "dispatchSearch",
-      query,
-      queryUnits: queryUnits > 0 ? queryUnits : 1,
+      query: normalizedQuery,
+      queryUnits,
       selection,
       supportsFilters,
       targetReady,
@@ -313,7 +319,7 @@ export effect function searchAuthorizedBrowserEffect(
       if (
         observed.origin !== url.origin ||
         observed.pathname !== url.pathname ||
-        observed.searchParams.get("q") !== query
+        observed.searchParams.get("q") !== normalizedQuery
       ) {
         throw makeUnavailable(
           "The search tab navigated away from the requested search. Inspect that browser tab before retrying.",
@@ -351,7 +357,7 @@ export effect function searchAuthorizedBrowserEffect(
     const text = pageFrames.map((frame) => frame.text).join("\n\n")
     const selected = options?.limit === undefined ? links : links.slice(0, options.limit)
     return {
-      query,
+      query: normalizedQuery,
       answer: options?.includeAnswer === false ? undefined : text,
       images: [],
       results: selected.map((link, index) => ({
