@@ -191,9 +191,15 @@ it.effect('A torn trash record is listed as unreadable, refuses only its own res
 it.effect('Claim an empty or complete folder only when the listing knows (spec/files/requests.md, "Story: Claim an empty or complete folder only when the listing knows"; spec/files/requests.md, "An empty or complete claim needs a full, known listing"; spec/files/requests.md, "Downloads is the Download folder with its folders, and a missing one is empty")', effect () => {
   provide NodeServices.layer {
     try scoped(effect {
-      const { root } = try storage({ "Empty/.keep": "" })
+      const { root } = try storage({ "Empty/.keep": "", "計画書.txt": "plan", "budget.txt": "budget", "résumé.txt": "resume" })
       const local = try on(localVolume(root), effect { return ((try FilesVolume).list("Download") catch () => undefined) })
       const empty = try on(localVolume(root), effect { return try (try FilesVolume).query({ text: "nothing" }) })
+      const filenameMatches = try on(localVolume(root), effect {
+        const volume = try FilesVolume
+        return try Effect.forEach(["計画", "resume", "????"], (text) => effect {
+          return (try volume.query({ text })).entries.map(({ path }) => path)
+        })
+      })
       const partial = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).list("Download") })
       const unknown = try on(nativeVolume(fakeDevice(() => [], { entries: false }).plugin), effect { return try (try FilesVolume).list("Download") })
       const filtered = try on(nativeVolume(fakeDevice(() => [], { truncated: true }).plugin), effect { return try (try FilesVolume).query({ text: "nothing" }) })
@@ -207,6 +213,7 @@ it.effect('Claim an empty or complete folder only when the listing knows (spec/f
       try check(() => {
         assert.deepEqual(downloads, { before: [true, true], made: "Download/Trips", after: [["Download/Trips", true]] })
         assert.equal(local, undefined)
+        assert.deepEqual(filenameMatches, [["計画書.txt"], ["résumé.txt"], []])
         assert.deepEqual({ complete: empty.complete, empty: empty.empty, rows: empty.entries.length }, { complete: true, empty: true, rows: 0 })
         assert.deepEqual({ complete: partial.complete, empty: partial.empty, rows: partial.entries.length }, { complete: false, empty: false, rows: 1 })
         assert.deepEqual({ complete: unknown.complete, empty: unknown.empty }, { complete: false, empty: false })

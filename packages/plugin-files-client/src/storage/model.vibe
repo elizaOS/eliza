@@ -246,7 +246,7 @@ export function filterTime(value: string, end = false): number {
   return end ? new Date(year, month - 1, day + 1).getTime() - 1 : new Date(year, month - 1, day).getTime()
 }
 
-const words = (value: string) => value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/).filter((word) => word !== "")
+const words = (value: string) => value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/[^\p{L}\p{N}\p{M}]+/u).filter((word) => word !== "")
 
 function kindMatches(kind: FilterKind, entry: StorageEntry): boolean {
   if (kind === "folder") return entry.directory
@@ -267,7 +267,8 @@ export function filterMatches(filter: FilesFilter, entry: StorageEntry): boolean
   if (filter.to !== undefined && entry.modified > filterTime(filter.to, true)) return false
   if (filter.text === undefined) return true
   const name = words(entry.name)
-  return words(filter.text).every((word) => name.some((part) => part.startsWith(word)))
+  const requested = words(filter.text)
+  return requested.length > 0 && requested.every((word) => name.some((part) => part.startsWith(word)))
 }
 
 const KIND_LABELS: Readonly<Record<FilterKind, string>> = { image: "Images", video: "Videos", audio: "Audio", document: "Documents", pdf: "PDFs", folder: "Folders" }
