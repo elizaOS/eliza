@@ -20,15 +20,93 @@ import {
 const packageDir = import.meta.dirname
 const pagesDir = path.join(packageDir, "dist/pages")
 const workerDir = path.join(packageDir, "dist/worker")
-const productionDomains = ["api.eliza.app"] as const
+const PRODUCTION_HYPERDRIVE_ID = "32b979608df74c76a1dc9d838b34ff1b"
+const STAGING_HYPERDRIVE_ID = "328267e25f574e6a8c210804769b39e7"
+const DEFAULT_SIGN_IN_SENDER = "sign-in@cloud-mail.eliza.app"
+const REMOTE_COMPATIBILITY_DATE = "2026-11-25"
+const LOCAL_COMPATIBILITY_DATE = "2026-10-15"
+const productionDomains = ["api.eliza.app", "cloud.eliza.app"] as const
+
+interface WranglerConfig {
+  readonly name?: string
+  readonly accountId?: string
+  readonly compatibilityDate?: string
+  readonly compatibilityFlags?: readonly string[]
+  readonly hyperdriveId?: string
+  readonly sendEmailAllowedSenders?: readonly string[]
+  readonly hasSendEmailBinding: boolean
+  readonly vars: Readonly<Record<string, string>>
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function asStringList(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const items = value
+    .map((entry) => asNonEmptyString(entry))
+    .filter((entry): entry is string => entry !== undefined)
+  return items.length > 0 ? items : undefined
+}
+
+function parseWranglerConfig(raw: string | undefined): WranglerConfig {
+  const empty: WranglerConfig = { hasSendEmailBinding: false, vars: {} }
+  const trimmed = raw?.trim()
+  if (!trimmed) return empty
+  const parsed = asRecord(JSON.parse(trimmed))
+  if (!parsed) throw new Error("ELIZA_CLOUD_V4_WRANGLER_CONFIG must decode to a JSON object")
+
+  const hyperdriveEntry = Array.isArray(parsed.hyperdrive)
+    ? parsed.hyperdrive
+        .map((entry) => asRecord(entry))
+        .find((entry) => entry && asNonEmptyString(entry.binding) === "HYPERDRIVE")
+    : undefined
+  const emailEntry = Array.isArray(parsed.send_email)
+    ? parsed.send_email
+        .map((entry) => asRecord(entry))
+        .find((entry) => entry && asNonEmptyString(entry.name) === "SIGN_IN_EMAIL")
+    : undefined
+  const rawVars = asRecord(parsed.vars)
+  const vars: Record<string, string> = {}
+  if (rawVars) {
+    for (const [key, value] of Object.entries(rawVars)) {
+      const normalized = asNonEmptyString(value)
+      if (normalized) vars[key] = normalized
+    }
+  }
+
+  return {
+    ...(asNonEmptyString(parsed.name) ? { name: asNonEmptyString(parsed.name) } : {}),
+    ...(asNonEmptyString(parsed.account_id) ? { accountId: asNonEmptyString(parsed.account_id) } : {}),
+    ...(asNonEmptyString(parsed.compatibility_date) ? { compatibilityDate: asNonEmptyString(parsed.compatibility_date) } : {}),
+    ...(asStringList(parsed.compatibility_flags) ? { compatibilityFlags: asStringList(parsed.compatibility_flags) } : {}),
+    ...(hyperdriveEntry && asNonEmptyString(hyperdriveEntry.id) ? { hyperdriveId: asNonEmptyString(hyperdriveEntry.id) } : {}),
+    ...(emailEntry && asStringList(emailEntry.allowed_sender_addresses)
+      ? { sendEmailAllowedSenders: asStringList(emailEntry.allowed_sender_addresses) }
+      : {}),
+    hasSendEmailBinding: emailEntry !== undefined,
+    vars,
+  }
+}
+
+const wranglerConfig = parseWranglerConfig(process.env.ELIZA_CLOUD_V4_WRANGLER_CONFIG)
 
 function resolveStateLayer() {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || wranglerConfig.accountId
   if (process.env.ALCHEMY_STATE_STORE === "cloudflare") {
     return Cloudflare.state({
-      ...(process.env.CLOUDFLARE_ACCOUNT_ID ? { accountId: process.env.CLOUDFLARE_ACCOUNT_ID } : {}),
+      ...(accountId ? { accountId } : {}),
     })
   }
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim()
   const accessKeyId = process.env.R2_STATE_ACCESS_KEY_ID?.trim()
   const secretAccessKey = process.env.R2_STATE_SECRET_ACCESS_KEY?.trim()
   const bucket = process.env.R2_STATE_BUCKET?.trim()
@@ -63,23 +141,87 @@ function resolveStateLayer() {
   return Alchemy.localState()
 }
 
-function workerNameFor(target: StageTarget): string {
-  switch (target.kind) {
-    case "production":
-      return "eliza-cloud-api-prod"
-    case "staging":
-      return "eliza-cloud-api-staging"
-    case "preview":
-    case "dev":
-    case "test":
-      return `eliza-cloud-api-${target.stage.replaceAll("_", "-")}`
-  }
+interface ResolvedCloudWorkerConfig {
+  readonly workerName: string
+  readonly cloudEnvironment: "staging" | "production"
+  readonly compatibilityDate: string
+  readonly compatibilityFlags: readonly string[]
+  readonly publicApiOrigin?: string
+  readonly webOrigin?: string
+  readonly identityDigest?: string
+  readonly hyperdriveId?: string
+  readonly hyperdriveName?: string
+  readonly sendEmailAllowedSenders?: readonly string[]
+  readonly enableEmailBinding: boolean
 }
 
-function canonicalOriginFor(target: StageTarget): string | undefined {
-  if (target.kind === "production") return process.env.PUBLIC_API_ORIGIN?.trim() || "https://api.eliza.app"
-  if (target.kind === "staging") return process.env.PUBLIC_API_ORIGIN?.trim() || "https://api-staging.eliza.app"
-  return process.env.PUBLIC_API_ORIGIN?.trim() || undefined
+function resolveCloudWorkerConfig(target: StageTarget, config: WranglerConfig): ResolvedCloudWorkerConfig {
+  const isManagedRelease = target.kind === "staging" || target.kind === "production"
+  const isLocalStage = target.kind === "dev" || target.kind === "test"
+  const cloudEnvironment = target.kind === "production" ? "production" : "staging"
+
+  const defaultWorkerName = target.kind === "production"
+    ? "eliza-cloud-api-prod"
+    : target.kind === "staging"
+      ? "eliza-cloud-api-staging"
+      : `eliza-cloud-api-${target.stage.replaceAll("_", "-")}`
+  const defaultPublicApiOrigin = target.kind === "production"
+    ? "https://api.eliza.app"
+    : target.kind === "staging"
+      ? "https://api-staging.eliza.app"
+      : undefined
+  const defaultWebOrigin = target.kind === "production"
+    ? "https://cloud.eliza.app"
+    : target.kind === "staging"
+      ? "https://staging.eliza.app"
+      : undefined
+  const defaultHyperdriveId = target.kind === "production"
+    ? PRODUCTION_HYPERDRIVE_ID
+    : target.kind === "staging"
+      ? STAGING_HYPERDRIVE_ID
+      : undefined
+  const defaultSenders = isManagedRelease ? [DEFAULT_SIGN_IN_SENDER] : undefined
+
+  const workerName = (isManagedRelease ? config.name : undefined) ?? defaultWorkerName
+  const compatibilityDate = isLocalStage
+    ? LOCAL_COMPATIBILITY_DATE
+    : (config.compatibilityDate ?? REMOTE_COMPATIBILITY_DATE)
+  const compatibilityFlags = config.compatibilityFlags ?? ["nodejs_compat"]
+  const publicApiOrigin = process.env.PUBLIC_API_ORIGIN?.trim()
+    || config.vars.PUBLIC_API_ORIGIN
+    || defaultPublicApiOrigin
+  const webOrigin = process.env.WEB_ORIGIN?.trim()
+    || config.vars.WEB_ORIGIN
+    || defaultWebOrigin
+  const identityDigest = process.env.CLOUD_IDENTITY_DIGEST?.trim()
+    || process.env.ELIZA_CLOUD_V4_DATABASE_IDENTITY?.trim()
+    || config.vars.CLOUD_IDENTITY_DIGEST
+  const hyperdriveId = process.env.ELIZA_CLOUD_HYPERDRIVE_ID?.trim()
+    || config.hyperdriveId
+    || defaultHyperdriveId
+  const hyperdriveName = process.env.ELIZA_CLOUD_HYPERDRIVE_NAME?.trim() || undefined
+  const envEmailSender = process.env.ELIZA_CLOUD_EMAIL_SENDER?.trim()
+  const sendEmailAllowedSenders = envEmailSender
+    ? [envEmailSender]
+    : (config.sendEmailAllowedSenders ?? defaultSenders)
+  const emailToggle = process.env.ELIZA_CLOUD_ENABLE_EMAIL_BINDING?.trim()
+  const enableEmailBinding = emailToggle === "false"
+    ? false
+    : emailToggle === "true" || config.hasSendEmailBinding || isManagedRelease
+
+  return {
+    workerName,
+    cloudEnvironment,
+    compatibilityDate,
+    compatibilityFlags,
+    ...(publicApiOrigin ? { publicApiOrigin } : {}),
+    ...(webOrigin ? { webOrigin } : {}),
+    ...(identityDigest ? { identityDigest } : {}),
+    ...(hyperdriveId ? { hyperdriveId } : {}),
+    ...(hyperdriveName ? { hyperdriveName } : {}),
+    ...(sendEmailAllowedSenders ? { sendEmailAllowedSenders } : {}),
+    enableEmailBinding,
+  }
 }
 
 function parseDevOrigin(databaseUrl: string | undefined): Cloudflare.Hyperdrive.DevOrigin | undefined {
@@ -103,44 +245,44 @@ function parseDevOrigin(databaseUrl: string | undefined): Cloudflare.Hyperdrive.
   }
 }
 
-function buildWorkerEnv(target: StageTarget): Cloudflare.Workers.WorkerBindingProps {
-  const cloudEnvironment = target.kind === "production" ? "production" : "staging"
+function buildWorkerEnv(
+  target: StageTarget,
+  resolved: ResolvedCloudWorkerConfig,
+  config: WranglerConfig,
+): Cloudflare.Workers.WorkerBindingProps {
   const env: Cloudflare.Workers.WorkerBindingProps = {
-    CLOUD_ENVIRONMENT: cloudEnvironment,
+    ...config.vars,
+    CLOUD_ENVIRONMENT: resolved.cloudEnvironment,
   }
-  const digest = process.env.CLOUD_IDENTITY_DIGEST?.trim() || process.env.ELIZA_CLOUD_V4_DATABASE_IDENTITY?.trim()
-  if (digest) env.CLOUD_IDENTITY_DIGEST = digest
-  const apiOrigin = canonicalOriginFor(target)
-  if (apiOrigin) env.PUBLIC_API_ORIGIN = apiOrigin
-  const webOrigin = process.env.WEB_ORIGIN?.trim()
-  if (webOrigin) env.WEB_ORIGIN = webOrigin
+  if (resolved.identityDigest) env.CLOUD_IDENTITY_DIGEST = resolved.identityDigest
+  if (resolved.publicApiOrigin) env.PUBLIC_API_ORIGIN = resolved.publicApiOrigin
+  if (resolved.webOrigin) env.WEB_ORIGIN = resolved.webOrigin
   const profile = process.env.CLOUD_PROFILE?.trim()
   if (profile) env.CLOUD_PROFILE = profile
   const databaseUrl = process.env.DATABASE_URL?.trim()
   if (databaseUrl && target.kind !== "production") env.DATABASE_URL = databaseUrl
 
-  const hyperdriveId = process.env.ELIZA_CLOUD_HYPERDRIVE_ID?.trim()
-  const hyperdriveName = process.env.ELIZA_CLOUD_HYPERDRIVE_NAME?.trim()
   const devOrigin = parseDevOrigin(databaseUrl)
-  if (hyperdriveId) {
+  if (resolved.hyperdriveId) {
     env.HYPERDRIVE = Cloudflare.Hyperdrive.lookup("HYPERDRIVE", {
-      hyperdriveId,
+      hyperdriveId: resolved.hyperdriveId,
       ...(devOrigin ? { dev: devOrigin } : {}),
     })
-  } else if (hyperdriveName) {
+  } else if (resolved.hyperdriveName) {
     env.HYPERDRIVE = Cloudflare.Hyperdrive.lookup("HYPERDRIVE", {
-      name: hyperdriveName,
+      name: resolved.hyperdriveName,
       ...(devOrigin ? { dev: devOrigin } : {}),
     })
   }
   if (process.env.ELIZA_CLOUD_ENABLE_AI === "true") {
     env.AI = Cloudflare.Workers.AI()
   }
-  if (process.env.ELIZA_CLOUD_ENABLE_EMAIL_BINDING === "true") {
-    const sender = process.env.ELIZA_CLOUD_EMAIL_SENDER?.trim()
+  if (resolved.enableEmailBinding) {
     env.SIGN_IN_EMAIL = Cloudflare.Email.SendEmail(
       "SIGN_IN_EMAIL",
-      sender ? { allowedSenderAddresses: [sender] } : {},
+      resolved.sendEmailAllowedSenders && resolved.sendEmailAllowedSenders.length > 0
+        ? { allowedSenderAddresses: [...resolved.sendEmailAllowedSenders] }
+        : {},
     )
   }
   return env
@@ -215,20 +357,27 @@ export default Alchemy.Stack(
     const stageName = yield* Alchemy.Stage
     const stageTarget = resolveStage({ stage: stageName, cwd: packageDir })
     const isManagedRelease = stageTarget.kind === "staging" || stageTarget.kind === "production"
-    const canonicalOrigin = canonicalOriginFor(stageTarget)
+    const resolved = resolveCloudWorkerConfig(stageTarget, wranglerConfig)
+    const canonicalOrigin = resolved.publicApiOrigin
     const customDomain = stageTarget.kind === "production" && process.env.ELIZA_CLOUD_BIND_DOMAIN === "true"
       ? "api.eliza.app"
       : stageTarget.kind === "staging" && process.env.ELIZA_CLOUD_BIND_DOMAIN === "true"
         ? "api-staging.eliza.app"
         : undefined
-    const prodHyperdriveId = process.env.ELIZA_CLOUD_PROD_HYPERDRIVE_ID?.trim()
+    const prodHyperdriveIdOverride = process.env.ELIZA_CLOUD_PROD_HYPERDRIVE_ID?.trim()
+    const productionIds = prodHyperdriveIdOverride && prodHyperdriveIdOverride !== PRODUCTION_HYPERDRIVE_ID
+      ? [PRODUCTION_HYPERDRIVE_ID, prodHyperdriveIdOverride]
+      : [PRODUCTION_HYPERDRIVE_ID]
+    const guardedDomains = [customDomain, canonicalOrigin, resolved.webOrigin].filter(
+      (value): value is string => value !== undefined,
+    )
 
     assertStageGuard(stageTarget, {
       resourceIds: {
-        HYPERDRIVE: process.env.ELIZA_CLOUD_HYPERDRIVE_ID,
+        ...(resolved.hyperdriveId ? { HYPERDRIVE: resolved.hyperdriveId } : {}),
       },
-      domains: customDomain ? [customDomain] : canonicalOrigin ? [canonicalOrigin] : [],
-      productionIds: prodHyperdriveId ? [prodHyperdriveId] : [],
+      domains: guardedDomains,
+      productionIds,
       productionDomains,
     })
 
@@ -239,12 +388,12 @@ export default Alchemy.Stack(
     )
 
     const workerResource = Cloudflare.Worker("ElizaCloudApi", {
-      name: workerNameFor(stageTarget),
+      name: resolved.workerName,
       main: entryMain,
       bundle: false,
       compatibility: {
-        date: "2026-10-15",
-        flags: ["nodejs_compat"],
+        date: resolved.compatibilityDate,
+        flags: [...resolved.compatibilityFlags],
       },
       assets: {
         directory: pagesAssets.directory,
@@ -254,7 +403,7 @@ export default Alchemy.Stack(
       workersDev: !isManagedRelease,
       ...(customDomain ? { domain: customDomain } : {}),
       ...(isManagedRelease ? { crons: ["* * * * *"] } : {}),
-      env: buildWorkerEnv(stageTarget),
+      env: buildWorkerEnv(stageTarget, resolved, wranglerConfig),
     }).pipe(Alchemy.AdoptPolicy.adopt(true))
 
     const worker = yield* (isManagedRelease
