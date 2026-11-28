@@ -1,11 +1,13 @@
-// spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
+// spec/slack/index.md, "Slack events need the installed team and compatible enterprise identity"; spec/slack/index.md, "A public or private mention takes the app-mention lane and replies to the captured thread"; spec/slack/index.md, "The agent reads the &, < and > a Slack member typed"; spec/slack/index.md, "A Slack post is sent again only after a rate limit, never after a lost answer"
 import { assert, describe, it } from "@effect/vitest"
 import { webApi } from "@slack/bolt"
-import { decodeSlackText, slackWriteRetries } from "../src/index.vibe"
+import { ChannelType, type Content, type IAgentRuntime, type Memory, type TargetInfo, type UUID } from "@elizaos/core"
+import { createSlackInbound, decodeSlackText, slackConversationOf, slackWriteRetries, type SlackChannelRecord, type SlackConnection } from "../src/index.vibe"
 
 module node {
   import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
   import { once } from "node:events"
+  import { Redacted } from "effect"
 
   export type FirstAnswer = "502" | "reset" | "429"
   export interface SlackApi { readonly apiUrl: string; readonly kept: string[]; close(): void }
@@ -50,15 +52,104 @@ module node {
   export async function outcome(work: () => Promise<unknown>): Promise<"accepted" | "failed"> {
     return work().then(() => "accepted" as const, () => "failed" as const)
   }
+
+  export function secret(value: string): Redacted.Redacted<string> {
+    return Redacted.make(value)
+  }
 }
-import { noteBytes, outcome, slackApi, type FirstAnswer } from node
+import { noteBytes, outcome, secret, slackApi, type FirstAnswer } from node
 
 const typed = "R&D: is a < b && c > d? (&lt; stays)"
 const wire = "R&amp;D: is a &lt; b &amp;&amp; c &gt; d? (&amp;lt; stays)"
 
+function slackRuntime(handled: Memory[]): IAgentRuntime {
+  const memories = new Map<string, Memory>()
+  const runtime = {
+    agentId: "00000000-0000-4000-8000-000000000001" as UUID,
+    ensureConnection: async () => undefined,
+    createMemory: async (memory: Memory) => { if (memory.id) memories.set(memory.id, memory); return memory.id ?? ("00000000-0000-4000-8000-000000000099" as UUID) },
+    getMemoryById: async (id: UUID) => memories.get(id) ?? null,
+    messageService: {
+      handleMessage: async (_rt: IAgentRuntime, memory: Memory, callback: (reply: Content) => Promise<Memory[]>) => {
+        handled.push(memory)
+        await callback({ text: `ack:${memory.content.text ?? ""}` })
+      },
+    },
+  }
+  return runtime as unknown as IAgentRuntime
+}
+
+function baseConfig(overrides: Partial<SlackConnection> = {}): SlackConnection {
+  return {
+    accountId: "acct-1",
+    botToken: secret("xoxb-test"),
+    appToken: secret("xapp-test"),
+    channels: new Set(),
+    directUsers: new Set(),
+    allowBots: false,
+    dmMode: "SlackDmOpen",
+    groupDms: false,
+    requireMention: true,
+    ...overrides,
+  }
+}
+
 describe("Answer one Slack message through its proper installation and thread (spec/slack/index.md, \"Story: Answer one Slack message through its proper installation and thread\")", () => {
   it("The agent reads the text the member typed, decoded once (spec/slack/index.md, \"The agent reads the &, < and > a Slack member typed\")", () => {
     assert.deepStrictEqual([decodeSlackText(wire), decodeSlackText("<@U0> &quot;hi&quot;"), decodeSlackText("&amp;amp;")], [typed, "<@U0> &quot;hi&quot;", "&amp;"])
+  })
+
+  it.effect("App Home events enforce DM policy without channel fallback, unknown channel records fail closed, and disallowed bots never trigger pairing (spec/slack/index.md, \"Slack events need the installed team and compatible enterprise identity\")", () => effect {
+    const installation = { accountId: "acct-1", teamId: "T1", enterpriseId: "", botUserId: "U0", epoch: 1 }
+    const active = try Ref.make(true)
+    const handled: Memory[] = []
+    const sent: { target: TargetInfo; text: string }[] = []
+    const lookups: string[] = []
+    const pairedSenders: string[] = []
+    const records: Record<string, SlackChannelRecord> = { C_EMPTY: {}, C_PUB: { is_channel: true } }
+    const ports = {
+      installation,
+      active,
+      lookupChannel: async (ch: string) => { lookups.push(ch); return ch in records ? { channel: records[ch] } : undefined },
+      effect send(target: TargetInfo, content: Content) {
+        sent.push({ target, text: content.text ?? "" })
+        const providerMessageIds: [string, ...string[]] = ["1.9"]
+        return { kind: "delivered" as const, receipt: { providerMessageIds, acceptedAt: 1, persistence: { status: "not_attempted" as const, reason: "test" } }, memories: [] }
+      },
+      checkPairing: async (senderId: string) => {
+        pairedSenders.push(senderId)
+        return { allowed: false, replyMessage: `pair:${senderId}` }
+      },
+    }
+    const openInbound = try createSlackInbound(slackRuntime(handled), baseConfig({ dmMode: "SlackDmOpen" }), ports)
+    try openInbound({ type: "message", channel: "D_HOME", ts: "10.001", user: "U1", text: "hello &amp; welcome", channel_type: "app_home" }, { team_id: "T1" })
+    try openInbound({ type: "app_mention", channel: "C_EMPTY", ts: "10.002", user: "U1", text: "<@U0> ping" }, { team_id: "T1" })
+    try openInbound({ type: "app_mention", channel: "C_PUB", ts: "10.003", user: "U1", text: "<@U0> pub" }, { team_id: "T1" })
+
+    const disabledInbound = try createSlackInbound(slackRuntime(handled), baseConfig({ dmMode: "SlackDmDisabled", requireMention: false }), ports)
+    try disabledInbound({ type: "message", channel: "C_PUB", ts: "10.004", user: "U1", text: "<@U0> bypass?", channel_type: "app_home" }, { team_id: "T1" })
+
+    const pairingInbound = try createSlackInbound(slackRuntime(handled), baseConfig({ dmMode: "SlackDmPairing", allowBots: false }), ports)
+    try pairingInbound({ type: "message", channel: "D_HOME", ts: "10.005", bot_id: "B9", text: "bot dm", channel_type: "app_home" }, { team_id: "T1" })
+    try pairingInbound({ type: "message", channel: "D_HOME", ts: "10.006", text: "no sender", channel_type: "app_home" }, { team_id: "T1" })
+    try pairingInbound({ type: "message", channel: "D_HOME", ts: "10.007", user: "U2", text: "human home", channel_type: "app_home" }, { team_id: "T1" })
+
+    try Effect.try(() => assert.deepStrictEqual(
+      {
+        mapped: [slackConversationOf("app_home"), slackConversationOf(undefined, {}), slackConversationOf(undefined, { is_channel: true })],
+        lookups,
+        handledTexts: handled.map(m => [m.content.text, m.content.channelType]),
+        sentReplies: sent.map(s => [s.target.channelId, s.target.threadId ?? null, s.text]),
+        pairedSenders,
+      },
+      {
+        mapped: ["SlackHome", "SlackUnknownConversation", "SlackPublic"],
+        lookups: ["C_EMPTY", "C_PUB"],
+        handledTexts: [["hello & welcome", ChannelType.DM], ["<@U0> pub", ChannelType.GROUP]],
+        sentReplies: [["D_HOME", null, "ack:hello & welcome"], ["C_PUB", "10.003", "ack:<@U0> pub"], ["D_HOME", null, "pair:U2"]],
+        pairedSenders: ["U2"],
+      },
+    ))
   })
 })
 
