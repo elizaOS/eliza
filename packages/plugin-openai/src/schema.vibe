@@ -62,6 +62,10 @@ export function isCerebrasSchemaUnbounded(error: unknown): boolean {
   return error instanceof ElizaError && error.code === CEREBRAS_SCHEMA_UNBOUNDED
 }
 
+const WIRE_STRICT_LIST_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"] as const
+const WIRE_STRICT_SINGLE_KEYS = ["additionalProperties", "additionalItems", "contains", "propertyNames", "not", "if", "then", "else"] as const
+const WIRE_STRICT_MAP_KEYS = ["patternProperties", "$defs", "definitions", "dependentSchemas"] as const
+
 export function isWireStrictSchema(schema: unknown): boolean {
   if (typeof schema !== "object" || schema === null) return false
   const record = schema as Record<string, unknown>
@@ -78,10 +82,27 @@ export function isWireStrictSchema(schema: unknown): boolean {
         if (!required.has(key) || !isWireStrictSchema(value)) return false
       }
     }
-    return true
   }
-  if (record.type === "array") {
-    return record.items === undefined || isWireStrictSchema(record.items)
+  if (record.type === "array" && record.items !== undefined && !isWireStrictSchema(record.items)) return false
+  for (const key of WIRE_STRICT_LIST_KEYS) {
+    const list = record[key]
+    if (Array.isArray(list)) {
+      for (const sub of list) {
+        if (!isWireStrictSchema(sub)) return false
+      }
+    }
+  }
+  for (const key of WIRE_STRICT_SINGLE_KEYS) {
+    const sub = record[key]
+    if (typeof sub === "object" && sub !== null && !isWireStrictSchema(sub)) return false
+  }
+  for (const key of WIRE_STRICT_MAP_KEYS) {
+    const map = record[key]
+    if (typeof map === "object" && map !== null) {
+      for (const sub of Object.values(map)) {
+        if (!isWireStrictSchema(sub)) return false
+      }
+    }
   }
   return true
 }
