@@ -1,9 +1,9 @@
 // spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Interface, Transaction, Wallet, id, keccak256, toQuantity } from "ethers";
 
 export type Gateway = "pass" | "lost" | "refused" | "gatewayError" | "secondCopy" | "missingHash" | "nullHash" | "malformedHash" | "otherHash" | "uppercaseHash";
@@ -219,7 +219,7 @@ export interface Scratch {
   /** @throws {never} */
   keepDesk(): void;
   /** @throws {never} */
-  restoreDesk(): void;
+  restoreDesk(journalFormat?: "previous"): void;
   /** @throws {never} */
   tearCustody(): void;
   /** @throws {never} */
@@ -243,7 +243,18 @@ export function scratch(): Scratch {
       return sealed;
     },
     keepDesk: () => copyFileSync(desk, `${desk}.kept`),
-    restoreDesk: () => copyFileSync(`${desk}.kept`, desk),
+    restoreDesk: (journalFormat) => {
+      copyFileSync(`${desk}.kept`, desk);
+      if (journalFormat === "previous") {
+        for (const relative of globSync("wallet/*/*.json/payload", { cwd: directory })) {
+          const payload = join(directory, relative);
+          const file = dirname(payload);
+          const contents = readFileSync(payload);
+          rmSync(file, { recursive: true });
+          writeFileSync(file, contents, { mode: 0o600 });
+        }
+      }
+    },
     tearCustody: () => writeFileSync(join(directory, "wallet", "state", "custody"), "{"),
     remove: () => rmSync(directory, { recursive: true, force: true }),
   };

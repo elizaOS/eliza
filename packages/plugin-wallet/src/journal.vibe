@@ -23,9 +23,9 @@ export interface JournalRows {
 }
 
 module node {
-  import { createHash, randomUUID } from "node:crypto"
-  import { constants } from "node:fs"
-  import { link, mkdir, open, readFile, readdir, unlink } from "node:fs/promises"
+  import { createHash } from "node:crypto"
+  import { mkdir, readdir } from "node:fs/promises"
+  import { publishWalletRecord, readWalletRecord, syncDirectory } from "./record.vibe"
   import { dirname, join } from "node:path"
   import type { JournalRows } from "./journal.vibe"
   import type { WalletRun } from "../gen/wallet.ts"
@@ -51,25 +51,12 @@ module node {
   }
 
   async function readRow(file: string): Promise<unknown> {
-    try {
-      return JSON.parse(await readFile(file, "utf8"))
-    } catch (error) {
-      if (coded(error, "ENOENT")) return undefined
-      throw error
-    }
+    const raw = await readWalletRecord(file)
+    return raw === undefined ? undefined : JSON.parse(raw)
   }
 
   export function readJournalRow(directory: string, intentId: string, row: JournalRow): Promise<unknown> {
     return readRow(rowFile(directory, intentId, row))
-  }
-
-  async function syncDirectory(directory: string): Promise<void> {
-    const folder = await open(directory, constants.O_RDONLY)
-    try {
-      await folder.sync()
-    } finally {
-      await folder.close()
-    }
   }
 
   async function createDurableChild(directory: string): Promise<void> {
@@ -88,26 +75,7 @@ module node {
   }
 
   export async function writeJournalRow(directory: string, intentId: string, row: JournalRow, record: object): Promise<boolean> {
-    const temp = join(directory, randomUUID() + ".tmp")
-    const file = await open(temp, "wx", 0o600)
-    try {
-      try {
-        await file.writeFile(JSON.stringify(record))
-        await file.sync()
-      } finally {
-        await file.close()
-      }
-      try {
-        await link(temp, rowFile(directory, intentId, row))
-      } catch (error) {
-        if (coded(error, "EEXIST")) return false
-        throw error
-      }
-      await syncDirectory(directory)
-      return true
-    } finally {
-      await unlink(temp)
-    }
+    return publishWalletRecord(rowFile(directory, intentId, row), JSON.stringify(record), "journal")
   }
 
   export async function listJournal(directory: string): Promise<JournalRows[]> {

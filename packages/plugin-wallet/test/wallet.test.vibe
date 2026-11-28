@@ -184,7 +184,7 @@ effect function broadcastThrough({ chain, files, routes }: World, gateway: Gatew
   const signed = try Effect.try(() => signedHash(chain.sent.at(-1) ?? ""))
   const afterFirst = { paid: chain.balance(chain.recipient) - before.paid, sends: chain.sent.length - before.sends }
   chain.gateway = "pass"
-  try sync(() => files.restoreDesk())
+  try sync(() => files.restoreDesk(gateway === "lost" ? "previous" : undefined))
   const reopened = try called<WalletReview>(routes, "POST", `/api/wallet/requests/${asked.id}/review`)
   const operations = (try called<{ readonly operations: readonly WalletOperation[] }>(routes, "GET", "/api/wallet/activity")).body.operations
   return {

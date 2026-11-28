@@ -1,0 +1,49 @@
+// spec/wallet/custody.md, "Only the owner makes the wallet, once, with an account for each family"; spec/wallet/index.md, "A submitted operation retains one durable binding through reconciliation"
+module node {
+  import { lstat, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises"
+  import { dirname, join } from "node:path"
+
+  type WalletRecordKind = "custody" | "journal"
+
+  export async function syncDirectory(directory: string, kind: WalletRecordKind = "journal"): Promise<void> {
+    if (kind === "custody" && process.platform === "win32") return
+    const handle = await open(directory, "r")
+    try { await handle.sync() } finally { await handle.close() }
+  }
+
+  export async function readWalletRecord(file: string): Promise<string | undefined> {
+    let entry
+    try {
+      entry = await lstat(file)
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return undefined
+      throw error
+    }
+    return readFile(entry.isDirectory() ? join(file, "payload") : file, "utf8")
+  }
+
+  export async function publishWalletRecord(file: string, contents: string, kind: WalletRecordKind): Promise<boolean> {
+    const directory = dirname(file)
+    if (await readWalletRecord(file) !== undefined) {
+      await syncDirectory(directory, kind)
+      return false
+    }
+    const staged = await mkdtemp(join(directory, ".wallet-record-"))
+    try {
+      await writeFile(join(staged, "payload"), contents, { mode: 0o600, flag: "wx", flush: true })
+      await syncDirectory(staged, kind)
+      let published = true
+      try {
+        await rename(staged, file)
+      } catch (error) {
+        if (await readWalletRecord(file) === undefined) throw error
+        published = false
+      }
+      await syncDirectory(directory, kind)
+      return published
+    } finally {
+      await rm(staged, { recursive: true, force: true })
+    }
+  }
+}
+export { publishWalletRecord, readWalletRecord, syncDirectory } from node
