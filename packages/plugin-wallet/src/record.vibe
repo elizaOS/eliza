@@ -3,8 +3,10 @@ module node {
   import { lstat, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises"
   import { dirname, join } from "node:path"
 
-  export async function syncDirectory(directory: string): Promise<void> {
-    if (process.platform === "win32") return
+  type WalletRecordKind = "custody" | "journal"
+
+  export async function syncDirectory(directory: string, kind: WalletRecordKind = "journal"): Promise<void> {
+    if (kind === "custody" && process.platform === "win32") return
     const handle = await open(directory, "r")
     try { await handle.sync() } finally { await handle.close() }
   }
@@ -20,16 +22,16 @@ module node {
     return readFile(entry.isDirectory() ? join(file, "payload") : file, "utf8")
   }
 
-  export async function publishWalletRecord(file: string, contents: string): Promise<boolean> {
+  export async function publishWalletRecord(file: string, contents: string, kind: WalletRecordKind): Promise<boolean> {
     const directory = dirname(file)
     if (await readWalletRecord(file) !== undefined) {
-      await syncDirectory(directory)
+      await syncDirectory(directory, kind)
       return false
     }
     const staged = await mkdtemp(join(directory, ".wallet-record-"))
     try {
       await writeFile(join(staged, "payload"), contents, { mode: 0o600, flag: "wx", flush: true })
-      await syncDirectory(staged)
+      await syncDirectory(staged, kind)
       let published = true
       try {
         await rename(staged, file)
@@ -37,7 +39,7 @@ module node {
         if (await readWalletRecord(file) === undefined) throw error
         published = false
       }
-      await syncDirectory(directory)
+      await syncDirectory(directory, kind)
       return published
     } finally {
       await rm(staged, { recursive: true, force: true })

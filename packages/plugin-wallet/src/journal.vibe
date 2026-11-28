@@ -75,7 +75,7 @@ module node {
   }
 
   export async function writeJournalRow(directory: string, intentId: string, row: JournalRow, record: object): Promise<boolean> {
-    return publishWalletRecord(rowFile(directory, intentId, row), JSON.stringify(record))
+    return publishWalletRecord(rowFile(directory, intentId, row), JSON.stringify(record), "journal")
   }
 
   export async function listJournal(directory: string): Promise<JournalRows[]> {
