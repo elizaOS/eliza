@@ -31,11 +31,13 @@ lemma lawNamedFieldsAreNeverUnexpected_ensures(namedFields: seq<string>, submitt
   }
 }
 
-lemma lawAnActionWithoutParametersAcceptsNoKeys_ensures(submittedFields: seq<string>)
-  ensures (lawAnActionWithoutParametersAcceptsNoKeys(submittedFields) == true)
+lemma lawAnActionWithoutParametersUsesAdditionalKeysSetting_ensures(submittedFields: seq<string>, allowAdditionalParameters: bool)
+  ensures (lawAnActionWithoutParametersUsesAdditionalKeysSetting(submittedFields, allowAdditionalParameters) == true)
 {
-  var noFields: seq<string> := [];
-  ProofLib.FilterNone((key: string) => key in noFields, submittedFields);
+  if !allowAdditionalParameters {
+    var noFields: seq<string> := [];
+    ProofLib.FilterNone((key: string) => key in noFields, submittedFields);
+  }
 }
 
 lemma lawOnlyTheCueIsRemovedFromActionFields_ensures(submittedFields: seq<string>)

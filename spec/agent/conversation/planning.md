@@ -82,7 +82,9 @@ workflow's run input can take keys named by the workflow. The offered
 shape must explicitly allow keys if it names none. At argument validation,
 Core's [action schema](../../core/actionPlanning.md) defaults to allowing
 keys on a schema that names no fields and leaves that choice unspecified.
-An array names what it holds. An action with no parameters takes none.
+An array names what it holds. An action with no declared parameters accepts
+every submitted argument key when `allowAdditionalParameters` is explicitly
+true. With the option unset or false, it accepts no argument keys.
 The runtime never refuses a named field of a representative argument as
 an unexpected key. The `cue` field every offered tool carries (below)
 belongs to the planner. The planner removes it before checking, running
@@ -108,8 +110,11 @@ pure def lawAnArrayNamesItsItems(hasItemSchema: bool): bool =
   argumentShapeNamesContents(OfferedArray({ hasItemSchema: hasItemSchema })) == hasItemSchema
 pure def lawNamedFieldsAreNeverUnexpected(namedFields: Set[str], submittedFields: Set[str], extraKeys: AP::ExtraKeysChoice): bool =
   submittedFields.intersect(namedFields).subseteq(checkedArgumentKeys(namedFields, submittedFields, extraKeys))
-pure def lawAnActionWithoutParametersAcceptsNoKeys(submittedFields: Set[str]): bool =
-  checkedArgumentKeys(Set(), submittedFields, AP::ExtraKeysRefused).size() == 0
+pure def lawAnActionWithoutParametersUsesAdditionalKeysSetting(submittedFields: Set[str], allowAdditionalParameters: bool): bool = {
+  val extraKeys = if (allowAdditionalParameters) AP::ExtraKeysAllowed else AP::ExtraKeysRefused
+  val checked = checkedArgumentKeys(Set(), submittedFields, extraKeys)
+  if (allowAdditionalParameters) checked.subseteq(submittedFields) and submittedFields.subseteq(checked) else checked.size() == 0
+}
 pure def lawOnlyTheCueIsRemovedFromActionFields(submittedFields: Set[str]): bool =
   not(actionArgumentKeys(submittedFields).contains("cue")) and
   submittedFields.forall(key => key != "cue" implies actionArgumentKeys(submittedFields).contains(key))
