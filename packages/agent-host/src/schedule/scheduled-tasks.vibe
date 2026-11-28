@@ -266,6 +266,9 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
       case "Refused": return { kind: "refused", reason: reply.reason } satisfies VerbResult
       case "Applied": {
         if (isReplay(task, key, verb)) return { kind: "applied", task: view(row) } satisfies VerbResult
+        if (edit?.trigger?.kind === "cron" && following.tag === "NoMoreOccurrences") {
+          return { kind: "refused", reason: "Malformed" } satisfies VerbResult
+        }
         const after = try commit(taskId, { type: "applyVerb", seenRevision: seen, key, verb, now, following }, (_, next) => ({
           ...(edit?.promptInstructions === undefined ? {} : { promptInstructions: edit.promptInstructions }),
           ...(edit?.trigger === undefined ? {} : { trigger: edit.trigger }),
