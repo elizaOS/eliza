@@ -540,6 +540,8 @@ function linkFake(offered: unknown = offer) {
           if (query === "Union Station, Washington, DC") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion, washingtonUnion] } }
           if (query === "Union Square") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("union-nyc", "Union Square", { latitude: 40.7359, longitude: -73.9911 }, "New York, NY 10003, USA"), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")] } }
           if (query === "Union Station in Washington") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [chicagoUnion] } }
+          if (query === "Central Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("plaza-sf", "Central Plaza", ferry, "San Francisco, CA, USA"), place("plaza-seattle", "Central Plaza Hotel", { latitude: 47.6062, longitude: -122.3321 }, "Seattle, WA, USA")] } }
+          if (query === "Roastery") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("reserve-roastery", "Starbucks Reserve Roastery", ferry, "1 Market St, San Francisco, CA, USA"), place("roastery-bar", "Roastery", tower, "1 Telegraph Hill Blvd, San Francisco, CA, USA")] } }
           if (query === "the Ferry Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [place("plaza", "Ferry Plaza", ferry, "San Francisco, CA, USA"), place("plaza-market", "Ferry Plaza Farmers Market", { latitude: 37.7956, longitude: -122.3935 }, "1 Ferry Building, San Francisco, CA, USA"), place("plaza-seafood", "Ferry Plaza Seafood", tower, "1 Telegraph Hill Blvd, San Francisco, CA, USA")] } }
           if (query === "Nowhere Plaza") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [] } }
           if (query === "midnight" || query === "my current location") return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", places: [] } }
@@ -549,7 +551,7 @@ function linkFake(offered: unknown = offer) {
         case "/api/v1/maps/places/details": {
           const id = (request.body as { readonly id: string }).id
           if (id === "refused-id") return { kind: "refused", status: 400, body: { error: "invalid_request" } }
-          const known = [place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")].find((item) => item.id === id)
+          const known = [place("ferry", "Ferry Building", ferry), place("market", "Starbucks", ferry, "1 Market St, San Francisco, CA, USA"), washingtonUnion, place("far", "Far Pharmacy", tower), place("near", "Near Pharmacy", ferry), place("tower", "Coit Tower", tower), place("union-sf", "Union Square", { latitude: 37.788, longitude: -122.4075 }, "San Francisco, CA 94108, USA")].find((item) => item.id === id)
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: known ?? null } }
         }
         case "/api/v1/maps/reverse": {
@@ -558,7 +560,8 @@ function linkFake(offered: unknown = offer) {
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google", place: at.latitude === 40.7128 ? sun : at.latitude === 0 ? place("sea", "Gulf of Guinea", { latitude: 0, longitude: 0 }, "12345") : null } }
         }
         case "/api/v1/maps/routes": {
-          const planned = (id: string, minutes: number) => ({ providerId: "google", id, from: ferry, to: tower, mode: "walk", geometry: [ferry, tower], distanceMeters: minutes * 80, durationSeconds: minutes * 60, steps: [], attribution: "Google", fetchedAt: at, traffic: "none" })
+          const mode = (request.body as { readonly mode?: string }).mode ?? "walk"
+          const planned = (id: string, minutes: number) => ({ providerId: "google", id, from: ferry, to: tower, mode, geometry: [ferry, tower], distanceMeters: minutes * 80, durationSeconds: minutes * 60, steps: [], attribution: "Google", fetchedAt: at, traffic: "none" })
           return { kind: "answered", status: 200, body: { providerId: "google", attribution: "Google Maps Platform via Eliza Cloud", routes: [planned("best", 20), planned("other", 24)] } }
         }
         default: return { kind: "refused", status: 404, body: { error: "not_found" } }
@@ -1071,5 +1074,70 @@ it.live(`Ask for directions to the place on my phone's map: a selection handle a
     brokenSearch: [false, "Maps got an answer it couldn't use. Try again in a moment."],
     placedOtherwise: [false, false, false],
     whereAmI: [false, "Your phone didn't report a recent position with this message, so I can't tell where you are."],
+  }))
+})
+
+
+it.live(`Keep a settled start across an asked destination, match kept ends by the owner's words, and require every result to match before treating namesakes as one landmark (spec/maps/routing.md, "Same-named areas close together are one place, and same-named street addresses still ask"; spec/maps/routing.md, "A first result named as asked is taken when the others are parts of it or mostly around it"; spec/maps/routing.md, "A route's settled end is kept for the owner's next turn, which may name only the other")`, effect () => {
+  const { link, bodies } = linkFake()
+  const plugin = createMapsPlugin({ cloud: () => link, navigation: () => sync(() => undefined), savedPlaces: () => undefined })
+  const runtime = { contexts: { tryRegister: () => true } } as unknown as IAgentRuntime
+  try promise(async () => await plugin.init?.({}, runtime))
+  const act = actionRunner(plugin, runtime)
+  const searchesOf = (query: string) => bodies.filter((made) => made.path === "/api/v1/maps/places/search" && (made.body as { readonly query: string }).query === query).length
+  const destinationId = (result: { readonly data?: unknown }) => (result.data as { readonly destination?: { readonly providerPlaceId: string } }).destination?.providerPlaceId
+  const originId = (result: { readonly data?: unknown }) => (result.data as { readonly origin?: { readonly providerPlaceId: string } }).origin?.providerPlaceId
+  const modeOf = (result: { readonly data?: unknown }) => (result.data as { readonly travelMode?: string }).travelMode
+  const farNamesake = try act("MAPS_SELECT", ownerTurn("show Central Plaza", "00000000-0000-4000-8000-0000000000c1"), { query: "Central Plaza" })
+  const secondExact = try act("MAPS_SELECT", ownerTurn("show Roastery", "00000000-0000-4000-8000-0000000000c2"), { query: "Roastery" })
+  const room = "00000000-0000-4000-8000-0000000000c3"
+  const turn = (hex: string) => ownerTurn(`turn-${hex}`, room, `00000000-0000-4000-8000-0000000000${hex}`)
+  const askedDest = try act("MAPS_ROUTE", turn("d1"), { origin: "Ferry Building", destination: "Starbucks", travelMode: "walk" })
+  const ferryBeforeReplaced = searchesOf("Ferry Building")
+  const replacedDest = try act("MAPS_ROUTE", turn("d2"), { destination: "Coit Tower" })
+  const ferrySearchesReplaced = searchesOf("Ferry Building") - ferryBeforeReplaced
+  const askedDestAgain = try act("MAPS_ROUTE", turn("d3"), { origin: "Ferry Building", destination: "Starbucks", travelMode: "walk" })
+  const ferryBeforeUnlisted = searchesOf("Ferry Building")
+  const unlistedDest = try act("MAPS_ROUTE", turn("d4"), { destinationPlaceId: "made-up", destination: "Coit Tower" })
+  const ferrySearchesUnlisted = searchesOf("Ferry Building") - ferryBeforeUnlisted
+  try act("MAPS_ROUTE", turn("d5"), { origin: "Ferry Building", destination: "Starbucks", travelMode: "walk" })
+  try act("MAPS_ROUTE", turn("d6"), { origin: "Coit Tower", destination: "Starbucks" })
+  const replacedStartPicked = try act("MAPS_ROUTE", turn("d7"), { destinationPlaceId: "market" })
+  const askedOrigin = try act("MAPS_ROUTE", turn("d8"), { origin: "Starbucks", destination: "Coit Tower", travelMode: "walk" })
+  const afterUnsettledOrigin = try act("MAPS_ROUTE", turn("d9"), { destination: "Ferry Building" })
+  const missingDest = try act("MAPS_ROUTE", turn("da"), { origin: "Union Station, Washington, DC", destination: "Nowhere Plaza", travelMode: "walk" })
+  const dcBeforeSameOrigin = searchesOf("Union Station, Washington, DC")
+  const sameOriginWords = try act("MAPS_ROUTE", turn("db"), { origin: "Union Station, Washington, DC", destination: "Coit Tower" })
+  const dcSearchesSameOrigin = searchesOf("Union Station, Washington, DC") - dcBeforeSameOrigin
+  const fromHereDc = try act("MAPS_ROUTE", turn("dc"), { destination: "Union Station, Washington, DC", travelMode: "walk", useCurrentLocation: true })
+  const dcBeforeSameDest = searchesOf("Union Station, Washington, DC")
+  const sameDestWords = try act("MAPS_ROUTE", turn("dd"), { origin: "Ferry Building", destination: "Union Station, Washington, DC" })
+  const dcSearchesSameDest = searchesOf("Union Station, Washington, DC") - dcBeforeSameDest
+  try act("MAPS_ROUTE", turn("de"), { destination: "Coit Tower", travelMode: "walk", useCurrentLocation: true })
+  const keyedOverride = try act("MAPS_ROUTE", turn("df"), { origin: "Ferry Building", destination: "Coit Tower", destinationLatitude: 37.8, destinationLongitude: -122.4, travelMode: "walk" })
+  try Effect.try(() => assert.deepStrictEqual({
+    farNamesake: [farNamesake.success, (farNamesake.data as { readonly choice?: string }).choice],
+    secondExact: [secondExact.success, (secondExact.data as { readonly choice?: string }).choice],
+    askedDest: [askedDest.success, (askedDest.data as { readonly choice?: string }).choice],
+    replacedDest: [replacedDest.success, originId(replacedDest), destinationId(replacedDest), modeOf(replacedDest), ferrySearchesReplaced],
+    askedDestAgain: askedDestAgain.success,
+    unlistedDest: [unlistedDest.success, originId(unlistedDest), destinationId(unlistedDest), modeOf(unlistedDest), ferrySearchesUnlisted],
+    replacedStartMode: [replacedStartPicked.success, originId(replacedStartPicked), destinationId(replacedStartPicked), modeOf(replacedStartPicked)],
+    unsettledOrigin: [askedOrigin.success, locateCard(afterUnsettledOrigin)],
+    sameOriginWords: [missingDest.success, sameOriginWords.success, originId(sameOriginWords), modeOf(sameOriginWords), dcSearchesSameOrigin],
+    sameDestWords: [fromHereDc.success, sameDestWords.success, destinationId(sameDestWords), modeOf(sameDestWords), dcSearchesSameDest],
+    keyedOverride: [keyedOverride.success, destinationId(keyedOverride)],
+  }, {
+    farNamesake: [false, "place"],
+    secondExact: [false, "place"],
+    askedDest: [false, "destination"],
+    replacedDest: [true, "ferry", "tower", "walk", 0],
+    askedDestAgain: false,
+    unlistedDest: [true, "ferry", "tower", "walk", 0],
+    replacedStartMode: [true, "tower", "market", "drive"],
+    unsettledOrigin: [false, ["route-origin", undefined, "Ferry Building", undefined]],
+    sameOriginWords: [false, true, "union-dc", "walk", 0],
+    sameDestWords: [false, true, "union-dc", "walk", 0],
+    keyedOverride: [true, "coordinates:37.8,-122.4"],
   }))
 })

@@ -1,4 +1,4 @@
-// spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"
+// spec/maps/routing.md, "Only the owner's next turn answers an open question, with a listed place's id the model passes, within ten minutes"; spec/maps/routing.md, "A route's settled end is kept for the owner's next turn, which may name only the other"
 import type { IAgentRuntime, Memory } from "@elizaos/core"
 import { choiceCourse, choiceOpenAt, type ChoiceTurn } from "../gen/maps__routing.effect.vibe"
 import type { AgentPlaceRef } from "@elizaos/plugin-maps-client"
@@ -94,7 +94,8 @@ export function answeredChoice(runtime: IAgentRuntime, message: Memory, now: num
 
 export function keptRequest(runtime: IAgentRuntime, message: Memory, now: number): PlaceChoice | undefined {
   const open = questionFor(runtime, message, now)
-  return open !== undefined && open.turn === "NextOwnerTurn" && open.choice.options.length === 0 ? open.choice : undefined
+  const kept = open !== undefined && open.turn === "NextOwnerTurn" && (open.choice.options.length === 0 || open.choice.field === "destinationPlaceId")
+  return kept ? open.choice : undefined
 }
 
 export function closeChoice(runtime: IAgentRuntime, message: Memory): void {

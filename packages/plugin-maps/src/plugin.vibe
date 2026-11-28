@@ -297,7 +297,7 @@ effect function resolvePlace(service: MapsService, query: string | undefined, pl
   const inLocality = local ?? (aroundStart.length > 0 ? aroundStart : found.places)
   const exact = inLocality.filter((item) => item.name.toLowerCase() === query.toLowerCase())
   const [top, ...namesakes] = exact
-  const landmark = top !== undefined && namesakes.every((other) => sameLandmark(isArea(top), isArea(other), Math.round(metersBetween(top.coordinate, other.coordinate))))
+  const landmark = top !== undefined && exact.length === inLocality.length && namesakes.every((other) => sameLandmark(isArea(top), isArea(other), Math.round(metersBetween(top.coordinate, other.coordinate))))
   const [leading, ...rest] = inLocality
   const candidates = landmark ? [top] : leading !== undefined && firstMeant(query, leading, rest) ? [leading] : inLocality
   const [first] = candidates
@@ -356,9 +356,17 @@ const routeEnds: ReadonlyArray<{ readonly name: "origin" | "destination"; readon
   { name: "destination", keys: [routeKeys.id, routeKeys.saved, routeKeys.latitude, routeKeys.longitude] },
 ]
 
-function keptDestination(params: Params, place: Place, given: boolean): Params {
-  const identified = Object.fromEntries([routeKeys.saved, routeKeys.latitude, routeKeys.longitude].flatMap((key): Array<[string, unknown]> => params[key] === undefined ? [] : [[key, params[key]]]))
-  return { destination: place.name, ...identified, ...(given ? {} : { destinationPlaceId: place.id }) }
+function pickDefined(params: Params, keys: readonly string[]): Params {
+  return Object.fromEntries(keys.flatMap((key): Array<[string, unknown]> => params[key] === undefined ? [] : [[key, params[key]]]))
+}
+
+function keptDestination(params: Params, place: Place, given: boolean, words: string | undefined): Params {
+  return { destination: words ?? place.name, ...pickDefined(params, [routeKeys.saved, routeKeys.latitude, routeKeys.longitude]), ...(given ? {} : { destinationPlaceId: place.id }) }
+}
+
+function settledRoute(choice: PlaceChoice): Params | undefined {
+  if (choice.options.length === 0) return choice.params
+  return choice.field === "destinationPlaceId" ? pickDefined(choice.params, ["origin", "originPlaceId", "travelMode"]) : undefined
 }
 
 function continuedRoute(kept: Params, asked: Params): Params {
@@ -366,9 +374,10 @@ function continuedRoute(kept: Params, asked: Params): Params {
   const carried = routeEnds.flatMap(({ name, keys }) => {
     const named = text(asked[name])
     const keptName = text(kept[name])
+    const keyed = keys.some((key) => asked[key] !== undefined && asked[key] !== kept[key])
     const end = routeEnd(named !== undefined || keys.some((key) => asked[key] !== undefined), keptName !== undefined,
-      named !== undefined && keptName !== undefined && placeKey(named) === placeKey(keptName), name === "origin" && fromHere)
-    return end === "KeptFromLastTurn" ? [name, ...keys].flatMap((key): Array<[string, unknown]> => kept[key] === undefined ? [] : [[key, kept[key]]]) : []
+      !keyed && named !== undefined && keptName !== undefined && placeKey(named) === placeKey(keptName), name === "origin" && fromHere)
+    return end === "KeptFromLastTurn" ? Object.entries(pickDefined(kept, [name, ...keys])) : []
   })
   const mode = carried.length > 0 && asked.travelMode === undefined && kept.travelMode !== undefined ? { travelMode: kept.travelMode } : {}
   return { ...asked, ...mode, ...Object.fromEntries(carried) }
@@ -379,7 +388,7 @@ effect function routeFromHere(service: MapsService, query: string | undefined, p
   const destination = given === undefined ? try resolvePlace(service, query, placeId, "destination", () => undefined, "destinationPlaceId") : given
   if (destination.kind === "reply") return destination.asked && query !== undefined ? routeOnPhone(query, travelMode) : destination.result
   const mode = travelMode === undefined ? {} : { travelMode }
-  ask("originPlaceId", [], { ...keptDestination(params, destination.place, given !== undefined), ...mode })
+  ask("originPlaceId", [], { ...keptDestination(params, destination.place, given !== undefined, query), ...mode })
   return locate(`I need your precise location to start the route to ${destination.place.name}.`, { destination: cardPlace(destination.place), ...mode }, "route-origin")
 }
 
@@ -399,7 +408,7 @@ effect function planRoute(service: MapsService, saves: AgentSavedPlaceStore | un
   if (course === "RefuseMode") return reply(false, `Cloud Maps does not plan ${travelMode} routes.`, { code: "unsupported" })
   const origin = try resolvePlace(service, originQuery, text(params.originPlaceId), "starting place", ask, "originPlaceId")
   if (origin.kind === "reply") return origin.result
-  const settled = { origin: origin.place.name, originPlaceId: origin.place.id, ...(named === undefined ? {} : { travelMode: named }) }
+  const settled = { origin: originQuery, originPlaceId: origin.place.id, ...(named === undefined ? {} : { travelMode: named }) }
   const destination = given === undefined
     ? try resolvePlace(service, destinationQuery, text(params.destinationPlaceId), "destination", (field, options) => ask(field, options, { ...params, ...settled }), "destinationPlaceId", undefined, origin.place.coordinate)
     : given
@@ -648,9 +657,11 @@ function mapsActions(ports: MapsPluginPorts): Action[] {
       if (answer !== undefined) closeChoice(runtime, message)
       const chosen = answer?.course === "ContinueTheAskedRequest" ? answer : undefined
       const asked = answer?.course === "SearchTheNamedPlace" ? withoutId(given, answer.choice.field) : given
-      const kept = operation === "route" && answer === undefined ? keptRequest(runtime, message, now) : undefined
+      const prior = operation === "route" && chosen === undefined ? (answer?.choice ?? keptRequest(runtime, message, now)) : undefined
+      if (prior !== undefined && answer === undefined) closeChoice(runtime, message)
+      const kept = prior === undefined ? undefined : settledRoute(prior)
       const offered = chosen !== undefined ? { ...chosen.choice.params, [chosen.choice.field]: chosen.place.providerPlaceId }
-        : kept?.operation === "route" ? continuedRoute(kept.params, asked) : asked
+        : kept !== undefined ? continuedRoute(kept, asked) : asked
       const prepared = operation === undefined ? { kind: "ready" as const, params: offered } : preparePlaces(operation, offered)
       if (prepared.kind === "refused") return Promise.resolve(prepared.result)
       const { params } = prepared
