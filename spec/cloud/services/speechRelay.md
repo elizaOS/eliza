@@ -304,6 +304,24 @@ pure val inputValues = Set(
   ProviderFailed, ProviderClosed({ link: ListeningLink }), ProviderClosed({ link: SpeakingLink }), FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
 ```
 
+### A listening link that loses its open turn ends the relay
+
+The shell remembers whether the current listening link has an unfinished
+turn. A start or resume marks the turn open. A definitive end clears it;
+an eager end keeps it open. If the listening link closes with a turn open,
+the relay ends as an outage. The device cannot resume the lost turn on a
+fresh listening link. If there is no open turn, the shell reports an idle
+listening close.
+
+```quint
+pure def listeningTurnAfter(turnOpen: bool, kind: SttEventKind): bool =
+  kind == StartOfTurn or kind == TurnResumed or (turnOpen and kind != EndOfTurn)
+pure def listeningLinkEnd(turnOpen: bool): RelayInput =
+  if (turnOpen) ProviderFailed else ProviderClosed({ link: ListeningLink })
+pure def lawAnInterruptedListeningTurnEndsTheRelay(r: Relay): bool =
+  r.phase == RelayLive implies relayStep(r, listeningLinkEnd(true)) == endWith(r, CauseOutage)
+```
+
 ### A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage
 
 The provider closes a socket that has carried nothing for a while, an STT

@@ -1879,6 +1879,43 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       }
     ))
   }), 60_000)
+  it.effect("An interrupted listening turn ends as an outage even after an eager end (spec/cloud/services/speechRelay.md, \"A listening link that loses its open turn ends the relay\")", () => scoped(effect {
+    const { speech, cloud } = try relayCloud()
+    const caller = try signedCaller(cloud, "interrupted-listener")
+    try cloud.inside(addCredits({
+      organizationId: caller.organizationId,
+      amount: reservedFor(60 * 100) + reservedFor(4096 * 30),
+      requestKey: "interrupted-listener-funding"
+    }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string }
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    try sync(() => {
+      speech.turns([{ type: "turn.start" }, { type: "turn.eager_end", transcript: "an unfinished thought" }])
+      socket.send({ t: "hello", token: session.token })
+    })
+    try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try sync(() => socket.send(new Uint8Array(3_200)))
+    const heard = try promise(() => socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "eager-end-of-turn"))
+    const closed = try sync(() => speech.closeIdle("stt", 0))
+    const ending = try TestClock.withLive(timeoutOrElse(promise(() => socket.until((received) => received.kind === "close")), {
+      duration: "5 seconds", orElse: () => succeed([])
+    }))
+    try check(() => assert.deepStrictEqual(
+      { heard, closed, ending },
+      {
+        heard: [
+          { kind: "text", frame: { t: "stt", event: { type: "start-of-turn", transcript: "" } } },
+          { kind: "text", frame: { t: "stt", event: { type: "eager-end-of-turn", transcript: "an unfinished thought" } } }
+        ],
+        closed: 1,
+        ending: [{ kind: "text", frame: { t: "error", code: "unavailable" } }, { kind: "close", code: 1008 }]
+      }
+    ))
+    const phase = try closedPhase(cloud, session.sessionId)
+    try check(() => assert.equal(phase, "closed"))
+  }), 60_000)
 })
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   it.effect('Reads the legacy Google Maps origin as the public service template (spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile")', effect () => {

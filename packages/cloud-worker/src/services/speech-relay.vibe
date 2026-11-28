@@ -1,8 +1,8 @@
 // spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/index.md, "Story: Use a cloud speech session"; spec/cloud/index.md, "A speech window bounds the audio and text sent to providers"
 import { Socket } from "effect/socket"
 import {
-  acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs, windowLength, windowTtsChars,
-  speakingLinkEnd, type ProviderLink, type Relay, type RelayInput, type ServerFrame, type Shortfall
+  acceptsAudio, helloDeadline, isSttFrame, listeningLinkEnd, listeningTurnAfter, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep,
+  speaking, speakingLinkEnd, stageIs, windowLength, windowTtsChars, type ProviderLink, type Relay, type RelayInput, type ServerFrame, type Shortfall
 } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { readDevice, validUplink, writeRelay, type RelayWire } from "@elizaos/cloud"
 import { refused, type Refused } from "../http/refusal.vibe"
@@ -84,6 +84,7 @@ interface Shell {
   readonly spoken: Set<string>
   ttsUncertain: boolean
   sttUncertain: boolean
+  listeningTurnOpen: boolean
   graceful: boolean
   queued: number
   gone: boolean
@@ -98,7 +99,7 @@ type Arrival =
   | { readonly kind: "opened" }
   | { readonly kind: "stt"; readonly edge: SttEdge }
   | { readonly kind: "tts"; readonly edge: TtsEdge }
-  | { readonly kind: "closed"; readonly link: ProviderLink; readonly code: CloseCode; readonly from: SttLink | TtsLink }
+  | { readonly kind: "closed"; readonly code: CloseCode; readonly from: SttLink | TtsLink }
   | { readonly kind: "renewed"; readonly window: Window }
   | { readonly kind: "refusedRenewal"; readonly shortfall: Shortfall }
   | { readonly kind: "deadline"; readonly window: number }
@@ -306,7 +307,7 @@ effect function pump<A>(sessionId: string, arrivals: Arrivals, link: ProviderLin
   }
   const code = try from.closeCode()
   try annotateLogs(logInfo("a speech provider link closed"), { sessionId, link, code })
-  try Queue.offer(arrivals, { kind: "closed", link, code, from })
+  try Queue.offer(arrivals, { kind: "closed", code, from })
 }
 
 effect function sttLink(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals): SttLink!Failure!(Scope.Scope | CloudContext) {
@@ -466,6 +467,7 @@ effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arriv
       return
     }
     case "stt":
+      shell.listeningTurnOpen = listeningTurnAfter(shell.listeningTurnOpen, arrival.edge.kind)
       try advance(shell, writer, { tag: "ProviderStt", kind: arrival.edge.kind, transcriptChars: arrival.edge.transcript.length }, { transcript: arrival.edge.transcript })
       return
     case "tts":
@@ -475,13 +477,11 @@ effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arriv
       if (shell.stt === arrival.from) {
         shell.stt = undefined
         if (arrival.code !== 1000) shell.sttUncertain = true
-      }
-      if (shell.tts === arrival.from) {
+        try advance(shell, writer, listeningLinkEnd(shell.listeningTurnOpen))
+      } else if (shell.tts === arrival.from) {
         shell.tts = undefined
         try advance(shell, writer, speakingLinkEnd(shell.relay, shell.spoken))
-        return
       }
-      try advance(shell, writer, { tag: "ProviderClosed", link: arrival.link })
       return
     case "renewed":
       try advance(shell, writer, { tag: "WindowRenewed" })
@@ -542,7 +542,8 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
 effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socket) {
   const shell: Shell = {
     relay: relayAtUpgrade, windows: [], current: 0, refusal: undefined, stt: undefined, tts: undefined,
-    transcripts: [], spoken: new Set(), ttsUncertain: false, sttUncertain: false, graceful: false, queued: 0, gone: false, renewal: undefined, settling: undefined
+    transcripts: [], spoken: new Set(), ttsUncertain: false, sttUncertain: false, listeningTurnOpen: false,
+    graceful: false, queued: 0, gone: false, renewal: undefined, settling: undefined
   }
   const session = effect {
     const reader = try socket.reader
