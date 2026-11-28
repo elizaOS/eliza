@@ -75,6 +75,11 @@ function requestFor(proposal: GitHubRequest): { path: string; method: "POST" | "
 
 const failed = (text: string): ActionResult => ({ success: false, text })
 
+function missingCaseInsensitive(requested: readonly string[], observed: readonly string[]): string[] {
+  const missingLower = new Set(githubMissingNames(requested.map(name => name.toLowerCase()), observed.map(name => name.toLowerCase())))
+  return requested.filter(name => missingLower.has(name.toLowerCase()))
+}
+
 export effect function githubActionRun(runtime: IAgentRuntime, message: Memory, raw: unknown, callback: HandlerCallback | undefined) {
   const options = Schema.decodeUnknownEffect(Parameters)(readParameters(raw)) catch () => undefined
   if (options === undefined) return failed("Provide a valid GitHub operation and its arguments.")
@@ -134,7 +139,14 @@ export effect function githubActionRun(runtime: IAgentRuntime, message: Memory, 
     const first = labels[0]
     if (first === undefined) return failed("GitHub returned no expected label receipt.")
     try journal.send({ type: "observeGitHub", proposal, observation: { tag: "GitHubSuccess", providerReceipt: String(first.id) } }, "GitHubAdapter")
-    return { success: true, text: `Updated labels on #${op.issue}.`, data: { labels: labels.map(label => label.name) } } satisfies ActionResult
+    const appliedLabels = labels.map(label => label.name)
+    const omittedLabels = missingCaseInsensitive(op.labels, appliedLabels)
+    if (omittedLabels.length > 0) return {
+      success: false,
+      text: `GitHub did not apply ${omittedLabels.join(", ")} to #${op.issue}.`,
+      data: { receiptId: first.id, labels: appliedLabels, notApplied: { labels: omittedLabels } },
+    } satisfies ActionResult
+    return { success: true, text: `Updated labels on #${op.issue}.`, data: { labels: appliedLabels } } satisfies ActionResult
   }
   const receipt = try Schema.decodeUnknownEffect(MutationReceipt)(observed)
   if (receipt.id <= 0) return failed("GitHub did not return a mutation receipt.")
@@ -142,15 +154,14 @@ export effect function githubActionRun(runtime: IAgentRuntime, message: Memory, 
   const assigned = receipt.assignees?.map(user => user.login) ?? []
   const link = receipt.html_url === undefined ? "" : ` ${receipt.html_url}`
   if (op.tag === "AssignIssue") {
-    const missingLogins = githubMissingNames(op.assignees.map(login => login.toLowerCase()), assigned.map(login => login.toLowerCase()))
-    const assignees = op.assignees.filter(login => missingLogins.includes(login.toLowerCase()))
+    const assignees = missingCaseInsensitive(op.assignees, assigned)
     if (assignees.length > 0) return {
       success: false,
       text: `GitHub did not assign ${assignees.join(", ")} to #${op.issue}.${link}`,
       data: { receiptId: receipt.id, notApplied: { assignees } },
     } satisfies ActionResult
   }
-  const missing = op.tag === "CreateIssue" ? { labels: githubMissingNames(op.labels, receipt.labels?.map(label => label.name) ?? []), assignees: githubMissingNames(op.assignees, assigned) } : undefined
+  const missing = op.tag === "CreateIssue" ? { labels: missingCaseInsensitive(op.labels, receipt.labels?.map(label => label.name) ?? []), assignees: missingCaseInsensitive(op.assignees, assigned) } : undefined
   return { success: true, text: `GitHub confirmed the operation${receipt.number === undefined ? "" : ` for #${receipt.number}`}.${link}`, data: { receiptId: receipt.id, ...(missing === undefined ? {} : { notApplied: missing }) } } satisfies ActionResult
 }
 
