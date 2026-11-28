@@ -354,6 +354,10 @@ export effect function verifyImage(options: VerifyImageOptions) {
   const expected = parsed.value
   const pkg = try androidPackage(expected.packageName)
   const user = options.user
+  const defaults = expected.defaultPermissions ?? []
+  if (defaults.some((name) => reviewedPrivilegedPermissions.includes(name))) {
+    throw new ImageExpectationRefused({ reason: "Reviewed privileged permissions must appear in the privileged list" })
+  }
   const privileges = expected.privilegedPermissions ?? []
   if (expected.privilegedPermissions !== undefined && (privileges.length === 0 || privileges.some((name) => !reviewedPrivilegedPermissions.includes(name)))) {
     throw new ImageExpectationRefused({ reason: "Privileged permissions, when named, are reviewed ones" })
@@ -384,7 +388,7 @@ export effect function verifyImage(options: VerifyImageOptions) {
   const expectation: ImageExpectation = {
     fingerprint: expected.fingerprint,
     launcherApk: parseDigest(expected.apkSha256),
-    defaultPermissions: [...(expected.defaultPermissions ?? [])],
+    defaultPermissions: [...defaults],
     privilegedPermissions: [...privileges],
     listener: expected.listener === true,
     boot: options.target === "cuttlefish" ? { tag: "BootUnchecked" } : { tag: "BootAtLeast", minimum: "Yellow" },

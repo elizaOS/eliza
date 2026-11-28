@@ -30,8 +30,9 @@ staging only: never of a boot, a signature or a device qualification.
 ### A descriptor names a valid launcher, at most 32 unique first-boot grants, only reviewed privileged permissions, and distinct companions
 
 The reviewed privileged permissions are `android.permission.READ_PRIVILEGED_PHONE_STATE`
-and `android.permission.INSTALL_SELF_UPDATES`. A privileged permission is never also a
-first-boot grant. An absent list is empty; the shell refuses an explicit empty list.
+and `android.permission.INSTALL_SELF_UPDATES`. A descriptor can name these permissions
+only in its privileged list. An absent list is empty and the shell refuses an explicit
+empty list.
 
 ```quint
 import apk.* from "./apk"
@@ -51,7 +52,7 @@ pure def companionsDistinct(d: LauncherDescriptor): bool = {
 pure def descriptorValid(d: LauncherDescriptor): bool =
   d.schemaVersion == 1 and d.brandValid and d.moduleNameValid and isDigest(d.apkSha256) and isDigest(d.certificate)
   and d.defaultPermissions.length() <= 32 and distinctNames(d.defaultPermissions) and distinctNames(d.privilegedPermissions)
-  and d.privilegedPermissions.every(x => reviewedPrivilegedPermissions.contains(x)) and d.privilegedPermissions.every(x => not(d.defaultPermissions.includes(x)))
+  and d.privilegedPermissions.every(x => reviewedPrivilegedPermissions.contains(x)) and d.defaultPermissions.every(x => not(reviewedPrivilegedPermissions.contains(x)))
   and d.companions.every(x => isDigest(x.apkSha256)) and companionsDistinct(d)
 ```
 
@@ -154,6 +155,8 @@ pure val callValues = {
   List(plain, withCompanion, privileged, { ...plain, mode: AdmissionOnly }, { ...plain, outputExists: true }, { ...plain, source: SelfSelected },
     { ...plain, source: SelfSelected, stagingMode: StageDevelopment, apk: { ...launcher, buildType: DebuggableBuild } }, { ...plain, apk: { ...launcher, signer: OneSigner({ certificate: Sha256({ hex: "c2" }) }) } },
     { ...plain, descriptor: { ...descriptor, privilegedPermissions: List("android.permission.CAMERA") } }, { ...plain, descriptor: { ...descriptor, privilegedPermissions: List("android.permission.INSTALL_PACKAGES") } },
+    { ...plain, descriptor: { ...descriptor, defaultPermissions: List("android.permission.INSTALL_SELF_UPDATES") } },
+    { ...plain, descriptor: { ...descriptor, defaultPermissions: List("android.permission.INSTALL_SELF_UPDATES"), privilegedPermissions: List("android.permission.READ_PRIVILEGED_PHONE_STATE") } },
     { ...withCompanion, companions: List({ moduleName: "Updater", apk: { ...companion, home: true } }) },
     { ...privileged, nativeRequest: NoNatives }, { ...privileged, nativeRequest: NativeFor({ abi: R::X86_64, install: MakeRules }) }, { ...privileged, nativeRequest: NativeFor({ abi: R::Arm64, install: SoongRules }) },
     { ...privileged, nativeRequest: NativeFor({ abi: R::X86_64, install: SoongRules }) }, { ...privileged, target: { soongOnly: true, soongPatchAdmitted: false } }).foldl(Set(), (acc, x) => acc.union(Set(x)))
@@ -192,7 +195,8 @@ pure def renderOverlay(call: StagingCall): RenderedOverlay = { partition: call.d
   natives: stagedNatives(call.nativeRequest, call.descriptor, call.apk), companionModules: call.companions.listMap(x => x.moduleName) }
 pure def lawAdmittedOverlayAllowsOnlyReviewedPrivilege(call: StagingCall): bool = {
   val overlay = renderOverlay(call)
-  stagingAdmission(call) == StagingAdmitted implies (overlay.privappAllowList.every(x => reviewedPrivilegedPermissions.contains(x) and not(overlay.revocableGrants.includes(x)))
+  stagingAdmission(call) == StagingAdmitted implies (overlay.privappAllowList.every(x => reviewedPrivilegedPermissions.contains(x))
+    and overlay.revocableGrants.every(x => not(reviewedPrivilegedPermissions.contains(x)))
     and overlay.revocableGrants.length() <= 32 and overlay.revocableGrants.concat(overlay.privappAllowList).every(x => call.apk.declaredPermissions.includes(x))
     and ((overlay.directory == PrivApp) iff overlay.agentSocketPolicy) and ((overlay.directory == PrivApp) iff overlay.privappAllowList.length() > 0)
     and overlay.natives.every(x => x.directory == overlay.directory and (x.mode == R::Executable implies x.name == R::nodeLibraryName)))

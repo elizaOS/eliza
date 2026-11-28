@@ -382,6 +382,10 @@ it.effect.skipIf(skipped !== null)(`Stage a development launcher and a signer-pi
       companions: [{ moduleName: "ExampleUpdater", packageName: COMPANION, apkSha256: updater.sha256 }],
     })
     const pinnedFile = try writeDescriptor(path.join(k.work, "pinned.json"), pinned)
+    const misplacedGrants = [
+      { ...pinned, defaultPermissions: [SELF_UPDATE], privilegedPermissions: undefined },
+      { ...pinned, defaultPermissions: [SELF_UPDATE], privilegedPermissions: [PRIVILEGED] },
+    ]
     const refusedDescriptors = [
       { ...pinned, privilegedPermissions: ["android.permission.CAMERA"] },
       { ...pinned, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] },
@@ -395,6 +399,10 @@ it.effect.skipIf(skipped !== null)(`Stage a development launcher and a signer-pi
     for (const descriptor of refusedDescriptors) assert.strictEqual((validateDescriptor(descriptor) |> map(%, () => "valid")) catch (error) => error._tag, "DescriptorRefused")
 
     const production = { ...base, descriptor: pinnedFile, companions: { ExampleUpdater: updater.apk }, development: false }
+    for (const [index, descriptor] of misplacedGrants.entries()) {
+      const malformed = try writeDescriptor(path.join(k.work, `misplaced-grant-${index}.json`), descriptor)
+      assert.strictEqual(try outcome({ ...production, descriptor: malformed, apk: release.apk, output: path.join(k.checkout, `misplaced-grant-${index}`) }), "DescriptorInvalid")
+    }
     assert.strictEqual(try outcome({ ...production, apk: foreign.apk, output: path.join(k.checkout, "foreign") }), "LauncherDigestMismatch")
     const foreignFile = try writeDescriptor(path.join(k.work, "foreign.json"), { ...pinned, apkSha256: foreign.sha256 })
     assert.strictEqual(try outcome({ ...production, descriptor: foreignFile, apk: foreign.apk, output: path.join(k.checkout, "foreign") }), "SignerNotTheDescriptors")
@@ -607,6 +615,8 @@ it.effect(`The stager a consumer runs by path takes the descriptors, launchers a
       null, { ...plain, schemaVersion: 2 }, { ...plain, brand: '../evil"' }, { ...plain, moduleName: '../evil"' }, { ...plain, packageName: '../evil"' }, { ...plain, apkSha256: "A".repeat(64) }, { ...plain, certificateSha256: "short" },
       { ...plain, defaultPermissions: [] }, { ...plain, defaultPermissions: ["android.permission.CAMERA", "android.permission.CAMERA"] }, { ...plain, defaultPermissions: ['android.permission.X"/><permission name="android.permission.Y'] },
       { ...plain, defaultPermissions: ["com.example.permission.PRIVATE"] }, { ...plain, defaultPermissions: Array.from({ length: 33 }, (_, index) => `android.permission.P${index}`) },
+      { ...plain, defaultPermissions: [PRIVILEGED] }, { ...plain, defaultPermissions: [SELF_UPDATE] },
+      { ...plain, defaultPermissions: [SELF_UPDATE], privilegedPermissions: [PRIVILEGED] },
       { ...plain, privilegedPermissions: [] }, { ...plain, privilegedPermissions: PRIVILEGED }, { ...plain, privilegedPermissions: [PRIVILEGED, PRIVILEGED] }, { ...plain, privilegedPermissions: [SELF_UPDATE, SELF_UPDATE] },
       { ...plain, privilegedPermissions: ["android.permission.WRITE_SECURE_SETTINGS"] }, { ...plain, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] },
       { ...plain, privilegedPermissions: [PRIVILEGED, "android.permission.INSTALL_PACKAGES"] },
@@ -668,6 +678,8 @@ it.effect(`The stager a consumer runs by path takes the descriptors, launchers a
       ["two-signers", pinnedTo(twice), { apk: twice.apk }, /Exactly one valid launcher signer/, "SignerNotTheDescriptors"],
       ["undeclared", pinnedTo(debug, { defaultPermissions: ["android.permission.RECORD_AUDIO"] }), { apk: debug.apk, development: true }, /does not declare android\.permission\.RECORD_AUDIO/, "PermissionUndeclared"],
       ["undeclared-self-update", pinnedTo(debug, { privilegedPermissions: [SELF_UPDATE] }), { apk: debug.apk, development: true }, /does not declare android\.permission\.INSTALL_SELF_UPDATES/, "PermissionUndeclared"],
+      ["self-update-as-default", { ...plain, defaultPermissions: [SELF_UPDATE] }, { apk: release.apk }, /Invalid default permissions/, "DescriptorInvalid"],
+      ["self-update-as-default-with-other-privilege", { ...plain, defaultPermissions: [SELF_UPDATE], privilegedPermissions: [PRIVILEGED] }, { apk: release.apk }, /Invalid default permissions/, "DescriptorInvalid"],
       ["unreviewed", { ...plain, privilegedPermissions: ["android.permission.CAMERA"] }, { apk: release.apk }, /Invalid privileged permissions/, "DescriptorInvalid"],
       ["install-packages", { ...plain, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] }, { apk: release.apk }, /Invalid privileged permissions/, "DescriptorInvalid"],
       ["no-companion", pinned, { apk: release.apk }, /exactly one APK for each descriptor companion/, "CompanionRefused"],
@@ -994,6 +1006,7 @@ it.live('Check the exact booted image and report a change during readback (spec/
       }))
       const wrongTarget = try exit(verifyImage({ ...options, target: "pixel10a", adb: badBoot.binary }))
       const unreviewedPrivilege = try exit(verifyImage({ ...options, expected: { ...privilegedExpected, privilegedPermissions: ["android.permission.INSTALL_PACKAGES"] }, adb: privilegedHealthy.binary }))
+      const reviewedDefault = (verifyImage({ ...options, expected: { ...expected, defaultPermissions: [SELF_UPDATE] }, adb: "must-not-run" }) |> map(%, () => "admitted")) catch (error) => error._tag
       const [stable, privilegedVerified, raced, pixel, cameraOff] = try.all [
         verifyImage({ ...options, adb: healthy.binary }),
         verifyImage({ ...options, expected: privilegedExpected, adb: privilegedHealthy.binary }),
@@ -1006,6 +1019,7 @@ it.live('Check the exact booted image and report a change during readback (spec/
         privilegedStaged: privilegedVerified.passed,
         privilegedPermissions: privilegedVerified.privilegedPermissions,
         unreviewedPrivilege: unreviewedPrivilege._tag,
+        reviewedDefault,
         checks: stable.checks.every(({ outcome }) => outcome === "pass"),
         capture: stable.captures.every(({ status }) => status === 0),
         measuredTwice: stable.captures.filter(({ args }) => args[0] === "sha256sum").length,
@@ -1016,7 +1030,7 @@ it.live('Check the exact booted image and report a change during readback (spec/
         changed: raced.checks.filter(({ outcome }) => outcome !== "pass"),
         gestureTurnedOff: cameraOff.checks.filter(({ outcome }) => outcome !== "pass"),
       }, {
-        staged: true, privilegedStaged: true, privilegedPermissions: [PRIVILEGED, SELF_UPDATE], unreviewedPrivilege: "Failure",
+        staged: true, privilegedStaged: true, privilegedPermissions: [PRIVILEGED, SELF_UPDATE], unreviewedPrivilege: "Failure", reviewedDefault: "ImageExpectationRefused",
         checks: true, capture: true, measuredTwice: 2, actual: "fail", wrongTarget: "Failure",
         boot: { state: "orange", slotSuffix: "_b" },
         weakened: [{ check: "LauncherBytes", outcome: "fail" }, { check: "SelinuxEnforcing", outcome: "fail" }, { check: "VerifiedBoot", outcome: "fail" }],

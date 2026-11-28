@@ -98,7 +98,9 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
       new Set(d.defaultPermissions).size !== d.defaultPermissions.length ||
       d.defaultPermissions.some(
         (permission) =>
-          typeof permission !== "string" || !PERMISSION.test(permission),
+          typeof permission !== "string" ||
+          !PERMISSION.test(permission) ||
+          REVIEWED_PRIVILEGED_PERMISSIONS.includes(permission),
       ))
   )
     throw new Error("Invalid default permissions");
@@ -113,12 +115,6 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
       ))
   )
     throw new Error("Invalid privileged permissions");
-  if (
-    d.privilegedPermissions?.some((permission) =>
-      d.defaultPermissions?.includes(permission),
-    )
-  )
-    throw new Error("A permission is both default and privileged");
   if (d.partition !== undefined && !["product", "system"].includes(d.partition))
     throw new Error("Invalid launcher partition");
   if (d.companions !== undefined) {
