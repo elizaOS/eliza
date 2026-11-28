@@ -7,11 +7,13 @@ import type { Millis } from "../../gen/cloud__shared__types.ts"
 import type { SpeechSettings as SpeechProfile } from "@elizaos/cloud"
 import { Deployment } from "@elizaos/cloud"
 import { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable, retryAfter } from "./llm.vibe"
-import { headerWebSocket } from "./socket.ts"
+import { ClosedSocketWrite, guardProviderWebSocket, headerWebSocket } from "./socket.ts"
 
 export { ProviderInvalidResponse, ProviderRefused, ProviderTimedOut, ProviderUnreachable }
 
 export type SpeechFailure = ProviderRefused | ProviderUnreachable | ProviderTimedOut | ProviderInvalidResponse
+export error ProviderClosedBeforeWrite
+export type SpeechWriteFailure = SpeechFailure | ProviderClosedBeforeWrite
 export type SpeechSettings = typeof SpeechProfile.Type
 
 export interface Synthesis {
@@ -73,16 +75,16 @@ export type TtsEdge =
 export type CloseCode = number | undefined
 
 export interface SttLink {
-  readonly send: (pcm: Uint8Array) => void!SpeechFailure
+  readonly send: (pcm: Uint8Array) => void!SpeechWriteFailure
   readonly drain: () => boolean!!
   readonly closeCode: () => CloseCode!!
   readonly edges: Stream.Stream<SttEdge, SpeechFailure>
 }
 
 export interface TtsLink {
-  readonly speak: (id: string, text: string, flush: boolean) => void!SpeechFailure
-  readonly finish: (id: string) => void!SpeechFailure
-  readonly cancel: (id: string) => void!SpeechFailure
+  readonly speak: (id: string, text: string, flush: boolean) => void!SpeechWriteFailure
+  readonly finish: (id: string) => void!SpeechWriteFailure
+  readonly cancel: (id: string) => void!SpeechWriteFailure
   readonly closeCode: () => CloseCode!!
   readonly edges: Stream.Stream<TtsEdge, SpeechFailure>
 }
@@ -99,7 +101,7 @@ export service ProviderSockets {
   static readonly defaultValue = () => ({
     open: (url: string, headers: Readonly<Record<string, string>>) => Socket.fromWebSocket(acquireRelease(
       Effect.try({
-        try: () => headerWebSocket(url, { headers }),
+        try: () => guardProviderWebSocket(headerWebSocket(url, { headers })),
         catch: (cause) => new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind: "Unknown", cause }) }),
       }),
       (socket) => Effect.ignore(Effect.try(() => socket.close(1000)))
@@ -362,7 +364,10 @@ effect function connected<A>(url: string, version: string, decode: (chunk: strin
   const closed = try Deferred.make<CloseCode>()
   fork.scoped pump(reader, edges, closed, decode)
   const write = effect (chunk: string | Uint8Array) => {
-    writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
+    writer.write(chunk) catch effect (failure) => {
+      if (failure.reason._tag === "SocketWriteError" && failure.reason.cause instanceof ClosedSocketWrite) throw new ProviderClosedBeforeWrite()
+      throw new ProviderUnreachable()
+    }
   }
   return { settings, write, closed, closeCode: () => Deferred.await(closed), edges: Stream.fromQueue(edges) }
 }
@@ -377,8 +382,8 @@ export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scop
   return {
     send: (pcm: Uint8Array) => link.write(pcm),
     drain: effect () => {
-      const sent = link.write(JSON.stringify({ type: "close" })) catch () => false
-      if (sent === false) return false
+      const canAwaitClose = link.write(JSON.stringify({ type: "close" })) catch (failure) => failure._tag === "ProviderClosedBeforeWrite"
+      if (canAwaitClose === false) return false
       return (try timeoutOrElse(Deferred.await(link.closed), { duration: drainBudget, orElse: () => succeed(undefined) })) === 1000
     },
     closeCode: link.closeCode,

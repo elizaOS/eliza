@@ -334,6 +334,16 @@ to the TTS provider. A TTS close is an outage only if the link has an unfinished
 utterance for which the relay already sent a phrase or `finish`. A link that
 fails, a provider error, and a new link that cannot open are provider failures.
 
+If a provider socket is already closing when the shell would send a device
+frame, the shell holds the frame and later device frames in their original
+order and consumes the provider's remaining events through its close. An
+idle close lets it try the held frame once on a replacement link, under the
+then-current relay state and window budget. The shell publishes the frame's
+transition and counts use only when it can send or the send had an uncertain
+outcome. A write that might have reached a provider is never replayed. A
+provider close that does not finish within the link-open budget ends the
+relay as an outage. Cancelling work on the closing link cancels it locally.
+
 ```quint
 pure def utteranceUnfinished(r: Relay, sent: Set[str]): bool =
   r.utterances.some(u => sent.contains(u.id) and (u.stage == UtteranceOpen or u.stage == UtteranceFinishing))

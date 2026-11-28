@@ -47,6 +47,7 @@ import { secrets } from "./support/profile.ts"
 import { leasedCaller, signedCaller } from "./support/caller.vibe"
 import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
+import { holdFirstTtsClose } from "./support/held-provider-close.ts"
 import { oneSecondWav, recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received, type RelaySocket } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
@@ -1782,6 +1783,57 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       { phase: "closed", settled: true, renewedUnused: true }
     ))
   }), 60_000)
+  it.effect('A queued first phrase waits for the closed TTS link to deliver its last completion, then reaches a new link once (spec/cloud/services/speechRelay.md, "A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage")', () => scoped(effect {
+    const { speech, cloud } = try relayCloud()
+    const caller = try signedCaller(cloud, "closed-first-write")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: "closed-first-write-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string }
+    const gate = try acquireRelease(sync(() => holdFirstTtsClose(cloud.fakes.url)), (held) => sync(held.restore))
+    const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+    const waitFor = <A>(begin: () => Promise<A>) => TestClock.withLive(timeout(promise(begin), "5 seconds"))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    const opened = try waitFor(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try check(() => assert.deepStrictEqual(opened.map((received) => received.kind === "text" && received.frame.t), ["ready", "stt"]))
+
+    try sync(() => socket.send({ t: "tts", id: "earlier", text: "The first reply.", flush: true }))
+    const first = try waitFor(() => socket.until((received) => received.kind === "text" && received.frame.t === "flush_complete"))
+    try check(() => assert.deepStrictEqual(first.map((received) => received.kind === "text" ? received.frame.t : received.kind), ["tts_prepared", "binary", "flush_complete"]))
+    try sync(() => {
+      gate.hold()
+      socket.send({ t: "finish", id: "earlier" })
+    })
+    const last = try waitFor(() => gate.message)
+    const completion = try Effect.try(() => JSON.parse(String(last)) as unknown)
+    try check(() => assert.deepStrictEqual(completion, { type: "done", context_id: "earlier" }))
+    const closed = try sync(() => speech.closeIdle("tts", 0))
+    const code = try waitFor(() => gate.closed)
+    try check(() => assert.deepStrictEqual([closed, code], [1, 1000]))
+
+    const phrase = "This reply uses a fresh link."
+    try sync(gate.watchStaleWrite)
+    try sync(() => socket.send({ t: "tts", id: "fresh", text: phrase, flush: true }))
+    try waitFor(() => gate.staleWrite)
+    try sync(() => {
+      socket.send({ t: "finish", id: "fresh" })
+      gate.release()
+    })
+    const received = try waitFor(() => socket.until((frame) => frame.kind === "text" && frame.frame.t === "complete" && frame.frame.id === "fresh"))
+    try check(() => {
+      const shown = received.map((frame) => frame.kind === "text" ? frame.frame : frame.kind)
+      assert.deepStrictEqual(shown, [
+        { t: "complete", id: "earlier" },
+        { t: "tts_prepared", id: "fresh" },
+        "binary",
+        { t: "flush_complete", id: "fresh" },
+        { t: "complete", id: "fresh" },
+      ])
+      assert.equal(speech.connections.filter(({ path }) => path === "/tts/websocket").length, 2)
+      assert.deepStrictEqual(speech.ttsMessages.filter(({ context_id }) => context_id === "fresh").map(({ transcript }) => transcript), [phrase, ""])
+    })
+  }), 60_000)
+
   it.effect("A provider socket that closes while idle is opened again when it is next needed and Talk goes on, one that closes under an unfinished reply still ends as an outage, and a dropped link can leave this window's audio uncertain (spec/cloud/services/speechRelay.md, \"A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage\"; spec/cloud/services/speechSession.md, \"Each window settles each direction once, an earlier window while the next one serves and the live one while retiring, and a session closes only with every receipt\")", () => scoped(effect {
     const { speech, cloud } = try relayCloud()
     const idleFor = effect (route: "stt" | "tts", code?: number) => {
