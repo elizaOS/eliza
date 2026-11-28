@@ -1609,11 +1609,18 @@ lemma {:induction false} RetainSplit(s: Turns)
   requires alwaysTurnsRetainGroups(s)
   ensures forall i, j :: 0 <= i < |s.turnGroups| && 0 <= j < |s.turnGroups| && i != j ==> s.turnGroups[i].turnId != s.turnGroups[j].turnId
   ensures forall g :: g in s.turnGroups ==> exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
-  ensures forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
+  ensures forall t :: t in s.controllers.turns ==> exists g :: g in s.turnGroups && g.turnId == t.id
+  ensures forall t :: t in s.controllers.turns ==> exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
 {
   hide *;
   AlwaysTurnsRetainGroupsFilter(s);
   RetainSplitUnique(s.turnGroups);
+  forall t | t in s.controllers.turns
+    ensures exists g :: g in s.turnGroups && g.turnId == t.id
+    ensures exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
+  {
+    RetainFact(s, t);
+  }
 }
 
 lemma {:induction false} RetainJoinUnique(gs: seq<TurnGroup>)
@@ -1632,7 +1639,8 @@ lemma {:induction false} RetainJoinUnique(gs: seq<TurnGroup>)
 lemma {:induction false} RetainJoin(s: Turns)
   requires forall i, j :: 0 <= i < |s.turnGroups| && 0 <= j < |s.turnGroups| && i != j ==> s.turnGroups[i].turnId != s.turnGroups[j].turnId
   requires forall g :: g in s.turnGroups ==> exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
-  requires forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
+  requires forall t :: t in s.controllers.turns ==> exists g :: g in s.turnGroups && g.turnId == t.id
+  requires forall t :: t in s.controllers.turns ==> exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
   ensures alwaysTurnsRetainGroups(s)
 {
   hide *;
@@ -1660,16 +1668,19 @@ lemma {:induction false} RetainMapGroups(s: Turns, after: Turns)
 }
 
 lemma {:induction false} RetainMapTurns(s: Turns, after: Turns)
-  requires forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
+  requires forall t :: t in s.controllers.turns ==> exists g :: g in s.turnGroups && g.turnId == t.id
+  requires forall t :: t in s.controllers.turns ==> exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
   requires after.turnGroups == s.turnGroups
   requires |after.groups| == |s.groups| && forall i :: 0 <= i < |s.groups| ==> after.groups[i].id == s.groups[i].id && after.groups[i].room == s.groups[i].room
   requires |after.controllers.turns| == |s.controllers.turns| && forall i :: 0 <= i < |s.controllers.turns| ==> after.controllers.turns[i].id == s.controllers.turns[i].id && after.controllers.turns[i].room == s.controllers.turns[i].room
-  ensures forall t :: t in after.controllers.turns ==> (exists g :: g in after.turnGroups && g.turnId == t.id) && exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
+  ensures forall t :: t in after.controllers.turns ==> exists g :: g in after.turnGroups && g.turnId == t.id
+  ensures forall t :: t in after.controllers.turns ==> exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
 {
   hide *;
   GroupOfFrame(s, after);
   forall t | t in after.controllers.turns
-    ensures (exists g :: g in after.turnGroups && g.turnId == t.id) && exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
+    ensures exists g :: g in after.turnGroups && g.turnId == t.id
+    ensures exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
   {
     var i :| 0 <= i < |after.controllers.turns| && after.controllers.turns[i] == t;
     var t0 := s.controllers.turns[i];
@@ -2364,7 +2375,8 @@ lemma {:induction false} StartRetainGroups(s: Turns, after: Turns, added: TurnEn
 }
 
 lemma {:induction false} StartRetainTurns(s: Turns, after: Turns, added: TurnEntry, gid: int)
-  requires forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
+  requires forall t :: t in s.controllers.turns ==> exists g :: g in s.turnGroups && g.turnId == t.id
+  requires forall t :: t in s.controllers.turns ==> exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
   requires after.controllers.turns == s.controllers.turns + [added]
   requires after.turnGroups == s.turnGroups + [TurnGroup(added.id, gid)]
   requires forall t :: t in s.controllers.turns ==> t.id != added.id
@@ -2372,12 +2384,14 @@ lemma {:induction false} StartRetainTurns(s: Turns, after: Turns, added: TurnEnt
   requires groupOf(after, added.id) == gid
   requires forall g :: g in s.groups ==> g in after.groups
   requires exists g :: g in after.groups && g.id == gid && g.room == added.room
-  ensures forall t :: t in after.controllers.turns ==> (exists g :: g in after.turnGroups && g.turnId == t.id) && exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
+  ensures forall t :: t in after.controllers.turns ==> exists g :: g in after.turnGroups && g.turnId == t.id
+  ensures forall t :: t in after.controllers.turns ==> exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
 {
   hide *;
   assert TurnGroup(added.id, gid) in after.turnGroups;
   forall t | t in after.controllers.turns
-    ensures (exists g :: g in after.turnGroups && g.turnId == t.id) && exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
+    ensures exists g :: g in after.turnGroups && g.turnId == t.id
+    ensures exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room
   {
     if t != added {
       assert t in s.controllers.turns;
