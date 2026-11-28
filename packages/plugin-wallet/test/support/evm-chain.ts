@@ -215,7 +215,7 @@ export async function startChain(): Promise<Chain> {
 export interface Scratch {
   readonly directory: string;
   /** @throws {never} */
-  sealed(): string;
+  asPreviousFormat(): string;
   /** @throws {never} */
   keepDesk(): void;
   /** @throws {never} */
@@ -234,7 +234,14 @@ export function scratch(): Scratch {
   const desk = join(directory, "wallet", "state", "requests");
   return {
     directory,
-    sealed: () => readFileSync(join(directory, "wallet", "keys.sealed"), "utf8"),
+    asPreviousFormat: () => {
+      const file = join(directory, "wallet", "keys.sealed");
+      const sealed = readFileSync(join(file, "payload"), "utf8");
+      rmSync(file, { recursive: true });
+      writeFileSync(file, sealed, { mode: 0o600 });
+      rmSync(join(directory, "wallet", "state", "custody"));
+      return sealed;
+    },
     keepDesk: () => copyFileSync(desk, `${desk}.kept`),
     restoreDesk: () => copyFileSync(`${desk}.kept`, desk),
     tearCustody: () => writeFileSync(join(directory, "wallet", "state", "custody"), "{"),

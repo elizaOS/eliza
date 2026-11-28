@@ -102,10 +102,19 @@ it.live('Make the wallet once on the device, seal its keys, and serve nothing wh
     const noKey = { before: (try called<WalletStatus>(bare, "GET", "/api/wallet")).body, made: try called<WalletStatus>(bare, "POST", "/api/wallet") }
     const wallet = try openWallet(hostOver(files, chain))
     const routes = walletPlugin(wallet, OWNER).routes ?? []
-    const first = (try called<WalletStatus>(routes, "POST", "/api/wallet")).body
+    const other = try openWallet(hostOver(files, chain))
+    const competing = walletPlugin(other, OWNER).routes ?? []
+    const [created, raced] = try all([
+      called<WalletStatus>(routes, "POST", "/api/wallet"), called<WalletStatus>(competing, "POST", "/api/wallet"),
+    ], { concurrency: "unbounded" })
+    const first = created.status === 200 ? created.body : raced.body
+    for (const answer of [created, raced]) {
+      if (answer.status === 200) assert.deepEqual(answer.body.accounts, first.accounts)
+      else assert.deepEqual([answer.status, answer.reason], [409, "This wallet was already made."])
+    }
     const second = (try called<WalletStatus>(routes, "POST", "/api/wallet")).body
-    const reopened = try (try openWallet(hostOver(files, chain))).status()
-    const sealed = files.sealed()
+    const sealed = files.asPreviousFormat()
+    const reopened = try (try openWallet(hostOver(files, chain))).create()
     const off = (try called<WalletStatus>(routes, "POST", "/api/wallet/switch", { on: false })).body
     const whileOff = {
       holdings: (try called<WalletHoldings>(routes, "GET", "/api/wallet/holdings")).reason,
