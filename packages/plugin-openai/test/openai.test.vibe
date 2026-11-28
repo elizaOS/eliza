@@ -22,6 +22,7 @@ import {
   handleTextToSpeech,
   handleTranscription,
   isCerebrasMode,
+  isWireStrictSchema,
   isCerebrasReasoningPart,
   loadedEncodingNames,
   normalizeAudioMimeType,
@@ -828,6 +829,79 @@ it('Embeddings, images, audio transcription/TTS, deep research, and lazy BPE tok
     assert.ok(tokens.length > 0)
     assert.strictEqual(await decode(rt, { tokens, modelType: ModelType.TEXT_SMALL }), "Hello tokenizer!")
     assert.ok(loadedEncodingNames().includes("o200k_base"))
+  } finally {
+    await srv.stop()
+  }
+})
+
+it('Wire strict gating inspects objects nested in combinator and definition subschemas (spec/openai/index.md, "Tools are sent strict only when every tool in the request is strict")', async () => {
+  const closedObject = { type: "object", additionalProperties: false, properties: { a: { type: "string" } }, required: ["a"] }
+  const unclosedObject = { type: "object", properties: { a: { type: "string" } }, required: ["a"] }
+  const underRequiredObject = { type: "object", additionalProperties: false, properties: { a: { type: "string" }, b: { type: "string" } }, required: ["a"] }
+  const wrap = (value: unknown) => ({ type: "object", additionalProperties: false, properties: { v: value }, required: ["v"] })
+
+  assert.strictEqual(isWireStrictSchema(closedObject), true)
+  assert.strictEqual(isWireStrictSchema(wrap({ anyOf: [closedObject, { type: "string" }] })), true)
+  assert.strictEqual(isWireStrictSchema(wrap({ anyOf: [unclosedObject] })), false)
+  assert.strictEqual(isWireStrictSchema(wrap({ oneOf: [underRequiredObject] })), false)
+  assert.strictEqual(isWireStrictSchema(wrap({ allOf: [unclosedObject] })), false)
+  assert.strictEqual(isWireStrictSchema({ anyOf: [unclosedObject] }), false)
+  assert.strictEqual(isWireStrictSchema({ type: "object", additionalProperties: false, properties: { v: { type: "string" } }, required: ["v"], $defs: { helper: unclosedObject } }), false)
+  assert.strictEqual(isWireStrictSchema({ type: "object", additionalProperties: false, patternProperties: { "^x": unclosedObject } }), false)
+  assert.strictEqual(isWireStrictSchema({ type: "array", prefixItems: [unclosedObject] }), false)
+  assert.strictEqual(isWireStrictSchema(wrap({ not: unclosedObject })), false)
+  assert.strictEqual(isWireStrictSchema(wrap({ if: unclosedObject, then: closedObject })), false)
+  assert.strictEqual(isWireStrictSchema(wrap({ type: "array", items: { anyOf: [unclosedObject] } })), false)
+
+  const srv = await startOpenAiTestServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" })
+    res.end(JSON.stringify({
+      choices: [{ message: { content: "done", tool_calls: [] }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }))
+  })
+  try {
+    const runtime = makeRuntime({ OPENAI_API_KEY: "k", OPENAI_BASE_URL: srv.endpoint })
+    const handler = plugin.models?.[ModelType.TEXT_SMALL] as (runtime: IAgentRuntime, params: unknown) => Promise<string | GenerateTextResult | TextStreamResult>
+    const strictRead = {
+      name: "READ",
+      description: "Read",
+      strict: true,
+      parameters: { type: "object", additionalProperties: false, properties: { path: { type: "string" } }, required: ["path"] },
+    }
+    await handler(runtime, {
+      prompt: "Pick",
+      tools: [
+        strictRead,
+        {
+          name: "PICK",
+          description: "Pick",
+          strict: true,
+          parameters: wrap({ anyOf: [unclosedObject] }),
+        },
+      ],
+    })
+    await handler(runtime, {
+      prompt: "Pick closed",
+      tools: [
+        {
+          name: "PICK",
+          description: "Pick",
+          strict: true,
+          parameters: wrap({ anyOf: [closedObject, { type: "string" }] }),
+        },
+      ],
+    })
+    const hiddenTools = srv.requests[0]?.json?.tools as Array<{ function: { name: string; strict?: boolean } }>
+    const closedTools = srv.requests[1]?.json?.tools as Array<{ function: { name: string; strict?: boolean } }>
+    assert.deepStrictEqual(
+      hiddenTools.map((tool) => [tool.function.name, "strict" in tool.function ? tool.function.strict : undefined]),
+      [["READ", undefined], ["PICK", undefined]],
+    )
+    assert.deepStrictEqual(
+      closedTools.map((tool) => [tool.function.name, "strict" in tool.function ? tool.function.strict : undefined]),
+      [["PICK", true]],
+    )
   } finally {
     await srv.stop()
   }
