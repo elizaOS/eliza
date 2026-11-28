@@ -161,13 +161,15 @@ export effect function revalidateWorkflowApprovalNotice(notice: SuspendedWorkflo
   if (current.removed || current.versionId !== route.versionId || notice.expiresAt <= at) return "withdraw"
   const run = try reads.receipt(route.runId, route.workflowId)
   if (!valid()) return "stale"
-  if (run.versionId !== route.versionId || run.finished) return "withdraw"
+  if (run.id !== route.runId || run.workflowId !== route.workflowId || run.versionId !== route.versionId || run.finished) return "withdraw"
   const receipt = try reads.approvals(run)
   if (!valid()) return "stale"
   if (receipt === null) throw workflowHttpError(503, { code: "WORKFLOW_APPROVAL_RECEIPT_UNAVAILABLE", error: "Workflow approval receipt was unavailable" })
+  const receiptMatches = receipt.runId === route.runId && receipt.workflowId === route.workflowId && receipt.workflowVersionId === route.versionId
   let same = false
   for (const approval of receipt.approvals) {
     if (approval.status !== "pending" || approval.expiresAt !== notice.expiresAt) continue
+    if (approval.runId !== route.runId || approval.workflowId !== route.workflowId || approval.workflowVersionId !== route.versionId) continue
     const bound = try workflowApprovalNoticeIdentity(route, workflowApprovalProposalId(approval))
     if (bound.id === notice.id && bound.bindingHash === notice.bindingHash) same = true
   }
@@ -175,7 +177,7 @@ export effect function revalidateWorkflowApprovalNotice(notice: SuspendedWorkflo
   const settledAt = try Clock.currentTimeMillis
   return resumesApprovalNotice({
     runFinished: receipt.finished, cancellationRequested: receipt.cancellationRequested,
-    versionMatches: true, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= settledAt,
+    versionMatches: receiptMatches, approvalPending: same, sameExpiry: same, expired: notice.expiresAt <= settledAt,
   }) ? "resume" : "withdraw"
 }
 

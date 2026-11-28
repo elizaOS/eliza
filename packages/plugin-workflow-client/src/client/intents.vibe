@@ -24,6 +24,22 @@ export function workflowIntentOwnerPrefix(owner: WorkflowIntentOwner, keyPrefix 
   return keyPrefix + JSON.stringify([owner.origin, owner.ownerId, owner.agentId]).slice(0, -1) + ","
 }
 
+function lifecycleWorkflowId(owner: WorkflowIntentOwner, key: string, keyPrefix: string): string | undefined {
+  const suffix = ":lifecycle"
+  if (!key.startsWith(workflowIntentOwnerPrefix(owner, keyPrefix))) return undefined
+  const suffixed = key.endsWith(suffix)
+  try {
+    const parts: unknown = JSON.parse(suffixed ? key.slice(keyPrefix.length, -suffix.length) : key.slice(keyPrefix.length))
+    if (!Array.isArray(parts) || parts.length !== 4 || parts[0] !== owner.origin || parts[1] !== owner.ownerId || parts[2] !== owner.agentId || typeof parts[3] !== "string") {
+      return undefined
+    }
+    const id = suffixed ? parts[3] : parts[3].endsWith(suffix) ? parts[3].slice(0, -suffix.length) : ""
+    return id === "" ? undefined : id
+  } catch {
+    return undefined
+  }
+}
+
 export function workflowRecovery(input: {
   readonly currentOwner: boolean; readonly canReconcile: boolean; readonly receiptValid: boolean; readonly receiptRun: boolean
   readonly ownVersion: string; readonly observedBeforeReceipt: string
@@ -106,15 +122,11 @@ export effect function workflowIntentStore(owner: WorkflowIntentOwner, backend: 
     },
     effect stale() { return (try Ref.get(cached)) === undefined },
     effect pendingLifecycle() {
-      const suffix = ":lifecycle"
-      return Object.keys((try Ref.get(cached)) ?? {}).filter((key) => key.endsWith(suffix)).flatMap((key) => {
-        try {
-          const parts: unknown = JSON.parse(key.slice(keyPrefix.length, -suffix.length))
-          return Array.isArray(parts) && parts.length === 4 && typeof parts[3] === "string" ? [parts[3]] : []
-        } catch {
-          return []
-        }
+      const ids = Object.keys((try Ref.get(cached)) ?? {}).flatMap((key) => {
+        const id = lifecycleWorkflowId(owner, key, keyPrefix)
+        return id === undefined ? [] : [id]
       })
+      return [...new Set(ids)]
     },
     load,
     effect read(key: string) {
