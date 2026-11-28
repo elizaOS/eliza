@@ -205,6 +205,15 @@ it.effect(`Keep notes as one collection edited only on the owner's words (spec/n
 
   const listed = try action(plugin, "NOTES_LIST")(message("latest note"), { latestBy: "createdAt" })
   const none = try action(notesPlugin(notesOver(fixture())), "NOTES_LIST")(message("list my notes"), {})
+  const dated = fixture()
+  const datedNotes = notesOver(dated)
+  try datedNotes.create({ content: "Packing" })
+  dated.clock.ms += day
+  const recentPacking = (try datedNotes.create({ content: "Trip plan\nPacking list: tent" })).value.note
+  const packingSinceYesterday = try action(notesPlugin(datedNotes), "NOTES_LIST")(message("find notes about packing from today"), {
+    content: "packing", dateRange: { field: "createdAt", start: new Date(dated.clock.ms).toISOString() },
+  })
+  assert.deepEqual((packingSinceYesterday.data?.notes as readonly { id: string }[]).map(({ id }) => id), [recentPacking.id])
   assert.isTrue((plugin.actions ?? []).every((candidate) => satisfiesContextGate(["general"], { contexts: candidate.contexts }, ["OWNER"])))
   const farEast = { voiceUi: { uiTimeZone: "Pacific/Kiritimati" } }
   const zoned = [try action(plugin, "NOTES_GET")(message("when did I write note-1", farEast), { noteId: "note-1" }), try action(plugin, "NOTES_GET")(message("when did I write note-1"), { noteId: "note-1" }),

@@ -492,17 +492,17 @@ export effect function listIn(notes: readonly StickyNote[], query: NotesQuery): 
   const start = try bound(range?.start)
   const end = try bound(range?.end)
   if (start !== undefined && end !== undefined && start >= end) throw refused("NOTES_VALIDATION_FAILED", "dateRange start must be before its end.")
-  const content = query.content
-  const named = query.title !== undefined ? lookupMatches(notes, "title", query.title).map(({ note }) => note)
-    : content === undefined || content.trim() === "" ? notes : lookupMatches(notes, "query", content).map(({ note }) => note)
-  const windowed = named.filter((note) => {
+  const eligible = notes.filter((note) => {
     if (query.noteId !== undefined && note.id !== query.noteId) return false
     if (range === undefined) return true
     const at = Date.parse(note[range.field])
     return (start === undefined || at >= start) && (end === undefined || at < end)
   })
+  const content = query.content
+  const matched = query.title !== undefined ? lookupMatches(eligible, "title", query.title).map(({ note }) => note)
+    : content === undefined || content.trim() === "" ? eligible : lookupMatches(eligible, "query", content).map(({ note }) => note)
   const latestBy = query.latestBy
-  if (latestBy === undefined || windowed.length === 0) return windowed
-  const newest = Math.max(...windowed.map((note) => Date.parse(note[latestBy])))
-  return windowed.filter((note) => Date.parse(note[latestBy]) === newest)
+  if (latestBy === undefined || matched.length === 0) return matched
+  const newest = Math.max(...matched.map((note) => Date.parse(note[latestBy])))
+  return matched.filter((note) => Date.parse(note[latestBy]) === newest)
 }
