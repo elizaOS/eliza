@@ -261,7 +261,7 @@ pure def whileLive(r: Relay, input: RelayInput): RelayAnswer = match input {
   | ProviderFlushed(p) => if (speaking(r, p.id) and heardOf(r, p.id)) answer(withHeard(r, p.id, false), FlushedFrame({ id: p.id })) else quiet(r)
   | ProviderCompleted(p) => if (speaking(r, p.id)) answer(withUtterance(r, p.id, UtteranceDone), CompleteFrame({ id: p.id })) else quiet(r)
   | WindowRenewed => if (r.extend) answer({ ...r, windows: r.windows + 1 }, ExtendedFrame) else quiet({ ...r, windows: r.windows + 1 })
-  | ProviderClosed(c) => linkClosed(r, c.link)
+  | ProviderClosed(_) => quiet(r)
   | _ => serverEnding(r, input)
 }
 pure def relayStep(r: Relay, input: RelayInput): RelayAnswer =
@@ -310,19 +310,21 @@ link without audio or a TTS link without text, and that is not an outage.
 When a link's socket closes without a provider error, the shell logs which
 link ended and its close code, with no user text, and opens a new link the
 next time one is needed: STT for the next accepted audio, TTS for the next
-phrase or `finish`. The relay goes on, unless the TTS link closed while an
-utterance was open or finishing: that utterance can no longer complete, so
-the relay ends as an outage. A link that fails, a provider error, and a new
-link that cannot open are provider failures, as before.
+phrase or `finish`. Preparing an utterance on the relay does not send anything
+to the TTS provider. A TTS close is an outage only if the link has an unfinished
+utterance for which the relay already sent a phrase or `finish`. A link that
+fails, a provider error, and a new link that cannot open are provider failures.
 
 ```quint
-pure def utteranceUnfinished(r: Relay): bool = r.utterances.some(u => u.stage == UtteranceOpen or u.stage == UtteranceFinishing)
-pure def linkClosed(r: Relay, link: ProviderLink): RelayAnswer =
-  if (link == SpeakingLink and utteranceUnfinished(r)) endWith(r, CauseOutage) else quiet(r)
+pure def utteranceUnfinished(r: Relay, sent: Set[str]): bool =
+  r.utterances.some(u => sent.contains(u.id) and (u.stage == UtteranceOpen or u.stage == UtteranceFinishing))
+pure def speakingLinkEnd(r: Relay, sent: Set[str]): RelayInput =
+  if (utteranceUnfinished(r, sent)) ProviderFailed else ProviderClosed({ link: SpeakingLink })
 pure def lawAnIdleLinkThatClosesNeverEndsTheRelay(r: Relay, link: ProviderLink): bool =
-  (link == ListeningLink or not(utteranceUnfinished(r))) implies relayStep(r, ProviderClosed({ link: link })) == quiet(r)
-pure def lawASpeakingLinkThatClosesUnderAnUnfinishedUtteranceIsAnOutage(r: Relay): bool =
-  (r.phase == RelayLive and utteranceUnfinished(r)) implies relayStep(r, ProviderClosed({ link: SpeakingLink })) == endWith(r, CauseOutage)
+  relayStep(r, ProviderClosed({ link: link })) == quiet(r)
+pure def lawASpeakingLinkThatClosesUnderAnUnfinishedUtteranceIsAnOutage(r: Relay, sent: Set[str]): bool =
+  (r.phase == RelayLive and utteranceUnfinished(r, sent)) implies relayStep(r, speakingLinkEnd(r, sent)) == endWith(r, CauseOutage)
+pure val sentValues = Set(Set(), Set("u1"), Set("u2"))
 pure val linkValues = Set(ListeningLink, SpeakingLink)
 ```
 

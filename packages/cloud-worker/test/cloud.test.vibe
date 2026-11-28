@@ -1784,9 +1784,13 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     const opens = (path: string) => speech.connections.filter((each) => each.path === path).length
 
     const idle = try talk("idler")
+    try sync(() => idle.socket.send({ t: "prepare", id: "reply-1" }))
+    const prepared = try promise(() => idle.socket.until((received) => received.kind === "text" && received.frame.t === "tts_prepared"))
+    try check(() => assert.deepStrictEqual(shown(prepared), [{ t: "tts_prepared", id: "reply-1" }]))
     const idleBefore = [try idleFor("stt"), try idleFor("tts")]
     try sync(() => idle.socket.send(new Uint8Array(3_200)))
     const heard = try promise(() => idle.socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "end-of-turn"))
+    try check(() => assert.equal(heard.at(-1)?.kind, "text", JSON.stringify(shown(heard))))
     try sync(() => {
       idle.socket.send({ t: "tts", id: "reply-1", text: "Porch light is on.", flush: true })
       idle.socket.send({ t: "finish", id: "reply-1" })
@@ -1842,7 +1846,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
           { t: "stt", event: { type: "transcript-update", transcript: spokenTranscript.slice(0, 7) } },
           { t: "stt", event: { type: "end-of-turn", transcript: spokenTranscript } }
         ],
-        spoken: [{ t: "tts_prepared", id: "reply-1" }, { audio: 2 + 7 + 3_200 }, { t: "flush_complete", id: "reply-1" }, { t: "complete", id: "reply-1" }],
+        spoken: [{ audio: 2 + 7 + 3_200 }, { t: "flush_complete", id: "reply-1" }, { t: "complete", id: "reply-1" }],
         reopened: { stt: 2, tts: 2 },
         stopped: [{ close: 1000 }],
         forwarded: 3_200,

@@ -2,7 +2,7 @@
 import { Socket } from "effect/socket"
 import {
   acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs, windowLength, windowTtsChars,
-  type ProviderLink, type Relay, type RelayInput, type ServerFrame, type Shortfall
+  speakingLinkEnd, type ProviderLink, type Relay, type RelayInput, type ServerFrame, type Shortfall
 } from "../../gen/cloud__services__speechRelay.effect.vibe"
 import { readDevice, validUplink, writeRelay, type RelayWire } from "@elizaos/cloud"
 import { refused, type Refused } from "../http/refusal.vibe"
@@ -243,12 +243,15 @@ effect function deviceEffects(shell: Shell, ports: RelayPorts, sessionId: string
       if (!stageIs(shell.relay, frame.id, "UtteranceOpen") || window === undefined) return
       const link = try ttsLink(shell, ports, sessionId, arrivals)
       window.ttsChars += frame.text.length
-      shell.spoken.add(frame.id)
       try link.speak(frame.id, frame.text, frame.flush)
+      shell.spoken.add(frame.id)
       return
     }
     case "finish":
-      if (stageIs(before, frame.id, "UtteranceOpen") && stageIs(shell.relay, frame.id, "UtteranceFinishing")) try (try ttsLink(shell, ports, sessionId, arrivals)).finish(frame.id)
+      if (stageIs(before, frame.id, "UtteranceOpen") && stageIs(shell.relay, frame.id, "UtteranceFinishing")) {
+        try (try ttsLink(shell, ports, sessionId, arrivals)).finish(frame.id)
+        shell.spoken.add(frame.id)
+      }
       return
     case "cancel":
       if (shell.relay.phase !== "RelayLive" || !speaking(before, frame.id) || tts === undefined) return
@@ -473,7 +476,11 @@ effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arriv
         shell.stt = undefined
         if (arrival.code !== 1000) shell.sttUncertain = true
       }
-      if (shell.tts === arrival.from) shell.tts = undefined
+      if (shell.tts === arrival.from) {
+        shell.tts = undefined
+        try advance(shell, writer, speakingLinkEnd(shell.relay, shell.spoken))
+        return
+      }
       try advance(shell, writer, { tag: "ProviderClosed", link: arrival.link })
       return
     case "renewed":
