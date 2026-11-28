@@ -48,7 +48,7 @@ import { leasedCaller, signedCaller } from "./support/caller.vibe"
 import { callCloud, callDeclaring, openCloud } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { oneSecondWav, recordingBytes, recordingForm } from "./support/recording.ts"
-import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
+import { openRelay, upgradeStatus, type Received, type RelaySocket } from "./support/relay-socket.ts"
 import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
 import { googleMapsFake, tilePng } from "./support/maps-fake.ts"
 import { mapsSweeps } from "../src/services/maps.vibe"
@@ -1782,7 +1782,7 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       { phase: "closed", settled: true, renewedUnused: true }
     ))
   }), 60_000)
-  it.effect("A provider socket that closes while idle is opened again when it is next needed and Talk goes on, one that closes under an unfinished reply still ends as an outage, and audio a dropped link may have lost is charged as unknown (spec/cloud/services/speechRelay.md, \"A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage\")", () => scoped(effect {
+  it.effect("A provider socket that closes while idle is opened again when it is next needed and Talk goes on, one that closes under an unfinished reply still ends as an outage, and a dropped link can leave this window's audio uncertain (spec/cloud/services/speechRelay.md, \"A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage\"; spec/cloud/services/speechSession.md, \"Each window settles each direction once, an earlier window while the next one serves and the live one while retiring, and a session closes only with every receipt\")", () => scoped(effect {
     const { speech, cloud } = try relayCloud()
     const idleFor = effect (route: "stt" | "tts", code?: number) => {
       try TestClock.withLive(sleep(Duration.millis(400)))
@@ -1803,15 +1803,23 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
     }
     const shown = (seen: ReadonlyArray<Received>) => seen.map((received) => received.kind === "text" ? received.frame : received.kind === "binary" ? { audio: received.bytes.length } : { close: received.code })
     const opens = (path: string) => speech.connections.filter((each) => each.path === path).length
+    const sendAudio = effect (socket: RelaySocket) => {
+      const pcm = new Uint8Array(3_200)
+      const sent = speech.sttPcmBytes + pcm.length
+      try sync(() => socket.send(pcm))
+      for (let attempt = 0; attempt < 100 && speech.sttPcmBytes < sent; attempt += 1) {
+        try TestClock.withLive(sleep(Duration.millis(50)))
+      }
+      try check(() => assert.equal(speech.sttPcmBytes, sent))
+    }
 
     const idle = try talk("idler")
     try sync(() => idle.socket.send({ t: "prepare", id: "reply-1" }))
     const prepared = try promise(() => idle.socket.until((received) => received.kind === "text" && received.frame.t === "tts_prepared"))
     try check(() => assert.deepStrictEqual(shown(prepared), [{ t: "tts_prepared", id: "reply-1" }]))
-    const idleBefore = [try idleFor("stt"), try idleFor("tts")]
+    const idleBefore = [try idleFor("stt", 1001), try idleFor("tts")]
     try sync(() => idle.socket.send(new Uint8Array(3_200)))
     const heard = try promise(() => idle.socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "end-of-turn"))
-    try check(() => assert.equal(heard.at(-1)?.kind, "text", JSON.stringify(shown(heard))))
     try sync(() => {
       idle.socket.send({ t: "tts", id: "reply-1", text: "Porch light is on.", flush: true })
       idle.socket.send({ t: "finish", id: "reply-1" })
@@ -1843,6 +1851,26 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
       WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY direction DESC`, [dropped.session.sessionId, dropped.caller.organizationId])
 
+    const renewed = try talk("renewed-after-drop")
+    try sendAudio(renewed.socket)
+    const idleBeforeRenewal = try idleFor("stt", 1001)
+    try TestClock.adjust(Duration.seconds(50))
+    const extension = try promise(() => renewed.socket.until((received) => received.kind === "text" && received.frame.t === "extended"))
+    try TestClock.adjust(Duration.seconds(10))
+    let priorSettled = false
+    for (let attempt = 0; attempt < 100 && !priorSettled; attempt += 1) {
+      try TestClock.withLive(sleep(Duration.millis(50)))
+      const prior = try sql(cloud, "SELECT settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 AND number = 1", [renewed.session.sessionId])
+      priorSettled = prior[0]?.settled === true
+    }
+    try sendAudio(renewed.socket)
+    try sendAudio(renewed.socket)
+    try sync(() => renewed.socket.send({ t: "stop" }))
+    const renewedStop = try promise(() => renewed.socket.until((received) => received.kind === "close"))
+    try closedPhase(cloud, renewed.session.sessionId)
+    const renewedUsage = try sql(cloud, `SELECT w.number, u.outcome, u.charged FROM speech_windows w
+      JOIN usage_records u ON u.hold_key = w.transcribe_hold WHERE w.session_id = $1 ORDER BY w.number`, [renewed.session.sessionId])
+
     try check(() => assert.deepStrictEqual(
       {
         opened: shown(idle.opened),
@@ -1855,7 +1883,8 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         usage: usage.map((row) => [row.direction, row.outcome]),
         idled: [idleBefore, idleAfter, idleMidReply, idleDropped],
         cut: shown([...halfSpoken, ...cut]),
-        dropped: [shown(droppedStop), droppedUsage.map((row) => [row.direction, row.outcome])]
+        dropped: [shown(droppedStop), droppedUsage.map((row) => [row.direction, row.outcome])],
+        renewed: [idleBeforeRenewal, extension.at(-1)?.kind === "text", priorSettled, shown(renewedStop), renewedUsage.map((row) => [Number(row.number), row.outcome, Number(row.charged)])]
       },
       {
         opened: [
@@ -1875,7 +1904,8 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
         usage: [["transcribe", "known"], ["synthesize", "known"]],
         idled: [[1, 1], [1, 1], 1, 1],
         cut: [{ t: "tts_prepared", id: "reply-2" }, { audio: 2 + 7 + 3_200 }, { t: "error", code: "unavailable" }, { close: 1008 }],
-        dropped: [[{ close: 1000 }], [["transcribe", "unknown"], ["synthesize", "known"]]]
+        dropped: [[{ close: 1000 }], [["transcribe", "unknown"], ["synthesize", "known"]]],
+        renewed: [1, true, true, [{ close: 1000 }], [[1, "known", 10], [2, "known", 20]]]
       }
     ))
   }), 60_000)

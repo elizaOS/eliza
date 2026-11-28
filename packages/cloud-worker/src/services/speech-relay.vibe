@@ -69,8 +69,15 @@ interface Window {
   dispatched: boolean
   settled: boolean
   pcmBytes: number
+  sttUncertain: boolean
   ttsChars: number
   outputBytes: number
+}
+
+interface SttConnection {
+  readonly link: SttLink
+  lastAudioWindow: Window | undefined
+  turnOpen: boolean
 }
 
 interface Shell {
@@ -78,13 +85,11 @@ interface Shell {
   readonly windows: Window[]
   current: number
   refusal: Shortfall | undefined
-  stt: SttLink | undefined
+  stt: SttConnection | undefined
   tts: TtsLink | undefined
   readonly transcripts: string[]
   readonly spoken: Set<string>
   ttsUncertain: boolean
-  sttUncertain: boolean
-  listeningTurnOpen: boolean
   graceful: boolean
   queued: number
   gone: boolean
@@ -145,7 +150,7 @@ function windowOf(shell: Shell, number: number): Window | undefined {
 }
 
 function openWindow(number: number, expiresAt: number): Window {
-  return { number, expiresAt, dispatched: false, settled: false, pcmBytes: 0, ttsChars: 0, outputBytes: 0 }
+  return { number, expiresAt, dispatched: false, settled: false, pcmBytes: 0, sttUncertain: false, ttsChars: 0, outputBytes: 0 }
 }
 
 function iso(at: number): string {
@@ -237,7 +242,8 @@ effect function deviceEffects(shell: Shell, ports: RelayPorts, sessionId: string
       if (!acceptsAudio(before) || shell.relay.phase !== "RelayLive" || window === undefined) return
       const stt = try sttLink(shell, ports, sessionId, arrivals)
       window.pcmBytes += frame.pcm.length
-      try stt.send(frame.pcm)
+      stt.lastAudioWindow = window
+      try stt.link.send(frame.pcm)
       return
     }
     case "tts": {
@@ -310,12 +316,13 @@ effect function pump<A>(sessionId: string, arrivals: Arrivals, link: ProviderLin
   try Queue.offer(arrivals, { kind: "closed", code, from })
 }
 
-effect function sttLink(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals): SttLink!Failure!(Scope.Scope | CloudContext) {
+effect function sttLink(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals): SttConnection!Failure!(Scope.Scope | CloudContext) {
   const open = shell.stt
   if (open !== undefined) return open
-  const stt = try ports.links.openStt()
+  const link = try ports.links.openStt()
+  const stt: SttConnection = { link, lastAudioWindow: undefined, turnOpen: false }
   shell.stt = stt
-  fork.scoped pump(sessionId, arrivals, "ListeningLink", stt, stt.edges, (edge) => ({ kind: "stt", edge }))
+  fork.scoped pump(sessionId, arrivals, "ListeningLink", link, link.edges, (edge) => ({ kind: "stt", edge }))
   return stt
 }
 
@@ -466,23 +473,27 @@ effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arriv
       try advance(shell, writer, { tag: "Admitted" })
       return
     }
-    case "stt":
-      shell.listeningTurnOpen = listeningTurnAfter(shell.listeningTurnOpen, arrival.edge.kind)
+    case "stt": {
+      const stt = shell.stt
+      if (stt !== undefined) stt.turnOpen = listeningTurnAfter(stt.turnOpen, arrival.edge.kind)
       try advance(shell, writer, { tag: "ProviderStt", kind: arrival.edge.kind, transcriptChars: arrival.edge.transcript.length }, { transcript: arrival.edge.transcript })
       return
+    }
     case "tts":
       try ttsEdge(shell, writer, arrival.edge)
       return
-    case "closed":
-      if (shell.stt === arrival.from) {
+    case "closed": {
+      const stt = shell.stt
+      if (stt !== undefined && stt.link === arrival.from) {
         shell.stt = undefined
-        if (arrival.code !== 1000) shell.sttUncertain = true
-        try advance(shell, writer, listeningLinkEnd(shell.listeningTurnOpen))
+        if (arrival.code !== 1000 && stt.lastAudioWindow !== undefined) stt.lastAudioWindow.sttUncertain = true
+        try advance(shell, writer, listeningLinkEnd(stt.turnOpen))
       } else if (shell.tts === arrival.from) {
         shell.tts = undefined
-        try advance(shell, writer, speakingLinkEnd(shell.relay, shell.spoken))
+        try advance(shell, writer, speakingLinkEnd(shell.relay, Array.from(shell.spoken)))
       }
       return
+    }
     case "renewed":
       try advance(shell, writer, { tag: "WindowRenewed" })
       return
@@ -519,9 +530,7 @@ effect function readDeviceFrames(reader: Socket.Reader, shell: Shell, arrivals: 
 
 effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   const stt = shell.stt
-  const drained = shell.graceful && (stt === undefined || try stt.drain())
-  const forwarded = shell.windows.reduce((sum, window) => sum + window.pcmBytes, 0)
-  const sttFinal = shell.graceful && !shell.sttUncertain && (forwarded === 0 || drained)
+  const drained = shell.graceful && stt !== undefined && try stt.link.drain()
   const ttsFinal = shell.graceful && !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
   ports.session.retire(sessionId) catch effect (failure) => {
     try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
@@ -532,6 +541,7 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
   if (settling !== undefined) try Deferred.await(settling)
   for (const window of shell.windows) {
     if (window.settled) continue
+    const sttFinal = window.number < shell.current || (shell.graceful && !window.sttUncertain && (stt?.lastAudioWindow !== window || drained))
     const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttFinal, ttsFinal, dispatched: window.dispatched }
     ports.session.settleWindow(sessionId, window.number, usage) catch effect (failure) => {
       try annotateLogs(logError("a speech window could not be settled"), { sessionId, window: window.number, failure: failure._tag })
@@ -542,7 +552,7 @@ effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
 effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socket) {
   const shell: Shell = {
     relay: relayAtUpgrade, windows: [], current: 0, refusal: undefined, stt: undefined, tts: undefined,
-    transcripts: [], spoken: new Set(), ttsUncertain: false, sttUncertain: false, listeningTurnOpen: false,
+    transcripts: [], spoken: new Set(), ttsUncertain: false,
     graceful: false, queued: 0, gone: false, renewal: undefined, settling: undefined
   }
   const session = effect {
