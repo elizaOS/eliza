@@ -370,10 +370,30 @@ function normalizeShortFlag(head: string, letter: string): string {
   return head === "rm" && letter === "R" ? "r" : letter
 }
 
+function resolvePathText(value: string): string {
+  const absolute = value.startsWith("/")
+  const stack: string[] = []
+  for (const segment of value.split("/")) {
+    if (segment === "" || segment === ".") continue
+    if (segment === "..") {
+      if (stack.length > 0 && stack[stack.length - 1] !== "..") stack.pop()
+      else if (!absolute) stack.push("..")
+      continue
+    }
+    stack.push(segment)
+  }
+  const joined = stack.join("/")
+  const resolved = absolute ? `/${joined}` : joined === "" ? "." : joined
+  return value.endsWith("/") && resolved !== "/" && !resolved.endsWith("/") ? `${resolved}/` : resolved
+}
+
 function normalizePositional(arg: string): string {
   const lower = arg.toLowerCase()
+  if (lower === "") return lower
   if (/^\/+(?:\.|\*)?\/*$/.test(lower)) return "/"
-  return lower.replace(/\/{2,}/g, "/")
+  const eq = lower.indexOf("=")
+  const resolved = eq === -1 ? resolvePathText(lower) : `${lower.slice(0, eq + 1)}${resolvePathText(lower.slice(eq + 1))}`
+  return /^0[0-7]+$/.test(resolved) ? resolved.replace(/^0+(?=\d)/, "") : resolved
 }
 
 function compileForbiddenRule(pattern: string): ForbiddenRule | undefined {
