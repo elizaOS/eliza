@@ -14,6 +14,7 @@ module android {
     sessionId: string | undefined
     listener: ((event: CloudStreamEvent) => void) | undefined
     cancelFails: boolean
+    stopFails: number
     muteHangs: boolean
     stopped: Promise<void>
     started: Promise<void>
@@ -22,7 +23,7 @@ module android {
 
   /** @throws {never} */
   export function device(): Phone {
-    return { calls: [], utterances: [], sessionId: undefined, listener: undefined, cancelFails: false, muteHangs: false, stopped: Promise.resolve(), started: Promise.resolve(), startError: undefined }
+    return { calls: [], utterances: [], sessionId: undefined, listener: undefined, cancelFails: false, stopFails: 0, muteHangs: false, stopped: Promise.resolve(), started: Promise.resolve(), startError: undefined }
   }
 
   /** @throws {never} */
@@ -43,6 +44,10 @@ module android {
       stopCloudSpeech: async () => {
         phone.calls.push("stop")
         await phone.stopped
+        if (phone.stopFails > 0) {
+          phone.stopFails -= 1
+          throw new Error("bridge gone")
+        }
       },
       setCloudSpeechMuted: async (input) => {
         phone.calls.push(input.muted ? "mute" : "unmute")
@@ -595,6 +600,41 @@ it.live("A failure ends the session once and an owner's abort stops it (spec/os/
   owned.abort()
   try sleep("5 millis")
   assert.deepStrictEqual(other.calls, ["start production key-1", "unmute", "stop", "removed"])
+})
+
+it.live("A rejected stop is asked again by the next stop or cancel, and a confirmed stop is shared (spec/os/voice/cloudSpeech.md, \"Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once\")", () => effect {
+  const phone = device()
+  const speech = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(phone))
+  const capture = try promise(() => speech.listen(heard(new AbortController().signal).handlers))
+  phone.stopFails = 1
+  const stopping = begin(() => speech.stop())
+  const cancelling = begin(() => capture.cancel())
+  const rejected = try failure(() => stopping.settled)
+  assert.strictEqual((rejected as Error).message, "bridge gone")
+  const joined = try failure(() => cancelling.settled)
+  assert.strictEqual(joined, rejected)
+  assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "stop", "removed"])
+  try promise(() => capture.cancel())
+  try promise(() => speech.stop())
+  try promise(() => capture.cancel())
+  assert.deepStrictEqual(phone.calls, ["start production key-1", "unmute", "stop", "removed", "stop"])
+})
+
+it.live("A rejected stop of the old session during a replacement is asked again by the next stop (spec/os/voice/cloudSpeech.md, \"Every end of a session releases the microphone, settles the reply, revokes the session and reports a failure once\")", () => effect {
+  try promise(() => onFakeTimers(async () => {
+    const swapping = device()
+    const replacing = createCloudStreamingSpeech({ ...KEY, assertCurrent: () => {} }, cloudSpeech(swapping))
+    const open = await replacing.listen(heard(new AbortController().signal).handlers)
+    emit(swapping, { type: "speech-start" })
+    swapping.stopFails = 1
+    const closing = refusal(open.close())
+    await vi.advanceTimersByTimeAsync(2500)
+    assert.strictEqual(((await closing) as Error).message, "bridge gone")
+    assert.deepStrictEqual(swapping.calls, ["start production key-1", "unmute", "mute", "stop", "removed"])
+    await replacing.stop()
+    await replacing.stop()
+    assert.deepStrictEqual(swapping.calls, ["start production key-1", "unmute", "mute", "stop", "removed", "stop"])
+  }))
 })
 
 it.live("A key change ends the open session (spec/os/voice/cloudSpeech.md, \"An open session and every waiting batch request run under the current key, and a key change ends them\")", () => effect {

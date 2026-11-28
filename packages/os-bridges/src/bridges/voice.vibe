@@ -343,12 +343,20 @@ export function createCloudStreamingSpeech(input: CloudStreamingSpeechOptions, p
     ownerSignal?.removeEventListener("abort", ownerAborted)
     ownerSignal = undefined
     rejectAll(utterances, stopped())
-    stopping = stopSessionHandle(closingSession, () => port.stopCloudSpeech({ sessionId }), () => {
+    const closing = closingSession
+    const attempt = stopSessionHandle(closing, () => port.stopCloudSpeech({ sessionId }), () => {
       const current = handle
       handle = undefined
       return current?.remove()
     })
-    return stopping
+    stopping = attempt
+    void closing?.catch(() => {
+      if (closingSession === closing) closingSession = undefined
+    })
+    void attempt.catch(() => {
+      if (stopping === attempt) stopping = undefined
+    })
+    return attempt
   }
 
   const stop = (): Promise<void> => {
