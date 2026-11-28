@@ -85,4 +85,55 @@ describe("Review the exact GitHub operation before it changes a repository (spec
       sent: [{ method: "POST", url: "https://api.github.com/repos/octo/projects/issues/42/assignees", body: { assignees } }],
     }))
   })
+
+  it.effect("Labeling and issue creation report only labels and assignees omitted from GitHub's case-normalized receipt (spec/github/index.md, \"A GitHub completion applies only to the dispatched request and uses the provider's receipt\")", () => effect {
+    const requestedLabels = ["BUG", "security"]
+    const api = try Effect.try(() => githubApi({
+      "POST /repos/octo/projects/issues/42/labels": [{ id: 501, name: "bug" }, { id: 502, name: "triage" }],
+      "POST /repos/octo/projects/issues": {
+        id: 9003,
+        number: 99,
+        html_url: "https://github.com/octo/projects/issues/99",
+        labels: [{ name: "bug" }],
+        assignees: [{ login: "alice" }],
+      },
+    }))
+    const runtime = ownerRuntime()
+    const partialLabel = { parameters: { action: "issue_label", repo: "octo/projects", number: 42, labels: requestedLabels } }
+    try run(runtime, turn("00000000-0000-4000-8000-000000000040", "label issue 42"), partialLabel, api.layer)
+    const labelResult = try run(runtime, turn("00000000-0000-4000-8000-000000000041", "yes"), partialLabel, api.layer)
+
+    const fullLabel = { parameters: { action: "issue_label", repo: "octo/projects", number: 42, labels: ["BUG", "Triage"] } }
+    try run(runtime, turn("00000000-0000-4000-8000-000000000042", "label issue 42 fully"), fullLabel, api.layer)
+    const fullLabelResult = try run(runtime, turn("00000000-0000-4000-8000-000000000043", "yes"), fullLabel, api.layer)
+
+    const creation = { parameters: { action: "issue_create", repo: "octo/projects", title: "Track release", labels: requestedLabels, assignees: ["ALICE", "Bob"] } }
+    try run(runtime, turn("00000000-0000-4000-8000-000000000044", "open release issue"), creation, api.layer)
+    const createResult = try run(runtime, turn("00000000-0000-4000-8000-000000000045", "yes"), creation, api.layer)
+
+    try Effect.try(() => assert.deepStrictEqual(
+      {
+        partial: { ...outcome(labelResult), data: labelResult.data },
+        full: { ...outcome(fullLabelResult), data: fullLabelResult.data },
+        created: { ...outcome(createResult), data: createResult.data },
+      },
+      {
+        partial: {
+          success: false,
+          text: "GitHub did not apply security to #42.",
+          data: { receiptId: 501, labels: ["bug", "triage"], notApplied: { labels: ["security"] } },
+        },
+        full: {
+          success: true,
+          text: "Updated labels on #42.",
+          data: { labels: ["bug", "triage"] },
+        },
+        created: {
+          success: true,
+          text: "GitHub confirmed the operation for #99. https://github.com/octo/projects/issues/99",
+          data: { receiptId: 9003, notApplied: { labels: ["security"], assignees: ["Bob"] } },
+        },
+      },
+    ))
+  })
 })
