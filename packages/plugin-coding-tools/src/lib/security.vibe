@@ -302,6 +302,18 @@ export function splitShellArgs(raw: string): string[] | null {
       escaped = true
       continue
     }
+    if (!inSingle && !inDouble && ch === "$") {
+      if (raw.startsWith("${IFS}", i)) {
+        pushToken()
+        i += 5
+        continue
+      }
+      if (raw.startsWith("$IFS", i) && !/[A-Za-z0-9_]/.test(raw[i + 4] ?? "")) {
+        pushToken()
+        i += 3
+        continue
+      }
+    }
     if (inSingle) {
       if (ch === "'") inSingle = false
       else buf += ch
@@ -799,7 +811,7 @@ function classifyTokens(raw: readonly string[], segment: string, dialect: ShellD
   if (!unwrapped.ok) return { destructive: true, reason: unwrapped.reason, targets: [] }
   const tokens = unwrapped.tokens
   if (tokens.length === 0) return { destructive: false, targets: [] }
-  if (tokens[0].startsWith("$")) return { destructive: true, reason: "command name from an expansion requires confirmation", targets: [] }
+  if (tokens[0].includes("$")) return { destructive: true, reason: "command name from an expansion requires confirmation", targets: [] }
   const head = commandBaseName(tokens[0])
   const args = tokens.slice(1)
   if (DESTRUCTIVE_BINS.has(head) || head.startsWith("mkfs.")) {
