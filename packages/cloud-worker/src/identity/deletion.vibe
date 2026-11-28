@@ -2,6 +2,7 @@
 import { type NotAState, type Rejected, apply, callFailed, callSucceeded, canEraseFailed, canLookUpCall, canPassTime, canReplyToCall, canRequireAction, canResume, currentStep, decodeState, defaultAttemptBudget, initial, kindFor, noCall, passTime, type BillingBoundary, type Deletion, type DeletionEffect, type DeletionStep, type Event, type SagaStep } from "../../gen/cloud__identity__deletion.effect.vibe"
 import { decodeState as decodeReceipt, isUnknown, receiptStatus, staleAt } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { settleOwnedCheckouts } from "../billing/checkout-readback.vibe"
+import { eraseSponsoredRecipient } from "../billing/grant-codes.vibe"
 import { refused, wireName } from "../http/refusal.vibe"
 import type { CloudContext } from "../http/routes.vibe"
 import { bounded, dispatchOnce, renderProviderKey, replyOf, requestDigest, resolveUnknown, type LookupResult, type ProviderKey, type ProviderReply } from "../shared/dispatch-once.vibe"
@@ -92,6 +93,7 @@ effect function erasePersonalData(tx: Tx, userId: string, organizationId: string
   const row = (try tx.query("SELECT email, phone FROM accounts WHERE key = $1 AND organization_id = $2 AND status = 'deleting' FOR UPDATE", [userId, organizationId]))[0]
   if (row === undefined || (try googleTargetOf(tx, organizationId, userId)) !== undefined)
     throw new RowCorrupt({ table, key: userId, cause: "erasure needs the fenced account and completed Google custody" })
+  try eraseSponsoredRecipient(tx, toText(row.email), now)
   const destinations = [toText(row?.email), toText(row?.phone)].filter((each): each is string => each !== undefined)
   const digests: string[] = []
   for (const destination of destinations) digests.push(try keyedDigest(destination))

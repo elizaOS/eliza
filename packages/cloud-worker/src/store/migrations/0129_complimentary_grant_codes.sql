@@ -6,5 +6,5 @@ ALTER TABLE grant_codes
     recipient_digest IS NULL OR (sponsored_inference AND recipient_digest ~ '^[0-9a-f]{64}$')
   );
 
-CREATE INDEX grant_codes_pending_recipient ON grant_codes (recipient_digest, key)
-  WHERE recipient_digest IS NOT NULL AND NOT disabled AND state->'grants' = '[]'::jsonb;
+CREATE INDEX grant_codes_recipient ON grant_codes (recipient_digest, key)
+  WHERE recipient_digest IS NOT NULL;

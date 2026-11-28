@@ -25,7 +25,7 @@ describe("Cloud account views (spec/cloud/client.md, \"Story: Tell an account th
     const sponsoredHeaders = { authorization: `Bearer ${sponsor.accessToken}` }
     const minted = try cloud.inside(operate(["grants", "mint", "--family", "sponsored-views", "--plan", "pro_monthly", "--count", "1", "--lifetime", "--sponsored-inference"]))
     const code = minted.kind === "done" ? minted.lines[0] ?? "" : ""
-    const sponsors = try cloud.call("/api/v1/subscription/redeem", { method: "POST", headers: sponsoredHeaders, body: { code, idempotencyKey: "views-sponsorship" } })
+    const redemption = try cloud.call("/api/v1/subscription/redeem", { headers: sponsoredHeaders, json: { code, idempotencyKey: "views-sponsorship" } })
     const withAllowance = try snapshotFromResponse((try cloud.call("/api/v1/billing/limits", { headers: sponsoredHeaders })).body)
     const allowance = withAllowance.allowance?.available ?? 0
     const reservedAt = try Clock.currentTimeMillis
@@ -40,7 +40,7 @@ describe("Cloud account views (spec/cloud/client.md, \"Story: Tell an account th
       {
         free: [accountUsable(free), planFromSnapshot(free), creditFromSnapshot(free, now).kind, grantFromSnapshot(free, now).kind],
         granted: [accountUsable(granted), planFromSnapshot(granted), creditFromSnapshot(granted, now).kind, grantFromSnapshot(granted, now).kind, subscriptionView(granted, now).admission],
-        sponsored: [sponsors.status, sponsored.sponsoredInference, allowance > 0, sponsored.allowance?.available, sponsored.balance.usdMicros, accountUsable(sponsored), subscriptionView(sponsored, reservedAt).admission],
+        sponsored: [redemption.status, sponsored.sponsoredInference, allowance > 0, sponsored.allowance?.available, sponsored.balance.usdMicros, accountUsable(sponsored), subscriptionView(sponsored, reservedAt).admission],
         bad: bad.failure.tag,
         redeemed: [redeemed.kind, redeemed.kind === "redeemed" && redeemed.replayed],
         refusal

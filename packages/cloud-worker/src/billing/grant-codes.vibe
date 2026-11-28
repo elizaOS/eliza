@@ -66,6 +66,10 @@ effect function recipientDigest(email: string) {
   return try keyedDigest(`subscription-grant-recipient:${email}`)
 }
 
+effect function lockRecipient(tx: Tx, intended: string) {
+  try tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`grant-recipient:${intended}`])
+}
+
 function columnsAt(now: number) {
   return (code: Codes.Code) => ({
     family: code.family,
@@ -230,6 +234,7 @@ effect function redeemIn(tx: Tx, caller: RecipientAccount, key: string, idempote
     if (offer?.sponsored_inference === true && !Codes.sponsoredTermsFit(loaded.state.planKey, loaded.state.term, loaded.state.maxRedemptions, loaded.state.requiresNoPaidPlan))
       throw new RowCorrupt({ table: codes.table, key: "", cause: "sponsored grant terms" })
     const intended = toText(offer?.recipient_digest)
+    if (presentation.kind === "assigned" && intended === undefined) throw refused("GrantCodeInvalid")
     const email = gmailAddress(toText(account.email))
     const audience = intended !== undefined ? "AssignedGmail" : offer?.sponsored_inference === true ? "VerifiedGmail" : "AnyAccount"
     const exact = presentation.kind === "assigned" && email !== undefined && intended === (try recipientDigest(email))
@@ -294,10 +299,15 @@ effect function claimAssignment(tx: Tx, caller: RecipientAccount, key: string, n
 export effect function assignSponsoredGrant(tx: Tx, email: string, family: string, now: number): Assignment!{ readonly _tag: string }!Deployment {
   const intended = try recipientDigest(email)
   const key = try keyedDigest(`subscription-grant-assignment:${JSON.stringify([family, intended])}`)
-  const row = (try tx.query("SELECT key, organization_id FROM accounts WHERE email = $1 AND status = 'active'", [email]))[0]
+  const row = (try tx.query("SELECT key, organization_id FROM accounts WHERE email = $1", [email]))[0]
   const userId = toText(row?.key)
   const organizationId = toText(row?.organization_id)
-  if (organizationId !== undefined) try lockOrganization(tx, organizationId)
+  if (userId !== undefined && organizationId !== undefined) {
+    try lockOrganization(tx, organizationId)
+    const current = (try tx.query("SELECT status FROM accounts WHERE key = $1 AND organization_id = $2 AND email = $3 FOR UPDATE", [userId, organizationId, email]))[0]
+    if (current?.status !== "active") return { kind: "retired" }
+  }
+  try lockRecipient(tx, intended)
   const state = try mintedState({ type: "mint", family, planKey: "ProMonthly", term: { tag: "TermLifetime" }, requiresNoPaidPlan: true, maxRedemptions: 1, expiry: { tag: "NeverExpires" } })
   try insertCode(tx, key, state, now, true, intended)
   if (userId === undefined || organizationId === undefined) {
@@ -305,6 +315,21 @@ export effect function assignSponsoredGrant(tx: Tx, email: string, family: strin
     return current.status === "Disabled" || current.grants.length > 0 ? { kind: "retired" } : { kind: "pending" }
   }
   return try claimAssignment(tx, { userId, organizationId }, key, now)
+}
+
+export effect function eraseSponsoredRecipient(tx: Tx, rawEmail: string | undefined, now: number) {
+  const email = gmailAddress(rawEmail)
+  if (email === undefined) return
+  const intended = try recipientDigest(email)
+  try lockRecipient(tx, intended)
+  const assignments = try tx.query("SELECT key FROM grant_codes WHERE recipient_digest = $1 ORDER BY key FOR UPDATE", [intended])
+  for (const row of assignments) {
+    const key = toText(row.key)
+    if (key === undefined) throw new RowCorrupt({ table: codes.table, key: "", cause: "assignment key" })
+    const { state } = try loadRow(tx, codes, key)
+    if (Codes.canDisable(state)) try stepRow(tx, codes, key, { type: "disable" }, (disabled) => ({ ...columnsAt(now)(disabled), recipient_digest: null }))
+    else try tx.query("UPDATE grant_codes SET recipient_digest = NULL WHERE key = $1", [key])
+  }
 }
 
 export effect function activateSponsoredAssignments(tx: Tx, caller: RecipientAccount, now: number) {
@@ -330,8 +355,9 @@ export const routes: ReadonlyArray<Route> = [{
       { subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), rule: Codes.redeemPerAddress }
     ])
     const body = try jsonBody(context, RedeemBody)
-    const idempotencyKey = Codes.agreedRequestKey(context.request.headers["idempotency-key"] ?? "", body.idempotencyKey ?? "")
-    if (!redeemKeyPattern.test(idempotencyKey)) throw refused("InvalidRequest")
+    const headerKey = context.request.headers["idempotency-key"]
+    const idempotencyKey = Codes.agreedRequestKey(headerKey ?? "", body.idempotencyKey ?? "")
+    if (headerKey === "" || body.idempotencyKey === "" || !redeemKeyPattern.test(idempotencyKey)) throw refused("InvalidRequest")
     const canonical = normalizeSubscriptionCode(body.code)
     if (canonical === null) throw refused("GrantCodeInvalid")
     const key = try codeKey(canonical)

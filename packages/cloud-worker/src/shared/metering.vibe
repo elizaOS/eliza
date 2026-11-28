@@ -17,7 +17,10 @@ effect function decodeHold(input: unknown): Hold!NotAState {
   return try decodeState(hold)
 }
 
-export const holdRows = machineRows<Hold, Event, Rejected, NotAState>("holds", { initial, decodeState: decodeHold, apply })
+export const holdRows = {
+  ...machineRows<Hold, Event, Rejected, NotAState>("holds", { initial, decodeState: decodeHold, apply }),
+  encodeState: ({ sponsored, ...hold }: Hold) => sponsored ? { ...hold, sponsored } : hold
+}
 type StoredAllowancePhase =
   | { readonly phase: Exclude<PeriodPhase, "PeriodDisputed" | "PeriodRefunded">; readonly clawbackCause: "NoClawback" }
   | { readonly phase: "PeriodClawedBack"; readonly clawbackCause: Exclude<ClawbackCause, "NoClawback"> }

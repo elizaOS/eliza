@@ -225,7 +225,10 @@ describe("Membership codes (spec/cloud/billing/grantCodes.md)", () => {
     const mismatched = try cloud.call("/api/v1/subscription/redeem", otherSession, {
       headers: { "idempotency-key": "member-conflicting-key" }, json: { code: formatted, idempotencyKey: "member-request" }
     })
-    try check(() => assert.strictEqual(mismatched.status, 400))
+    const emptyBodyKey = try cloud.call("/api/v1/subscription/redeem", otherSession, {
+      headers: { "idempotency-key": "member-request" }, json: { code: formatted, idempotencyKey: "" }
+    })
+    try check(() => assert.deepStrictEqual([mismatched.status, emptyBodyKey.status], [400, 400]))
     const issued = try cloud.call("/api/v1/subscription/redeem", token, {
       headers: { "idempotency-key": "member-request" }, json: { code: formatted }
     })
