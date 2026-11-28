@@ -71,6 +71,7 @@ type UtteranceStage = UtteranceOpen | UtteranceFinishing | UtteranceCancelled | 
 type Utterance = { id: str, stage: UtteranceStage, heard: bool }
 type SttEventKind = SttConnected | StartOfTurn | TurnResumed | EndOfTurn | TranscriptUpdate | EagerEndOfTurn
 type Shortfall = CreditsShort | AllowanceShort
+type ProviderLink = ListeningLink | SpeakingLink
 type RelayErrorCode = RelayUnauthorized | RelayProtocol | RelayUnavailable | RelayClosed
 type RelayReason = NoRelayReason | FundingReason({ funding: Shortfall })
 type ServerFrame =
@@ -84,7 +85,7 @@ type RelayInput =
   | ClientStop | ClientAudio | ClientViolation
   | HelloTimedOut | Admitted | WindowRenewed | ProviderStt({ kind: SttEventKind, transcriptChars: CharCount })
   | ProviderAudio({ id: str }) | ProviderFlushed({ id: str }) | ProviderCompleted({ id: str })
-  | ProviderFailed | FundingRefused({ funding: Shortfall }) | CredentialRefused | SessionOver
+  | ProviderFailed | ProviderClosed({ link: ProviderLink }) | FundingRefused({ funding: Shortfall }) | CredentialRefused | SessionOver
 type RelayAnswer = { relay: Relay, frames: List[ServerFrame] }
 pure val maxPendingFrames = 64
 pure val maxUtterancesPerWindow = 64
@@ -260,6 +261,7 @@ pure def whileLive(r: Relay, input: RelayInput): RelayAnswer = match input {
   | ProviderFlushed(p) => if (speaking(r, p.id) and heardOf(r, p.id)) answer(withHeard(r, p.id, false), FlushedFrame({ id: p.id })) else quiet(r)
   | ProviderCompleted(p) => if (speaking(r, p.id)) answer(withUtterance(r, p.id, UtteranceDone), CompleteFrame({ id: p.id })) else quiet(r)
   | WindowRenewed => if (r.extend) answer({ ...r, windows: r.windows + 1 }, ExtendedFrame) else quiet({ ...r, windows: r.windows + 1 })
+  | ProviderClosed(c) => linkClosed(r, c.link)
   | _ => serverEnding(r, input)
 }
 pure def relayStep(r: Relay, input: RelayInput): RelayAnswer =
@@ -298,7 +300,30 @@ pure val inputValues = Set(
   HelloTimedOut, Admitted, WindowRenewed, ProviderStt({ kind: SttConnected, transcriptChars: 0 }), ProviderStt({ kind: EndOfTurn, transcriptChars: 12 }),
   ProviderStt({ kind: TranscriptUpdate, transcriptChars: 20000 }), ProviderAudio({ id: "u1" }), ProviderAudio({ id: "u2" }), ProviderFlushed({ id: "u1" }),
   ProviderFlushed({ id: "u2" }), ProviderCompleted({ id: "u1" }), ProviderCompleted({ id: "u2" }),
-  ProviderFailed, FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
+  ProviderFailed, ProviderClosed({ link: ListeningLink }), ProviderClosed({ link: SpeakingLink }), FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
+```
+
+### A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage
+
+The provider closes a socket that has carried nothing for a while, an STT
+link without audio or a TTS link without text, and that is not an outage.
+When a link's socket closes without a provider error, the shell logs which
+link ended and its close code, with no user text, and opens a new link the
+next time one is needed: STT for the next accepted audio, TTS for the next
+phrase or `finish`. The relay goes on, unless the TTS link closed while an
+utterance was open or finishing: that utterance can no longer complete, so
+the relay ends as an outage. A link that fails, a provider error, and a new
+link that cannot open are provider failures, as before.
+
+```quint
+pure def utteranceUnfinished(r: Relay): bool = r.utterances.some(u => u.stage == UtteranceOpen or u.stage == UtteranceFinishing)
+pure def linkClosed(r: Relay, link: ProviderLink): RelayAnswer =
+  if (link == SpeakingLink and utteranceUnfinished(r)) endWith(r, CauseOutage) else quiet(r)
+pure def lawAnIdleLinkThatClosesNeverEndsTheRelay(r: Relay, link: ProviderLink): bool =
+  (link == ListeningLink or not(utteranceUnfinished(r))) implies relayStep(r, ProviderClosed({ link: link })) == quiet(r)
+pure def lawASpeakingLinkThatClosesUnderAnUnfinishedUtteranceIsAnOutage(r: Relay): bool =
+  (r.phase == RelayLive and utteranceUnfinished(r)) implies relayStep(r, ProviderClosed({ link: SpeakingLink })) == endWith(r, CauseOutage)
+pure val linkValues = Set(ListeningLink, SpeakingLink)
 ```
 
 ## Story: Start speech only from a consent I gave

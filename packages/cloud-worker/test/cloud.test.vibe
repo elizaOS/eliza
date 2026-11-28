@@ -1761,6 +1761,99 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
       { phase: "closed", settled: true, renewedUnused: true }
     ))
   }), 60_000)
+  it.effect("A provider socket that closes while idle is opened again when it is next needed and Talk goes on, one that closes under an unfinished reply still ends as an outage, and audio a dropped link may have lost is charged as unknown (spec/cloud/services/speechRelay.md, \"A provider link that closes while idle is opened again when it is next needed, and one that closes under an unfinished utterance is an outage\")", () => scoped(effect {
+    const { speech, cloud } = try relayCloud()
+    const idleFor = effect (route: "stt" | "tts", code?: number) => {
+      try TestClock.withLive(sleep(Duration.millis(400)))
+      const closed = try sync(() => speech.closeIdle(route, 300, code))
+      try TestClock.withLive(sleep(Duration.millis(300)))
+      return closed
+    }
+    const talk = effect (who: string) => {
+      const caller = try signedCaller(cloud, who)
+      try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * (reservedFor(60 * 100) + reservedFor(4096 * 30)), requestKey: `${who}-funding` }))
+      const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+      const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+      const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string }
+      const socket = try acquireRelease(promise(() => openRelay(cloud.url, session.sessionId)), (relay) => sync(() => relay.close()))
+      try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+      const opened = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+      return { caller, session, socket, opened }
+    }
+    const shown = (seen: ReadonlyArray<Received>) => seen.map((received) => received.kind === "text" ? received.frame : received.kind === "binary" ? { audio: received.bytes.length } : { close: received.code })
+    const opens = (path: string) => speech.connections.filter((each) => each.path === path).length
+
+    const idle = try talk("idler")
+    const idleBefore = [try idleFor("stt"), try idleFor("tts")]
+    try sync(() => idle.socket.send(new Uint8Array(3_200)))
+    const heard = try promise(() => idle.socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "end-of-turn"))
+    try sync(() => {
+      idle.socket.send({ t: "tts", id: "reply-1", text: "Porch light is on.", flush: true })
+      idle.socket.send({ t: "finish", id: "reply-1" })
+    })
+    const spoken = try promise(() => idle.socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
+    const idleAfter = [try idleFor("stt"), try idleFor("tts")]
+    const reopened = { stt: opens("/stt/turns/websocket"), tts: opens("/tts/websocket") }
+    try sync(() => idle.socket.send({ t: "stop" }))
+    const stopped = try promise(() => idle.socket.until((received) => received.kind === "close"))
+    const phase = try closedPhase(cloud, idle.session.sessionId)
+    const usage = try sql(cloud, `SELECT u.outcome, CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
+      FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY direction DESC`, [idle.session.sessionId, idle.caller.organizationId])
+    const forwarded = speech.sttPcmBytes
+
+    const midReply = try talk("interrupted")
+    try sync(() => midReply.socket.send({ t: "tts", id: "reply-2", text: "Here is the first half", flush: false }))
+    const halfSpoken = try promise(() => midReply.socket.until((received) => received.kind === "binary"))
+    const idleMidReply = try idleFor("tts")
+    const cut = try promise(() => midReply.socket.until((received) => received.kind === "close"))
+
+    const dropped = try talk("dropped")
+    try sync(() => dropped.socket.send(new Uint8Array(3_200)))
+    const idleDropped = try idleFor("stt", 1001)
+    try sync(() => dropped.socket.send({ t: "stop" }))
+    const droppedStop = try promise(() => dropped.socket.until((received) => received.kind === "close"))
+    try closedPhase(cloud, dropped.session.sessionId)
+    const droppedUsage = try sql(cloud, `SELECT u.outcome, CASE WHEN u.hold_key = w.transcribe_hold THEN 'transcribe' ELSE 'synthesize' END AS direction
+      FROM speech_windows w JOIN usage_records u ON u.hold_key IN (w.transcribe_hold, w.synthesize_hold)
+      WHERE w.session_id = $1 AND u.organization_id = $2 ORDER BY direction DESC`, [dropped.session.sessionId, dropped.caller.organizationId])
+
+    try check(() => assert.deepStrictEqual(
+      {
+        opened: shown(idle.opened),
+        heard: shown(heard),
+        spoken: shown(spoken),
+        reopened,
+        stopped: shown(stopped),
+        forwarded,
+        phase,
+        usage: usage.map((row) => [row.direction, row.outcome]),
+        idled: [idleBefore, idleAfter, idleMidReply, idleDropped],
+        cut: shown([...halfSpoken, ...cut]),
+        dropped: [shown(droppedStop), droppedUsage.map((row) => [row.direction, row.outcome])]
+      },
+      {
+        opened: [
+          { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: idle.session.expiresAt },
+          { t: "stt", event: { type: "connected" } }
+        ],
+        heard: [
+          { t: "stt", event: { type: "start-of-turn", transcript: "" } },
+          { t: "stt", event: { type: "transcript-update", transcript: spokenTranscript.slice(0, 7) } },
+          { t: "stt", event: { type: "end-of-turn", transcript: spokenTranscript } }
+        ],
+        spoken: [{ t: "tts_prepared", id: "reply-1" }, { audio: 2 + 7 + 3_200 }, { t: "flush_complete", id: "reply-1" }, { t: "complete", id: "reply-1" }],
+        reopened: { stt: 2, tts: 2 },
+        stopped: [{ close: 1000 }],
+        forwarded: 3_200,
+        phase: "closed",
+        usage: [["transcribe", "known"], ["synthesize", "known"]],
+        idled: [[1, 1], [1, 1], 1, 1],
+        cut: [{ t: "tts_prepared", id: "reply-2" }, { audio: 2 + 7 + 3_200 }, { t: "error", code: "unavailable" }, { close: 1008 }],
+        dropped: [[{ close: 1000 }], [["transcribe", "unknown"], ["synthesize", "known"]]]
+      }
+    ))
+  }), 60_000)
 })
 describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
   it.effect('Reads the legacy Google Maps origin as the public service template (spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile")', effect () => {

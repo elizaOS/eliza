@@ -70,9 +70,12 @@ export type TtsEdge =
   | { readonly kind: "flushed"; readonly id: string }
   | { readonly kind: "completed"; readonly id: string }
 
+export type CloseCode = number | undefined
+
 export interface SttLink {
   readonly send: (pcm: Uint8Array) => void!SpeechFailure
   readonly drain: () => boolean!!
+  readonly closeCode: () => CloseCode!!
   readonly edges: Stream.Stream<SttEdge, SpeechFailure>
 }
 
@@ -80,6 +83,7 @@ export interface TtsLink {
   readonly speak: (id: string, text: string, flush: boolean) => void!SpeechFailure
   readonly finish: (id: string) => void!SpeechFailure
   readonly cancel: (id: string) => void!SpeechFailure
+  readonly closeCode: () => CloseCode!!
   readonly edges: Stream.Stream<TtsEdge, SpeechFailure>
 }
 
@@ -325,7 +329,7 @@ effect function speechSettings(): SpeechSettings!ProviderUnreachable!Deployment 
   return settings
 }
 
-effect function pump<A>(reader: Socket.Reader, edges: Edges<A>, closed: Deferred.Deferred<boolean>, decode: (chunk: string | Uint8Array) => Decoded<A>): void!! {
+effect function pump<A>(reader: Socket.Reader, edges: Edges<A>, closed: Deferred.Deferred<CloseCode>, decode: (chunk: string | Uint8Array) => Decoded<A>): void!! {
   const reading: void!(Socket.SocketError | SpeechFailure) = effect {
     while (true) {
       const chunks = try reader.pull
@@ -338,9 +342,9 @@ effect function pump<A>(reader: Socket.Reader, edges: Edges<A>, closed: Deferred
     }
   }
   reading catch effect (failure) => {
-    const clean = failure._tag === "SocketError" && failure.reason._tag === "SocketCloseError" && failure.reason.code === 1000
-    try Deferred.succeed(closed, clean)
-    if (clean) {
+    const code = failure._tag === "SocketError" && failure.reason._tag === "SocketCloseError" ? failure.reason.code : undefined
+    try Deferred.succeed(closed, code)
+    if (code !== undefined) {
       try Queue.end(edges)
     } else {
       try Queue.fail(edges, failure._tag === "SocketError" ? new ProviderUnreachable() : failure)
@@ -355,12 +359,12 @@ effect function connected<A>(url: string, version: string, decode: (chunk: strin
   const reader = socket.reader catch effect () => { throw new ProviderUnreachable() }
   const writer = try socket.writer
   const edges = try Queue.unbounded<A, SpeechFailure | Cause.Done>()
-  const closed = try Deferred.make<boolean>()
+  const closed = try Deferred.make<CloseCode>()
   fork.scoped pump(reader, edges, closed, decode)
   const write = effect (chunk: string | Uint8Array) => {
     writer.write(chunk) catch effect () => { throw new ProviderUnreachable() }
   }
-  return { settings, write, closed, edges: Stream.fromQueue(edges) }
+  return { settings, write, closed, closeCode: () => Deferred.await(closed), edges: Stream.fromQueue(edges) }
 }
 
 export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scope) {
@@ -375,8 +379,9 @@ export effect function openStt(): SttLink!SpeechFailure!(Deployment | Scope.Scop
     drain: effect () => {
       const sent = link.write(JSON.stringify({ type: "close" })) catch () => false
       if (sent === false) return false
-      return try timeoutOrElse(Deferred.await(link.closed), { duration: drainBudget, orElse: () => succeed(false) })
+      return (try timeoutOrElse(Deferred.await(link.closed), { duration: drainBudget, orElse: () => succeed(undefined) })) === 1000
     },
+    closeCode: link.closeCode,
     edges: link.edges
   }
 }
@@ -398,6 +403,7 @@ export effect function openTts(): TtsLink!SpeechFailure!(Deployment | Scope.Scop
     speak: (id: string, text: string, flush: boolean) => phrase(id, text, true, flush),
     finish: (id: string) => phrase(id, "", false, false),
     cancel: (id: string) => link.write(JSON.stringify({ context_id: id, cancel: true })),
+    closeCode: link.closeCode,
     edges: link.edges
   }
 }
