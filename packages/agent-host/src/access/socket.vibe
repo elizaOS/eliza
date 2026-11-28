@@ -3,8 +3,8 @@ module node {
   import { processOwnerUid } from "../host/process-owner.vibe"
   import { Effect, Schema, type Redacted } from "effect"
   import { once, type EventEmitter } from "node:events"
-  import { chmod, lstat } from "node:fs/promises"
-  import { createServer, type Socket } from "node:net"
+  import { chmod, lstat, rename, unlink } from "node:fs/promises"
+  import { connect, createServer, type Socket } from "node:net"
   import { dirname } from "node:path"
   import {
     admit, enabled, feedCount, frameLimitBytes, initial, isLive, isTerminal, step,
@@ -372,11 +372,41 @@ module node {
     })
   }
 
+  type SocketProbe = "answered" | "refused" | "unproven"
+
+  function probeSocket(path: string): Promise<SocketProbe> {
+    return new Promise((resolve) => {
+      const probe = connect(path)
+      const settle = (outcome: SocketProbe) => {
+        probe.destroy()
+        resolve(outcome)
+      }
+      probe.once("connect", () => settle("answered"))
+      probe.once("error", (failure: Error) => settle((failure as NodeJS.ErrnoException).code === "ECONNREFUSED" ? "refused" : "unproven"))
+      AbortSignal.timeout(1_000).addEventListener("abort", () => settle("unproven"), { once: true })
+    })
+  }
+
+  async function clearStaleSocket(path: string): Promise<void> {
+    const existing = await lstat(path).catch(() => undefined)
+    if (existing === undefined || !existing.isSocket()) return
+    if (await probeSocket(path) !== "refused") return
+    const claim = `${path}.stale-${process.pid}`
+    const claimed = await rename(path, claim).then(() => true, () => false)
+    if (!claimed) return
+    if (await probeSocket(claim) === "refused") {
+      await unlink(claim).catch(() => undefined)
+    } else {
+      await rename(claim, path).catch(() => undefined)
+    }
+  }
+
   export async function listenOnSocket(path: string, route: LocalRouter, feeds: FeedAccess): Promise<() => Promise<void>> {
     const directory = await lstat(dirname(path))
     if (!directory.isDirectory() || directory.uid !== processOwnerUid() || (directory.mode & 0o077) !== 0) {
       throw new Error("The agent socket directory must be owner-only")
     }
+    await clearStaleSocket(path)
     const exchanges = new Exchanges()
     exchanges.listen("PrivateSocket")
     const sockets = new Set<Socket>()
