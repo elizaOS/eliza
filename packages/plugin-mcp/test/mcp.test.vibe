@@ -1,7 +1,7 @@
-// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "An invocation can be sent once only after its original schema accepts the arguments"
+// spec/mcp/index.md, "Story: Call an explicitly enabled server with valid tool arguments"; spec/mcp/index.md, "A tool's parameters keep the nested shape of its input schema down to a fixed depth"; spec/mcp/index.md, "Provider schema projections retain the meaning of omitted constraints in the prompt"; spec/mcp/index.md, "An invocation can be sent once only after its original schema accepts the arguments"
 import { assert, it } from "@effect/vitest"
 import { type Action, type ActionParameters, actionToTool, AgentRuntime, stringToUuid, validateToolArgs } from "@elizaos/core"
-import { McpConnectionPolicy, mcpToolActions } from "../src/index.vibe"
+import { McpConnectionPolicy, mcpToolActions, mcpToolParameters } from "../src/index.vibe"
 
 module node {
   import { once } from "node:events"
@@ -12,15 +12,20 @@ module node {
   import { Ajv } from "ajv"
 
   const text = { type: "string" }
-  const deep = (levels: number, leaf: object = { type: "integer" }): object => levels === 0 ? leaf : { type: "object", properties: { next: deep(levels - 1, leaf) }, required: ["next"] }
+  export const deep = (levels: number, leaf: object = { type: "integer" }): object => levels === 0 ? leaf : { type: "object", properties: { next: deep(levels - 1, leaf) }, required: ["next"] }
+  export const deepArray = (levels: number, leaf: object = text): object => levels === 0 ? leaf : { type: "array", items: deepArray(levels - 1, leaf) }
+
+  const deep7 = deep(7)
+  const deep4 = deep(4)
 
   const tools = [
     { name: "push_files", inputSchema: { type: "object", properties: { branch: text, files: { type: "array", items: { type: "object", properties: { path: text, content: text }, required: ["path", "content"], additionalProperties: false } } }, required: ["branch", "files"] } },
     { name: "create_page", inputSchema: { type: "object", properties: { parent: { type: "object", properties: { page_id: text }, required: ["page_id"] }, title: { type: "string", minLength: 1, description: "Page title" } }, required: ["parent", "title"] } },
     { name: "sum_ids", inputSchema: { type: "object", properties: { ids: { type: "array", items: { type: "integer" } } }, required: ["ids"] } },
-    { name: "echo_value", inputSchema: { type: "object", properties: { value: {} }, required: ["value"] } },
+    { name: "echo_value", inputSchema: { type: "object", properties: { value: {}, note: { description: "Only words", title: "Note" } }, required: ["value"] } },
     { name: "set_labels", inputSchema: { type: "object", properties: { labels: { type: "object", additionalProperties: text } }, required: ["labels"] } },
-    { name: "nest", inputSchema: { type: "object", properties: { root: deep(7) }, required: ["root"] } },
+    { name: "set_flags", inputSchema: { type: "object", properties: { flags: { type: "object", description: "Feature flags", properties: { active: { type: "boolean" }, legacy: false } }, empty: { type: "array", items: false } }, required: ["flags"] } },
+    { name: "nest", inputSchema: { type: "object", properties: { root: deep7, exact: deep4, array5: deepArray(5), array4: deepArray(4), mapAt5: { type: "object", additionalProperties: deep4 }, mapAt4: { type: "object", additionalProperties: deep(3) } }, required: ["root"] } },
     {
       name: "query_items",
       inputSchema: {
@@ -101,7 +106,7 @@ module node {
     return { connection: { kind: "http", url: new URL(`http://127.0.0.1:${address.port}/mcp`), fetch }, called, delivered, stop: () => new Promise<void>((resolve) => http.close(() => resolve())) }
   }
 }
-import { startServer } from node
+import { deep, deepArray, startServer } from node
 
 const server = { serverId: "peer", serverEpoch: 1, transport: "HttpTransport" as const, enabled: true }
 const nested = (levels: number, leaf: unknown): unknown => levels === 0 ? leaf : { next: nested(levels - 1, leaf) }
@@ -119,7 +124,14 @@ const cases: ReadonlyArray<readonly [string, Record<string, unknown>, string | n
   ["echo_value", { value: { a: [1, { b: null }] } }, null, true],
   ["set_labels", { labels: { team: "core" } }, null, true],
   ["set_labels", { labels: { team: 1 } }, "Argument 'labels.team' expected string, got number", false],
-  ["nest", { root: nested(7, 1) }, null, true],
+  ["set_flags", { flags: { active: true }, empty: [] }, null, true],
+  ["set_flags", { flags: { legacy: true } }, null, false],
+  ["set_flags", { flags: { active: true }, empty: [1] }, null, false],
+  ["nest", { root: nested(7, 1), exact: nested(4, 2), array5: [[[[["ok"]]]]], mapAt5: { k: nested(4, 9) } }, null, true],
+  ["nest", { root: nested(7, 1), exact: nested(4, "two") }, "Argument 'exact.next.next.next.next' expected integer, got string", false],
+  ["nest", { root: nested(7, 1), array4: [[[[123]]]] }, "Argument 'array4[0][0][0][0]' expected string, got number", false],
+  ["nest", { root: nested(7, 1), array5: [[[[[123]]]]] }, null, false],
+  ["nest", { root: nested(7, 1), mapAt5: { k: nested(4, "nine") } }, null, false],
   ["nest", { root: nested(7, "one") }, null, false],
   ["query_items", { filter: { owner: "alice" }, tags: [1, 2], flex: { ok: true }, both: "s", atLimit: nested(4, { leaf: 7 }) }, null, true],
   ["query_items", { filter: null, tags: null }, null, true],
@@ -135,7 +147,7 @@ const cases: ReadonlyArray<readonly [string, Record<string, unknown>, string | n
   ["resolve_target", { target: { issue: "42" } }, "Argument 'target' did not satisfy any anyOf branch", false],
 ]
 
-it.live("An MCP tool's nested argument shapes reach the planner and the server (spec/mcp/index.md, \"A tool's parameters keep the nested shape of its input schema down to a fixed depth\")", () => scoped(effect {
+it.live("An MCP tool's nested argument shapes and omitted schema constraints reach the planner and the server (spec/mcp/index.md, \"A tool's parameters keep the nested shape of its input schema down to a fixed depth\"; spec/mcp/index.md, \"Provider schema projections retain the meaning of omitted constraints in the prompt\")", () => scoped(effect {
   const fixture = try acquireRelease(tryPromise((signal) => startServer(signal)), (fixture) => promise(() => fixture.stop()))
   let actions: Action[] = []
   provide McpConnectionPolicy = { admit: () => succeed(fixture.connection) } {
@@ -162,13 +174,26 @@ it.live("An MCP tool's nested argument shapes reach the planner and the server (
   }
   const pushFiles = try planned("push_files")
   const setLabels = try planned("set_labels")
+  const setFlags = try planned("set_flags")
+  const nest = try planned("nest")
   const echoValue = try planned("echo_value")
   const createPage = try planned("create_page")
   const queryItems = try planned("query_items")
   const resolveTarget = try planned("resolve_target")
+  const topLevelBooleans = try Effect.try(() => mcpToolParameters({ type: "object", properties: { blocked: false, open: true } }).map((entry) => [entry.name, entry.description]))
   const shapes = {
     pushFiles,
     setLabels,
+    echoNoteDescription: echoValue?.properties.note?.description,
+    setFlagsDescription: setFlags?.properties.flags?.description,
+    setFlagsEmptyDescription: setFlags?.properties.empty?.description,
+    topLevelBooleans,
+    nestRootDescription: nest?.properties.root?.description,
+    nestExactDescription: nest?.properties.exact?.description,
+    nestArray5Description: nest?.properties.array5?.description,
+    nestArray4Description: nest?.properties.array4?.description,
+    nestMapAt5Description: nest?.properties.mapAt5?.description,
+    nestMapAt4Description: nest?.properties.mapAt4?.description,
     anyValueArrayLevels: arrayLevels(echoValue?.properties.value),
     title: createPage?.properties.title,
     queryFilterAnyOf: queryItems?.properties.filter?.anyOf,
@@ -177,7 +202,7 @@ it.live("An MCP tool's nested argument shapes reach the planner and the server (
     resolveTargetAnyOf: resolveTarget?.properties.target?.anyOf,
   }
   try Effect.try(() => {
-    assert.deepStrictEqual(actions.map((entry) => entry.name), ["MCP_PEER_PUSH_FILES", "MCP_PEER_CREATE_PAGE", "MCP_PEER_SUM_IDS", "MCP_PEER_ECHO_VALUE", "MCP_PEER_SET_LABELS", "MCP_PEER_NEST", "MCP_PEER_QUERY_ITEMS", "MCP_PEER_RESOLVE_TARGET"])
+    assert.deepStrictEqual(actions.map((entry) => entry.name), ["MCP_PEER_PUSH_FILES", "MCP_PEER_CREATE_PAGE", "MCP_PEER_SUM_IDS", "MCP_PEER_ECHO_VALUE", "MCP_PEER_SET_LABELS", "MCP_PEER_SET_FLAGS", "MCP_PEER_NEST", "MCP_PEER_QUERY_ITEMS", "MCP_PEER_RESOLVE_TARGET"])
     assert.deepStrictEqual(shapes, {
       pushFiles: {
         type: "object",
@@ -189,6 +214,16 @@ it.live("An MCP tool's nested argument shapes reach the planner and the server (
         additionalProperties: false,
       },
       setLabels: { type: "object", properties: { labels: { type: "object", properties: {}, required: [], additionalProperties: { type: "string" } } }, required: ["labels"], additionalProperties: false },
+      echoNoteDescription: "Only words",
+      setFlagsDescription: 'Feature flags JSON schema: {"type":"object","description":"Feature flags","properties":{"active":{"type":"boolean"},"legacy":false}}',
+      setFlagsEmptyDescription: 'JSON schema: {"type":"array","items":false}',
+      topLevelBooleans: [["blocked", "JSON schema: false"], ["open", ""]],
+      nestRootDescription: `JSON schema: ${JSON.stringify(deep(7))}`,
+      nestExactDescription: undefined,
+      nestArray5Description: `JSON schema: ${JSON.stringify(deepArray(5))}`,
+      nestArray4Description: undefined,
+      nestMapAt5Description: `JSON schema: ${JSON.stringify({ type: "object", additionalProperties: deep(4) })}`,
+      nestMapAt4Description: undefined,
       anyValueArrayLevels: 4,
       title: { type: "string", description: 'Page title JSON schema: {"type":"string","minLength":1,"description":"Page title"}' },
       queryFilterAnyOf: [

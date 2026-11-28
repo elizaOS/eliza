@@ -175,17 +175,21 @@ function parameterShape(node: unknown, depth: number, inUnion = false): ActionPa
   return branches.length === 1 ? { ...branches[0], ...description } : { anyOf: branches, ...description }
 }
 
-function omitsConstraints(node: unknown): boolean {
+function omitsConstraints(node: unknown, depth: number): boolean {
+  if (node === false) return true
   if (!isSchemaNode(node)) return false
+  const shape = projectShape(declaredFacets(node), isTypedSchema(node), depth)
+  if (shape.anyValue) return Object.keys(node).some((keyword) => keyword !== "description" && keyword !== "title")
   return Object.entries(node).some(([keyword, value]) =>
     !WIRE_KEYWORDS.has(keyword) ||
-    (keyword === "properties" && isSchemaNode(value) && Object.values(value).some(omitsConstraints)) ||
-    ((keyword === "items" || keyword === "additionalProperties") && omitsConstraints(value)))
+    (keyword === "properties" && isSchemaNode(value) && Object.values(value).some((child) => omitsConstraints(child, depth + 1))) ||
+    (keyword === "items" && omitsConstraints(value, depth + 1)) ||
+    (keyword === "additionalProperties" && isSchemaNode(value) && omitsConstraints(value, depth + 1)))
 }
 
 function parameterDescription(node: unknown): string {
   const stated = isSchemaNode(node) && typeof node.description === "string" ? node.description : ""
-  if (!omitsConstraints(node)) return stated
+  if (!omitsConstraints(node, 0)) return stated
   const original = serialized(node)
   return original === undefined ? stated : `${stated} JSON schema: ${original}`.trim()
 }
