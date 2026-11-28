@@ -187,7 +187,7 @@ it.effect('Fork at my own message: the copy is whole before it is listed, a retr
   })
 }, 180_000)
 
-it.effect('Redact a secret: the message, its exact copies and the model-call logs of that conversation show the notice, and nothing else changes (spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one")', effect () => {
+it.effect('Redact a secret: the message, its exact copies and the model-call logs of that conversation show the notice, and nothing else changes (spec/agent/conversation/conversations.md, "A search page is a slice of the complete set of visible matches"; spec/agent/conversation/conversations.md, "Redacting replaces the message and every exact copy of its text in its conversation with a fixed notice"; spec/agent/conversation/conversations.md, "No message is ever removed, and only redaction changes one")', effect () => {
   const agent = try startInProcess()
   const runtime = agent.agent.runtime
   const secret = "my pin is 4321"
@@ -200,6 +200,13 @@ it.effect('Redact a secret: the message, its exact copies and the model-call log
   const longSecret = `${secret} `.repeat(5_000)
   const longSaid = try host("seed long secret", () => seedLong(runtime, private_.roomId, longSecret, base + 3))
   const longSegments = try host("long secret segments", () => textSegmentsOf(runtime, longSaid))
+  const beforeHistory = try history(agent, private_.id)
+  const beforeSearch = try ask(agent, { method: "GET", path: "/api/conversations/messages/search?q=4321" })
+  const beforeHits = (beforeSearch.body as { results: readonly { messageId: string; text: string }[] }).results
+  assert.deepStrictEqual({
+    history: [beforeHistory.status, beforeHistory.messages.some(({ id, text }) => id === longSaid && text === longSecret)],
+    search: [beforeSearch.status, beforeHits.some(({ messageId, text }) => messageId === longSaid && text === longSecret)],
+  }, { history: [200, true], search: [200, true] })
   try host("model-call logs", () => seedLogs(runtime, [
     { roomId: private_.roomId, type: "useModel:TEXT_LARGE", prompt: `The owner said: ${secret}` },
     { roomId: private_.roomId, type: "useModel:TEXT_SMALL", prompt: "unrelated" },
