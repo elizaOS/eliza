@@ -54,11 +54,7 @@ lemma startTurn_ensures(s: Turns, turnId: int, room: string)
     StepsFrame(s, "startTurn", after);
     AbortAppend(s, after);
     StartRooms(s, turnId, room);
-    var gid, born := StartShape(s, turnId, room, after);
-    StartAllocator(s, turnId, room);
-    StartLive(s, after, born, gid, room);
-    StartRetain(s, after, born, gid);
-    StartClosed(s, after, born);
+    StartGroups(s, turnId, room);
     StartFrames(s, turnId, room);
     StartBottom(s, turnId, room);
   }
@@ -82,17 +78,12 @@ lemma returnTurn_ensures(s: Turns, turnId: int, resolved: bool, errorId: string)
 {
   if inv(s) && canReturnTurn(s, turnId, resolved, errorId) {
     var after := returnTurn(s, turnId, resolved, errorId);
-    LookupTurns(s, turnId);
-    forall i | 0 <= i < |s.controllers.turns|
-      ensures after.controllers.turns[i].id == s.controllers.turns[i].id && after.controllers.turns[i].room == s.controllers.turns[i].room && (after.controllers.turns[i].phase.TurnDetached? <==> s.controllers.turns[i].phase.TurnDetached?)
-    {}
-    TurnIdentityMap(s, after); TurnRoomMap(s, after); AbortMap(s, after);
+    ReturnTurnMapping(s, after, turnId, resolved, errorId);
     NoticeIdentityAppend(s, after, after.controllers.notices[|s.controllers.notices|]);
     ListenersUnchangedFilters(s, after);
-    GroupFrame(s, after); StepsFrame(s, "returnTurn", after);
+    StepsFrame(s, "returnTurn", after);
     ReturnStack(s, turnId, resolved, errorId);
     ReturnClosed(s, turnId, resolved, errorId);
-    ReturnRetain(s, turnId, resolved, errorId);
   }
 }
 
@@ -1440,44 +1431,55 @@ lemma ReturnRoomClosed(s: Turns)
   }
 }
 
-lemma ReturnRoomFrames(s: Turns)
+lemma {:induction false} ReturnRoomShape(s: Turns, after: Turns) returns (keep: int)
+  requires canReturnRoomAbort(s) && after == returnRoomAbort(s)
+  ensures 0 <= keep <= |s.frames| && keep <= |after.frames|
+  ensures after.frames[..keep] == s.frames[..keep]
+  ensures |after.frames| == |s.frames| - 1
+  ensures keep < |after.frames| ==> keep == |after.frames| - 1 && s.frames[keep].GlobalFrameKind? && after.frames[keep].GlobalFrameKind?
+  ensures keep < |after.frames| ==> after.frames[keep].groups == s.frames[keep].groups && after.frames[keep].cursor == s.frames[keep].cursor
+  ensures after.controllers.turns == s.controllers.turns && after.controllers.notices == s.controllers.notices
+  ensures after.turnGroups == s.turnGroups && after.groups == s.groups
+{
+  var n := |s.frames|;
+  TopKind(s);
+  var top := s.frames[n - 1];
+  if n >= 2 && s.frames[n - 2].GlobalFrameKind? && top.fromGlobal && top.changedSignal {
+    var below := s.frames[n - 2];
+    keep := n - 2;
+    assert after.frames == s.frames[..keep] + [GlobalFrameKind(below.groups, below.cursor, below.reason, below.abortedRooms + [top.abortRoom])];
+  } else {
+    keep := n - 1;
+    assert after.frames == s.frames[..keep];
+  }
+}
+
+lemma {:induction false} ReturnRoomFrames(s: Turns)
   requires alwaysFramesRetainNotices(s) && alwaysNoticesUnique(s) && canReturnRoomAbort(s)
   ensures alwaysFramesRetainNotices(returnRoomAbort(s))
 {
   var after := returnRoomAbort(s);
-  var n := |s.frames|;
-  TopKind(s);
-  var top := s.frames[n - 1];
+  var keep := ReturnRoomShape(s, after);
   EventIdsBelow(s);
-  if n >= 2 && s.frames[n - 2].GlobalFrameKind? && top.fromGlobal && top.changedSignal {
-    var below := s.frames[n - 2];
-    assert |after.frames| == n - 1 && after.frames[..n - 2] == s.frames[..n - 2];
-    assert after.frames[n - 2] == GlobalFrameKind(below.groups, below.cursor, below.reason, below.abortedRooms + [top.abortRoom]);
-    FramesIndexed(s);
-    FrameAt(s, n - 2);
-    SoloKept(s, after, n - 2, 0);
-    FramesKeep(s, after, n - 2);
-  } else {
-    assert after.frames == s.frames[..n - 1] && after.frames[..n - 1] == s.frames[..n - 1];
-    SoloKept(s, after, n - 1, 0);
-    FramesKeep(s, after, n - 1);
+  SoloKept(s, after, keep, 0);
+  if keep < |after.frames| {
+    var before := s.frames[keep];
+    var next := after.frames[keep];
+    assert validStackFrame(after.(frames := [next]), next) by {
+      assert before in s.frames;
+      assert validStackFrame(s, before);
+    }
   }
+  FramesKeep(s, after, keep);
 }
 
-lemma ReturnRoomBottom(s: Turns)
+lemma {:induction false} ReturnRoomBottom(s: Turns)
   requires alwaysCleanupAtBottom(s) && canReturnRoomAbort(s)
   ensures alwaysCleanupAtBottom(returnRoomAbort(s))
 {
   var after := returnRoomAbort(s);
-  var n := |s.frames|;
-  TopKind(s);
-  if n >= 2 && s.frames[n - 2].GlobalFrameKind? && s.frames[n - 1].fromGlobal && s.frames[n - 1].changedSignal {
-    assert |after.frames| == n - 1 && after.frames[..n - 2] == s.frames[..n - 2];
-    BottomKeep(s, after, n - 2);
-  } else {
-    assert after.frames == s.frames[..n - 1] && after.frames[..n - 1] == s.frames[..n - 1];
-    BottomKeep(s, after, n - 1);
-  }
+  var keep := ReturnRoomShape(s, after);
+  BottomKeep(s, after, keep);
 }
 
 lemma EventTop(s: Turns)
@@ -1585,22 +1587,20 @@ lemma SoloEvent(s: Turns, f: TurnFrame)
   ProofLib.FilterOne((other: TurnFrame) => noticeFrameMatches(other, f.noticeId), [f], 0);
 }
 
-lemma RetainSplit(s: Turns)
-  ensures alwaysTurnsRetainGroups(s) == ((forall g :: g in s.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups)| == 1 && exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room) && (forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room))
+lemma {:induction false} RetainSplit(s: Turns)
+  requires alwaysTurnsRetainGroups(s)
+  ensures forall g :: g in s.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups)| == 1 && exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
+  ensures forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
 {
   AlwaysTurnsRetainGroupsFilter(s);
 }
 
-lemma RetainMap(s: Turns, after: Turns)
-  requires alwaysTurnsRetainGroups(s)
-  requires after.turnGroups == s.turnGroups
-  requires |after.groups| == |s.groups| && forall i :: 0 <= i < |s.groups| ==> after.groups[i].id == s.groups[i].id && after.groups[i].room == s.groups[i].room
-  requires |after.controllers.turns| == |s.controllers.turns| && forall i :: 0 <= i < |s.controllers.turns| ==> after.controllers.turns[i].id == s.controllers.turns[i].id && after.controllers.turns[i].room == s.controllers.turns[i].room
-  ensures (forall g :: g in after.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), after.turnGroups)| == 1 && exists t :: t in after.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in after.groups && roomGroup.id == g.group && roomGroup.room == t.room) && (forall t :: t in after.controllers.turns ==> (exists g :: g in after.turnGroups && g.turnId == t.id) && exists g :: g in after.groups && g.id == groupOf(after, t.id) && g.room == t.room)
+lemma {:induction false} RetainJoin(s: Turns)
+  requires forall g :: g in s.turnGroups ==> |ProofLib.Filter((other: TurnGroup) => (other.turnId == g.turnId), s.turnGroups)| == 1 && exists t :: t in s.controllers.turns && t.id == g.turnId && exists roomGroup :: roomGroup in s.groups && roomGroup.id == g.group && roomGroup.room == t.room
+  requires forall t :: t in s.controllers.turns ==> (exists g :: g in s.turnGroups && g.turnId == t.id) && exists g :: g in s.groups && g.id == groupOf(s, t.id) && g.room == t.room
+  ensures alwaysTurnsRetainGroups(s)
 {
-  RetainSplit(s);
-  RetainMapGroups(s, after);
-  RetainMapTurns(s, after);
+  AlwaysTurnsRetainGroupsFilter(s);
 }
 
 lemma RetainMapGroups(s: Turns, after: Turns)
@@ -1912,15 +1912,17 @@ lemma CleanupIds(s: Turns, turnId: int, after: Turns)
 {
 }
 
-lemma RetainFull(s: Turns, after: Turns)
+lemma {:induction false} RetainFull(s: Turns, after: Turns)
   requires alwaysTurnsRetainGroups(s)
   requires after.turnGroups == s.turnGroups
   requires |after.groups| == |s.groups| && forall i :: 0 <= i < |s.groups| ==> after.groups[i].id == s.groups[i].id && after.groups[i].room == s.groups[i].room
   requires |after.controllers.turns| == |s.controllers.turns| && forall i :: 0 <= i < |s.controllers.turns| ==> after.controllers.turns[i].id == s.controllers.turns[i].id && after.controllers.turns[i].room == s.controllers.turns[i].room
   ensures alwaysTurnsRetainGroups(after)
 {
-  RetainMap(s, after);
-  RetainSplit(after);
+  RetainSplit(s);
+  RetainMapGroups(s, after);
+  RetainMapTurns(s, after);
+  RetainJoin(after);
 }
 
 lemma CleanupBasics(s: Turns, turnId: int)
@@ -1976,12 +1978,21 @@ lemma ReturnStack(s: Turns, turnId: int, resolved: bool, errorId: string)
   BottomKeep(s, after, 0);
 }
 
-lemma ReturnRetain(s: Turns, turnId: int, resolved: bool, errorId: string)
-  requires alwaysTurnsRetainGroups(s) && canReturnTurn(s, turnId, resolved, errorId)
-  ensures alwaysTurnsRetainGroups(returnTurn(s, turnId, resolved, errorId))
+lemma {:induction false} ReturnTurnMapping(s: Turns, after: Turns, turnId: int, resolved: bool, errorId: string)
+  requires inv(s) && canReturnTurn(s, turnId, resolved, errorId)
+  requires after == returnTurn(s, turnId, resolved, errorId)
+  ensures alwaysTurnIdentity(after) && alwaysActiveRoomsMatch(after) && stepFirstAbortReasonStays(s, after)
+  ensures alwaysLiveGroupOwnsTurns(after) && alwaysGroupAllocatorValid(after) && alwaysTurnsRetainGroups(after)
 {
-  RetainMap(s, returnTurn(s, turnId, resolved, errorId));
-  RetainSplit(returnTurn(s, turnId, resolved, errorId));
+  LookupTurns(s, turnId);
+  forall i | 0 <= i < |s.controllers.turns|
+    ensures after.controllers.turns[i].id == s.controllers.turns[i].id && after.controllers.turns[i].room == s.controllers.turns[i].room && (after.controllers.turns[i].phase.TurnDetached? <==> s.controllers.turns[i].phase.TurnDetached?)
+  {}
+  TurnIdentityMap(s, after);
+  TurnRoomMap(s, after);
+  AbortMap(s, after);
+  GroupFrame(s, after);
+  RetainFull(s, after);
 }
 
 lemma CleanupSteps(s: Turns, turnId: int)
@@ -2006,6 +2017,21 @@ lemma ReturnClosed(s: Turns, turnId: int, resolved: bool, errorId: string)
     var i :| 0 <= i < |after.controllers.turns| && after.controllers.turns[i] == t2;
     assert s.controllers.turns[i] in s.controllers.turns;
   }
+}
+
+lemma {:induction false} StartGroups(s: Turns, turnId: int, room: string)
+  requires inv(s) && canStartTurn(s, turnId, room)
+  ensures alwaysGroupAllocatorValid(startTurn(s, turnId, room))
+  ensures alwaysLiveGroupOwnsTurns(startTurn(s, turnId, room))
+  ensures alwaysTurnsRetainGroups(startTurn(s, turnId, room))
+  ensures alwaysClosedPendingHasGlobalOwner(startTurn(s, turnId, room))
+{
+  var after := startTurn(s, turnId, room);
+  var gid, added := StartShape(s, turnId, room, after);
+  StartAllocator(s, turnId, room);
+  StartLive(s, after, added, gid, room);
+  StartRetain(s, after, added, gid);
+  StartClosed(s, after, added);
 }
 
 lemma StartShape(s: Turns, turnId: int, room: string, after: Turns) returns (gid: int, added: TurnEntry)
@@ -2219,7 +2245,7 @@ lemma StartLive(s: Turns, after: Turns, added: TurnEntry, gid: int, room: string
   }
 }
 
-lemma StartRetain(s: Turns, after: Turns, added: TurnEntry, gid: int)
+lemma {:induction false} StartRetain(s: Turns, after: Turns, added: TurnEntry, gid: int)
   requires alwaysTurnsRetainGroups(s)
   requires after.controllers.turns == s.controllers.turns + [added]
   requires after.turnGroups == s.turnGroups + [TurnGroup(added.id, gid)]
@@ -2234,7 +2260,7 @@ lemma StartRetain(s: Turns, after: Turns, added: TurnEntry, gid: int)
   RetainSplit(s);
   StartRetainGroups(s, after, added, gid);
   StartRetainTurns(s, after, added, gid);
-  RetainSplit(after);
+  RetainJoin(after);
 }
 
 lemma StartRetainGroups(s: Turns, after: Turns, added: TurnEntry, gid: int)
@@ -2367,8 +2393,7 @@ lemma VisitBasics(s: Turns)
   GroupFrame(s, after);
   assert after.controllers.closed == s.controllers.closed;
   StepsVisit(s, after);
-  RetainMap(s, after);
-  RetainSplit(after);
+  RetainFull(s, after);
   VisitClosed(s); VisitFrames(s); VisitBottom(s);
 }
 

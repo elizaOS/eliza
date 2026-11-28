@@ -64,7 +64,7 @@ The spec format, naming rules and everything the tools accept are in
 ## Loading skills
 
 The canonical skill files are committed in `.agents/skills/`, including
-`sync`, `shell`, `prove`, `design`, `architect` and the [principles](#principles).
+`sync`, `shell`, `prove`, `design`, `alchemy`, `architect` and the [principles](#principles).
 Edit them there. `pnpm install` and `spec init` create project-relative skill
 links for Claude, Cursor, Muse, Grokbot and the other supported agents, and
 `CLAUDE.md` links to `AGENTS.md`. These generated paths are ignored by Git;
@@ -119,7 +119,8 @@ Every project built here uses this, and nothing beside it:
 | User interface | React, in `.tsx`, built with Vite | Vue, Svelte, Angular, hand-built DOM |
 | UI state | React hooks over the generated machine's `Machine` service | state kept in a component that the spec owns |
 | Styling | Tailwind CSS v4 with the project's design tokens, shadcn/ui conventions on Radix primitives | hard-coded colors, a second token set, global CSS beyond the token file |
-| Tests | Vitest with `@effect/vitest`, on `test/**/*.test.{ts,tsx,vibe}`; a driver for a shell that keeps a machine's state; Bombadil exploring each page | Jest, `node --test` for a new test |
+| Deployment & local runtime | [Alchemy v2](.agents/skills/alchemy/SKILL.md) (`alchemy.run`) on Cloudflare Workers, Static Assets, Hyperdrive, and SQLite Durable Objects | ad-hoc `wrangler` deploy scripts, Terraform/Pulumi, `@cloudflare/vite-plugin`, legacy Alchemy v1 |
+| Tests | Vitest with `@effect/vitest`, on `test/**/*.test.{ts,tsx,vibe}`; a driver for a shell that keeps a machine's state; Bombadil exploring each page; offline `workerd` deploy tests via `@alchemy.run/test/Vitest` (`pnpm test:deploy`) | Jest, `node --test` for a new test |
 
 - **Every interface is React**: an application's, an example's and Studio's.
 - **Reuse before adding.** Find the component, token or service that exists
@@ -140,6 +141,7 @@ installed the tools has `README.md` in `node_modules/vibestack/`.
 | [`shell` skill](.agents/skills/shell/SKILL.md) | writing `src/` or a test: VibeLang, the Effect adapter, the React interface, building and running |
 | [`prove` skill](.agents/skills/prove/SKILL.md) | a `proof` stage `✗`, writing a `.proof.dfy`, or a `//@` file |
 | [`design` skill](.agents/skills/design/SKILL.md) | anything a person looks at: layout, components, stories and tokens |
+| [`alchemy` skill](.agents/skills/alchemy/SKILL.md) | configuring `alchemy.run.ts`, running local `workerd` dev/tests (`pnpm dev:cf`, `pnpm test:deploy`), deploying to Cloudflare, or writing deployment CI workflows |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | generated files, tests, caching and CI; adding a package or task, or changing the tools under `vibestack/` |
 | [Toolchain README](vibestack/README.md#commands) | the commands, Studio, and [using the tools from another package](vibestack/README.md#using-it-from-another-package) |
 
@@ -402,6 +404,11 @@ How `pnpm check` runs them, in its `tests` stage:
   checking `test/bombadil.ts`, or Bombadil's defaults, in every state
   ([SPEC.md, "Exploring the page"](SPEC.md#exploring-the-page)). A property
   there cites its rule as a test does.
+- **Deployment runtime is verified offline.** Packages with Cloudflare Workers
+  or static assets verify their built bundles inside local `workerd` via
+  `pnpm test:deploy` (`@alchemy.run/test/Vitest` with `dev: true`), keeping
+  `pnpm check` offline and fast while catching edge runtime errors before
+  deploying ([`alchemy` skill](.agents/skills/alchemy/SKILL.md)).
 - **Notes**, never failures: two test files for one runner and language, a
   test file of 15,000 lines, and a spec of the package that no test cites and
   no driver, trace or `driver:` script checks.

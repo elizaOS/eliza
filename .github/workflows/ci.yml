@@ -34,6 +34,23 @@ jobs:
             packages/os/android/android-runtime-inventory.mjs
       - uses: ./.github/actions/verify-android-node-lock
 
+  test-deploy:
+    name: Verify Cloud Worker in offline workerd
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_CACHE: ${{ secrets.TURBO_TOKEN != '' && 'local:rw,remote:r' || 'local:rw' }}
+      ALCHEMY_FAST_DISTILLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          job: test-deploy
+          verification: "false"
+      - run: pnpm all '@elizaos/cloud-worker#build'
+      - run: pnpm --filter @elizaos/cloud-worker test:deploy
+
   verify:
     name: ${{ matrix.name }}
     needs: vibestack-precompute-simulations
@@ -46,7 +63,8 @@ jobs:
           - name: verify
             tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
     env: &cache-env
-      TURBO_CACHE: local:rw
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_CACHE: ${{ secrets.TURBO_TOKEN != '' && (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && 'local:rw,remote:rw' || 'local:rw,remote:r') || 'local:rw' }}
     steps: &verification-steps
       - uses: actions/checkout@v7
       - id: setup

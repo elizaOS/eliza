@@ -22,6 +22,7 @@
     ]
   },
   "include": [
+    "vibestack/alchemy.ts",
     "vibestack/spec.ts",
     "vibestack/formal.ts",
     "vibestack/studio/src/main.vibe",

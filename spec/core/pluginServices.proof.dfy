@@ -2332,6 +2332,35 @@ lemma PluginAppendObservedInstanceSlot(g: RetirementGroup, after: RetirementGrou
   }
 }
 
+lemma ObserveStopRetirementUpdate(s: PluginServices, epochId: int) returns (k: int, updated: ServiceRetirement, group: RetirementGroup)
+  requires inv(s) && canObserveInstanceStop(s, epochId)
+  ensures 0 <= k < |s.retirements|
+  ensures 0 <= s.retirements[k].cursor < |s.retirements[k].groups| == s.retirements[k].cursor + 1
+  ensures retirementShaped(s.retirements[k])
+  ensures currentGroup(s, epochId) == s.retirements[k].groups[s.retirements[k].cursor]
+  ensures group == advanceInstanceSlot(currentGroup(s, epochId))
+  ensures updated == s.retirements[k].(groups := s.retirements[k].groups[s.retirements[k].cursor := group], failures := updated.failures)
+  ensures observeInstanceStop(s, epochId) == s.(retirements := s.retirements[k := updated])
+{
+  k := CurrentAt(s, epochId);
+  var r := s.retirements[k];
+  var g := r.groups[r.cursor];
+  var o := core__serviceInstances_serviceObject(s.services, currentInstance(s, epochId));
+  var failures := if o.stopPhase.StopFailed? then r.failures + [o.errorId] else r.failures;
+  var counted := s.(retirements := s.retirements[k := r.(failures := failures)]);
+  assert counted == s.(retirements := (var retirements := s.retirements; seq(|retirements|, i requires 0 <= i < |retirements| => var prior := retirements[i]; (if ((prior.epochId == epochId) && o.stopPhase.StopFailed?) then prior.(failures := (prior.failures + [o.errorId])) else prior)))) by {
+    var mapped := seq(|s.retirements|, i requires 0 <= i < |s.retirements| => var prior := s.retirements[i]; (if ((prior.epochId == epochId) && o.stopPhase.StopFailed?) then prior.(failures := (prior.failures + [o.errorId])) else prior));
+    forall i | 0 <= i < |s.retirements| ensures mapped[i] == counted.retirements[i] {
+      if i != k { assert s.retirements[i].epochId != epochId; }
+    }
+    assert mapped == counted.retirements;
+  }
+  group := advanceInstanceSlot(g);
+  GroupsDistinct(r);
+  PutAt(counted, epochId, group, k);
+  updated := r.(groups := r.groups[r.cursor := group], failures := failures);
+}
+
 lemma observeInstanceStop_ensures(s: PluginServices, epochId: int)
   ensures (inv(s) ==> canObserveInstanceStop(s, epochId) ==> alwaysEpochIdentityUnique(observeInstanceStop(s, epochId)))
   ensures (inv(s) ==> canObserveInstanceStop(s, epochId) ==> alwaysOneActiveEpochPerName(observeInstanceStop(s, epochId)))
@@ -2351,32 +2380,35 @@ lemma observeInstanceStop_ensures(s: PluginServices, epochId: int)
   ensures (inv(s) ==> canObserveInstanceStop(s, epochId) ==> alwaysSealedOwnedClassesStable(observeInstanceStop(s, epochId)))
 {
   if inv(s) && canObserveInstanceStop(s, epochId) {
-    var k := CurrentAt(s, epochId);
+    var k, r2, g2 := ObserveStopRetirementUpdate(s, epochId);
     var r := s.retirements[k];
     var g := r.groups[r.cursor];
     assert g in r.groups && r in s.retirements;
-    var o := core__serviceInstances_serviceObject(s.services, currentInstance(s, epochId));
-    var counted := s.(retirements := s.retirements[k := r.(failures := (if o.stopPhase.StopFailed? then r.failures + [o.errorId] else r.failures))]);
-    var rc := counted.retirements[k];
-    assert counted == s.(retirements := (var s_map := s.retirements; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var x := s_map[i_map]; (if ((x.epochId == epochId) && o.stopPhase.StopFailed?) then x.(failures := (x.failures + [o.errorId])) else x))));
-    var g2 := advanceInstanceSlot(g);
-    GroupsDistinct(r);
-    PutAt(counted, epochId, g2, k);
-    var r2 := rc.(groups := r.groups[r.cursor := g2]);
     var after := observeInstanceStop(s, epochId);
-    assert after == s.(retirements := s.retirements[k := r2]);
-    StopsValid(g2, after.services);
     UAt(s, after, k, r2);
-    ShapeReplaceCurrent(r, r2, g2);
-    ShapeAt(s, after, k, r2);
-    StopsValid(g, s.services);
-    SlotsAtGroup(s, after, k, r.cursor, g2, r2);
-    OwnsOpen(s, k);
-    NoResourcesAt(s, after, k, r2);
-    OrphanAt(s, after, k, r.cursor, g2, r2);
-    StepSameObjects(s.services, after.services);
-    ReachAt(s, after, k, r.cursor, g2, r2);
-    UndeclaredAt(s, after, k, r.cursor, g2, r2);
+    assert alwaysRetirementFollowsPlan(after) by {
+      ShapeReplaceCurrent(r, r2, g2);
+      ShapeAt(s, after, k, r2);
+    }
+    assert alwaysStopObservationsFollowSlots(after) by {
+      StopsValid(g, s.services);
+      StopsValid(g2, after.services);
+      SlotsAtGroup(s, after, k, r.cursor, g2, r2);
+    }
+    assert alwaysRetiredEpochHasNoResources(after) by {
+      OwnsOpen(s, k);
+      NoResourcesAt(s, after, k, r2);
+    }
+    assert alwaysNoOrphanInstance(after) by {
+      OrphanAt(s, after, k, r.cursor, g2, r2);
+    }
+    assert alwaysLiveInstanceReachable(after) by {
+      StepSameObjects(s.services, after.services);
+      ReachAt(s, after, k, r.cursor, g2, r2);
+    }
+    assert alwaysRetiredUndeclaredTypeIsUnknown(after) by {
+      UndeclaredAt(s, after, k, r.cursor, g2, r2);
+    }
     ClassShape(s, after);
   }
 }

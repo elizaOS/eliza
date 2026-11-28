@@ -1,0 +1,20 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": [
+      "es2024",
+      "dom",
+      "dom.iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "resolveJsonModule": true,
+    "allowArbitraryExtensions": true
+  },
+  "include": [
+    "./**/*.ts",
+    "../alchemy.run.ts"
+  ]
+}

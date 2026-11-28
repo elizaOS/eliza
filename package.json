@@ -91,6 +91,9 @@
   },
   "scripts": {
     "dev": "turbo run dev //#studio",
+    "dev:cf": "ALCHEMY_FAST_DISTILLED=1 alchemy --fast-distilled dev",
+    "deploy": "ALCHEMY_FAST_DISTILLED=1 alchemy --fast-distilled deploy --adopt",
+    "deploy:plan": "ALCHEMY_FAST_DISTILLED=1 alchemy --fast-distilled plan --adopt",
     "studio": "node vibestack/spec.ts studio",
     "check": "node --import ./vibestack/ci-check-phase.ts vibestack/spec.ts check",
     "gen": "node vibestack/spec.ts gen",
@@ -109,6 +112,7 @@
     "prepack": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "test:browser": "node vibestack/spec.ts tasks test:browser",
+    "test:deploy": "node vibestack/spec.ts tasks test:deploy",
     "test:models": "node vibestack/spec.ts tasks check",
     "typecheck": "vibelang --noEmit -p tsconfig.json",
     "lint": "node vibestack/spec.ts tasks //#lint:js //#lint:css",
@@ -161,6 +165,8 @@
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
+    "@alchemy.run/cloudflare": "catalog:",
+    "@alchemy.run/test": "catalog:",
     "@effect/vitest": "4.1.1",
     "@eslint-react/eslint-plugin": "catalog:",
     "@eslint/js": "catalog:",
@@ -168,6 +174,7 @@
     "@types/node": "^26.6.6",
     "@vitest/browser": "catalog:",
     "@vitest/browser-playwright": "catalog:",
+    "alchemy": "catalog:",
     "eslint": "catalog:",
     "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-better-tailwindcss": "catalog:",
@@ -203,6 +210,7 @@
   },
   "packageManager": "pnpm@10.24.0",
   "exports": {
+    "./alchemy": "./vibestack/alchemy.ts",
     "./formal": "./vibestack/formal.ts",
     "./testing": "./vibestack/testing/index.ts",
     "./testing/vitest": "./vibestack/testing/vitest.ts",
@@ -216,6 +224,7 @@
   },
   "publishConfig": {
     "exports": {
+      "./alchemy": "./dist/alchemy.js",
       "./formal": "./dist/formal.js",
       "./testing": "./dist/testing/index.js",
       "./testing/vitest": "./dist/testing/vitest.js",
