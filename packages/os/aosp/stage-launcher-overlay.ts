@@ -36,7 +36,10 @@ export interface CompanionDescriptor {
 }
 /** The only signature|privileged permissions a reviewed descriptor may name. */
 export const REVIEWED_PRIVILEGED_PERMISSIONS: readonly string[] = Object.freeze(
-  ["android.permission.READ_PRIVILEGED_PHONE_STATE"],
+  [
+    "android.permission.READ_PRIVILEGED_PHONE_STATE",
+    "android.permission.INSTALL_SELF_UPDATES",
+  ],
 );
 export interface LauncherDescriptor {
   schemaVersion: 1;
@@ -95,7 +98,9 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
       new Set(d.defaultPermissions).size !== d.defaultPermissions.length ||
       d.defaultPermissions.some(
         (permission) =>
-          typeof permission !== "string" || !PERMISSION.test(permission),
+          typeof permission !== "string" ||
+          !PERMISSION.test(permission) ||
+          REVIEWED_PRIVILEGED_PERMISSIONS.includes(permission),
       ))
   )
     throw new Error("Invalid default permissions");
@@ -110,12 +115,6 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
       ))
   )
     throw new Error("Invalid privileged permissions");
-  if (
-    d.privilegedPermissions?.some((permission) =>
-      d.defaultPermissions?.includes(permission),
-    )
-  )
-    throw new Error("A permission is both default and privileged");
   if (d.partition !== undefined && !["product", "system"].includes(d.partition))
     throw new Error("Invalid launcher partition");
   if (d.companions !== undefined) {
