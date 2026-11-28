@@ -100,10 +100,8 @@ pure def actionArgumentKeys(submittedFields: Set[str]): Set[str] = submittedFiel
 pure val namedFieldsValues = Set(Set(), Set("operation"), Set("operation", "input"))
 pure val submittedFieldsValues = Set(Set(), Set("cue"), Set("cue", "input"), Set("operation", "input", "other"))
 pure val extraKeysValues = Set(AP::ExtraKeysUnset, AP::ExtraKeysAllowed, AP::ExtraKeysRefused)
-pure def lawAnObjectThatDoesNotOfferExtraKeysMustNameItsFields(extraKeys: AP::ExtraKeysChoice): bool =
-  extraKeys != AP::ExtraKeysAllowed implies not(argumentShapeNamesContents(OfferedObject({ namedFieldCount: 0, extraKeys: extraKeys })))
-pure def lawAnOpenObjectCanTakeFieldsWithoutNamingThem(): bool =
-  argumentShapeNamesContents(OfferedObject({ namedFieldCount: 0, extraKeys: AP::ExtraKeysAllowed }))
+pure def lawAnUnnamedObjectMustExplicitlyAllowKeys(extraKeys: AP::ExtraKeysChoice): bool =
+  argumentShapeNamesContents(OfferedObject({ namedFieldCount: 0, extraKeys: extraKeys })) == (extraKeys == AP::ExtraKeysAllowed)
 pure def lawAnArrayNamesItsItems(hasItemSchema: bool): bool =
   argumentShapeNamesContents(OfferedArray({ hasItemSchema: hasItemSchema })) == hasItemSchema
 pure def lawNamedFieldsAreNeverUnexpected(namedFields: Set[str], submittedFields: Set[str], extraKeys: AP::ExtraKeysChoice): bool =
