@@ -87,6 +87,28 @@ lemma PostSettlementKeepsUnresolved(s: PostDelivery, after: PostDelivery)
   }
 }
 
+lemma PostSettlementPreservesTaskFields(s: PostDelivery, taskId: int, ok: bool)
+  ensures |settlePostTask(s, taskId, ok).tasks| == |s.tasks|
+  ensures forall i :: 0 <= i < |s.tasks| ==>
+    settlePostTask(s, taskId, ok).tasks[i].id == s.tasks[i].id &&
+    settlePostTask(s, taskId, ok).tasks[i].runtime == s.tasks[i].runtime
+  ensures forall i :: 0 <= i < |s.tasks| && !settlePostTask(s, taskId, ok).tasks[i].phase.SettledTask? ==>
+    settlePostTask(s, taskId, ok).tasks[i] == s.tasks[i]
+{
+  var after := settlePostTask(s, taskId, ok);
+  forall i | 0 <= i < |s.tasks|
+    ensures after.tasks[i].id == s.tasks[i].id && after.tasks[i].runtime == s.tasks[i].runtime
+    ensures !after.tasks[i].phase.SettledTask? ==> after.tasks[i] == s.tasks[i]
+  {
+    var prior := s.tasks[i];
+    if maySettleTask(prior, taskId, ok) {
+      assert after.tasks[i] == prior.(phase := PostTaskPhase.SettledTask, failed := !ok);
+    } else {
+      assert after.tasks[i] == prior;
+    }
+  }
+}
+
 lemma PostPendingFilter(s: PostDelivery, runtimeId: int)
   ensures pendingRuntimeTasks(s, runtimeId) ==
     ProofLib.Filter((task: PostTask) => runtimePending(task, runtimeId), s.tasks)
@@ -473,7 +495,20 @@ lemma trackPostTask_ensures(s: PostDelivery, taskId: int, runtimeId: int, room: 
     PostAcceptsTaskOutsideQuarantine(s, after, runtimeId, added);
     PostIssuedTaskAppend(s, after, taskId);
     PostDrainsUnchanged(s, after);
-
+    assert alwaysUnresolvedCaptureHasBoundary(after) by {
+      forall task | task in after.tasks && !task.phase.SettledTask? && task.permission.UnknownPermission?
+        ensures (task.phase.PendingTask? || task.phase.WaitingForDelivery?) && task.waitsForDelivery &&
+          (exists b :: b in after.boundaries && b.runtime == task.runtime && b.room == task.room &&
+            b.lease == task.lease && b.status.WaitingDelivery?)
+      {
+        if task == added {
+          assert task.waitsForDelivery && task.phase.PendingTask?;
+          assert task.permission == capturedPermission(s, task.runtime, task.room, task.lease);
+        } else {
+          assert task in s.tasks;
+        }
+      }
+    }
   }
 }
 
@@ -536,23 +571,10 @@ lemma settlePostTask_ensures(s: PostDelivery, taskId: int, ok: bool)
     var after := settlePostTask(s, taskId, ok);
     PostNoQuarantineChange(s, after);
     PostDrainsUnchanged(s, after);
+    PostSettlementPreservesTaskFields(s, taskId, ok);
     PostSameTaskCustody(s, after);
-    forall i | 0 <= i < |s.tasks| && !after.tasks[i].phase.SettledTask?
-      ensures !s.tasks[i].phase.SettledTask? && after.tasks[i].runtime == s.tasks[i].runtime &&
-        after.tasks[i].aborted == s.tasks[i].aborted
-    {}
     PostKeepsQuarantineAbort(s, after);
-    forall i | 0 <= i < |s.tasks| && after.tasks[i].phase.PendingTask?
-      ensures s.tasks[i].phase.PendingTask? && after.tasks[i] == s.tasks[i]
-    {}
-    forall i | 0 <= i < |s.tasks| && (after.tasks[i].phase.WaitingForDelivery? || after.tasks[i].phase.RunningTask?)
-      ensures (s.tasks[i].phase.WaitingForDelivery? || s.tasks[i].phase.RunningTask?) &&
-        after.tasks[i].invoked == s.tasks[i].invoked
-    {}
     PostKeepsInvocation(s, after);
-    forall i | 0 <= i < |s.tasks| && !after.tasks[i].phase.SettledTask?
-      ensures after.tasks[i] == s.tasks[i]
-    {}
     PostSettlementKeepsUnresolved(s, after);
   }
 }

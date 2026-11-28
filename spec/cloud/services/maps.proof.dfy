@@ -110,21 +110,26 @@ lemma SetHasMin(meters: seq<int>, s: set<int>) returns (m: int)
   decreases |s|
 {
   var y :| y in s;
-  if |s| == 1 {
+  var rest := s - {y};
+  assert rest + {y} == s;
+  if rest == {} {
     m := y;
   } else {
-    var rest := s - {y};
     var r := SetHasMin(meters, rest);
     NearerTotalOrder(meters, y, r, y);
-    if nearerThan(meters, y, r) {
-      m := y;
-      forall x | x in s && x != m ensures nearerThan(meters, m, x) {
+    m := if nearerThan(meters, y, r) then y else r;
+    forall x | x in s && x != m ensures nearerThan(meters, m, x) {
+      if m == y {
         if x != r {
+          assert x in rest;
+          assert nearerThan(meters, r, x);
           NearerTotalOrder(meters, y, r, x);
         }
+      } else if x != y {
+        assert x in rest;
+      } else {
+        assert nearerThan(meters, r, y);
       }
-    } else {
-      m := r;
     }
   }
 }

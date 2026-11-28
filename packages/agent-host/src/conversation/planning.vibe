@@ -147,7 +147,7 @@ const insideASentence = {
   test: (said: string) => [...said.matchAll(boundary)].some(([, before = "", stop, next = ""]) => stop !== "." || !continuesAfter(before, next)),
 }
 
-export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {
+function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): ReadonlyMap<number, Report> {
   const told = new Set<string>()
   return new Map([...quotes].toSorted(([a], [b]) => a - b).map(([point, read]): [number, Report] => {
     const own = read.find(({ span, sentence }) => span === "OneSentence" && !told.has(sentence))
@@ -159,7 +159,7 @@ export function reportsEach(quotes: ReadonlyMap<number, readonly Report[]>): Rea
   }))
 }
 
-export function reportIn(prose: string, quote: string): Report {
+function reportIn(prose: string, quote: string): Report {
   const said = quote.replace(/[\s.!?…*_"”]+$/u, "").trim()
   if (said === "") return { span: "NoQuote", sentence: "" }
   if (insideASentence.test(said)) return { span: "Fragment", sentence: "" }
@@ -185,7 +185,7 @@ export interface Point {
   readonly needed: boolean
 }
 
-export function writtenToTheModel(result: ActionResult): readonly string[] {
+function writtenToTheModel(result: ActionResult): readonly string[] {
   const owner = result.verifiedUserFacing === true ? result.userFacingText?.trim() : undefined
   const data = typeof result.data === "object" && result.data !== null ? Object.values(result.data) : []
   return [...new Set([result.verifiedUserFacing === true ? undefined : result.userFacingText, errorText(result.error), result.text, ...data]
@@ -239,7 +239,7 @@ const runsOf = (text: string) => {
   return words.length < 5 ? [] : words.slice(0, words.length - 4).map((_, at) => words.slice(at, at + 5).join(" "))
 }
 
-export function echoesHostText(sentence: string, hostTexts: readonly string[], ownerSaid = ""): boolean {
+function echoesHostText(sentence: string, hostTexts: readonly string[], ownerSaid = ""): boolean {
   const said = new Set(runsOf(sentence))
   const tokens = new Set(tokensOf(sentence))
   const ownerRuns = new Set(runsOf(ownerSaid))
@@ -980,6 +980,19 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
         break plan
     }
   }
+  const { reply, notices, firstReports, firstEchoes, reask, compose } = plannedReply(input, conversation, tools, offeredNames, steps, prose)
+  return { reply, notices, cutOff: stoppedShort, steps, streamed, firstReports, firstEchoes, reask, compose }
+}
+
+function plannedReply(
+  input: Pick<PlanInput, "runtime" | "message" | "system" | "hostNotes" | "signal">,
+  conversation: readonly ChatMessage[],
+  tools: ToolDefinition[],
+  offeredNames: ReadonlySet<string>,
+  steps: readonly PlannedStep[],
+  prose: string | undefined,
+): Pick<PlannedTurn, "reply" | "notices" | "firstReports" | "firstEchoes" | "reask" | "compose"> {
+  const { runtime, signal } = input
   const settled = settleReply(steps)
   const ownerSaid = typeof input.message.content.text === "string" ? input.message.content.text : ""
   const failedToTheModel = steps.filter(({ outcomes }) => outcomes.some(({ outcome }) => outcome === "Failed" || outcome === "Rejected")).flatMap(({ result }) => writtenToTheModel(result))
@@ -1033,5 +1046,5 @@ export async function planTurn(input: PlanInput, actions: readonly Action[]): Pr
       return { revised: undefined, stoodBy: false, echoes: false, reports: new Map() }
     }
   }
-  return { reply, notices: settled.notices, cutOff: stoppedShort, steps, streamed, firstReports, firstEchoes, reask, compose: settled.compose }
+  return { reply, notices: settled.notices, firstReports, firstEchoes, reask, compose: settled.compose }
 }

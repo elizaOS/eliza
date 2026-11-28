@@ -27,14 +27,12 @@ function offersEditor(message: Memory, clientId: string, noteNamed: boolean, loo
     voiceUi?.uiNotesEditor === "saved-note-v1", !/^(?:note|legacy-app-notes-)/u.test(kind), observation?.sensitive === true, lookupConfirmed)
 }
 
-/** The one declared view `target` names (the Notes view for a saved Notes editor), if any. */
 function viewNamed(declared: readonly DeclaredView[], target: string): DeclaredView | undefined {
   const named = declared.filter((view) => target === savedNoteEditor ? view.viewId === "notes" : namesOf(view).includes(target))
   return named.length === 1 ? named[0] : undefined
 }
 
 // spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"
-/** Whether this turn's screen can show `view`: every declared view unless its renderer said which it can show now. */
 function screenShows(message: Memory, view: DeclaredView): boolean {
   const stated = readTurnContext(message).voiceUi?.uiViews
   return screenCanShow(stated !== undefined, [...stated ?? []], view.viewId)

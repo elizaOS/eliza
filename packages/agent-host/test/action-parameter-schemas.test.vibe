@@ -9,6 +9,7 @@ module node {
   import { join } from "node:path"
   import { pathToFileURL } from "node:url"
   import { actionToJsonSchema, validateToolArgs, type Action } from "@elizaos/core"
+  import { argumentShapeNamesContents } from "../gen/agent__conversation__planning.ts"
 
   let packages = ""
 
@@ -81,7 +82,7 @@ module node {
     if (typeof schema !== "object" || schema === null) return []
     const node = schema as Schema
     const kinds = Array.isArray(node.type) ? node.type : [node.type]
-    const own = kinds.includes("array") && node.items === undefined ? [path] : []
+    const own = kinds.includes("array") && !argumentShapeNamesContents({ tag: "OfferedArray", hasItemSchema: node.items !== undefined }) ? [path] : []
     return [...own, ...Object.entries(node.properties ?? {}).flatMap(([key, child]) => itemlessArrays(child, `${path}.${key}`)),
       ...(node.items === undefined ? [] : itemlessArrays(node.items, `${path}[]`)),
       ...[...(node.anyOf ?? []), ...(node.oneOf ?? [])].flatMap((child) => itemlessArrays(child, path))]
@@ -94,8 +95,9 @@ module node {
       ...(schema.items === undefined ? [] : bareObjects(schema.items, `${path}[]`)),
       ...(typeof schema.additionalProperties === "object" ? bareObjects(schema.additionalProperties, `${path}.*`) : []),
       ...[...(schema.anyOf ?? []), ...(schema.oneOf ?? [])].flatMap((child) => bareObjects(child, path))]
-    const bare = kinds.includes("object") && Object.keys(schema.properties ?? {}).length === 0 && schema.additionalProperties !== true
-      && typeof schema.additionalProperties !== "object" && schema.anyOf === undefined && schema.oneOf === undefined
+    const extraKeys = schema.additionalProperties === undefined ? "ExtraKeysUnset" : schema.additionalProperties === false ? "ExtraKeysRefused" : "ExtraKeysAllowed"
+    const bare = kinds.includes("object") && schema.anyOf === undefined && schema.oneOf === undefined
+      && !argumentShapeNamesContents({ tag: "OfferedObject", namedFieldCount: Object.keys(schema.properties ?? {}).length, extraKeys })
     return bare ? [path, ...nested] : nested
   }
 

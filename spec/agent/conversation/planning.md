@@ -74,17 +74,46 @@ pure def lawAnAnswerWithoutToolsEndsPlanning(taken: int, terminal: bool): bool =
 
 ### Every offered action's parameters name the fields the action reads
 
-The runtime checks a call's arguments against each parameter's schema, and
-an object parameter that names no fields accepts no keys at all. So every
-object an action's parameters hold, at any depth, names the fields the
-action's own code reads, or says it takes any keys (a workflow's run input,
-keyed by that workflow's own input names). An array names what it holds. An action with no parameters takes none. No
-key of a representative argument, every field named, is refused by the
-runtime's check as unexpected. The `cue` field every offered tool carries
-(below) is the planner's own, not the action's: it is taken off each call
-before the call's arguments are checked, the action runs or the action's
-arguments are recorded; the step's record keeps it apart, as its own first
-argument (below).
+The runtime checks a call's arguments against each parameter's schema.
+Every object an action's parameters hold, at any depth, names the fields
+the action reads or is offered as taking additional keys. For example, a
+workflow's run input can take keys named by the workflow. Core's
+[action schema](../../core/actionPlanning.md) makes an object with no
+named fields open unless its schema closes it.
+An array names what it holds. An action with no parameters takes none.
+The runtime never refuses a named field of a representative argument as
+an unexpected key. The `cue` field every offered tool carries (below)
+belongs to the planner. The planner removes it before checking, running
+or recording the action's arguments. The step's record keeps it apart as
+its own first argument (below).
+
+```quint
+import actionPlanning as AP from "../../core/actionPlanning"
+type OfferedArgumentShape = OfferedObject({ namedFieldCount: int, extraKeys: AP::ExtraKeysChoice }) | OfferedArray({ hasItemSchema: bool })
+pure def argumentShapeNamesContents(shape: OfferedArgumentShape): bool = match shape {
+  | OfferedObject(o) => o.namedFieldCount > 0 or o.extraKeys == AP::ExtraKeysAllowed
+  | OfferedArray(a) => a.hasItemSchema
+}
+pure def checkedArgumentKeys(namedFields: Set[str], submittedFields: Set[str], extraKeys: AP::ExtraKeysChoice): Set[str] =
+  if (AP::acceptsExtraKeys(namedFields.size(), extraKeys)) submittedFields else submittedFields.intersect(namedFields)
+pure def actionArgumentKeys(submittedFields: Set[str]): Set[str] = submittedFields.exclude(Set("cue"))
+pure val namedFieldsValues = Set(Set(), Set("operation"), Set("operation", "input"))
+pure val submittedFieldsValues = Set(Set(), Set("cue"), Set("cue", "input"), Set("operation", "input", "other"))
+pure val extraKeysValues = Set(AP::ExtraKeysUnset, AP::ExtraKeysAllowed, AP::ExtraKeysRefused)
+pure def lawAnObjectThatDoesNotOfferExtraKeysMustNameItsFields(extraKeys: AP::ExtraKeysChoice): bool =
+  extraKeys != AP::ExtraKeysAllowed implies not(argumentShapeNamesContents(OfferedObject({ namedFieldCount: 0, extraKeys: extraKeys })))
+pure def lawAnOpenObjectCanTakeFieldsWithoutNamingThem(): bool =
+  argumentShapeNamesContents(OfferedObject({ namedFieldCount: 0, extraKeys: AP::ExtraKeysAllowed }))
+pure def lawAnArrayNamesItsItems(hasItemSchema: bool): bool =
+  argumentShapeNamesContents(OfferedArray({ hasItemSchema: hasItemSchema })) == hasItemSchema
+pure def lawNamedFieldsAreNeverUnexpected(namedFields: Set[str], submittedFields: Set[str], extraKeys: AP::ExtraKeysChoice): bool =
+  submittedFields.intersect(namedFields).subseteq(checkedArgumentKeys(namedFields, submittedFields, extraKeys))
+pure def lawAnActionWithoutParametersAcceptsNoKeys(submittedFields: Set[str]): bool =
+  checkedArgumentKeys(Set(), submittedFields, AP::ExtraKeysRefused).size() == 0
+pure def lawOnlyTheCueIsRemovedFromActionFields(submittedFields: Set[str]): bool =
+  not(actionArgumentKeys(submittedFields).contains("cue")) and
+  submittedFields.forall(key => key != "cue" implies actionArgumentKeys(submittedFields).contains(key))
+```
 
 ### Each call of a conversation starts with the same system prompt and tools, and what changes per turn follows the history
 
