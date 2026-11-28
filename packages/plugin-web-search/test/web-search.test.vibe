@@ -143,10 +143,18 @@ describe("webSearchEdgePlugin and edge evidence", () => {
   it("extracts structured and prose URLs, rejects credentials/private hosts, and bounds hostile JSON", () => {
     expect(
       webSearchSourceUrls(
-        `${JSON.stringify({ results: [{ url: "https://example.com/a" }] })}\n` +
-          "Source: https://news.example.org/story). Ignore https://u:p@example.net/private",
+        `${JSON.stringify({ results: [{ url: "https://example.com/a" }, { url: "https://www.google.com/search?q=a" }] })}\n` +
+          "Source: https://news.example.org/story). Ignore https://u:p@example.net/private and https://www.google.com/preferences and https://google.com/advanced_search and https://www.google.com/url?q=https%3A%2F%2Fnews.example.org%2Fstory",
       ),
     ).toEqual(["https://example.com/a", "https://news.example.org/story"])
+
+    const keptWhenBodyMentionsSearchUi = webSearchSourceEvidence(
+      JSON.stringify({
+        results: [{ url: "https://rail.example/schedules", title: "Rail Schedules", text: "Found via https://www.google.com/search?q=trains" }],
+      }),
+    )
+    expect(keptWhenBodyMentionsSearchUi.sourceUrls).toEqual(["https://rail.example/schedules"])
+    expect(keptWhenBodyMentionsSearchUi.sources).toHaveLength(1)
 
     const exact = "https://example.com/path)."
     const structured = webSearchSourceEvidence(JSON.stringify({ results: [{ url: exact, text: "Exact" }] }))
@@ -290,6 +298,8 @@ describe("Keyless search and public article fetch transport", () => {
       "http://[::1]/article",
       "http://[fc00::1]/article",
       "https://user:password@publisher.example/article",
+      "https://www.google.com/search?q=article",
+      "https://www.google.com/url?q=https%3A%2F%2Fpublisher.example%2Farticle",
       "file:///tmp/article",
     ]) {
       await expect(fetchKeylessWeb([url], { fetchImpl })).rejects.toThrow()
@@ -382,20 +392,27 @@ describe("Authorized browser-first web search", () => {
 
   it("opens and reads authorized browser tab, unwraps Google redirects, and never replays after dispatch failure", async () => {
     const executed: unknown[] = []
+    let resolvedTargets = 0
     let profileNow = "owner-profile"
     let snapshotLinks: Array<{ href: string; heading: string }> = [
       { href: "https://www.google.com/url?q=https%3A%2F%2Frail.example%2Fschedules", heading: "Rail Schedules" },
+      { href: "https://google.com/url?url=https%3A%2F%2Frail.example%2Ffares", heading: "Rail Fares" },
+      { href: "https://www.google.com/url?q=https%3A%2F%2Fwww.google.com%2Furl%3Fq%3Dhttps%253A%252F%252Fevil.example", heading: "Nested Redirect" },
+      { href: "https://google.com/search?q=next", heading: "Bare Domain Search" },
       { href: "https://www.google.com/url?q=http%3A%2F%2Flocalhost%2Fadmin", heading: "Localhost Admin" },
       { href: "https://www.google.com/url?q=http%3A%2F%2F127.0.0.1%2Fsecret", heading: "Loopback Secret" },
       { href: "https://www.google.com/search?q=next", heading: "Next page" },
       { href: "https://user:pass@secret.example/private", heading: "Private" },
     ]
     const browserService = {
-      resolveTarget: async () => ({
-        id: "chromium-device",
-        getProfileId: () => profileNow,
-        supports: () => true,
-      }),
+      resolveTarget: async () => {
+        resolvedTargets += 1
+        return {
+          id: "chromium-device",
+          getProfileId: () => profileNow,
+          supports: () => true,
+        }
+      },
       execute: async (cmd: { subaction: string; url: string; id?: string }) => {
         executed.push(cmd)
         if (cmd.subaction === "open") {
@@ -432,13 +449,55 @@ describe("Authorized browser-first web search", () => {
     const keylessMock = vi.fn(async () => mcpResponse("should-not-run"))
     setGlobalFetch(keylessMock as typeof fetch)
 
-    const res = await searchBrowserFirstWeb(runtime, "train schedules")
+    const res = await searchBrowserFirstWeb(runtime, "  train schedules  ")
     expect(res?.provider).toBe("browser")
-    const parsed = JSON.parse(res!.text) as { results: Array<{ url: string; title: string }>; browser: { tabId: string } }
+    const parsed = JSON.parse(res!.text) as { query: string; results: Array<{ url: string; title: string }>; browser: { tabId: string } }
+    expect(parsed.query).toBe("train schedules")
     expect(parsed.browser.tabId).toBe("42")
-    expect(parsed.results).toHaveLength(1)
+    expect(parsed.results).toHaveLength(2)
     expect(parsed.results[0]).toMatchObject({ url: "https://rail.example/schedules", title: "Rail Schedules" })
+    expect(parsed.results[1]).toMatchObject({ url: "https://rail.example/fares", title: "Rail Fares" })
     expect(keylessMock).not.toHaveBeenCalled()
+
+    const browserActionResult = await webSearchAction.handler(runtime, {} as Memory, undefined, {
+      parameters: { query: "train schedules" },
+    })
+    expect(browserActionResult).toMatchObject({
+      success: true,
+      data: {
+        actionName: "WEB_SEARCH",
+        provider: "browser",
+        query: "train schedules",
+        sourceUrls: ["https://rail.example/fares", "https://rail.example/schedules"],
+        sources: [],
+      },
+      promptData: {
+        actionName: "WEB_SEARCH",
+        provider: "browser",
+        query: "train schedules",
+        count: 2,
+        totalUrls: 2,
+        results: [
+          { url: "https://rail.example/fares", title: "Rail Fares", snippet: "Rail Fares" },
+          { url: "https://rail.example/schedules", title: "Rail Schedules", snippet: "Rail Schedules" },
+        ],
+      },
+    })
+    expect(JSON.stringify(browserActionResult.promptData)).not.toContain("owner-profile")
+
+    const callsBeforeInvalid = executed.length
+    const resolvedBeforeInvalid = resolvedTargets
+    await expect(searchAuthorizedBrowser(runtime, "   ")).rejects.toMatchObject({
+      code: "WEB_SEARCH_BROWSER_UNAVAILABLE",
+    })
+    await expect(searchAuthorizedBrowser(runtime, "🤖".repeat(2049))).rejects.toMatchObject({
+      code: "WEB_SEARCH_BROWSER_UNAVAILABLE",
+    })
+    expect(executed).toHaveLength(callsBeforeInvalid)
+    expect(resolvedTargets).toBe(resolvedBeforeInvalid)
+
+    const edgeLen2048 = await searchAuthorizedBrowser(runtime, ` ${"🤖".repeat(2048)} `).catch((err) => err)
+    expect((edgeLen2048 as { message?: string })?.message).toContain("navigated away")
 
     snapshotLinks = []
     await expect(searchBrowserFirstWeb(runtime, "train schedules")).rejects.toMatchObject({
