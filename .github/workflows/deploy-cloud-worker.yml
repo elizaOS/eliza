@@ -1,0 +1,171 @@
+name: Deploy Eliza Cloud Worker
+
+on:
+  push:
+    branches: [staging, main]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Target stage (staging or production)
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+      dry_run:
+        description: Run Alchemy plan without applying
+        required: false
+        default: false
+        type: boolean
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-cloud-worker-${{ github.event_name == 'workflow_dispatch' && inputs.stage || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+  ALCHEMY_FAST_DISTILLED: "1"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: eliza-cloud-v4-${{ github.event_name == 'workflow_dispatch' && inputs.stage || (github.ref_name == 'staging' && 'staging' || 'production') }}
+    env:
+      CLOUD_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || (github.ref_name == 'staging' && 'staging' || 'production') }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_CACHE: ${{ secrets.TURBO_TOKEN != '' && 'local:rw,remote:r' || 'local:rw' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify staging promoted the exact source tree
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          staging_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/staging" --jq '.object.sha')
+          staging_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$staging_sha" --jq '.tree.sha')
+          test "$staging_tree" = "$(git rev-parse 'HEAD^{tree}')" || {
+            echo "::error::Production must promote the exact source tree deployed on staging"
+            exit 1
+          }
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-cloud-worker.yml/runs" \
+            --method GET -f branch=staging -f event=push -f head_sha="$staging_sha" -f per_page=1 \
+            --jq '.workflow_runs[0] | select(.conclusion == "success") | .id')
+          [[ $run_id =~ ^[0-9]+$ ]] || {
+            echo "::error::The exact staging head lacks a successful Deploy Eliza Cloud Worker run"
+            exit 1
+          }
+      - uses: ./.github/actions/setup
+        with:
+          job: ""
+          verification: "false"
+      - name: Build Cloud Worker and static return pages
+        env:
+          ELIZA_CLOUD_V4_PROFILE: ${{ vars.ELIZA_CLOUD_V4_PROFILE }}
+        run: pnpm all '@elizaos/cloud-worker#build'
+      - name: Verify Cloud Worker inside offline workerd
+        run: pnpm --filter @elizaos/cloud-worker test:deploy
+      - name: Verify database identity and release migrations
+        working-directory: packages/cloud-worker
+        env:
+          DATABASE_URL: ${{ secrets.ELIZA_CLOUD_V4_DATABASE_URL }}
+          DATABASE_CA: ${{ secrets.ELIZA_CLOUD_V4_DATABASE_CA }}
+          DATABASE_IDENTITY: ${{ vars.ELIZA_CLOUD_V4_DATABASE_IDENTITY }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readdir } from "node:fs/promises"
+          import pg from "pg"
+
+          const { CLOUD_ENVIRONMENT, DATABASE_CA, DATABASE_IDENTITY, DATABASE_URL } = process.env
+          if (!DATABASE_URL || !DATABASE_CA || !/^[a-f0-9]{64}$/.test(DATABASE_IDENTITY ?? "")) {
+            console.error("::error::Configure the identified v4 database URL, private root CA, and SHA-256 identity")
+            process.exit(1)
+          }
+          let db
+          try {
+            const url = new URL(DATABASE_URL)
+            if (!["postgresql:", "postgres:"].includes(url.protocol) || !url.hostname) throw new Error("Invalid PostgreSQL URI")
+            for (const option of ["host", "ssl", "sslmode", "sslrootcert", "sslcert", "sslkey", "uselibpqcompat"]) url.searchParams.delete(option)
+            db = new pg.Client({
+              connectionString: url.href,
+              ssl: { ca: DATABASE_CA, rejectUnauthorized: true, checkServerIdentity: () => undefined },
+              connectionTimeoutMillis: 5000,
+              statement_timeout: 10000
+            })
+            await db.connect()
+            await db.query("BEGIN READ ONLY")
+            const identity = await db.query("SELECT 1 FROM public.cloud_identity WHERE singleton AND digest = $1 AND environment = $2", [DATABASE_IDENTITY, CLOUD_ENVIRONMENT])
+            if (identity.rowCount !== 1) throw new Error("Wrong database identity")
+            const seen = await db.query("SELECT name FROM public.schema_migrations")
+            const applied = new Set(seen.rows.map(({ name }) => name))
+            const migrations = await readdir("src/store/migrations")
+            const pending = migrations.filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name) && !applied.has(name))
+            if (pending.length) {
+              console.error("::error::Apply release migrations before deploying: " + pending.join(", "))
+              process.exitCode = 1
+            }
+            await db.query("ROLLBACK")
+          } catch (error) {
+            console.error("::error::Database identity and migration check failed:", error instanceof Error ? error.message : String(error))
+            process.exitCode = 1
+          } finally {
+            await db?.end()
+          }
+          JS
+      - name: Restore Alchemy local state fallback cache
+        if: vars.ALCHEMY_STATE_STORE != 'cloudflare' && vars.R2_STATE_BUCKET == ''
+        uses: actions/cache/restore@v6
+        with:
+          path: packages/cloud-worker/.alchemy/state
+          key: alchemy-state-eliza-cloud-${{ env.CLOUD_ENVIRONMENT }}-${{ github.sha }}-${{ github.run_attempt }}
+          restore-keys: |
+            alchemy-state-eliza-cloud-${{ env.CLOUD_ENVIRONMENT }}-
+      - name: Deploy Eliza Cloud Worker with Alchemy
+        id: alchemy
+        working-directory: packages/cloud-worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ALCHEMY_STATE_STORE: ${{ vars.ALCHEMY_STATE_STORE || '' }}
+          R2_STATE_BUCKET: ${{ vars.R2_STATE_BUCKET || '' }}
+          R2_STATE_PREFIX: ${{ vars.R2_STATE_PREFIX || 'alchemy/eliza-cloud-worker/' }}
+          R2_STATE_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+          R2_STATE_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+          ELIZA_CLOUD_V4_DATABASE_IDENTITY: ${{ vars.ELIZA_CLOUD_V4_DATABASE_IDENTITY }}
+          ELIZA_CLOUD_V4_WRANGLER_CONFIG: ${{ vars.ELIZA_CLOUD_V4_WRANGLER_CONFIG }}
+          ELIZA_CLOUD_HYPERDRIVE_ID: ${{ vars.ELIZA_CLOUD_HYPERDRIVE_ID || '' }}
+          ELIZA_CLOUD_HYPERDRIVE_NAME: ${{ vars.ELIZA_CLOUD_HYPERDRIVE_NAME || '' }}
+          ELIZA_CLOUD_PROD_HYPERDRIVE_ID: ${{ vars.ELIZA_CLOUD_PROD_HYPERDRIVE_ID || '' }}
+          ELIZA_CLOUD_BIND_DOMAIN: ${{ vars.ELIZA_CLOUD_BIND_DOMAIN || '' }}
+          ELIZA_CLOUD_ENABLE_AI: ${{ vars.ELIZA_CLOUD_ENABLE_AI || '' }}
+          ELIZA_CLOUD_ENABLE_EMAIL_BINDING: ${{ vars.ELIZA_CLOUD_ENABLE_EMAIL_BINDING || '' }}
+          ELIZA_CLOUD_EMAIL_SENDER: ${{ vars.ELIZA_CLOUD_EMAIL_SENDER || '' }}
+          WEB_ORIGIN: ${{ vars.ELIZA_CLOUD_WEB_ORIGIN || '' }}
+        run: |
+          pnpm exec alchemy provider check-env
+          if [[ "$DRY_RUN" == "true" ]]; then
+            pnpm exec alchemy --fast-distilled plan --stage "$CLOUD_ENVIRONMENT" --adopt --no-input
+          else
+            pnpm exec alchemy --fast-distilled deploy --stage "$CLOUD_ENVIRONMENT" --adopt --yes --no-input
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Save Alchemy local state fallback cache
+        if: steps.alchemy.outputs.deployed == 'true' && vars.ALCHEMY_STATE_STORE != 'cloudflare' && vars.R2_STATE_BUCKET == ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: packages/cloud-worker/.alchemy/state
+          key: alchemy-state-eliza-cloud-${{ env.CLOUD_ENVIRONMENT }}-${{ github.sha }}-${{ github.run_attempt }}

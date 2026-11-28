@@ -24,11 +24,15 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen','pages'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\" && vite build",
-    "typecheck": "vibelang --noEmit -p .",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen','pages'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\" && vite build && node deploy/build-worker.ts",
+    "typecheck": "vibelang --noEmit -p . && tsc --noEmit -p deploy/tsconfig.json",
     "test": "vitest run",
+    "test:deploy": "vitest run --config deploy/vitest.config.ts",
+    "dev:cf": "ALCHEMY_FAST_DISTILLED=1 alchemy --fast-distilled dev",
+    "deploy": "ALCHEMY_FAST_DISTILLED=1 alchemy --fast-distilled deploy --adopt",
+    "deploy:plan": "ALCHEMY_FAST_DISTILLED=1 alchemy --fast-distilled plan --adopt",
     "start": "vite build && node --import vibelang/register test/support/web-front.vibe",
-    "build:worker": "vibelang -p tsconfig.worker.json && node -e \"require('node:fs').cpSync('src/store/migrations','dist/src/store/migrations',{recursive:true})\""
+    "build:worker": "vibelang -p tsconfig.worker.json && node -e \"require('node:fs').cpSync('src/store/migrations','dist/src/store/migrations',{recursive:true})\" && node deploy/build-worker.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",
@@ -43,6 +47,8 @@
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
+    "@alchemy.run/cloudflare": "catalog:",
+    "@alchemy.run/test": "catalog:",
     "@antithesishq/bombadil": "0.7.10",
     "@effect/vitest": "4.1.1",
     "@electric-sql/pglite-socket": "0.1.6",
@@ -52,6 +58,8 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "alchemy": "catalog:",
+    "esbuild": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwindcss": "catalog:",

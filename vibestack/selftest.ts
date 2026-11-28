@@ -38,7 +38,7 @@ import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, dangl
 const project = path.join(import.meta.dirname, "..");
 isolatedInstalls();
 const harnessSkillPaths = [".claude/skills", ".codex/skills", ".cursor/skills", ".droid/skills", ".factory/skills", ".gemini/skills", ".grok/skills", ".grokbot/skills", ".muse/skills", ".t3/skills"];
-const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ".cache/", ".turbo/", "test/__traces__/", "/.claude/", "/CLAUDE.md", ...harnessSkillPaths.filter((alias) => !alias.startsWith(".claude/")).map((alias) => `/${alias}`)];
+const scaffoldedIgnores = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ".cache/", ".turbo/", ".alchemy/", ".wrangler/", "test/__traces__/", "/.claude/", "/CLAUDE.md", ...harnessSkillPaths.filter((alias) => !alias.startsWith(".claude/")).map((alias) => `/${alias}`)];
 const EXAMPLES = "vibestack/examples";
 const EXAMPLE = path.join(project, EXAMPLES, "order");
 const read = (file: string, from = project): string => fs.readFileSync(path.join(from, file), "utf8");
@@ -102,7 +102,7 @@ const fixtures = (names: string[], edit: (files: Record<string, string>) => void
 function copySources(from: string, to: string): void {
   fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true, filter: (file) => {
     const name = path.basename(file);
-    return !["node_modules", ".spec-cache", ".cache", ".vibe", ".studio", ".turbo", "dist", "generated", "storybook-static", "coverage"].includes(name)
+    return !["node_modules", ".spec-cache", ".cache", ".vibe", ".studio", ".turbo", ".alchemy", ".wrangler", "dist", "generated", "storybook-static", "coverage"].includes(name)
       && !(name === "gen" && fs.existsSync(path.join(file, "package.json")))
       && !(name === "examples" && path.basename(path.dirname(file)) === "vibestack");
   } });
@@ -3358,7 +3358,7 @@ function eachCheck() {
     assert.ok(!fs.existsSync(path.join(copy, "node_modules")));
     assert.equal(read("vibestack/gen/typescript.ts", copy), read("vibestack/gen/typescript.ts"));
     for (const directory of ["vibestack/studio", ...fs.readdirSync(path.join(copy, "packages")).map((name) => `packages/${name}`)])
-      for (const output of ["gen", "dist", "generated", "node_modules", ".spec-cache", ".cache", ".vibe", ".turbo", "storybook-static"])
+      for (const output of ["gen", "dist", "generated", "node_modules", ".spec-cache", ".cache", ".vibe", ".turbo", ".alchemy", ".wrangler", "storybook-static"])
         assert.ok(!fs.existsSync(path.join(copy, directory, output)), `${directory}/${output} is produced by the scratch build`);
     const modulesManifest = path.join(nodeModules, ".modules.yaml");
     assert.ok(fs.existsSync(modulesManifest), "The packaged command selftest needs a pnpm workspace install. Run pnpm install.");

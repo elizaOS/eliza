@@ -20,6 +20,8 @@ _apalache-out/
 /.t3/skills
 .turbo/
 .cache/
+.alchemy/
+.wrangler/
 generated/
 storybook-static/
 .vibe/

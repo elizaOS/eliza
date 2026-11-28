@@ -1,7 +1,7 @@
 {
   "format": ["typescript", "tsx", "javascript", "css"],
   "formatsExts": { "typescript": ["ts", "mts", "vibe", "vibex"] },
-  "ignore": ["vibestack/examples/**", "**/test/fixtures/**", "**/.cli-test-*/**"],
+  "ignore": ["vibestack/examples/**", "**/test/fixtures/**", "**/.cli-test-*/**", "**/.alchemy/**", "**/.wrangler/**"],
   "threshold": 0.5,
   "reporters": ["console"]
 }

@@ -132,6 +132,8 @@ const DEFAULT_SCAN_EXCLUDES: readonly string[] = [
   "**/.spec-cache/**",
   "**/.cache/**",
   "**/.turbo/**",
+  "**/.alchemy/**",
+  "**/.wrangler/**",
   "**/storybook-static/**",
   "**/test/fixtures/**",
 ]

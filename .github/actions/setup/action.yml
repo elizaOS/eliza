@@ -364,12 +364,12 @@ runs:
 
     - name: Set up JDK 21
       if: inputs.verification == 'true' && inputs.job == 'verify'
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: "21"
         distribution: temurin
     - name: Set up Android SDK
       if: inputs.verification == 'true' && inputs.job == 'verify'
-      uses: android-actions/setup-android@v3
+      uses: android-actions/setup-android@v4
       with:
         packages: 'platform-tools build-tools;36.0.0 platforms;android-36'
