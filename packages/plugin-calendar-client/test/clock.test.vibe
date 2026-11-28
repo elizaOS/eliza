@@ -1,0 +1,38 @@
+import { assert, it } from "@effect/vitest"
+import { getZonedDateParts, startOfCivilDay } from "../src/clock.vibe"
+
+it("startOfCivilDay returns the first instant of an existing civil day", () => {
+  const plain = startOfCivilDay({ year: 2011, month: 12, day: 29 }, "Pacific/Apia")
+  assert.isDefined(plain)
+  const plainParts = getZonedDateParts(new Date(plain as number), "Pacific/Apia")
+  assert.deepEqual(
+    plainParts === undefined ? undefined : [plainParts.year, plainParts.month, plainParts.day, plainParts.hour, plainParts.minute],
+    [2011, 12, 29, 0, 0],
+  )
+  const dstDay = startOfCivilDay({ year: 2026, month: 3, day: 8 }, "America/New_York")
+  assert.isDefined(dstDay)
+  const dstParts = getZonedDateParts(new Date(dstDay as number), "America/New_York")
+  assert.deepEqual(
+    dstParts === undefined ? undefined : [dstParts.year, dstParts.month, dstParts.day, dstParts.hour, dstParts.minute],
+    [2026, 3, 8, 0, 0],
+  )
+  const skippedMidnight = startOfCivilDay({ year: 2026, month: 9, day: 6 }, "America/Santiago")
+  assert.isDefined(skippedMidnight)
+  const skippedParts = getZonedDateParts(new Date(skippedMidnight as number), "America/Santiago")
+  assert.deepEqual(
+    skippedParts === undefined ? undefined : [skippedParts.year, skippedParts.month, skippedParts.day, skippedParts.hour, skippedParts.minute],
+    [2026, 9, 6, 1, 0],
+  )
+})
+
+it("startOfCivilDay is undefined for a civil day the zone skipped entirely", () => {
+  assert.isUndefined(startOfCivilDay({ year: 2011, month: 12, day: 30 }, "Pacific/Apia"))
+  assert.isUndefined(startOfCivilDay({ year: 1994, month: 12, day: 31 }, "Pacific/Kiritimati"))
+  const after = startOfCivilDay({ year: 2011, month: 12, day: 31 }, "Pacific/Apia")
+  assert.isDefined(after)
+  const afterParts = getZonedDateParts(new Date(after as number), "Pacific/Apia")
+  assert.deepEqual(
+    afterParts === undefined ? undefined : [afterParts.year, afterParts.month, afterParts.day, afterParts.hour, afterParts.minute],
+    [2011, 12, 31, 0, 0],
+  )
+})

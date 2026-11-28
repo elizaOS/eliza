@@ -102,7 +102,7 @@ export function startOfCivilDay(date: LocalDate, timeZone: string): number | und
   if (guess === undefined) return undefined
   while (dayOf(guess) < target) guess += minuteMs
   while (dayOf(guess - minuteMs) === target) guess -= minuteMs
-  return Number.isFinite(dayOf(guess)) ? guess : undefined
+  return dayOf(guess) === target ? guess : undefined
 }
 
 export interface ZoneSources {
