@@ -68,7 +68,7 @@ The canonical skill files are committed in `.agents/skills/`, including
 Edit them there. `pnpm install` and `spec init` create project-relative skill
 links for Claude, Cursor, Muse, Grokbot and the other supported agents, and
 `CLAUDE.md` links to `AGENTS.md`. These generated paths are ignored by Git;
-`.claude/` contains no committed files.
+`.claude` contains no committed files.
 
 A skill's name and description are only its discovery metadata. Before
 the work listed in [Where the rest is](#where-the-rest-is), read the matching
